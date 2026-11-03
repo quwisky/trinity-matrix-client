@@ -52,6 +52,7 @@ import { MessageThreadSummaryComponent } from '../message-thread-summary/message
 import { TrnButton } from '@trinity/components/controls';
 import { type UndecryptableFix } from '../shared/undecryptable-fix.service';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
+import { guardOpeningTouch } from '../shared/opening-touch-guard';
 import { scrollBehavior } from '@trinity/util/ui';
 import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import { BodyMeasureDirective, BodyOverflowObserver } from './body-overflow';
@@ -373,6 +374,8 @@ export class MessageRowComponent {
       if (this.mobileActions) {
         // The press won; the drag is no longer a candidate, or a continued drag would still commit under the backdrop.
         this.swipeGesture()?.cancel();
+        // Not released on destroy: the row can leave the list's window while the finger is still down.
+        guardOpeningTouch(event.pointerId);
         this.longPress.emit({ anchor: context.anchor, clientY: context.y });
         return;
       }

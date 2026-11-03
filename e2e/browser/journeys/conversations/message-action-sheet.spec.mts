@@ -16,6 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 import {
   sheetAtRest,
   touchLongPress,
+  waitUntilStill,
 } from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
@@ -360,6 +361,74 @@ test.describe('Message actions on a phone', () => {
     await expect(sheet).toHaveCount(0);
     // No reply started, no reaction added — dismissing is not choosing.
     await expect(page.locator('.composer__banner')).toHaveCount(0);
+  });
+
+  test('the finger that opened the sheet selects nothing in it', async ({
+    page,
+    request,
+  }) => {
+    // The finger is still down when the sheet opens under it, and the browser carries the same
+    // touch on (#1868): iOS WebKit into a selection and callout there, Chromium into a click on
+    // the sheet row its lift lands on. A real touch, held through the opening, nudged and lifted.
+    const rowSel = await openRoomWithMessage(page, request, 'sel');
+    const row = page.locator(rowSel);
+    const dialog = page.getByRole('dialog', { name: 'Message actions' });
+    const sheet = dialog.getByTestId('action-sheet-surface');
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await expect(async () => {
+        await waitUntilStill(row);
+        const box = (await row.locator('.msg__body').boundingBox())!;
+        const at = {
+          x: Math.round(box.x + box.width / 2),
+          y: Math.round(box.y + box.height / 2),
+          id: 1,
+        };
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [at],
+        });
+        try {
+          // A sync re-render mid-hold drops the press; a person would press again.
+          await expect(sheet).toBeVisible({ timeout: 1_500 });
+          await page.waitForTimeout(600);
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ ...at, x: at.x + 3, y: at.y + 2 }],
+          });
+        } finally {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+          });
+        }
+      }).toPass({ timeout: 20_000 });
+    } finally {
+      await cdp.detach();
+    }
+
+    // The lift chose nothing: the sheet is still open and no row's action ran.
+    await expect(sheet).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    expect(await page.evaluate(() => getSelection()?.toString() ?? '')).toBe(
+      '',
+    );
+    expect(
+      await sheet.evaluate((el) => {
+        const selection = getSelection();
+        return (
+          selection !== null &&
+          !selection.isCollapsed &&
+          selection.containsNode(el, true)
+        );
+      }),
+    ).toBe(false);
+    // Lifting the finger hands selection back for a fresh, deliberate press.
+    await expect
+      .poll(() =>
+        page.evaluate(() => getComputedStyle(document.body).userSelect),
+      )
+      .not.toBe('none');
   });
 
   test('keeps a windowed target connected and restores the latest state on close', async ({

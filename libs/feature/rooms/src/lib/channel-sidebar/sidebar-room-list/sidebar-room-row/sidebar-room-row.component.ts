@@ -42,6 +42,7 @@ import { unencryptedShield } from '@trinity/data-access/timeline';
 import { formatTypingNotice } from '@trinity/util/matrix';
 import { UnencryptedMarkComponent } from '../../../shared/unencrypted-mark/unencrypted-mark.component';
 import { unreadBadgeLabel } from '../../../shared/unread-badge';
+import { guardOpeningTouch } from '../../../shared/opening-touch-guard';
 import { roomSheetButtons } from './room-sheet-buttons';
 
 /**
@@ -66,8 +67,6 @@ export type SidebarRoomAction =
 /** How long a touch is held before it opens the room's actions, and how far it may drift first. */
 const LONG_PRESS_MS = 500;
 const LONG_PRESS_SLOP_PX = 10;
-/** The most a hold may keep swallowing clicks if no pointer end is ever seen. */
-const SWALLOW_FALLBACK_MS = 10_000;
 
 /**
  * One room in the sidebar list: the select button, the kebab and its menu with the Notifications submenu.
@@ -110,18 +109,8 @@ export class SidebarRoomRowComponent {
   private pressTimer: ReturnType<typeof setTimeout> | null = null;
   private pressOrigin: { x: number; y: number } | null = null;
   private pressPointerId: number | null = null;
-  private swallowing = false;
-  private releaseTimer: ReturnType<typeof setTimeout> | null = null;
-  private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-  /**
-   * After a hold opened the sheet, the click that follows the lift lands on the sheet's backdrop
-   * (closing it) or on the row (opening the room). Taken in capture so it reaches neither.
-   */
-  private readonly swallowClick = (event: Event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    this.releaseClick();
-  };
+  /** Releases the guard on the hold that opened the sheet; see {@link guardOpeningTouch}. */
+  private releaseHold: (() => void) | null = null;
 
   /** Hidden once the row's account has learned its server takes no room reports. */
   protected readonly canReport = computed(() =>
@@ -169,36 +158,12 @@ export class SidebarRoomRowComponent {
   constructor() {
     inject(DestroyRef).onDestroy(() => {
       this.cancelPress();
-      this.releaseClick();
+      this.releaseHold?.();
     });
   }
 
   protected select(): void {
     this.action.emit({ kind: 'select', room: this.room() });
-  }
-
-  /** The lift of the finger that held: its click follows at once, so stop swallowing shortly after. */
-  private readonly liftSeen = (event: PointerEvent) => {
-    if (event.pointerId !== this.pressPointerId || this.releaseTimer !== null)
-      return;
-    this.releaseTimer = setTimeout(() => this.releaseClick(), 300);
-  };
-
-  /** A new pointer means the held one's end was lost; nothing may be swallowed on its behalf. */
-  private readonly otherPointerDown = (event: PointerEvent) => {
-    if (event.pointerId !== this.pressPointerId) this.releaseClick();
-  };
-
-  private releaseClick(): void {
-    if (!this.swallowing) return;
-    this.swallowing = false;
-    document.removeEventListener('pointerdown', this.otherPointerDown, true);
-    document.removeEventListener('click', this.swallowClick, true);
-    document.removeEventListener('pointerup', this.liftSeen, true);
-    document.removeEventListener('pointercancel', this.liftSeen, true);
-    if (this.releaseTimer !== null) clearTimeout(this.releaseTimer);
-    if (this.fallbackTimer !== null) clearTimeout(this.fallbackTimer);
-    this.releaseTimer = this.fallbackTimer = null;
   }
 
   /** Touch has no ⋮ here: holding the row opens the same actions in the action sheet. */
@@ -209,17 +174,8 @@ export class SidebarRoomRowComponent {
     this.pressPointerId = event.pointerId;
     this.pressTimer = setTimeout(() => {
       this.pressTimer = null;
-      this.releaseClick();
-      this.swallowing = true;
-      document.addEventListener('click', this.swallowClick, true);
-      document.addEventListener('pointerdown', this.otherPointerDown, true);
-      document.addEventListener('pointerup', this.liftSeen, true);
-      document.addEventListener('pointercancel', this.liftSeen, true);
-      // Whatever ends the gesture elsewhere, a tap must never be swallowed for long.
-      this.fallbackTimer = setTimeout(
-        () => this.releaseClick(),
-        SWALLOW_FALLBACK_MS,
-      );
+      this.releaseHold?.();
+      this.releaseHold = guardOpeningTouch(event.pointerId);
       this.haptics.gestureCommitted();
       this.surfaces.openActions(
         {
@@ -264,6 +220,6 @@ export class SidebarRoomRowComponent {
 
   /** Android raises a context menu at the end of the hold; the sheet is the menu. */
   protected onContextMenu(event: Event): void {
-    if (this.swallowing || this.pressTimer !== null) event.preventDefault();
+    if (this.pressTimer !== null) event.preventDefault();
   }
 }

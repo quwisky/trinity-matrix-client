@@ -115,6 +115,8 @@ const revealed = (container: HTMLElement) =>
 describe('MessageRowComponent — the long press on a mobile OS', () => {
   afterEach(() => {
     state.mobile = false;
+    // A press here is never lifted, so its document-wide guard is let go the way a new finger does.
+    document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 99 }));
     vi.useRealTimers();
   });
 
@@ -139,6 +141,25 @@ describe('MessageRowComponent — the long press on a mobile OS', () => {
       clientY: 10,
     });
     expect(revealed(container)).toBe(false);
+  });
+
+  it('keeps the finger that opened the sheet from selecting in it until it lifts', async () => {
+    state.mobile = true;
+    vi.useFakeTimers();
+    const { container } = await renderRow();
+    const selectStartAllowed = () =>
+      document.body.dispatchEvent(
+        new Event('selectstart', { bubbles: true, cancelable: true }),
+      );
+
+    longPress(container);
+    expect(selectStartAllowed()).toBe(false);
+
+    container
+      .querySelector('.msg')!
+      .dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+    vi.advanceTimersByTime(300);
+    expect(selectStartAllowed()).toBe(true);
   });
 
   it('still reveals the bar everywhere else', async () => {
