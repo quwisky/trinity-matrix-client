@@ -10,13 +10,15 @@ const KEYBOARD_DELAY = '--trinity-keyboard-delay';
 // The keyboard starts moving a frame or two before the page's response reaches the screen
 // (Simulator recordings, #1868). Starting each move that far into its curve keeps the layout on
 // the keyboard's top edge instead of under it (show) or behind it (hide).
+// Measured at 60 Hz web frames, so a fixed time rather than a share of the move.
 const SHOW_HEAD_START = '-16ms';
 const HIDE_HEAD_START = '-33ms';
 
 /** The covered height in CSS px, the move's duration in seconds and its `UIView.AnimationCurve`. */
 interface KeyboardFrame {
   readonly height: number;
-  readonly duration: number;
+  /** Absent when the notification carries none; the stylesheet's default applies. */
+  readonly duration?: number;
   readonly curve: number;
 }
 
@@ -55,16 +57,20 @@ export class NativeKeyboardInsetAdapter {
   private listen(): Observable<never> {
     return new Observable<never>(() => {
       const root = this.document.documentElement;
+      let last = 0;
       const handle = keyboardFrame
         .addListener('keyboardFrame', ({ height, duration, curve }) => {
-          root.style.setProperty(
-            KEYBOARD_DURATION,
-            `${Math.round(duration * 1000)}ms`,
-          );
+          if (typeof duration === 'number')
+            root.style.setProperty(
+              KEYBOARD_DURATION,
+              `${Math.round(duration * 1000)}ms`,
+            );
+          else root.style.removeProperty(KEYBOARD_DURATION);
           root.style.setProperty(
             KEYBOARD_DELAY,
-            height > 0 ? SHOW_HEAD_START : HIDE_HEAD_START,
+            height >= last ? SHOW_HEAD_START : HIDE_HEAD_START,
           );
+          last = height;
           const easing = PUBLIC_CURVES[curve];
           if (easing) root.style.setProperty(KEYBOARD_EASING, easing);
           else root.style.removeProperty(KEYBOARD_EASING);

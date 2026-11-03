@@ -12,7 +12,7 @@ vi.mock('@capacitor/core', () => ({
 
 interface Frame {
   height: number;
-  duration: number;
+  duration?: number;
   curve: number;
 }
 
@@ -60,6 +60,30 @@ describe('NativeKeyboardInsetAdapter', () => {
     expect(style('--trinity-keyboard-duration')).toBe('250ms');
     // Each move starts slightly into its curve, to land on screen with the keyboard.
     expect(style('--trinity-keyboard-delay')).toBe('-33ms');
+  });
+
+  it('takes the hide head start for any shrinking move, not only the last one', () => {
+    TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
+
+    listeners.get('keyboardFrame')?.({ height: 336, duration: 0.25, curve: 7 });
+    // The predictive bar collapses: the keyboard shrinks but stays up.
+    listeners.get('keyboardFrame')?.({ height: 291, duration: 0.25, curve: 7 });
+    expect(style('--trinity-keyboard-delay')).toBe('-33ms');
+
+    listeners.get('keyboardFrame')?.({ height: 336, duration: 0.25, curve: 7 });
+    expect(style('--trinity-keyboard-delay')).toBe('-16ms');
+  });
+
+  it('leaves a missing duration to the stylesheet default and keeps a real 0', () => {
+    TestBed.inject(NativeKeyboardInsetAdapter).run().subscribe();
+
+    listeners.get('keyboardFrame')?.({ height: 336, duration: 0.35, curve: 7 });
+    listeners.get('keyboardFrame')?.({ height: 0, curve: 7 });
+    expect(style('--trinity-keyboard-duration')).toBe('');
+    expect(style('--trinity-keyboard-inset')).toBe('0px');
+
+    listeners.get('keyboardFrame')?.({ height: 55, duration: 0, curve: 7 });
+    expect(style('--trinity-keyboard-duration')).toBe('0ms');
   });
 
   it('passes a public curve through and leaves the private one to the stylesheet', () => {

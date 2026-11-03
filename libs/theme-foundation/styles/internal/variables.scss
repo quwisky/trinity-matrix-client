@@ -142,8 +142,8 @@
 
     // Each move's own duration, curve and start offset, also written inline as it starts.
     // UIKit's keyboard curve (7) is private; the default is a fit from
-    // developer.apple.com/forums/thread/48088 that matches the iOS 27 Simulator's slide within
-    // 17px of 960. Other curves arrive as their CSS keyword.
+    // developer.apple.com/forums/thread/48088, RMS error 17px over 960px of travel (iOS 27.2
+    // Simulator). Other curves arrive as their CSS keyword.
     --trinity-keyboard-duration: 250ms;
     --trinity-keyboard-easing: cubic-bezier(0.38, 0.7, 0.125, 1);
     --trinity-keyboard-delay: 0ms;
@@ -227,14 +227,13 @@
     --trinity-duration-pulse: 1s; // an ambient loop — must read as alive, not as urgent
     --trinity-duration-flash: 1.6s; // a one-shot cue, long enough to find with your eye
     --trinity-ease-standard: cubic-bezier(0.2, 0, 0, 1); // most things
+    --trinity-ease-keyboard: var(--trinity-keyboard-easing);
     --trinity-ease-decelerate: cubic-bezier(
       0,
       0,
       0,
       1
     ); // entering: fast in, settles
-
-    --trinity-ease-keyboard: var(--trinity-keyboard-easing);
 
     // --- Code size (Mode- & Theme-agnostic) ---------------------------------------
     // A unitless MULTIPLIER, not a size. rendered-markdown.scss multiplies the 85% optical

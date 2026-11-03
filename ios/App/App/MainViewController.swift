@@ -61,11 +61,14 @@ class KeyboardFramePlugin: CAPInstancePlugin, CAPBridgedPlugin {
         else { return }
         let frame = webView.convert(end, from: screen.coordinateSpace)
         let covered = webView.bounds.intersection(frame)
-        notifyListeners("keyboardFrame", data: [
+        var data: [String: Any] = [
             "height": covered.isNull ? 0 : covered.height,
-            "duration": info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0,
-            "curve": info[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int ?? 0
-        ])
+            "curve": info[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int ?? 7
+        ]
+        if let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double {
+            data["duration"] = duration
+        }
+        notifyListeners("keyboardFrame", data: data)
     }
 }
 
