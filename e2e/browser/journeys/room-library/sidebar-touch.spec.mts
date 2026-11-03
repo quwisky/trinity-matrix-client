@@ -118,31 +118,54 @@ test.describe('Sidebar on a touch device', () => {
     const channelBox = await row.first().locator('.channel').boundingBox();
     expect(channelBox?.height ?? 0).toBeGreaterThanOrEqual(44);
 
+    // Touch opens the room's actions by holding the row, so the ⋮ no longer takes a place in the
+    // layout. It stays in the accessibility tree and focusable for VoiceOver and keyboards.
     const kebab = row.first().locator('.channel__menu');
-    // Visible without any hover — there is no hover on this device to give.
-    //
-    // Polled, not read once. The row is visible as soon as it is laid out, but the ⋮ is
-    // revealed through opacity, so a single getComputedStyle can sample the reveal
-    // mid-transition and read something like 0.4. That is what made this spec flaky in
-    // CI: it failed on the first attempt and passed on the retry, which looks like a
-    // product bug and is really a missing wait.
-    await expect
-      .poll(
-        () => kebab.evaluate((el) => Number(getComputedStyle(el).opacity)),
-        { timeout: 10_000 },
-      )
-      .toBe(1);
+    const kebabBox = await kebab.boundingBox();
+    expect(kebabBox?.width ?? 0).toBeLessThanOrEqual(1);
+    await expect(kebab).toHaveAccessibleName(`Options for ${roomName}`);
+    await kebab.focus();
+    await expect(kebab).toBeFocused();
 
-    // And large enough to hit: the coarse-pointer bump has to reach it too. Measured
-    // only once the opacity above has settled, so the box is its final one.
-    const box = await kebab.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual(44);
-    expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    const channel = row.first().locator('.channel');
+    const cdp = await page.context().newCDPSession(page);
+    const box = (await channel.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', dy = 0) =>
+      cdp.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: type === 'touchEnd' ? [] : [{ x, y: y + dy }],
+      });
 
-    // It really opens the menu — an opacity check alone would not prove the row is usable.
-    await kebab.click();
-    await expect(page.getByTestId('room-low-priority')).toBeVisible({
-      timeout: 10_000,
+    // Scrolling or dragging never opens the sheet.
+    await touch('touchStart');
+    await touch('touchMove', 40);
+    await page.waitForTimeout(700);
+    await touch('touchEnd');
+    await expect(page.getByTestId('sheet-room-leave')).toHaveCount(0);
+
+    // Holding opens the same actions as the ⋮ menu, without opening the room or selecting text.
+    await touch('touchStart');
+    await expect(page.getByTestId('sheet-room-leave')).toBeVisible({
+      timeout: 5_000,
     });
+    await touch('touchEnd');
+    // The click that follows the lift must not dismiss the sheet.
+    await page.waitForTimeout(500);
+    await expect(page.getByTestId('sheet-room-favourite')).toBeVisible();
+    await expect(channel).not.toHaveClass(/channel--selected/);
+    expect(
+      await page.evaluate(() => window.getSelection()?.toString() ?? ''),
+    ).toBe('');
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('sheet-room-leave')).toHaveCount(0);
+
+    // A short press still opens the room.
+    await touch('touchStart');
+    await page.waitForTimeout(80);
+    await touch('touchEnd');
+    await expect(channel).toHaveClass(/channel--selected/);
+    await expect(page.getByTestId('sheet-room-leave')).toHaveCount(0);
   });
 });
