@@ -62,6 +62,7 @@ import {
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
 import { scrollToJumpTarget } from '../message-list/jump-scroll';
+import { dismissKeyboardOnDrag } from '../message-list/drag-dismiss-keyboard';
 import { observeScrollerHeight } from '../message-list/scroller-height-anchor';
 import {
   MessageComposerComponent,
@@ -271,6 +272,7 @@ export class ThreadViewComponent implements OnDestroy {
       const el = this.scrollEl()?.nativeElement;
       if (el) {
         this.destroyRef.onDestroy(observeScrollerHeight(el));
+        this.destroyRef.onDestroy(dismissKeyboardOnDrag(el));
       }
     });
   }

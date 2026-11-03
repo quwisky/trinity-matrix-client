@@ -12,8 +12,19 @@ import {
 import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { of, Subject, type Observable } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NotificationInboxComponent } from './notification-inbox.component';
+
+const platform = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
+afterEach(() => {
+  platform.mobile = false;
+});
 
 const row = (eventId: string, extra: Partial<InboxRow> = {}): InboxRow => ({
   accountId: '@me:hs',
@@ -501,6 +512,19 @@ describe('NotificationInboxComponent', () => {
       byId('open-switcher').click();
 
       expect(opened).toHaveBeenCalledOnce();
+    });
+
+    it('labels the switcher by its shortcut on desktop', async () => {
+      await renderInbox(undefined, { showSwitcher: true });
+      expect(byId('open-switcher').getAttribute('aria-label')).toBe(
+        'Search (Ctrl/Cmd+K)',
+      );
+    });
+
+    it('labels the switcher plainly on a phone, which has no shortcut', async () => {
+      platform.mobile = true;
+      await renderInbox(undefined, { showSwitcher: true });
+      expect(byId('open-switcher').getAttribute('aria-label')).toBe('Search');
     });
 
     it('leaves the switcher out by default', async () => {

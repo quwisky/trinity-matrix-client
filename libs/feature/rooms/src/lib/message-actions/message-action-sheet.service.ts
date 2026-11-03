@@ -131,6 +131,24 @@ export class MessageActionSheetService {
         handler: act('react-more'),
       });
     }
+    if (caps.editable) {
+      buttons.push({
+        text: 'Edit',
+        icon: 'pencil',
+        testId: 'sheet-edit',
+        handler: act('edit'),
+      });
+    }
+    if (caps.deletable) {
+      buttons.push({
+        text: 'Delete',
+        icon: 'trash-2',
+        variant: 'danger',
+        separatorBefore: true,
+        testId: 'sheet-delete',
+        handler: act('delete'),
+      });
+    }
     if (caps.canQuote) {
       buttons.push({
         text: 'Quote',
@@ -196,31 +214,17 @@ export class MessageActionSheetService {
         testId: 'sheet-view-source',
         handler: act('view-source'),
       },
-      {
-        text: 'Report',
-        icon: 'flag',
-        testId: 'sheet-report',
-        handler: act('report'),
-      },
+      ...(caps.isOwn
+        ? []
+        : [
+            {
+              text: 'Report',
+              icon: 'flag' as const,
+              testId: 'sheet-report',
+              handler: act('report'),
+            },
+          ]),
     );
-    if (caps.editable) {
-      buttons.push({
-        text: 'Edit',
-        icon: 'pencil',
-        testId: 'sheet-edit',
-        handler: act('edit'),
-      });
-    }
-    if (caps.deletable) {
-      buttons.push({
-        text: 'Delete',
-        icon: 'trash-2',
-        variant: 'danger',
-        separatorBefore: true,
-        testId: 'sheet-delete',
-        handler: act('delete'),
-      });
-    }
     buttons.push({ text: 'Cancel', role: 'cancel' });
 
     this.dismiss();

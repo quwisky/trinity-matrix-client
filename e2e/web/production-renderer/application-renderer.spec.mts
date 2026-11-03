@@ -446,7 +446,8 @@ test.describe('@production-renderer application surface', () => {
     if ((page.viewportSize()?.width ?? Number.POSITIVE_INFINITY) < 768) {
       for (const target of [
         page.getByTestId('back-to-rooms'),
-        page.getByTestId('composer-send'),
+        page.getByTestId('composer-insert'),
+        page.getByTestId('composer-expressions'),
       ]) {
         const box = await target.boundingBox();
         expect(box).not.toBeNull();
