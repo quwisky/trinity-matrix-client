@@ -9,6 +9,7 @@ import {
   PRIMARY_OUTLET,
   Router,
   convertToParamMap,
+  type Event,
 } from '@angular/router';
 import {
   Observable,
@@ -155,9 +156,14 @@ export class WorkspaceLocationAdapter {
     });
   }
 
-  /** Step back one browser history entry; the popstate restores the view it lands on. */
-  back(): void {
+  /**
+   * Step back one browser history entry; the popstate restores the view it lands on. Whether
+   * the Router landed it, rather than cancelling, failing or never settling.
+   */
+  async back(): Promise<boolean> {
+    const settled = this.nextSettle();
     this.location.back();
+    return (await settled) instanceof NavigationEnd;
   }
 
   /** Push or replace the projection; over the list, first rewrite the entry it leaves. */
@@ -247,20 +253,7 @@ export class WorkspaceLocationAdapter {
   ): Promise<boolean> {
     const target = this.urlOf(projection);
     for (;;) {
-      const settled = firstValueFrom(
-        race(
-          this.router.events.pipe(
-            filter(
-              (event) =>
-                event instanceof NavigationEnd ||
-                event instanceof NavigationCancel ||
-                event instanceof NavigationError ||
-                event instanceof NavigationSkipped,
-            ),
-          ),
-          timer(POP_SETTLE_MS).pipe(map(() => null)),
-        ),
-      );
+      const settled = this.nextSettle();
       this.location.back();
       const event = await settled;
       if (!(event instanceof NavigationEnd)) break;
@@ -299,6 +292,24 @@ export class WorkspaceLocationAdapter {
       this.router.createUrlTree([...projection.commands], {
         queryParams: { ...projection.queryParams },
       }),
+    );
+  }
+
+  /** The Router's next settled navigation, or null if none settles in time. */
+  private nextSettle(): Promise<Event | null> {
+    return firstValueFrom(
+      race(
+        this.router.events.pipe(
+          filter(
+            (event) =>
+              event instanceof NavigationEnd ||
+              event instanceof NavigationCancel ||
+              event instanceof NavigationError ||
+              event instanceof NavigationSkipped,
+          ),
+        ),
+        timer(POP_SETTLE_MS).pipe(map(() => null)),
+      ),
     );
   }
 

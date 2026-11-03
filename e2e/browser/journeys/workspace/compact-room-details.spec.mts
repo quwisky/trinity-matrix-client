@@ -656,27 +656,18 @@ for (const viewport of [
         );
       }
 
-      // A thread opened from the list is a page over the list: Back steps to it, then out.
-      await page.getByTestId('open-threads').click();
-      await threads.locator('.thread-item').first().click();
-      await expect(thread).toContainText(`thread reply ${runId}`, {
-        timeout: 15_000,
-      });
-      await expectPage(page, page.locator('.chat-panel'));
-      await page.goBack();
-      await expect(threads).toBeVisible();
-      await page.goBack();
-      await expect(threads).toBeHidden();
-
-      // Between the threads list and a thread the page changes in place, both ways: no
-      // slide, nothing moving, and the room never shows from under it.
+      // A thread opened from the list is a page over the list, and the page changes in
+      // place both ways: no slide, nothing moving, and the room never shows from under it.
+      // History Back steps to the list, then out; the page's own Back is covered below.
       await page.getByTestId('open-threads').click();
       await expectPage(page, threads);
       await expectSettled(page);
       const seen = await watchInPlace(page);
       await threads.locator('.thread-item').first().click();
-      await expect(thread).toBeVisible({ timeout: 15_000 });
-      // Back to the list is a history step; the thread's own Back closes it to the room.
+      await expect(thread).toContainText(`thread reply ${runId}`, {
+        timeout: 15_000,
+      });
+      await expectPage(page, page.locator('.chat-panel'));
       await page.goBack();
       await expect(threads).toBeVisible();
       await expect(thread).toBeHidden();

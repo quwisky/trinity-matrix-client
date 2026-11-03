@@ -48,7 +48,8 @@ timeline, a drawer below the `members` breakpoint and, below `md`, a page over t
 mounted underneath. On iOS the WebKit edge swipe is on only for such a page with its own entry
 below it. The same switch enables WebKit's Forward swipe, which re-opens the panel entry above. The
 page has no close drag of its own, so the swipe has no rival. A page's Back button is one history
-step too, never past the Room; with no panel entry below, it closes the panel in place.
+step too: the marks keep it inside the Room in every in-app flow, and after a stale mark it lands
+where system Back would. With no panel entry below, it closes the panel in place.
 
 Product navigation crosses Workspace as semantic intent rather than as a caller-built destination.
 Account selection, sidebar scope selection, exact Account-and-Room opens, compact-list close, Room

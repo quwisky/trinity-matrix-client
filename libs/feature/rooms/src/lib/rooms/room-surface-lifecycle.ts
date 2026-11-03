@@ -324,7 +324,10 @@ export class RoomSurfaceLifecycle {
     return { kind: 'applied' };
   }
 
-  /** Close a temporary panel back to the roster it replaced, or close the roster. */
+  /**
+   * Close a temporary panel back to the roster it replaced, or close the roster; on a phone
+   * page, step back one history entry.
+   */
   private dismiss(): RoomSurfaceTransitionOutcome {
     const panel = this.panel();
     if (!panel) return { kind: 'unchanged' };

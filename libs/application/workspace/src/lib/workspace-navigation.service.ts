@@ -34,6 +34,7 @@ import {
   concatMap,
   defer,
   filter,
+  finalize,
   last,
   map,
   of,
@@ -161,14 +162,17 @@ export class WorkspaceNavigationService {
         filter(() => !this.workflow.projectingLocation),
         concatMap((location) => {
           if (location.kind === 'outside') {
+            this.steppingBack = false;
             this.releaseProjections();
             return of(null);
           }
           const parsed = location.parsed;
           if (!parsed.destination) {
+            this.steppingBack = false;
             this.eventTargetState.set(null);
             return of(null);
           }
+          // The step's restoration reads the flag as it commits; any landing ends the step.
           return this.navigate({
             kind: 'restoration',
             accountId: parsed.destination.accountId,
@@ -178,7 +182,7 @@ export class WorkspaceNavigationService {
             panel: parsed.destination.panel,
             ...(parsed.eventId ? { eventId: parsed.eventId } : {}),
             canonical: parsed.canonical,
-          });
+          }).pipe(finalize(() => (this.steppingBack = false)));
         }),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -342,17 +346,22 @@ export class WorkspaceNavigationService {
   }
 
   /**
-   * Step back exactly one history entry from a panel pushed over its Room, as browser Back
-   * does: to the panel below it, or to the Room. The mark guarantees that entry is this Room's,
-   * so this never leaves it. With no entry below (a reload or a link), close the panel.
+   * Step back exactly one history entry from a panel pushed over its Room, as system Back
+   * does: to the panel below it, or to the Room. The marks keep that step inside the Room in
+   * every in-app flow; after a stale mark it lands where system Back would. With no entry
+   * below (a reload or a link), close the panel. A second Back before the step lands is
+   * dropped, so it cannot pop again.
    */
   stepBackPanel(): void {
+    if (this.steppingBack) return;
     if (!this.panelOverRoom()) {
       this.closePanel();
       return;
     }
     this.steppingBack = true;
-    this.location.back();
+    void this.location.back().then((landed) => {
+      if (!landed) this.steppingBack = false;
+    });
   }
 
   /**

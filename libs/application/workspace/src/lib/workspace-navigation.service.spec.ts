@@ -219,7 +219,7 @@ function harness(options: HarnessOptions = {}) {
     readonly withinRoom?: boolean;
   }[] = [];
   const popHistory = vi.fn();
-  const back = vi.fn();
+  const back = vi.fn(() => Promise.resolve(true));
   const location = {
     back,
     listBelow: listBelow.asReadonly(),
@@ -2554,6 +2554,45 @@ describe('room panels', () => {
     await settle();
     expect(h.service.panel()).toBeNull();
     expect(h.service.committedInApp).toBe(false);
+  });
+
+  it('drops a second Back that arrives before the first step lands', async () => {
+    const h = await inRoom();
+    h.service.openPanel(threads);
+    await settle();
+    h.panelBelow.set(true);
+
+    h.service.stepBackPanel();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledOnce();
+
+    // Once the step lands, the next Back steps again.
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+    h.service.openPanel(threads);
+    await settle();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledTimes(2);
+  });
+
+  it("ends a step whose navigation is cancelled, so a platform Back is not the app's", async () => {
+    const h = await inRoom();
+    h.service.openPanel(threads);
+    await settle();
+    h.panelBelow.set(true);
+    h.back.mockResolvedValueOnce(false);
+
+    h.service.stepBackPanel();
+    await settle();
+    h.queryParamMap.next(convertToParamMap({ account: ALICE }));
+    await settle();
+    expect(h.service.panel()).toBeNull();
+    expect(h.service.committedInApp).toBe(false);
+    // And the cancelled step does not hold the next one off.
+    h.service.openPanel(threads);
+    await settle();
+    h.service.stepBackPanel();
+    expect(h.back).toHaveBeenCalledTimes(2);
   });
 
   it('closes a page with no entry below in place', async () => {
