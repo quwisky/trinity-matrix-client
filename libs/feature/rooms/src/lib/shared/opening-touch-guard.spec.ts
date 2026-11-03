@@ -12,6 +12,11 @@ const written = () => {
     .mock.calls.map(([name]) => name);
   return { set, removed };
 };
+/** A touch event with `left` fingers still down; jsdom has no `Touch` to build a real list from. */
+const touchEnd = (type: 'touchend' | 'touchcancel', left = 0) =>
+  document.dispatchEvent(
+    Object.assign(new Event(type), { touches: { length: left } }),
+  );
 const lift = (pointerId: number) =>
   document.dispatchEvent(new PointerEvent('pointerup', { pointerId }));
 /** Whether an event of `type` survives the capture-phase guard: false while it is swallowed. */
@@ -102,6 +107,47 @@ describe('guardOpeningTouch', () => {
 
     document.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 2 }));
     expect(reaches('selectstart')).toBe(true);
+  });
+
+  it('holds on through a pointercancel, the finger still down, until the touch ends', () => {
+    vi.useFakeTimers();
+    guardOpeningTouch(1);
+    document.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 }));
+    vi.advanceTimersByTime(400);
+    expect(reaches('selectstart')).toBe(false);
+
+    touchEnd('touchend');
+    vi.advanceTimersByTime(299);
+    expect(reaches('selectstart')).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(reaches('selectstart')).toBe(true);
+  });
+
+  it('ends on a touchcancel once no finger is left', () => {
+    vi.useFakeTimers();
+    guardOpeningTouch(1);
+    touchEnd('touchend', 1);
+    vi.advanceTimersByTime(400);
+    expect(reaches('selectstart')).toBe(false);
+
+    touchEnd('touchcancel');
+    vi.advanceTimersByTime(300);
+    expect(reaches('selectstart')).toBe(true);
+  });
+
+  it('clears what the hold selected even over an earlier selection', () => {
+    const earlier = document.createElement('p');
+    earlier.textContent = 'earlier';
+    const sheet = document.createElement('p');
+    sheet.textContent = 'Reply in thread';
+    document.body.append(earlier, sheet);
+    document.getSelection()!.selectAllChildren(earlier);
+
+    const release = guardOpeningTouch(1);
+    document.getSelection()!.selectAllChildren(sheet);
+    release();
+
+    expect(document.getSelection()!.toString()).toBe('');
   });
 
   it('releases after the fallback when no end ever arrives', () => {

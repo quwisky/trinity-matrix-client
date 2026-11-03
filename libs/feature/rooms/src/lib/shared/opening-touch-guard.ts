@@ -21,7 +21,7 @@ const NO_SELECT = [
  */
 export function guardOpeningTouch(pointerId: number): () => void {
   const body = document.body;
-  const hadSelection = !(document.getSelection()?.isCollapsed ?? true);
+  const before = currentRange();
   let graceTimer: ReturnType<typeof setTimeout> | null = null;
   let released = false;
 
@@ -34,10 +34,16 @@ export function guardOpeningTouch(pointerId: number): () => void {
     release();
   };
   // Its click follows at once, so stop swallowing shortly after.
-  const lifted = (event: PointerEvent): void => {
-    if (event.pointerId === pointerId && graceTimer === null) {
-      graceTimer = setTimeout(release, CLICK_GRACE_MS);
-    }
+  const lifted = (): void => {
+    graceTimer ??= setTimeout(release, CLICK_GRACE_MS);
+  };
+  const pointerLifted = (event: PointerEvent): void => {
+    if (event.pointerId === pointerId) lifted();
+  };
+  // Not `pointercancel`: a scroll or the sheet drag taking the touch sends one while the finger is
+  // still down. Any other finger already released the guard, so no touches left means this one lifted.
+  const touchLifted = (event: TouchEvent): void => {
+    if (event.touches.length === 0) lifted();
   };
   // A new pointer means the held one's end was lost; nothing may be swallowed on its behalf.
   const otherDown = (event: PointerEvent): void => {
@@ -48,8 +54,9 @@ export function guardOpeningTouch(pointerId: number): () => void {
     ['selectstart', swallow],
     ['contextmenu', swallow],
     ['pointerdown', otherDown],
-    ['pointerup', lifted],
-    ['pointercancel', lifted],
+    ['pointerup', pointerLifted],
+    ['touchend', touchLifted],
+    ['touchcancel', touchLifted],
   ] as const;
   const fallback = setTimeout(release, FALLBACK_MS);
 
@@ -62,10 +69,10 @@ export function guardOpeningTouch(pointerId: number): () => void {
       document.removeEventListener(type, listener as EventListener, true);
     }
     for (const name of NO_SELECT) body.style.removeProperty(name);
-    // Only a range the hold made: a caret (the composer's) is collapsed and stays.
-    const selection = document.getSelection();
-    if (!hadSelection && selection && !selection.isCollapsed) {
-      selection.removeAllRanges();
+    // Only a range the hold made: a caret (the composer's) and an earlier selection stay.
+    const after = currentRange();
+    if (after && !after.collapsed && !sameRange(before, after)) {
+      document.getSelection()?.removeAllRanges();
     }
   }
 
@@ -74,4 +81,19 @@ export function guardOpeningTouch(pointerId: number): () => void {
   }
   for (const name of NO_SELECT) body.style.setProperty(name, 'none');
   return release;
+}
+
+function currentRange(): Range | null {
+  const selection = document.getSelection();
+  return selection && selection.rangeCount > 0
+    ? selection.getRangeAt(0).cloneRange()
+    : null;
+}
+
+function sameRange(a: Range | null, b: Range): boolean {
+  return (
+    a !== null &&
+    a.compareBoundaryPoints(Range.START_TO_START, b) === 0 &&
+    a.compareBoundaryPoints(Range.END_TO_END, b) === 0
+  );
 }
