@@ -168,6 +168,8 @@ export class MessageListComponent extends MessageListBase {
   private expectedProgrammaticScrollTop: number | null = null;
   /** Where the last bottom pin moved the list, until its scroll event arrives; see {@link onScroll}. */
   private pinnedTop: number | null = null;
+  /** Bumped per marked pin, so an older pin's expiry leaves a newer marker alone. */
+  private pinMarks = 0;
   /** Pending end of the current scroll; see {@link markScrolling}. */
   private scrollIdle: ReturnType<typeof setTimeout> | null = null;
   private readonly iosWebKit = isIosWebKit();
@@ -499,7 +501,10 @@ export class MessageListComponent extends MessageListBase {
           this.scrollTop.set(scrollTop);
         },
         // The keyboard or composer pin is the list's own write, like `writeScrollTop`.
-        (delta) => this.scrollActivity.shifted(delta),
+        (delta) => {
+          this.scrollActivity.shifted(delta);
+          if (delta !== 0) this.markOwnPin(el.scrollTop);
+        },
       );
       this.watchScrollerWidth();
       this.reconcileObserved(this.rowHosts());
@@ -603,7 +608,8 @@ export class MessageListComponent extends MessageListBase {
     const bottomGap = el.scrollHeight - el.scrollTop - el.clientHeight;
     // The list's own pin, not the reader. Matched by position: a message rendered before this event
     // leaves the pin short of the bottom, which must not unpin the reader.
-    const fromPin = el.scrollTop === this.pinnedTop;
+    const fromPin =
+      this.pinnedTop !== null && Math.abs(el.scrollTop - this.pinnedTop) < 1;
     this.pinnedTop = null;
     this.atBottomSig.set(fromPin || bottomGap < NEAR_BOTTOM_PX);
     // The reader left the bottom: what lands next is no longer a fill to stay pinned through.
@@ -1030,8 +1036,20 @@ export class MessageListComponent extends MessageListBase {
   private pinToBottom(el: HTMLElement): void {
     const before = el.scrollTop;
     this.writeScrollTop(el, el.scrollHeight);
-    // A write that does not move the list fires no scroll event to clear this.
-    if (el.scrollTop !== before) this.pinnedTop = el.scrollTop;
+    // A write that does not move the list fires no scroll event to clear a marker.
+    if (el.scrollTop !== before) this.markOwnPin(el.scrollTop);
+  }
+
+  /** Mark a pin that moved the list, so {@link onScroll} reads its scroll event as the list's. */
+  private markOwnPin(top: number): void {
+    const mark = ++this.pinMarks;
+    this.pinnedTop = top;
+    // Its scroll event comes by the next frame; one that never comes must not match a later event.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (mark === this.pinMarks) this.pinnedTop = null;
+      }),
+    );
   }
 
   /**
@@ -1138,6 +1156,8 @@ export class MessageListComponent extends MessageListBase {
     this.prependAnchorGeneration++;
     this.expectedProgrammaticScrollTop = null;
     this.atBottomSig.set(false);
+    // Nor may a fill in flight pin over it.
+    this.backfilling = false;
     // Only a row in the CURRENT window counts as rendered. A scroll written just before the jump
     // (a history restore as a date jump's last page lands) has moved the window while the DOM holds
     // the old rows; smooth-scrolling to one chases an element the next render removes, and the first
