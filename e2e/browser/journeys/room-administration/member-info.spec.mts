@@ -18,6 +18,14 @@ import { createRoom } from '../../support/space-journey.mts';
 // (Docker); self-skips otherwise.
 const session = homeserverSession();
 
+/** The member drawer has finished sliding in. */
+async function expectDrawerSettled(page: Page): Promise<void> {
+  await expect(page.locator('.chat-members')).toHaveCSS(
+    'transform',
+    'matrix(1, 0, 0, 1, 0, 0)',
+  );
+}
+
 async function openMembers(page: Page): Promise<void> {
   const toggle = page.getByTestId('toggle-members');
   if (await toggle.isVisible().catch(() => false)) {
@@ -103,12 +111,23 @@ test.describe('Member info', () => {
     // needs 44px at every breakpoint — so measure again on a phone-sized viewport.
     const desktopViewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
-    // Becoming a drawer closes the remembered roster, in an effect after the resize — so
-    // wait for that rather than reading visibility before it has run.
-    await expect(page.locator('.chat-members')).toBeHidden();
-    await openMembers(page);
+    // The open roster is the URL's panel, so becoming a drawer keeps it open as the drawer,
+    // which slides in: wait for it to land before reaching into it.
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expectDrawerSettled(page);
+    await expect(page).toHaveURL(/panel=members/);
     await memberRow.first().waitFor({ state: 'visible' });
     expect((await memberRow.first().boundingBox())?.height).toBe(44);
+    // Member info opens over the drawer, which stays under it.
+    await memberRow.first().click();
+    const sheet = page.getByRole('dialog', { name: 'Member info' });
+    await expect(sheet.getByTestId('member-info')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await sheet.getByTestId('member-info-close').click();
+    await expect(sheet).toBeHidden();
+    await expect(page.locator('.chat-members')).toBeVisible();
     await page.setViewportSize(desktopViewport);
     await expect(page.locator('.chat-members')).toBeVisible();
 
@@ -204,8 +223,8 @@ test.describe('Member info', () => {
     // On a phone-sized window it is a bottom sheet over the member drawer, with the handle;
     // dragging the handle down closes the sheet and leaves the drawer open.
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.locator('.chat-members')).toBeHidden();
-    await openMembers(page);
+    await expect(page.locator('.chat-members')).toBeVisible();
+    await expectDrawerSettled(page);
     await memberRow.first().click();
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByTestId('dialog-surface')).toHaveAttribute(
