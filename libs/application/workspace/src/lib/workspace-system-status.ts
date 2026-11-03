@@ -29,6 +29,11 @@ export interface WorkspaceSystemStatus {
    */
   readonly bannerSlotReserved: Signal<boolean>;
   /**
+   * The encryption prompt the live status asks for, even while the slot holds it back, so a
+   * screen reader hears it at once; `null` when none is confirmed.
+   */
+  readonly announcedPrompt: Signal<SlotForecast | null>;
+  /**
    * The encryption prompt the slot holds, held with the slot while a pointer is pressed;
    * `null` unless {@link bannerSlot} is `'encryption'`.
    */

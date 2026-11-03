@@ -19,6 +19,7 @@ const slot = signal<'status' | 'encryption' | null>('encryption');
 const slotReserved = signal(false);
 const prompt = signal<BannerPrompt | null>(null);
 const dismissEncryption = vi.fn();
+const announcedPrompt = signal<SlotForecast | null>(null);
 const open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
   of({ kind: 'presented' as const, surface: request.surface }),
 );
@@ -41,6 +42,7 @@ function renderBanner() {
           bannerSlotReserved: slotReserved,
           dismissEncryption,
           bannerPrompt: prompt,
+          announcedPrompt,
         },
       },
     ],
@@ -53,6 +55,7 @@ beforeEach(() => {
   slot.set('encryption');
   slotReserved.set(false);
   prompt.set(null);
+  announcedPrompt.set(null);
   open.mockClear();
   dismissEncryption.mockClear();
 });
@@ -60,11 +63,13 @@ beforeEach(() => {
 /** The slot holds a prompt the live status confirms. */
 function show(kind: SlotForecast): void {
   prompt.set({ kind, placeholder: false });
+  announcedPrompt.set(kind);
 }
 
 /** The slot holds a prompt's space only: a forecast, or a held prompt gone stale. */
 function hold(kind: SlotForecast): void {
   prompt.set({ kind, placeholder: true });
+  announcedPrompt.set(null);
 }
 
 function clickAction(host: HTMLElement, label: string): void {
@@ -75,6 +80,26 @@ function clickAction(host: HTMLElement, label: string): void {
 }
 
 describe('EncryptionBannerComponent', () => {
+  it('announces a prompt the slot is holding back, with no banner on screen', async () => {
+    slot.set(null);
+    announcedPrompt.set('needs-setup');
+    const { container } = await renderBanner();
+    expect(container.querySelector('trn-banner')).toBeNull();
+    expect(
+      container.querySelector('.sr-only[role="status"]')?.textContent?.trim(),
+    ).toBe('Set up encryption to secure your messages.');
+  });
+
+  it('names the dismiss button for what it dismisses', async () => {
+    show('needs-setup');
+    const { container } = await renderBanner();
+    expect(
+      (container as HTMLElement)
+        .querySelector('button[data-dismiss]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Dismiss encryption prompt');
+  });
+
   it('asks the slot to hide the prompt when dismissed, without opening a flow', async () => {
     show('needs-setup');
     const { container } = await renderBanner();
@@ -395,25 +420,22 @@ describe('EncryptionBannerComponent', () => {
       expect(container.querySelector('trn-banner')).toBeNull();
     });
 
-    it('never announces the held kind, only the prompt that replaces it on release', async () => {
+    it('never announces the held kind, only the live prompt, at once', async () => {
       status.set('needs-setup');
       show('needs-setup');
       const { container, fixture } = await renderBanner();
       const liveRegion = () =>
         container.querySelector('.sr-only[role="status"]')!;
 
-      // Pressed: the live status changed kind; the held kind stays, unannounced.
+      // Pressed: the live status changed kind; the held kind stays on screen, and the live
+      // prompt is announced at once, since that moves nothing.
       status.set('needs-recovery');
       hold('needs-setup');
+      announcedPrompt.set('needs-recovery');
       fixture.detectChanges();
       expect(container.querySelector('trn-banner')!.textContent).toContain(
         'Set up encryption',
       );
-      expect(liveRegion().textContent!.trim()).toBe('');
-
-      // Released: the live prompt replaces it and is announced.
-      show('needs-recovery');
-      fixture.detectChanges();
       expect(liveRegion().textContent).toContain(
         'unlock your encrypted messages',
       );

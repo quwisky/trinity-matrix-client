@@ -421,6 +421,26 @@ describe('CapabilityStatusService', () => {
       expect(status.bannerSlot()).toBe('encryption');
     });
 
+    it('forgets a dismissal once the account is ready, so a later reset prompts again', () => {
+      trust.set('needs-setup');
+      status.dismissEncryption();
+      expect(status.bannerSlot()).toBeNull();
+
+      trust.set('ready');
+      TestBed.tick();
+      trust.set('needs-setup');
+      expect(status.bannerSlot()).toBe('encryption');
+    });
+
+    it('announces the live prompt even while the slot holds it back', () => {
+      status.shellDisplayed(signal(true));
+      TestBed.tick();
+      trust.set('needs-recovery');
+      TestBed.tick();
+      expect(status.bannerSlot()).toBeNull();
+      expect(status.announcedPrompt()).toBe('needs-recovery');
+    });
+
     describe('a banner arriving after the shell is on screen', () => {
       const compact = signal(true);
 

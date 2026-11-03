@@ -17,6 +17,7 @@ import {
 import { signal, type Provider, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  WORKSPACE_SYSTEM_STATUS,
   WorkspaceBackService,
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
@@ -552,6 +553,47 @@ describe('RoomsPage mobile navigation', () => {
 
       setMediaQuery(BELOW_MD_QUERY, true);
       expect(slide(shell)).toBeNull();
+    });
+
+    it('releases late banners only once the slide has ended', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+      const shell = build();
+      const { releaseLateBanners } = TestBed.inject(WORKSPACE_SYSTEM_STATUS);
+      TestBed.tick();
+
+      await openRoom(shell);
+      TestBed.tick();
+      expect(releaseLateBanners).not.toHaveBeenCalled();
+
+      shell.page['onMainAnimationEnd'](animationEnd(true));
+      TestBed.tick();
+      expect(releaseLateBanners).toHaveBeenCalledOnce();
+    });
+
+    it('releases late banners at once when no slide runs', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: false });
+      const shell = build();
+      const { releaseLateBanners } = TestBed.inject(WORKSPACE_SYSTEM_STATUS);
+      TestBed.tick();
+
+      await openRoom(shell);
+      TestBed.tick();
+
+      expect(releaseLateBanners).toHaveBeenCalledOnce();
+    });
+
+    it('tells the slot when the shell is on screen and when it leaves', async () => {
+      restoreLayout = stubLiveLayout({ [BELOW_MD_QUERY]: true });
+      build();
+      const { shellDisplayed, shellLeft } = TestBed.inject(
+        WORKSPACE_SYSTEM_STATUS,
+      );
+      TestBed.tick();
+      expect(shellDisplayed).toHaveBeenCalledOnce();
+      expect(shellLeft).not.toHaveBeenCalled();
+
+      TestBed.resetTestingModule();
+      expect(shellLeft).toHaveBeenCalledOnce();
     });
 
     it('does not slide an empty view out', async () => {

@@ -313,6 +313,78 @@ test.describe('Global banner slot after sign-in', () => {
   });
 
   /*
+   * The held prompt is released once the page slide has ended, not as it starts: the banner
+   * sits above the panes, so showing it mid-slide would shrink both and step them while they
+   * move. Every frame of the slide keeps `.main` in the same place, and the prompt only
+   * appears after it.
+   */
+  test('a held prompt appears after the page slide, not during it at 390px', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(grantPersistentStorage);
+    await login(page, account);
+    await expect(page.locator('button.channel').first()).toBeVisible();
+    await expectForecastStored(page, 'needs-setup');
+    await page.evaluate(() => {
+      const frames: {
+        slide: boolean;
+        banner: boolean;
+        top: number | null;
+        height: number | null;
+      }[] = [];
+      (window as unknown as { __slideFrames: typeof frames }).__slideFrames =
+        frames;
+      const frame = (): void => {
+        const main = document.querySelector('main.main');
+        const rect = main?.getBoundingClientRect();
+        frames.push({
+          slide: document.querySelector('[data-pane-slide]') !== null,
+          banner:
+            document.querySelector('trn-encryption-banner trn-banner') !== null,
+          top: rect ? rect.top : null,
+          height: rect ? rect.height : null,
+        });
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+
+    await page.locator('button.channel').first().click();
+    await expect(
+      page.locator('trn-encryption-banner trn-banner'),
+    ).toBeVisible();
+    await page.waitForTimeout(300);
+
+    const frames = await page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __slideFrames: {
+              slide: boolean;
+              banner: boolean;
+              top: number | null;
+              height: number | null;
+            }[];
+          }
+        ).__slideFrames,
+    );
+    const sliding = frames.filter((frame) => frame.slide);
+    expect(
+      sliding.length,
+      'the slide must be on screen to measure it',
+    ).toBeGreaterThan(0);
+    expect(
+      [...new Set(sliding.map(({ top, height }) => `${top}/${height}`))],
+      'the panes keep their box for the whole slide',
+    ).toHaveLength(1);
+    expect(
+      sliding.filter((frame) => frame.banner),
+      'no banner while the slide is running',
+    ).toEqual([]);
+  });
+
+  /*
    * Dismissing the prompt holds for the session, and setting encryption up stays one
    * route away in Settings › Security.
    */

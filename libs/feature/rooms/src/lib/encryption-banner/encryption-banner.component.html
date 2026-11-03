@@ -4,7 +4,7 @@
      A placeholder prompt (a forecast, or a held prompt the live status no longer
      supports) is never announced: only a confirmed one fills the region. -->
 <span class="sr-only" role="status" aria-live="polite">
-  {{ visible() && !pending() ? message() : '' }}
+  {{ announcement() }}
 </span>
 @if (visible()) {
   <!-- A placeholder prompt is laid out to hold its space, but hidden, out of the
@@ -40,6 +40,7 @@
           presentation="outline"
           size="sm"
           type="button"
+          aria-label="Dismiss encryption prompt"
           data-dismiss
           (click)="dismiss()"
         >

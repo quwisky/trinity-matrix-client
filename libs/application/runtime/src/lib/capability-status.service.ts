@@ -254,6 +254,17 @@ export class CapabilityStatusService {
    * slot back at any time.
    */
   readonly bannerSlotReserved = this.slotHeldStatus.asReadonly();
+  /**
+   * The encryption prompt the live status asks for, whether or not the slot is showing it
+   * yet: held banners still announce at once, since that moves no layout. `null` for a
+   * forecast, which is not confirmed.
+   */
+  readonly announcedPrompt = computed<SlotForecast | null>(() => {
+    const live = this.slotTrust();
+    return this.liveSlot() === 'encryption' && !live.forecast
+      ? promptKind(live)
+      : null;
+  });
   /** Names what is limited: the one problem's heading, or up to two capability names. */
   readonly bannerMessage = computed(() => {
     const entries = this.visibleEntries();
@@ -334,6 +345,23 @@ export class CapabilityStatusService {
     // miss a notice that nobody asked about before the prompt replaced it.
     effect(() => {
       if (this.bannerSlot() === 'status') this.slotHeldStatus.set(true);
+    });
+    // A ready account has nothing to dismiss: a later reset prompts again.
+    effect(() => {
+      const { status, forecast } = this.slotTrust();
+      const userId = this.matrix.activeUserId();
+      if (
+        status === 'ready' &&
+        !forecast &&
+        userId &&
+        untracked(this.encryptionDismissed).has(userId)
+      ) {
+        this.encryptionDismissed.update((dismissed) => {
+          const next = new Map(dismissed);
+          next.delete(userId);
+          return next;
+        });
+      }
     });
   }
 

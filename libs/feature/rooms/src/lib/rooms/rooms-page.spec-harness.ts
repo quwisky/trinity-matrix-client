@@ -189,6 +189,7 @@ export const SYSTEM_STATUS_PROVIDER: Provider = {
     settleBanner: (want: Signal<boolean>) => want,
     bannerSlotReserved: signal(false),
     bannerPrompt: signal(null),
+    announcedPrompt: signal(null),
   }),
 };
 

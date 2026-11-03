@@ -171,6 +171,7 @@ export function provideTrinityApplication(
               })
             | null
           >,
+          announcedPrompt: status.announcedPrompt,
           shellDisplayed: (compact) => status.shellDisplayed(compact),
           shellLeft: () => status.shellLeft(),
           releaseLateBanners: () => status.releaseLateBanners(),

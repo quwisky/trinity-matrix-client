@@ -9,6 +9,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   WORKSPACE_SYSTEM_STATUS,
   WorkspaceApplicationSurfaceService,
+  type SlotForecast,
   type WorkspaceApplicationSurfaceRequest,
 } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
@@ -82,17 +83,15 @@ export class EncryptionBannerComponent {
     this.systemStatus.bannerSlotReserved() ? 'global' : 'inline',
   );
 
-  readonly message = computed(() => {
-    switch (this.kind()) {
-      case 'setup-elsewhere':
-        return 'Set up recovery on the device where you first set up encryption.';
-      case 'needs-recovery':
-        return 'This device isn’t verified yet — unlock your encrypted messages.';
-      case 'needs-verification':
-        return 'This device isn’t verified yet — verify it with one of your other devices.';
-      default:
-        return 'Set up encryption to secure your messages.';
-    }
+  readonly message = computed(() => fullMessage(this.kind()));
+
+  /**
+   * What a screen reader hears: the confirmed prompt, even while the slot holds it back,
+   * since announcing moves nothing.
+   */
+  readonly announcement = computed(() => {
+    const kind = this.systemStatus.announcedPrompt();
+    return kind ? fullMessage(kind) : '';
   });
 
   /** The same prompt in one short line; the live region still reads {@link message}. */
@@ -150,5 +149,18 @@ export class EncryptionBannerComponent {
       .open(request)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe();
+  }
+}
+
+function fullMessage(kind: SlotForecast | null): string {
+  switch (kind) {
+    case 'setup-elsewhere':
+      return 'Set up recovery on the device where you first set up encryption.';
+    case 'needs-recovery':
+      return 'This device isn’t verified yet — unlock your encrypted messages.';
+    case 'needs-verification':
+      return 'This device isn’t verified yet — verify it with one of your other devices.';
+    default:
+      return 'Set up encryption to secure your messages.';
   }
 }
