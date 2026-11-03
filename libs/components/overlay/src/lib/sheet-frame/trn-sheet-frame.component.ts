@@ -68,9 +68,9 @@ export class TrnSheetFrameComponent {
       hlm(
         trnOverlaySurfaceRecipe('neutral', this.size(), 'sheet'),
         'trn-overlay-enter-sheet flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]',
-        // A detent sheet takes the height its drag sets, up to full height (SHEET_LARGE_HEIGHT).
+        // A detent sheet takes the height its drag sets, up to full height; both set by TrnSheetDrag.
         this.drag.detent() &&
-          'h-[var(--trn-sheet-height)] max-h-[calc(100dvh-env(safe-area-inset-top,0px)-var(--trinity-title-row-inset,0px)-var(--trinity-keyboard-shrink,0px))]',
+          'h-[var(--trn-sheet-height)] max-h-[var(--trn-sheet-max-height)]',
       ),
     );
   }

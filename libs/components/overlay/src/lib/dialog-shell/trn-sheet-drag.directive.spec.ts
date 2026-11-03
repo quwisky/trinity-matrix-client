@@ -4,6 +4,11 @@ import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
+  SHEET_DETENT_HEIGHT,
+  SHEET_LARGE_HEIGHT,
+  type TrnSheetDetent,
+} from '../sheet-frame/sheet-detent';
+import {
   TRN_SHEET_DISMISS,
   TrnSheetDrag,
   TrnSheetDragHandle,
@@ -435,6 +440,8 @@ describe('TrnSheetDrag content drag', () => {
   });
 });
 
+let openedDetents: readonly TrnSheetDetent[] = ['medium', 'large'];
+
 @Component({
   imports: [TrnSheetDrag, TrnSheetDragHandle],
   providers: [
@@ -447,7 +454,7 @@ describe('TrnSheetDrag content drag', () => {
           'sheet',
           'title',
           null,
-          { detents: ['medium', 'large'] },
+          { detents: openedDetents },
         ),
     },
   ],
@@ -459,26 +466,44 @@ describe('TrnSheetDrag content drag', () => {
 })
 class DetentSheetHostComponent {}
 
+/** An 844px phone with a 59px top inset: half height 422px, full height 785px. */
+const PHONE = { medium: 422, large: 785 };
+
 describe('TrnSheetDrag detents', () => {
   afterEach(() => {
+    openedDetents = ['medium', 'large'];
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  async function setupDetents(phone = true) {
-    vi.stubGlobal('matchMedia', () => ({ matches: phone }));
-    vi.stubGlobal('innerHeight', 800);
+  /** Lays the sheet out as a browser would: inline px, a detent height, or the resting one. */
+  async function setupDetents(phone: boolean | (() => unknown) = true) {
+    vi.stubGlobal(
+      'matchMedia',
+      typeof phone === 'function' ? phone : () => ({ matches: phone }),
+    );
+    vi.stubGlobal('innerHeight', 844);
     dismiss.mockReset().mockReturnValue(true);
     const view = await render(DetentSheetHostComponent);
     const sheet = document.querySelector<HTMLElement>('[data-testid=sheet]')!;
-    vi.spyOn(sheet, 'getBoundingClientRect').mockReturnValue({
-      height: 400,
-    } as DOMRect);
+    const heightOf = (css: string): number =>
+      css.endsWith('px')
+        ? parseFloat(css)
+        : css === SHEET_DETENT_HEIGHT.large
+          ? PHONE.large
+          : css === SHEET_DETENT_HEIGHT.medium
+            ? PHONE.medium
+            : heightOf(sheet.style.getPropertyValue('--trn-sheet-height'));
+    const rect = vi
+      .spyOn(sheet, 'getBoundingClientRect')
+      .mockImplementation(
+        () => ({ height: heightOf(sheet.style.height) }) as DOMRect,
+      );
     const drag = view.fixture.debugElement
       .query((el) => el.nativeElement === sheet)
       .injector.get(TrnSheetDrag);
     const handle = document.querySelector<HTMLElement>('[data-testid=handle]')!;
-    return { view, sheet, drag, handle };
+    return { view, sheet, drag, handle, rect };
   }
 
   it('starts at medium and marks the sheet', async () => {
@@ -486,21 +511,25 @@ describe('TrnSheetDrag detents', () => {
     expect(drag.detent()).toBe('medium');
     expect(sheet.getAttribute('data-sheet-detent')).toBe('medium');
     expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('50svh');
+    expect(sheet.style.getPropertyValue('--trn-sheet-max-height')).toBe(
+      SHEET_LARGE_HEIGHT,
+    );
   });
 
-  it('has no detent at md and wider', async () => {
+  it('drops the detent and its full-height cap at md and wider', async () => {
     const { sheet, drag } = await setupDetents(false);
     expect(drag.detent()).toBeNull();
     expect(sheet.hasAttribute('data-sheet-detent')).toBe(false);
+    expect(sheet.style.getPropertyValue('--trn-sheet-max-height')).toBe('');
   });
 
-  it('grows with the finger, then snaps to large', async () => {
+  it('snaps to large past the measured midpoint on a notched phone', async () => {
     const { view, sheet, drag, handle } = await setupDetents();
     pointer('pointerdown', 500, 0, handle);
-    pointer('pointermove', 250, 1000);
-    expect(sheet.style.height).toBe('650px');
+    pointer('pointermove', 300, 1000);
+    expect(sheet.style.height).toBe('622px');
     expect(sheet.style.transform).toBe('');
-    pointer('pointerup', 250, 1000);
+    pointer('pointerup', 300, 1000);
     view.fixture.detectChanges();
     expect(drag.detent()).toBe('large');
     expect(sheet.getAttribute('data-sheet-detent')).toBe('large');
@@ -508,19 +537,26 @@ describe('TrnSheetDrag detents', () => {
     expect(dismiss).not.toHaveBeenCalled();
   });
 
+  it('starts a re-grab mid-settle from where the sheet is', async () => {
+    const { drag, handle, rect } = await setupDetents();
+    drag.setDetent('large');
+    rect.mockReturnValueOnce({ height: 600 } as DOMRect);
+    pointer('pointerdown', 100, 0, handle);
+    pointer('pointermove', 250, 1000);
+    pointer('pointerup', 250, 1000);
+    expect(drag.detent()).toBe('medium');
+  });
+
   it('slides below medium and springs back to it when the close is refused', async () => {
     const { sheet, drag, handle } = await setupDetents();
     dismiss.mockReturnValue(false);
     drag.setDetent('large');
-    vi.mocked(sheet.getBoundingClientRect).mockReturnValue({
-      height: 800,
-    } as DOMRect);
     pointer('pointerdown', 100, 0, handle);
     pointer('pointermove', 300, 1000);
     expect(sheet.style.transform).toBe('');
     pointer('pointermove', 700, 1000);
-    expect(sheet.style.height).toBe('400px');
-    expect(sheet.style.transform).toBe('translateY(200px)');
+    expect(sheet.style.height).toBe('422px');
+    expect(sheet.style.transform).toBe('translateY(237px)');
     pointer('pointerup', 700, 5000);
     expect(dismiss).toHaveBeenCalledOnce();
     expect(drag.detent()).toBe('medium');
@@ -535,18 +571,50 @@ describe('TrnSheetDrag detents', () => {
     expect(dismiss).toHaveBeenCalledOnce();
   });
 
+  it('clears the snap transition once it ends', async () => {
+    const { sheet, handle } = await setupDetents();
+    pointer('pointerdown', 500, 0, handle);
+    pointer('pointerup', 300, 1000);
+    expect(sheet.style.transition).toContain('height');
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(sheet.style.transition).toBe('');
+  });
+
+  it('clears the full-height cap after a resize to wide', async () => {
+    let change: ((e: { matches: boolean }) => void) | undefined;
+    const { view, sheet, drag } = await setupDetents(() => ({
+      matches: true,
+      addEventListener: (_: string, fn: typeof change) => (change = fn),
+      removeEventListener: () => undefined,
+    }));
+    change?.({ matches: false });
+    view.fixture.detectChanges();
+    expect(drag.detent()).toBeNull();
+    expect(sheet.hasAttribute('data-sheet-detent')).toBe(false);
+    expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('');
+    expect(sheet.style.getPropertyValue('--trn-sheet-max-height')).toBe('');
+  });
+
   it('ignores a detent it was not opened with', async () => {
-    const { drag } = await setupDetents();
+    openedDetents = ['medium'];
+    const { sheet, drag } = await setupDetents();
     drag.setDetent('large');
-    drag.setDetent('medium');
     expect(drag.detent()).toBe('medium');
+    expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('50svh');
   });
 });
 
 describe('TrnSheetDrag without detents', () => {
-  it('has a null detent', async () => {
-    await render(SheetHostComponent);
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('has a null detent, even on a phone', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    const view = await render(SheetHostComponent);
     const sheet = document.querySelector<HTMLElement>('[data-testid=sheet]')!;
+    const drag = view.fixture.debugElement
+      .query((el) => el.nativeElement === sheet)
+      .injector.get(TrnSheetDrag);
+    expect(drag.detent()).toBeNull();
     expect(sheet.hasAttribute('data-sheet-detent')).toBe(false);
     expect(sheet.style.getPropertyValue('--trn-sheet-height')).toBe('');
   });

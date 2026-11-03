@@ -18,6 +18,7 @@ import {
   FLING_MIN_DISTANCE,
   FLING_VELOCITY,
   SHEET_DETENT_HEIGHT,
+  SHEET_LARGE_HEIGHT,
   nextDetent,
   type TrnSheetDetent,
 } from '../sheet-frame/sheet-detent';
@@ -66,6 +67,7 @@ interface SheetFollow {
   host: {
     '[attr.data-sheet-detent]': 'detent()',
     '[style.--trn-sheet-height]': 'detentHeight()',
+    '[style.--trn-sheet-max-height]': 'detent() ? largeHeight : null',
   },
 })
 export class TrnSheetDrag {
@@ -82,7 +84,9 @@ export class TrnSheetDrag {
   private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
   private stopDrag: (() => void) | null = null;
   private lastScroll = -Infinity;
+  private unsnap: ReturnType<typeof setTimeout> | undefined;
 
+  protected readonly largeHeight = SHEET_LARGE_HEIGHT;
   protected readonly detentHeight = computed(() => {
     const detent = this.detent();
     return detent ? SHEET_DETENT_HEIGHT[detent] : null;
@@ -110,6 +114,7 @@ export class TrnSheetDrag {
     });
     this.host.addEventListener('touchstart', start, { passive: true });
     inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.unsnap);
       this.stopDrag?.();
       this.host.removeEventListener('scroll', scrolled, { capture: true });
       this.host.removeEventListener('touchstart', start);
@@ -201,12 +206,20 @@ export class TrnSheetDrag {
     startY: number,
     startT: number,
   ): SheetFollow {
-    const height = this.host.getBoundingClientRect().height;
-    const floor = Math.min(height, window.innerHeight / 2);
+    // Read before the transition is stopped, so a sheet grabbed mid-settle starts where it is.
+    const start = this.host.getBoundingClientRect().height;
+    clearTimeout(this.unsnap);
     this.host.style.transition = 'none';
+    const heights = {
+      start,
+      medium: this.measure(SHEET_DETENT_HEIGHT.medium),
+      large: this.measure(SHEET_DETENT_HEIGHT.large),
+    };
+    this.host.style.height = `${start}px`;
+    const floor = Math.min(start, heights.medium);
     return {
       move: (y: number) => {
-        const next = height - (y - startY);
+        const next = start - (y - startY);
         this.host.style.height = `${Math.max(floor, next)}px`;
         this.host.style.transform =
           next < floor ? `translateY(${floor - next}px)` : '';
@@ -218,6 +231,7 @@ export class TrnSheetDrag {
           dy,
           dy / Math.max(1, t - startT),
           this.detents,
+          heights,
         );
         this.stopDrag?.();
         this.host.style.transition =
@@ -234,10 +248,24 @@ export class TrnSheetDrag {
     };
   }
 
+  /** The rendered height of `height` on this sheet, inside its own cap. */
+  private measure(height: string): number {
+    this.host.style.height = height;
+    return this.host.getBoundingClientRect().height;
+  }
+
   private settle(detent: TrnSheetDetent): void {
     this.setDetent(detent);
     this.host.style.height = '';
     this.host.style.transform = '';
+    // The height transition is the snap's only; a later rotation or keyboard resizes at once.
+    // A timer, not an end event: under Reduce Motion no transition runs to end.
+    const seconds = parseFloat(getComputedStyle(this.host).transitionDuration);
+    clearTimeout(this.unsnap);
+    this.unsnap = setTimeout(
+      () => (this.host.style.transition = ''),
+      (seconds || 0) * 1000,
+    );
   }
 
   private beginContent(event: TouchEvent): void {

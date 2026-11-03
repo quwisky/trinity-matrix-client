@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnDialogService } from '../dialog/trn-dialog.service';
 import { TrnSheetFrameComponent } from './trn-sheet-frame.component';
+import { SHEET_LARGE_HEIGHT } from './sheet-detent';
 
 @Component({
   imports: [TrnSheetFrameComponent],
@@ -127,6 +128,12 @@ describe('TrnSheetFrameComponent', () => {
         '50svh',
       );
       expect(surface().classList).toContain('h-[var(--trn-sheet-height)]');
+      expect(surface().classList).toContain(
+        'max-h-[var(--trn-sheet-max-height)]',
+      );
+      expect(surface().style.getPropertyValue('--trn-sheet-max-height')).toBe(
+        SHEET_LARGE_HEIGHT,
+      );
     } finally {
       vi.unstubAllGlobals();
     }

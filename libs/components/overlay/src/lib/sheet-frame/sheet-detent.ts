@@ -17,22 +17,29 @@ export const FLING_VELOCITY = 0.5;
 /** A fling must also travel this far (px), so a twitch never closes the sheet. */
 export const FLING_MIN_DISTANCE = 24;
 
+/** Measured heights (px) a detent drag snaps between, and the one it started from. */
+export interface SheetDetentHeights {
+  readonly start: number;
+  readonly medium: number;
+  readonly large: number;
+}
+
 /**
- * Where a sheet resting at `current` goes after a drag of `dy` px (negative is up) released at
- * `velocity` px/ms: a fling moves one detent its way, otherwise the nearer height wins, and
- * below the lowest detent by {@link DISMISS_FRACTION} it closes.
- *
- * shortcut: heights are estimated from the viewport (half and all of it), not measured; measure
- * the sheet if the midpoint feels off on a device with a tall title row.
+ * Where a sheet goes after a drag of `dy` px (negative is up) from `heights.start`, released at
+ * `velocity` px/ms: a fling moves one detent its way from `current`, otherwise the nearer
+ * height wins, and below the lowest detent by {@link DISMISS_FRACTION} it closes.
  */
 export function nextDetent(
   current: TrnSheetDetent,
   dy: number,
   velocity: number,
   available: readonly TrnSheetDetent[],
-  viewport = window.innerHeight,
+  heights: SheetDetentHeights = {
+    start: current === 'large' ? window.innerHeight : window.innerHeight / 2,
+    medium: window.innerHeight / 2,
+    large: window.innerHeight,
+  },
 ): TrnSheetDetent | 'dismiss' {
-  const px = { medium: viewport / 2, large: viewport };
   const both = available.includes('medium') && available.includes('large');
   const lowest: TrnSheetDetent = available.includes('medium')
     ? 'medium'
@@ -44,8 +51,8 @@ export function nextDetent(
     if (dy < 0) return both ? 'large' : current;
     return both && current === 'large' ? 'medium' : 'dismiss';
   }
-  const height = px[current] - dy;
-  if (height < px[lowest] * (1 - DISMISS_FRACTION)) return 'dismiss';
+  const height = heights.start - dy;
+  if (height < heights[lowest] * (1 - DISMISS_FRACTION)) return 'dismiss';
   if (!both) return lowest;
-  return height > (px.medium + px.large) / 2 ? 'large' : 'medium';
+  return height > (heights.medium + heights.large) / 2 ? 'large' : 'medium';
 }

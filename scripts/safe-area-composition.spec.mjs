@@ -257,10 +257,6 @@ const TOP_INSET_OWNERS = new Map([
     'CDK overlay sizing',
   ],
   [
-    'libs/components/overlay/src/lib/sheet-frame/trn-sheet-frame.component.ts',
-    'CDK overlay sizing',
-  ],
-  [
     'libs/components/overlay/src/lib/settings-layout/trn-settings-layout.component.scss',
     'CDK overlay',
   ],

@@ -223,10 +223,8 @@ export function dialogPresentation(
       ...(sheet && {
         width: '100vw',
         maxWidth: '100vw',
-        // A sheet that snaps to full height needs the pane to let it.
-        maxHeight: detents.detents?.length
-          ? SHEET_LARGE_HEIGHT
-          : SHEET_MAX_HEIGHT,
+        // A detent sheet's surface carries its own cap, full height or the recipe's once wide.
+        ...(!detents.detents?.length && { maxHeight: SHEET_MAX_HEIGHT }),
       }),
       // Undefined lets CDK center the card; `'inline-end'` pins it to the logical end edge.
       ...(positionStrategy && { positionStrategy }),
