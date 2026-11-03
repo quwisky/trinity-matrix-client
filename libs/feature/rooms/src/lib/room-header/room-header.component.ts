@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -61,6 +62,7 @@ export interface RoomHeaderActingAs {
   selector: 'trn-room-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     MatrixLinkDirective,
     PageHeaderComponent,
     TrnButton,

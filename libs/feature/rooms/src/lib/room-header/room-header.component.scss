@@ -13,6 +13,24 @@
     font-weight: 700;
   }
 
+  // The phone title opens room details: a real button, reset to read as the heading it sits in.
+  .title-room--button {
+    min-block-size: var(--trinity-interaction-target-min-size);
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: inherit;
+    text-align: start;
+    border-radius: var(--trinity-radius-md);
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+    }
+  }
+
   // A very long name truncates before it can squeeze the topic to nothing.
   .title-room--topic {
     max-inline-size: 60%;
