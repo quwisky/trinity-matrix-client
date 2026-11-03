@@ -77,7 +77,8 @@ function build(
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
-  const syncState = signal<SyncState | null>('SYNCING' as SyncState);
+  const prepared = signal(true);
+  const syncState = signal<SyncState | null>(null);
   const trustSummaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
     new Map(),
   );
@@ -166,6 +167,7 @@ function build(
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
         accountIds: accountIds.asReadonly(),
+        roomsPrepared: () => prepared(),
         syncState: syncState.asReadonly(),
       }),
       {
@@ -205,6 +207,7 @@ function build(
     profiles,
     activeUserId,
     accountIds,
+    prepared,
     syncState,
     trustSummaries,
     rosters,
@@ -286,14 +289,19 @@ describe('RoomShellViewModel inbox', () => {
 
 describe('RoomShellViewModel room list loading', () => {
   // #1868: "No rooms here yet." flashed between sign-in and the first sync.
-  it('is loading until the account has synced, then settled', () => {
+  it('is loading until the account has prepared its rooms, then stays settled', () => {
+    const { vm, prepared } = build();
+
+    prepared.set(false);
+    expect(vm.roomListLoading()).toBe(true);
+    prepared.set(true);
+    expect(vm.roomListLoading()).toBe(false);
+  });
+
+  it('does not go back to loading when sync errors after the rooms were prepared', () => {
     const { vm, syncState } = build();
 
-    syncState.set(null);
-    expect(vm.roomListLoading()).toBe(true);
-    syncState.set('PREPARED' as SyncState);
-    expect(vm.roomListLoading()).toBe(false);
-    syncState.set('SYNCING' as SyncState);
+    syncState.set('ERROR' as SyncState);
     expect(vm.roomListLoading()).toBe(false);
   });
 });

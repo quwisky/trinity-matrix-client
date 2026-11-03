@@ -254,12 +254,15 @@ export class RoomShellViewModel {
 
   /**
    * The room list may still fill: the selected space is not listed yet, or the account has
-   * not completed its first sync, so an empty list is not yet "no rooms".
+   * not prepared its rooms yet, so an empty list is not yet "no rooms".
    */
   readonly roomListLoading = computed(() => {
-    const state = String(this.matrix.syncState() ?? '');
+    const account = this.matrix.activeUserId();
+    // Latched: an outage after the first prepare keeps the list it has.
     return (
-      this.activeSpacePending() || (state !== 'PREPARED' && state !== 'SYNCING')
+      this.activeSpacePending() ||
+      !account ||
+      !this.matrix.roomsPrepared(account)
     );
   });
 

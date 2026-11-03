@@ -18,6 +18,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   isRoomEncrypted,
   mediaCaptionFields,
+  resendAtEnd,
   type EncryptedFileInfo,
   type MediaPayload,
 } from '@trinity/util/matrix';
@@ -238,7 +239,7 @@ export class MediaPipeline {
           if (subscriber.closed) return;
           sendSubscription = defer(() => {
             if (cached.pendingEvent) {
-              return client.resendEvent(cached.pendingEvent, room);
+              return resendAtEnd(client, cached.pendingEvent, room);
             }
             const attempt = request.threadRootId
               ? client.sendMessage(
