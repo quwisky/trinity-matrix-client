@@ -616,6 +616,15 @@ for (const viewport of [
         timeout: 15_000,
       });
       await expectPage(page, page.locator('.chat-panel'));
+      // The threads page slid in, then the thread pushed over it slides in like any page.
+      const pushed = await slides();
+      expect(pushed.slice(slid).map(([slide]) => slide)).toEqual([
+        'open',
+        'open',
+      ]);
+      expect(pushed[slid + 1][1]).toBeGreaterThan(100);
+      slid = pushed.length;
+      await expectSettled(page);
       await page.goBack();
       await expect(threads).toBeVisible();
       await page.goBack();
@@ -734,6 +743,97 @@ test.describe('Room panel pages across a room change', () => {
     await expect(page).toHaveURL(roomAUrl);
     await expect(page.getByTestId('room-title')).toContainText(roomName);
     await expect(members).toBeVisible();
+  });
+});
+
+test.describe('Room panel pages from a link and out to the timeline', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('a pinned jump reveals its row, and a reloaded thread link lands on the page', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}lnk`;
+    const { reader, roomName, roomId } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    // Pinned well above the loaded end of the timeline, so the jump has to reveal it.
+    const pinnedBody = `pinned far up ${runId}`;
+    const pinnedId = await send(request, hs, actor, roomId, {
+      body: pinnedBody,
+    });
+    for (let line = 0; line < 30; line++) {
+      await send(request, hs, actor, roomId, { body: `history ${line}` });
+    }
+    const rootId = await send(request, hs, actor, roomId, {
+      body: `thread root ${runId}`,
+    });
+    await send(request, hs, actor, roomId, {
+      body: `thread reply ${runId}`,
+      'm.relates_to': { rel_type: 'm.thread', event_id: rootId },
+    });
+    const pin = await request.put(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.pinned_events/`,
+      { headers: actor.headers, data: { pinned: [pinnedId] } },
+    );
+    expect(pin.ok()).toBe(true);
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const roomUrl = page.url();
+    const pinnedRow = page.locator('.scroll .msg[data-mid]', {
+      hasText: pinnedBody,
+    });
+    await expect(
+      page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(pinnedRow.first()).not.toBeInViewport();
+
+    // A jump from the pinned page reveals the row in the room under it, and the page goes.
+    await openOverflowMenu(page);
+    await page.getByTestId('overflow-open-pinned').click();
+    const pinned = page.getByTestId('pinned-panel');
+    await expectPage(page, pinned);
+    await pinned.getByTestId('pinned-item').first().click();
+    await expect(pinned).toBeHidden();
+    await expect(pinnedRow.first()).toBeInViewport({ timeout: 30_000 });
+    await expect(page).not.toHaveURL(/panel=/);
+    await expectSettled(page);
+    // The pinned entry is spent: the next Back leaves the room for the list.
+    await page.goBack();
+    await expect(
+      page.locator('.channel', { hasText: roomName }).first(),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.chat-panel')).toBeHidden();
+
+    // A reload of a thread link lands on the page itself, with no slide.
+    const threadUrl = new URL(roomUrl);
+    threadUrl.searchParams.set('panel', 'thread');
+    threadUrl.searchParams.set('root', rootId);
+    await page.goto(threadUrl.toString());
+    await page.reload();
+    const thread = page.getByTestId('thread-view');
+    await expect(thread).toContainText(`thread reply ${runId}`, {
+      timeout: 30_000,
+    });
+    await expectPage(page, page.locator('.chat-panel'));
+    await expectNoSlideStarted(page);
+    // No entry lies below it, so its Back replaces it with the room in place.
+    const entries = await page.evaluate(() => history.length);
+    await page
+      .locator('.chat-panel trn-side-panel-header')
+      .getByRole('button', { name: 'Back', exact: true })
+      .click();
+    await expect(thread).toBeHidden();
+    await expect(page).not.toHaveURL(/panel=/);
+    await expect(page.getByTestId('room-title')).toContainText(roomName);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
   });
 });
 

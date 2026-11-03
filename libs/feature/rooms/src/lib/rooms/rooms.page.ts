@@ -177,9 +177,9 @@ export class RoomsPage {
    * only half the answer and this page is the only place that knows the other halves.
    *
    * `roomSurfaces.renderedSurface()` is the expression `[drawerOpen]` is bound to below, so
-   * the two cannot drift. It is NOT what stops the row gesture competing with the drawer:
-   * while a panel is open a `fixed inset-0` backdrop covers the viewport, so no `pointerdown`
-   * reaches a timeline row at all. The clause mirrors the drawer's own arming condition, so a
+   * the two cannot drift. It is NOT what stops the row gesture competing with the panel:
+   * while one is open, the drawer's `fixed inset-0` backdrop covers the viewport, or below md
+   * the page makes `trn-message-list` inert, so no `pointerdown` reaches a timeline row. The clause mirrors the drawer's own arming condition, so a
    * gesture that is off is off for a stated reason rather than by a side effect of somebody
    * else's markup.
    *
@@ -225,9 +225,8 @@ export class RoomsPage {
     if (!panel || panel.kind === 'members') {
       return MEMBERS_DRAWER_PX;
     }
-    // The panels are `width: 480px; max-width: 100%` at this breakpoint, so on a phone the
-    // viewport is what they actually get.
-    return Math.min(PANEL_DRAWER_PX, window.innerWidth);
+    // Below md an open panel is a page with no close drag, so this is the md+ drawer.
+    return PANEL_DRAWER_PX;
   }
 
   private readonly selectedLibrary = inject(SelectedRoomLibraryService);
@@ -292,19 +291,27 @@ export class RoomsPage {
 
   /**
    * A panel page pushed over its room, or popped off it, slides the way a room does over its
-   * list ({@link paneSlide}). Null for a history traversal, whose edge swipe draws the motion
-   * natively, and for a page arriving with the room, which rides the room's own slide.
+   * list ({@link paneSlide}); a thread pushed over the threads page slides in too. Null for a
+   * history traversal, whose edge swipe draws the motion natively, and for a page arriving
+   * with the room, which rides the room's own slide.
    */
   protected readonly panelSlide = linkedSignal<
-    { readonly open: boolean; readonly room: string },
+    { readonly open: boolean; readonly thread: boolean; readonly room: string },
     'open' | 'close' | null
   >({
     source: computed(
-      () => ({
-        open: !!this.roomSurfaces.renderedSurface(),
-        room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
-      }),
-      { equal: (a, b) => a.open === b.open && a.room === b.room },
+      () => {
+        const surface = this.roomSurfaces.renderedSurface();
+        return {
+          open: !!surface,
+          thread: surface?.kind === 'thread',
+          room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
+        };
+      },
+      {
+        equal: (a, b) =>
+          a.open === b.open && a.thread === b.thread && a.room === b.room,
+      },
     ),
     computation: (source, previous) => {
       if (
@@ -324,7 +331,9 @@ export class RoomsPage {
       ) {
         return null;
       }
-      return source.open ? 'open' : 'close';
+      if (!source.open) return 'close';
+      // Back from a thread to its list changes the page in place: only one surface renders.
+      return !previous.source.open || source.thread ? 'open' : null;
     },
   });
 
@@ -573,7 +582,6 @@ export class RoomsPage {
       event.target.hasAttribute('data-right-panel-surface')
     ) {
       this.panelSlide.set(null);
-      this.shownSurface.set(this.roomSurfaces.renderedSurface());
     }
   }
 

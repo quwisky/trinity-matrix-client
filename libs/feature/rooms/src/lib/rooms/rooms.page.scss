@@ -361,8 +361,8 @@
     }
 
     // Where the two drawers part company, on width and on the safe-area insets.
-    // WIDTH: the roster fits 240px; a thread or a search result does not, so `max-width` keeps
-    // them full-screen at this width (480px exceeds the viewport here). The dragged width is
+    // WIDTH: the roster fits 240px; a thread or a search result does not (below md every
+    // panel is a full page instead, see the page rule further down). The dragged width is
     // deliberately not read at this breakpoint: there is no divider to drag, and a width
     // chosen on a desktop has nothing to say about a phone.
     // INSETS: the drawer above takes the top inset; every panel pads its own bottom with

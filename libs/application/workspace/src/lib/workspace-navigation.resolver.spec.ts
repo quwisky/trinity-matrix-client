@@ -510,6 +510,17 @@ describe('resolveWorkspaceNavigation — the open panel', () => {
     ).toEqual(members);
   });
 
+  it('drops the roster on a phone for a quick-switcher pick too', () => {
+    const picked = (compact: boolean) =>
+      resolveWorkspaceNavigation(
+        { kind: 'conversation', accountId: '@a:hs', roomId: '!other:hs' },
+        open,
+        { listBelow: false, compact },
+      )?.destination.panel;
+    expect(picked(true)).toBeNull();
+    expect(picked(false)).toEqual(members);
+  });
+
   it('drops the panel when the Account changes', () => {
     expect(
       resolveWorkspaceNavigation({ kind: 'account', accountId: '@b:hs' }, open)

@@ -130,6 +130,7 @@ export function resolveWorkspaceNavigation(
           origin: 'global-search',
         },
         current,
+        history,
       );
     case 'space':
       return resolveWorkspaceNavigation(
