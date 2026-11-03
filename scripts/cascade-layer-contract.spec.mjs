@@ -291,6 +291,7 @@ describe('cascade layer contract', () => {
       "@media (pointer: coarse) > input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false'])",
       '@media (hover: none) and (pointer: coarse)',
       "@media (hover: none) and (pointer: coarse) > :focus-visible:not( input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false']) )",
+      "@media (hover: none) and (pointer: coarse) > :focus-visible:not( input:not( [type='checkbox'], [type='radio'], [type='range'], [type='button'], [type='submit'], [type='reset'], [type='file'], [type='color'], [type='image'], [type='hidden'] ), textarea, select, [contenteditable]:not([contenteditable='false']) ) > &, & ~ *, .group:has(&)",
     ]);
   });
 
