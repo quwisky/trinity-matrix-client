@@ -80,6 +80,37 @@ describe('resendWaitingEchoes', () => {
     ]);
   });
 
+  it('puts resent echoes after what arrived while they waited, still in send order', async () => {
+    const first = waiting('one');
+    const second = waiting('two');
+    first.event.event_id = '~!r:hs:1';
+    second.event.event_id = '~!r:hs:2';
+    const arrived = new MatrixEvent({
+      type: 'm.room.message',
+      event_id: '$arrived',
+      content: { msgtype: 'm.text', body: 'later' },
+    });
+    const events = [first, second, arrived];
+    const fake = client([room('!r:hs', events)], () => Promise.resolve());
+    fake.getRooms()[0].getLiveTimeline = () =>
+      ({
+        getEvents: () => events,
+        removeEvent: (id: string) => {
+          const at = events.findIndex((e) => e.getId() === id);
+          return at < 0 ? null : events.splice(at, 1)[0];
+        },
+        addEvent: (e: MatrixEvent) => void events.push(e),
+      }) as never;
+
+    await run(fake);
+
+    expect(events.map((e) => e.getId())).toEqual([
+      '$arrived',
+      '~!r:hs:1',
+      '~!r:hs:2',
+    ]);
+  });
+
   it('skips an echo whose status changed before its turn', async () => {
     const first = waiting('one');
     const second = waiting('two');

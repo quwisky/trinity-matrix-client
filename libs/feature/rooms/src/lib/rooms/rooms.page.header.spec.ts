@@ -132,6 +132,7 @@ function renderHeader(
     activeRoomIsDirect: signal(false),
     activeSpaceListed: signal(false),
     activeSpacePending: signal(false),
+    roomListLoading: signal(false),
     anyRoomUnread: signal(false),
     canConfigureSpace: signal(false),
     canCurateSpace: signal(false),

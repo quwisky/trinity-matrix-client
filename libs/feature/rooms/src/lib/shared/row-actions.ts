@@ -88,6 +88,7 @@ export function buildRowCaps(
     saveMedia: savableMediaKind(message),
     canForward: isForwardableMessage(message),
     addToEmoji: !unsent && policy.canAddToEmoji(message),
+    isOwn: message.isOwn,
     readOnly: false,
   };
 }
@@ -204,6 +205,7 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.saveMedia === b.saveMedia &&
     a.canForward === b.canForward &&
     a.addToEmoji === b.addToEmoji &&
+    a.isOwn === b.isOwn &&
     a.readOnly === b.readOnly
   );
 }

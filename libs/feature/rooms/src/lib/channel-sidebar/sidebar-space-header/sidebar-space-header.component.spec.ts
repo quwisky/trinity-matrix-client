@@ -1,10 +1,21 @@
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { render } from '@trinity/testing';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   SidebarSpaceHeaderComponent,
   type SidebarSpaceAction,
 } from './sidebar-space-header.component';
+
+const platform = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock('@trinity/platform-native', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/platform-native')>()),
+  isMobileOs: () => platform.mobile,
+}));
+
+afterEach(() => {
+  platform.mobile = false;
+});
 
 async function renderHeader(inputs: Record<string, unknown> = {}) {
   const rendered = await render(SidebarSpaceHeaderComponent, {
@@ -23,6 +34,26 @@ async function renderHeader(inputs: Record<string, unknown> = {}) {
 }
 
 describe('SidebarSpaceHeaderComponent', () => {
+  it('labels search by its shortcut on desktop', async () => {
+    platform.mobile = false;
+    const { container } = await renderHeader();
+    expect(
+      container
+        .querySelector('[data-testid="open-switcher"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Search (Ctrl/Cmd+K)');
+  });
+
+  it('labels search plainly on a phone, which has no shortcut', async () => {
+    platform.mobile = true;
+    const { container } = await renderHeader();
+    expect(
+      container
+        .querySelector('[data-testid="open-switcher"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Search');
+  });
+
   it('shows the plain title with Home actions outside a space', async () => {
     const { container, actions, click } = await renderHeader({
       hasAnyUnread: true,

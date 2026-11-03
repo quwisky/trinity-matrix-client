@@ -6,11 +6,11 @@
         trnIconButton
         class="inbox__action"
         (click)="openSwitcher.emit()"
-        aria-label="Search (Ctrl/Cmd+K)"
-        trnTooltip="Search (Ctrl/Cmd+K)"
+        [attr.aria-label]="search.label"
+        [trnTooltip]="search.label"
         data-testid="open-switcher"
       >
-        <trn-icon name="command" motion="pop" />
+        <trn-icon [name]="search.icon" motion="pop" />
       </button>
     }
     <button

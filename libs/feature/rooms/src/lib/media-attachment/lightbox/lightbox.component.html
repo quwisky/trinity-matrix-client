@@ -7,13 +7,17 @@
     shape="icon"
     size="lg"
     class="lightbox__action lightbox__download"
-    [attr.aria-label]="'Download ' + media().kind"
+    [attr.aria-label]="(shares() ? 'Share ' : 'Download ') + media().kind"
     [loading]="busy()"
     [attr.aria-disabled]="busy() ? 'true' : null"
     (click)="download($event)"
     data-testid="lightbox-download"
   >
-    <trn-icon name="download" motion="nudge-down" />
+    @if (shares()) {
+      <trn-icon name="share" motion="nudge-up" />
+    } @else {
+      <trn-icon name="download" motion="nudge-down" />
+    }
   </button>
 
   <button
@@ -25,6 +29,7 @@
     size="lg"
     class="lightbox__action lightbox__close"
     aria-label="Close image viewer"
+    (click)="close(); $event.stopPropagation()"
     data-testid="lightbox-close"
   >
     <trn-icon name="x" motion="rotate" />
@@ -32,7 +37,9 @@
 </div>
 
 <img
+  #image
   decoding="async"
+  draggable="false"
   class="lightbox__image"
   [src]="src()"
   [alt]="filename()"
