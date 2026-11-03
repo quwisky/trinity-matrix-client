@@ -9,13 +9,25 @@
     flex: none;
   }
 
-  // The whole strip above the header, so the handle is a reachable target.
+  // The whole strip above the header, moved there from the end of the DOM.
   .sheet-frame__toggle {
+    position: relative;
     display: block;
+    flex: none;
+    order: -1;
     width: 100%;
     padding: 0;
     border: 0;
     background: none;
+
+    // A 44px target without a bigger handle: it reaches over the header's top, whose own
+    // controls sit above it (see the dialog shell's header).
+    &::after {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 44px;
+      content: '';
+    }
   }
 
   .sheet-frame__handle {

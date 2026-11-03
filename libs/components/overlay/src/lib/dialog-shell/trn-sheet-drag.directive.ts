@@ -105,6 +105,8 @@ export class TrnSheetDrag {
   private unsnap: ReturnType<typeof setTimeout> | undefined;
   /** The click that ends a drag on the handle button is not a toggle. */
   private dragged = false;
+  /** Whether the content has been measured once, whatever the detent it opened at. */
+  private measured = false;
 
   protected readonly resting = computed(() => {
     const detent = this.detent();
@@ -146,7 +148,10 @@ export class TrnSheetDrag {
     // Crossing `md` mid-drag or mid-snap leaves no inline geometry for the other layout.
     effect(() => {
       this.phone();
-      untracked(() => this.release());
+      untracked(() => {
+        this.release();
+        this.keepFocus();
+      });
     });
     inject(DestroyRef).onDestroy(() => {
       observer?.disconnect();
@@ -176,9 +181,12 @@ export class TrnSheetDrag {
   toggle(): void {
     const detent = this.detent();
     if (this.dragged || !detent || !this.toggleable()) return;
-    const heights = this.grab();
-    this.host.getBoundingClientRect(); // commits the start height, so the snap animates from it
-    this.settle(detent === 'medium' ? 'large' : 'medium', heights);
+    this.snap(detent === 'medium' ? 'large' : 'medium');
+  }
+
+  /** Springs a `medium` sheet that can grow to `large`, e.g. for the keyboard. */
+  expand(): void {
+    if (this.toggleable() === 'expand') this.snap('large');
   }
 
   begin(event: PointerEvent): void {
@@ -342,6 +350,12 @@ export class TrnSheetDrag {
     );
   }
 
+  private snap(detent: TrnSheetDetent): void {
+    const heights = this.grab();
+    this.host.getBoundingClientRect(); // commits the start height, so the snap animates from it
+    this.settle(detent, heights);
+  }
+
   /** Drops a drag or snap in flight and its inline geometry. */
   private release(): void {
     this.stopDrag?.();
@@ -351,11 +365,33 @@ export class TrnSheetDrag {
     this.host.style.transform = '';
   }
 
-  /** At rest at `medium`, a sheet shorter than its cap is sized by its content. */
+  /**
+   * Content shorter than `medium` offers only `medium`. Re-measured at rest at `medium`; at
+   * `large` only once, so a sheet opened there is not taller than its content, while one the
+   * person or the keyboard raised does not drop when its content shrinks.
+   */
   private measureFit(): void {
-    if (this.detent() !== 'medium' || this.host.style.height) return;
-    const cap = parseFloat(getComputedStyle(this.host).maxHeight);
-    this.fits.set(this.host.getBoundingClientRect().height + 1 < cap);
+    const detent = this.detent();
+    if (!detent || this.host.style.height) return;
+    if (detent === 'large' && this.measured) return;
+    this.measured = true;
+    const content = this.measure('auto');
+    const fits = content + 1 < this.measure(SHEET_DETENT_HEIGHT.medium);
+    this.host.style.height = '';
+    if (fits && this.toggleable()) this.keepFocus();
+    this.fits.set(fits);
+    if (fits) this.setDetent('medium');
+  }
+
+  /** Moves focus off the handle button before it is removed, onto the labelled dialog. */
+  private keepFocus(): void {
+    const active = this.host.ownerDocument.activeElement;
+    if (
+      active?.hasAttribute('data-trn-sheet-toggle') &&
+      this.host.contains(active)
+    ) {
+      this.host.closest<HTMLElement>('[role="dialog"]')?.focus();
+    }
   }
 
   private beginContent(event: TouchEvent): void {

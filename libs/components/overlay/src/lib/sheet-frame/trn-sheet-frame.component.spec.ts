@@ -148,18 +148,41 @@ describe('TrnSheetFrameComponent', () => {
 
       expect(toggle().tagName).toBe('BUTTON');
       expect(toggle().getAttribute('aria-label')).toBe('Expand');
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
       expect(toggle().contains(handle())).toBe(true);
 
       toggle().click();
       TestBed.inject(ApplicationRef).tick();
       expect(surface().getAttribute('data-sheet-detent')).toBe('large');
       expect(toggle().getAttribute('aria-label')).toBe('Collapse');
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
       await new Promise((resolve) => setTimeout(resolve));
 
       toggle().click();
       TestBed.inject(ApplicationRef).tick();
       expect(surface().getAttribute('data-sheet-detent')).toBe('medium');
       expect(toggle().getAttribute('aria-label')).toBe('Expand');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('keeps focus in the dialog when a resize to wide removes a focused handle button', () => {
+    let change: ((e: { matches: boolean }) => void) | undefined;
+    vi.stubGlobal('matchMedia', () => ({
+      matches: true,
+      addEventListener: (_: string, fn: typeof change) => (change = fn),
+      removeEventListener: () => undefined,
+    }));
+    try {
+      open({ detents: ['medium', 'large'] });
+      document.querySelector<HTMLElement>('[data-trn-sheet-toggle]')!.focus();
+
+      change?.({ matches: false });
+      TestBed.inject(ApplicationRef).tick();
+
+      expect(document.querySelector('[data-trn-sheet-toggle]')).toBeNull();
+      expect(document.activeElement?.getAttribute('role')).toBe('dialog');
     } finally {
       vi.unstubAllGlobals();
     }

@@ -260,6 +260,7 @@ describe('TrnSheetKeyboardAvoidance on a detent sheet', () => {
       tick();
 
       expect(detent()).toBe('large');
+      expect(surface().style.transition).toContain('height');
     },
   );
 

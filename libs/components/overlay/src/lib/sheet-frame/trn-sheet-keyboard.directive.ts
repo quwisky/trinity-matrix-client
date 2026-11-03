@@ -150,12 +150,7 @@ export class TrnSheetKeyboardAvoidance {
   }
 
   protected focused(event: FocusEvent): void {
-    if (
-      this.drag?.detent() === 'medium' &&
-      isEditable(event.target as Element)
-    ) {
-      this.drag.setDetent('large');
-    }
+    if (isEditable(event.target as Element)) this.drag?.expand();
     this.update();
   }
 

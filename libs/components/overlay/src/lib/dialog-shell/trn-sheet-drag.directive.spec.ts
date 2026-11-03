@@ -441,6 +441,7 @@ describe('TrnSheetDrag content drag', () => {
 });
 
 let openedDetents: readonly TrnSheetDetent[] = ['medium', 'large'];
+let openedAt: TrnSheetDetent | undefined;
 
 @Component({
   imports: [TrnSheetDrag, TrnSheetDragHandle],
@@ -454,12 +455,12 @@ let openedDetents: readonly TrnSheetDetent[] = ['medium', 'large'];
           'sheet',
           'title',
           null,
-          { detents: openedDetents },
+          { detents: openedDetents, initialDetent: openedAt },
         ),
     },
   ],
   template: `
-    <div trnSheetDrag data-testid="sheet">
+    <div trnSheetDrag data-testid="sheet" role="dialog" tabindex="-1">
       <div trnSheetDragHandle data-testid="handle">
         <button
           type="button"
@@ -482,6 +483,7 @@ const PHONE = { medium: 422, large: 785 };
 describe('TrnSheetDrag detents', () => {
   afterEach(() => {
     openedDetents = ['medium', 'large'];
+    openedAt = undefined;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -558,7 +560,8 @@ describe('TrnSheetDrag detents', () => {
     resized();
     const by = (id: string) =>
       document.querySelector<HTMLElement>(`[data-testid=${id}]`)!;
-    return { view, sheet, drag, handle, rect, resized, by };
+    const setContent = (px: number) => (content = px);
+    return { view, sheet, drag, handle, rect, resized, by, setContent };
   }
 
   /** Lets a snap's timer hand the height back to the bindings. */
@@ -680,6 +683,41 @@ describe('TrnSheetDrag detents', () => {
     expect(drag.detent()).toBe('medium');
     await settled();
     expect(sheet.getBoundingClientRect().height).toBe(200);
+  });
+
+  it('opens a short sheet asked for at large at its own height instead', async () => {
+    openedAt = 'large';
+    const { sheet, drag } = await setupDetents(true, 200);
+    expect(drag.detent()).toBe('medium');
+    expect(drag.toggleable()).toBeNull();
+    expect(sheet.style.height).toBe('');
+    expect(sheet.getBoundingClientRect().height).toBe(200);
+  });
+
+  it('opens a long sheet asked for at large at full height', async () => {
+    openedAt = 'large';
+    const { drag } = await setupDetents();
+    expect(drag.detent()).toBe('large');
+    expect(drag.toggleable()).toBe('collapse');
+  });
+
+  it('moves focus to the dialog when content shrinks under a focused handle button', async () => {
+    const { sheet, drag, by, resized, setContent } = await setupDetents();
+    by('toggle').focus();
+    setContent(200);
+    resized();
+    expect(drag.toggleable()).toBeNull();
+    expect(document.activeElement).toBe(sheet);
+  });
+
+  it('springs to large when expanded from code, as the keyboard does', async () => {
+    const { sheet, drag } = await setupDetents();
+    drag.expand();
+    expect(drag.detent()).toBe('large');
+    expect(sheet.style.transition).toContain('height');
+    expect(sheet.style.height).toBe(`${PHONE.large}px`);
+    drag.expand();
+    expect(drag.detent()).toBe('large');
   });
 
   it('expands on an upward content drag at medium, before the list scrolls', async () => {

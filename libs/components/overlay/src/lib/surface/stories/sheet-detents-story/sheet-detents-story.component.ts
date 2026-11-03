@@ -16,7 +16,6 @@ export class SheetDetentsStoryComponent {
     this.dialog.open(SheetDetentsStorySheetComponent, {
       placement: 'bottom',
       ariaLabel: 'Detent sheet',
-      autoFocus: false,
       detents: ['medium', 'large'],
       inputs: { rows },
     });
