@@ -259,7 +259,7 @@ for (const [colorScheme, theme] of RUNS) {
       await expect(back).toBeVisible();
       await expectStatusBarMatchesTopBar(page, 'room');
 
-      // The threads drawer reaches the top over the room.
+      // The threads page reaches the top over the room.
       await page.getByTestId('open-threads').click();
       await expect(
         page.getByRole('heading', { name: 'Threads' }),

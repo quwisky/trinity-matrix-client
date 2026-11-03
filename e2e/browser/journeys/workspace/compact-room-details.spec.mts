@@ -453,6 +453,33 @@ async function watchPanelSlides(
     );
 }
 
+/**
+ * A resize starts no slide: two frames on, well inside a slide's length, there is no slide
+ * attribute and nothing on the page or the room is moving. Not waiting for a slide to clear,
+ * which would hide one that started.
+ */
+async function expectNoSlideStarted(page: Page): Promise<void> {
+  expect(
+    await page.evaluate(async () => {
+      const frame = () => new Promise((done) => requestAnimationFrame(done));
+      await frame();
+      await frame();
+      return {
+        slide: document
+          .querySelector('[data-shell-root]')!
+          .getAttribute('data-panel-slide'),
+        moving: [
+          ...document.querySelectorAll(
+            '[data-right-panel-surface], .main > *, .chat-body > *',
+          ),
+        ].flatMap((element) =>
+          element.getAnimations().map((a) => (a as CSSAnimation).animationName),
+        ),
+      };
+    }),
+  ).toEqual({ slide: null, moving: [] });
+}
+
 /** Two frames after the slide has cleared, nothing on the page or the room is still moving. */
 async function expectSettled(page: Page): Promise<void> {
   await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
@@ -606,6 +633,11 @@ for (const viewport of [
       await expectSettled(page);
       await expect(page.getByTestId('open-threads')).toBeFocused();
 
+      // Rotating past md and back changes presentation only: no slide starts.
+      await page.setViewportSize({ width: 900, height: viewport.height });
+      await page.setViewportSize(viewport);
+      await expectNoSlideStarted(page);
+
       await expect(composer).toHaveValue(`half typed ${runId}`);
       await expect.poll(anchor).toEqual(before);
     });
@@ -641,6 +673,69 @@ test.describe('Room panel pages with Reduce Motion', () => {
       expect(duration).toBeGreaterThanOrEqual(0);
       expect(duration).toBeLessThan(1);
     }
+  });
+});
+
+test.describe('Room panel pages across a room change', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('drop a page at once when the room changes in place', async ({
+    page,
+    request,
+  }) => {
+    const hs = session.hs as string;
+    const runId = `${testResourceId('run')}hop`;
+    const { reader, roomName } = await seedRoom(request, hs, runId);
+    const actor = await apiLogin(
+      request,
+      hs,
+      reader.user as string,
+      reader.pass as string,
+    );
+    const otherRoomName = `Mobile Hop ${runId}`;
+    const otherRoomId = await createRoom(request, hs, actor, otherRoomName);
+
+    await login(page, reader);
+    await openRoomMobile(page, roomName);
+    const slides = await watchPanelSlides(page);
+    const threads = page.getByRole('complementary', { name: 'Threads' });
+    await page.getByTestId('open-threads').click();
+    await expectPage(page, threads);
+    const before = (await slides()).length;
+
+    // A room opened in place over the page, as a notification tap or an inbound link does:
+    // the page's own room-opening workflow, reached through Angular's dev-mode handle,
+    // since no control on a phone page opens another room.
+    await page.evaluate(
+      ({ accountId, roomId }) => {
+        const ng = (
+          window as unknown as {
+            ng: {
+              getComponent(element: Element): {
+                routing: {
+                  onSelectRoomSelection(
+                    selection: { accountId: string; roomId: string },
+                    origin: string,
+                  ): void;
+                };
+              };
+            };
+          }
+        ).ng;
+        ng.getComponent(
+          document.querySelector('trn-rooms')!,
+        ).routing.onSelectRoomSelection({ accountId, roomId }, 'rail-unread');
+      },
+      { accountId: actor.userId, roomId: otherRoomId },
+    );
+    await expect(
+      page.getByRole('heading', { level: 1, name: otherRoomName }),
+    ).toBeVisible({ timeout: 15_000 });
+    // It leaves at once rather than sliding off over the new room.
+    await expect(threads).toBeHidden();
+    await expectSettled(page);
+    expect((await slides()).slice(before)).toEqual([]);
   });
 });
 
@@ -686,8 +781,9 @@ test.describe('Room panels across widths', () => {
     expect(Math.round(box.x + box.width)).toBe(800);
     await expect(backdrop).toBeVisible();
 
-    // Below md it is a page.
+    // Below md it is a page, and crossing md slides nothing in.
     await page.setViewportSize({ width: 390, height: 844 });
+    await expectNoSlideStarted(page);
     box = await settled();
     expect(Math.round(box.width)).toBe(390);
     await expect(backdrop).toBeHidden();

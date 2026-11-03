@@ -296,21 +296,35 @@ export class RoomsPage {
    * natively, and for a page arriving with the room, which rides the room's own slide.
    */
   protected readonly panelSlide = linkedSignal<
-    boolean,
+    { readonly open: boolean; readonly room: string },
     'open' | 'close' | null
   >({
-    source: () => !!this.roomSurfaces.renderedSurface(),
-    computation: (open, previous) => {
+    source: computed(
+      () => ({
+        open: !!this.roomSurfaces.renderedSurface(),
+        room: `${this.store.activeAccountId()} ${this.store.activeRoomId()}`,
+      }),
+      { equal: (a, b) => a.open === b.open && a.room === b.room },
+    ),
+    computation: (source, previous) => {
       if (
         !previous ||
-        !this.workspace.committedInApp ||
         // Tracked, as in `paneSlide`: crossing md mid-slide must clear it.
-        !this.mobileMasterDetail() ||
+        !this.mobileMasterDetail()
+      ) {
+        return null;
+      }
+      // Only crossing md re-runs this with the same source: a resize starts no slide.
+      if (previous.source === source) return previous.value;
+      if (
+        // A page closed by a room change in place leaves at once, not over the new room.
+        previous.source.room !== source.room ||
+        !this.workspace.committedInApp ||
         untracked(this.paneSlide) !== null
       ) {
         return null;
       }
-      return open ? 'open' : 'close';
+      return source.open ? 'open' : 'close';
     },
   });
 

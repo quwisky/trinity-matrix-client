@@ -18,12 +18,16 @@ import { createRoom } from '../../support/space-journey.mts';
 // (Docker); self-skips otherwise.
 const session = homeserverSession();
 
-/** The member drawer has finished sliding in. */
-async function expectDrawerSettled(page: Page): Promise<void> {
-  await expect(page.locator('.chat-members')).toHaveCSS(
-    'transform',
-    'matrix(1, 0, 0, 1, 0, 0)',
+/** Crossing md changes only how the roster is shown: no page slide starts, nothing moves. */
+async function expectNoSlide(page: Page): Promise<void> {
+  await expect(page.locator('[data-shell-root]')).not.toHaveAttribute(
+    'data-panel-slide',
   );
+  expect(
+    await page
+      .locator('.chat-members')
+      .evaluate((element) => element.getAnimations().length),
+  ).toBe(0);
 }
 
 async function openMembers(page: Page): Promise<void> {
@@ -111,10 +115,10 @@ test.describe('Member info', () => {
     // needs 44px at every breakpoint — so measure again on a phone-sized viewport.
     const desktopViewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
-    // The open roster is the URL's panel, so becoming a drawer keeps it open as the drawer,
-    // which slides in: wait for it to land before reaching into it.
+    // The open roster is the URL's panel, so it stays open as the members page, and crossing
+    // md slides nothing in.
     await expect(page.locator('.chat-members')).toBeVisible();
-    await expectDrawerSettled(page);
+    await expectNoSlide(page);
     await expect(page).toHaveURL(/panel=members/);
     await memberRow.first().waitFor({ state: 'visible' });
     expect((await memberRow.first().boundingBox())?.height).toBe(44);
@@ -224,7 +228,8 @@ test.describe('Member info', () => {
     // dragging the handle down closes the sheet and leaves the page open.
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.locator('.chat-members')).toBeVisible();
-    await expectDrawerSettled(page);
+    // Crossing md only changes how the roster is shown: nothing slides in.
+    await expectNoSlide(page);
     await memberRow.first().click();
     await expect(panel).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByTestId('dialog-surface')).toHaveAttribute(
@@ -234,10 +239,8 @@ test.describe('Member info', () => {
     const handle = dialog.getByTestId('sheet-handle');
     await expect(handle).toBeVisible();
     await expect(page.locator('.chat-members')).toBeVisible();
-    // A page, not a drawer: nothing dims the room behind it.
-    await expect(page.getByTestId('members-backdrop')).toBeHidden();
 
-    // Escape on the sheet closes the sheet, not the drawer under it as well.
+    // Escape on the sheet closes the sheet, not the members page under it as well.
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden({ timeout: 10_000 });
     await expect(page.locator('.chat-members')).toBeVisible();
