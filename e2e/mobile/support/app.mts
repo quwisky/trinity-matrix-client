@@ -126,13 +126,10 @@ export async function login(user: string, pass: string): Promise<void> {
   await signIn.click();
   // First-run crypto/IndexedDB setup in a CI simulator can outlast 30 s.
   await waitForRooms(browser.isIOS ? 90_000 : 30_000);
-  // Every mobile journey signs in a freshly registered account, whose crypto state
-  // resolves after the Rooms shell renders and mounts this banner over its top edge.
-  // It no longer pushes the lists down, but it covers what is under it, so wait for it
-  // before any tap is aimed at the top of the screen.
-  await expect(
-    $('//trn-banner[contains(normalize-space(.),"Set up encryption")]'),
-  ).toBeDisplayed({ wait: 30_000 });
+  // A freshly registered account's encryption prompt resolves after the Rooms shell renders.
+  // On a phone it then waits for the next page or room switch instead of pushing the lists
+  // down, so there is nothing to wait for here: `waitUntilTappable` still covers the row
+  // shift when it appears with the first switch.
 }
 
 /**

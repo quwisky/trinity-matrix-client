@@ -39,7 +39,6 @@ function renderBanner() {
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: slotReserved,
-          bannerSlotOverlay: signal(false),
           dismissEncryption,
           bannerPrompt: prompt,
         },

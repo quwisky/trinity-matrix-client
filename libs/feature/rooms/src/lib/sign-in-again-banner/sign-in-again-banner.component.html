@@ -4,7 +4,7 @@
   {{ visible() ? 'Sign in again to encrypt the keys on this device.' : '' }}
 </span>
 @if (visible()) {
-  <trn-banner variant="accent" [placement]="placement()" [overlay]="overlay()">
+  <trn-banner variant="accent" [placement]="placement()">
     <trn-icon trnBannerIcon name="lock" />
     Sign in again to encrypt the keys on this device.
     <span trnBannerActions>

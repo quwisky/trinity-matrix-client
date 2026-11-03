@@ -401,8 +401,18 @@ export class RoomsPage {
   }
 
   constructor() {
-    afterNextRender(() => this.systemStatus.shellDisplayed(), {
-      injector: this.injector,
+    afterNextRender(
+      () => this.systemStatus.shellDisplayed(this.mobileMasterDetail),
+      { injector: this.injector },
+    );
+    inject(DestroyRef).onDestroy(() => this.systemStatus.shellLeft());
+    // Switching page or room is when nothing is being read: late banners appear then.
+    let shown = false;
+    effect(() => {
+      this.store.pane();
+      this.store.activeRoomId();
+      if (shown) untracked(() => this.systemStatus.releaseLateBanners());
+      shown = true;
     });
     // The service cannot read the page's viewChild refs, so hand it the focus call. In the
     // constructor, not ngOnInit: `TestBed.inject(RoomsPage)` never runs lifecycle hooks, so

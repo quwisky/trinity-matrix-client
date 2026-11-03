@@ -127,7 +127,6 @@ describe('ApplicationRootComponent', () => {
             hasProblems: signal(false),
             bannerSlot: signal(null),
             bannerSlotReserved: signal(false),
-            bannerSlotOverlay: signal(false),
             bannerPrompt: signal(null),
             show: vi.fn(),
           },

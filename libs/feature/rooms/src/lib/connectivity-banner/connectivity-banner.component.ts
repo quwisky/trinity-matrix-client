@@ -4,6 +4,7 @@ import {
   computed,
   inject,
 } from '@angular/core';
+import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { BannerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -23,6 +24,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
 })
 export class ConnectivityBannerComponent {
   private readonly matrix = inject(MatrixClientService);
+  private readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
 
   readonly offline = computed(() => this.matrix.connectivity() === 'offline');
 
@@ -31,6 +33,15 @@ export class ConnectivityBannerComponent {
     if (count === 0) return '';
     return `${count} ${count === 1 ? 'message' : 'messages'} waiting to send`;
   });
+
+  /**
+   * Offline waits for the next page or room switch on a phone, so it never moves a row being
+   * read. Messages waiting mean the person just tried to send, so that shows at once.
+   */
+  readonly shown = this.systemStatus.settleBanner(
+    computed(() => this.offline() || this.waitingText() !== ''),
+    computed(() => this.waitingText() !== ''),
+  );
 
   readonly liveText = computed(() =>
     [this.offline() ? 'You’re offline. Reconnecting…' : '', this.waitingText()]

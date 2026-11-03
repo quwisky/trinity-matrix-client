@@ -46,7 +46,6 @@ function renderBanner(
           show: vi.fn(),
           bannerSlot: slot,
           bannerSlotReserved: signal(false),
-          bannerSlotOverlay: signal(false),
           bannerPrompt: signal(null),
           dismissSignInAgain,
         },

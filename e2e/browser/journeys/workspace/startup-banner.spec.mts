@@ -210,7 +210,7 @@ test.describe('Global banner slot after sign-in', () => {
       await expect(
         page
           .locator('trn-encryption-banner trn-banner')
-          .getByText('Set up encryption to secure your messages.'),
+          .getByRole('button', { name: 'Set up', exact: true }),
       ).toBeVisible();
 
       const frames = await framesWithRow(page);
@@ -247,9 +247,11 @@ test.describe('Global banner slot after sign-in', () => {
     await page.addInitScript(grantPersistentStorage);
     await page.addInitScript(recordSlotFrames);
     await login(page, account);
+    // Arriving after the first row, the prompt waits for the next page switch.
+    await page.locator('button.channel').first().click();
     const prompt = page.locator('trn-encryption-banner trn-banner');
     await expect(
-      prompt.getByText('Set up encryption to secure your messages.'),
+      prompt.getByRole('button', { name: 'Set up', exact: true }),
     ).toBeVisible();
 
     const frames = await page.evaluate(() => window.__slotFrames ?? []);
@@ -282,35 +284,49 @@ test.describe('Global banner slot after sign-in', () => {
   });
 
   /*
-   * A banner that arrives once Rooms is on screen floats over its top edge instead of
-   * pushing the page down (#1868): with persistent storage granted no notice holds the
-   * slot, so a fresh account's prompt arrives after the first row, and the row must not
-   * move for any frame from then on.
+   * On a phone, a banner that arrives once Rooms is on screen waits for the next page switch
+   * instead of pushing the page down (#1868). With persistent storage granted no notice holds
+   * the slot, so a fresh account's prompt arrives after the first row: the row must not move
+   * while it is held, the prompt must show after the next switch (open a room, then back), and
+   * must be one line there.
    */
-  test('a prompt arriving after the first row does not move it at 390px', async ({
+  test('a prompt arriving after the first row waits for the next page switch at 390px', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(grantPersistentStorage);
     await page.addInitScript(recordSlotFrames);
     await login(page, account);
-    await expect(
-      page
-        .locator('trn-encryption-banner trn-banner')
-        .getByText('Set up encryption to secure your messages.'),
-    ).toBeVisible();
+    await expect(page.locator('button.channel').first()).toBeVisible();
+    // Let the encryption status arrive: nothing may show or move.
+    await expectForecastStored(page, 'needs-setup');
+    await page.waitForTimeout(500);
 
     const frames = await framesWithRow(page);
     const first = frames[0]!;
-    expect(
-      frames.some(({ slot }) => slot === 'encryption'),
-      'the prompt must arrive while the row is on screen, or nothing is measured',
-    ).toBe(true);
     expect(first.slot, 'the slot was empty when the row was drawn').toBeNull();
+    expect(
+      frames.filter((frame) => frame.slot !== null),
+      'no banner while the list is being read',
+    ).toEqual([]);
     expect(
       frames.filter((frame) => Math.abs(frame.row! - first.row!) > 0.5),
       `row first drawn at y=${first.row}`,
     ).toEqual([]);
+
+    // The next page switch: open the room, which is when nothing is being read.
+    await page.locator('button.channel').first().click();
+    const prompt = page.locator('trn-encryption-banner trn-banner');
+    await expect(prompt).toBeVisible();
+    await expect(prompt.getByRole('button', { name: 'Set up' })).toBeVisible();
+    const size = await prompt.evaluate(
+      (el) => el.getBoundingClientRect().height,
+    );
+    test.info().annotations.push({
+      type: 'compact needs-setup prompt height at 390',
+      description: `${size}px`,
+    });
+    expect(size, 'one line of text').toBeLessThan(60);
   });
 
   /*
@@ -322,12 +338,12 @@ test.describe('Global banner slot after sign-in', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await login(page, account);
+    await page.locator('button.channel').first().click();
     const prompt = page.locator('trn-encryption-banner trn-banner');
-    await expect(
-      prompt.getByText('Set up encryption to secure your messages.'),
-    ).toBeVisible();
+    await expect(prompt).toBeVisible();
     await prompt.getByRole('button', { name: 'Dismiss' }).click();
     await expect(prompt).toHaveCount(0);
+    await page.goBack();
 
     await openSettingsSection(page, 'security');
     await expect(page.getByTestId('security-setup')).toBeVisible({
@@ -356,7 +372,7 @@ test.describe('Global banner slot after sign-in', () => {
         await expect(
           page
             .locator('trn-encryption-banner trn-banner')
-            .getByText('Set up encryption to secure your messages.'),
+            .getByRole('button', { name: 'Set up', exact: true }),
         ).toBeVisible();
         await expectForecastStored(page, 'needs-setup');
 
@@ -373,7 +389,7 @@ test.describe('Global banner slot after sign-in', () => {
         await expect(
           page
             .locator('trn-encryption-banner trn-banner')
-            .getByText('Set up encryption to secure your messages.'),
+            .getByRole('button', { name: 'Set up', exact: true }),
         ).toBeVisible();
         await expect(
           page.locator('trn-encryption-banner [data-forecast]'),
@@ -433,9 +449,11 @@ test.describe('Global banner slot after sign-in', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(grantPersistentStorage);
     await login(page, account);
+    // Arriving after the first row, the prompt waits for the next page switch.
+    await page.locator('button.channel').first().click();
     const prompt = page.locator('trn-encryption-banner trn-banner');
     await expect(
-      prompt.getByText('Set up encryption to secure your messages.'),
+      prompt.getByRole('button', { name: 'Set up', exact: true }),
     ).toBeVisible();
     await expectForecastStored(page, 'needs-setup');
 
@@ -447,7 +465,7 @@ test.describe('Global banner slot after sign-in', () => {
     await page.addInitScript(recordSlotFrames);
     await page.reload();
     await expect(
-      prompt.getByText('Set up encryption to secure your messages.'),
+      prompt.getByRole('button', { name: 'Set up', exact: true }),
     ).toBeVisible();
     await expect(
       page.locator('trn-encryption-banner [data-forecast]'),
@@ -498,7 +516,7 @@ test.describe('Global banner slot after sign-in', () => {
     await login(page, account);
     const prompt = page.locator('trn-encryption-banner trn-banner');
     await expect(
-      prompt.getByText('Set up encryption to secure your messages.'),
+      prompt.getByRole('button', { name: 'Set up', exact: true }),
     ).toBeVisible();
     await expectForecastStored(page, 'needs-setup');
 

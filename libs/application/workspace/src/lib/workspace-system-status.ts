@@ -34,13 +34,23 @@ export interface WorkspaceSystemStatus {
    */
   readonly bannerPrompt: Signal<BannerPrompt | null>;
   /**
-   * Whether the banner in the slot arrived after the rooms shell was on screen. Such a
-   * banner floats over the top of the shell instead of pushing it down, so what a person
-   * is reading or about to tap stays put. Never true for a blocking notice.
+   * The rooms shell is on screen; `compact` says whether it is the one-page-at-a-time phone
+   * layout. From here on, on a compact layout, a non-blocking banner that arrives waits
+   * until {@link releaseLateBanners} instead of pushing the page down.
    */
-  readonly bannerSlotOverlay: Signal<boolean>;
-  /** Tell the slot the rooms shell is on screen, so a banner arriving later floats. */
-  shellDisplayed(): void;
+  shellDisplayed(compact: Signal<boolean>): void;
+  /** The rooms shell left the screen: nothing waits any more. */
+  shellLeft(): void;
+  /** The person switched page or room, so nothing is being read: waiting banners appear. */
+  releaseLateBanners(): void;
+  /**
+   * A banner of the same kind as the slot's: `want` says whether it should show. While it is
+   * held back, or a pointer is pressed, it keeps its last value; `urgent` shows it at once.
+   */
+  settleBanner(
+    want: Signal<boolean>,
+    urgent?: Signal<boolean>,
+  ): Signal<boolean>;
   /** Hide the encryption prompt for the active Account until the next app start. */
   dismissEncryption(): void;
   /** Hide the prompt to sign in again for the active Account until the next app start. */

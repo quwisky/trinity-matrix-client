@@ -1,7 +1,8 @@
-import { signal } from '@angular/core';
+import { signal, type Signal } from '@angular/core';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { WORKSPACE_SYSTEM_STATUS } from '@trinity/application/workspace';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ConnectivityBannerComponent } from './connectivity-banner.component';
 
@@ -18,6 +19,10 @@ describe('ConnectivityBannerComponent', () => {
     render(ConnectivityBannerComponent, {
       providers: [
         MockProvider(MatrixClientService, { connectivity, waitingCount }),
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: { settleBanner: (want: Signal<boolean>) => want },
+        },
       ],
     });
 

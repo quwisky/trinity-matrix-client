@@ -17,6 +17,7 @@ import {
   type TrnBannerPlacement,
 } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /** Which surface a banner action opens: an encryption flow, or Security settings. */
 type BannerActionKind = 'setup' | 'unlock' | 'verify' | 'security';
@@ -28,7 +29,7 @@ interface BannerAction {
 }
 
 /**
- * Non-blocking, persistent prompt shown in the rooms shell when this device's encryption
+ * Non-blocking prompt, dismissible for the session, shown in the rooms shell when this device's encryption
  * isn't ready (MSC4153: existing unverified devices are prompted, never blocked). Renders the
  * prompt the global banner slot holds (`bannerPrompt`), never the live trust status, so the
  * slot owner can hold the prompt while a pointer is pressed.
@@ -64,7 +65,8 @@ export class EncryptionBannerComponent {
   private readonly slotPrompt = this.systemStatus.bannerPrompt;
   private readonly kind = computed(() => this.slotPrompt()?.kind ?? null);
 
-  readonly overlay = this.systemStatus.bannerSlotOverlay;
+  /** The phone layout: one line, the primary action and Dismiss, on a quieter surface. */
+  readonly compact = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
 
   /** A placeholder prompt: laid out to hold its space, but hidden, unannounced and inert. */
   readonly pending = computed(() => this.slotPrompt()?.placeholder ?? false);
@@ -92,6 +94,24 @@ export class EncryptionBannerComponent {
         return 'Set up encryption to secure your messages.';
     }
   });
+
+  /** The same prompt in one short line; the live region still reads {@link message}. */
+  readonly shortMessage = computed(() => {
+    switch (this.kind()) {
+      case 'setup-elsewhere':
+        return 'Set up recovery on your first device.';
+      case 'needs-recovery':
+      case 'needs-verification':
+        return 'This device isn’t verified.';
+      default:
+        return 'Encryption isn’t set up.';
+    }
+  });
+
+  /** On a phone only the primary action shows; the others are in Settings › Security. */
+  readonly shownActions = computed(() =>
+    this.compact() ? this.actions().slice(0, 1) : this.actions(),
+  );
 
   readonly actions = computed<BannerAction[]>(() => {
     switch (this.kind()) {

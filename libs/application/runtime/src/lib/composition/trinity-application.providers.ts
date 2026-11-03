@@ -171,8 +171,10 @@ export function provideTrinityApplication(
               })
             | null
           >,
-          bannerSlotOverlay: status.bannerSlotOverlay,
-          shellDisplayed: () => status.shellDisplayed(),
+          shellDisplayed: (compact) => status.shellDisplayed(compact),
+          shellLeft: () => status.shellLeft(),
+          releaseLateBanners: () => status.releaseLateBanners(),
+          settleBanner: (want, urgent) => status.settleBanner(want, urgent),
           dismissEncryption: () => status.dismissEncryption(),
           dismissSignInAgain: () => status.dismissSignInAgain(),
           show: () => visibility.show(),

@@ -18,14 +18,13 @@
     [attr.inert]="pending() ? '' : null"
   >
     <trn-banner
-      variant="accent"
+      [variant]="compact() ? 'neutral' : 'accent'"
       [placement]="placement()"
-      [overlay]="overlay()"
     >
       <trn-icon trnBannerIcon name="lock" />
-      {{ message() }}
+      {{ compact() ? shortMessage() : message() }}
       <span trnBannerActions>
-        @for (action of actions(); track action.kind) {
+        @for (action of shownActions(); track action.kind) {
           <button
             trnBtn
             class="banner__action"
