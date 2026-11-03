@@ -38,6 +38,8 @@ export interface MessageToolbarCaps {
   canForward: boolean;
   /** Offer "Add to my emoji": a sticker or custom emoji whose image is not in the personal pack yet. */
   addToEmoji?: boolean;
+  /** Whether the current user sent this message; you cannot report your own. */
+  isOwn?: boolean;
 }
 
 /** A single action a user triggers from the message toolbar. */

@@ -83,6 +83,7 @@ export const TRN_ICON_NAMES = [
   'send',
   'server',
   'settings',
+  'share',
   'shield',
   'shield-alert',
   'shield-check',

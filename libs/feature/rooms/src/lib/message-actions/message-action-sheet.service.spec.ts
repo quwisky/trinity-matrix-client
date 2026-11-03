@@ -46,6 +46,49 @@ describe('MessageActionSheetService', () => {
     expect(testIds).toContain('sheet-add-to-emoji');
   });
 
+  it('puts Edit and Delete ahead of the rarely used actions, and never offers Report on your own message', () => {
+    let testIds: (string | undefined)[] = [];
+    TestBed.configureTestingModule({
+      providers: [
+        MockProvider(RecentEmojiService, { record: vi.fn() }),
+        MockProvider(TrnSurfaceService, {
+          openActions: vi.fn(
+            (options: { buttons: readonly { testId?: string }[] }) => {
+              testIds = options.buttons.map((b) => b.testId);
+              return {
+                presentation: 'sheet',
+                closed: new Subject<void>(),
+                close: vi.fn(),
+              } as never;
+            },
+          ),
+        }),
+      ],
+    });
+    const sheet = TestBed.inject(MessageActionSheetService);
+
+    sheet.open(
+      {},
+      {
+        editable: true,
+        deletable: true,
+        canQuote: true,
+        canPin: true,
+        isOwn: true,
+      } as SheetCaps,
+      vi.fn(),
+    );
+    expect(testIds).not.toContain('sheet-report');
+    for (const early of ['sheet-edit', 'sheet-delete']) {
+      expect(testIds.indexOf(early)).toBeLessThan(
+        testIds.indexOf('sheet-copy'),
+      );
+    }
+
+    sheet.open({}, { isOwn: false } as SheetCaps, vi.fn());
+    expect(testIds).toContain('sheet-report');
+  });
+
   // A grouped message shows its time only on hover, which a touch screen never has.
   it('headlines the sheet with the message time, and leaves a timeless message bare', () => {
     const headers: (string | undefined)[] = [];

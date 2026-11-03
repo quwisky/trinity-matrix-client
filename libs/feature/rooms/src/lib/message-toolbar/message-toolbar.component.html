@@ -163,14 +163,16 @@
       <trn-icon name="code" />
       View source
     </button>
-    <button
-      trnDropdownMenuItem
-      (triggered)="action.emit({ type: 'report' })"
-      data-testid="msg-report"
-    >
-      <trn-icon name="flag" />
-      Report
-    </button>
+    @if (!caps().isOwn) {
+      <button
+        trnDropdownMenuItem
+        (triggered)="action.emit({ type: 'report' })"
+        data-testid="msg-report"
+      >
+        <trn-icon name="flag" />
+        Report
+      </button>
+    }
     @if (caps().canEdit) {
       <button
         trnDropdownMenuItem

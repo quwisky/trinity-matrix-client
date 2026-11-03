@@ -59,7 +59,7 @@ function lightboxImage(): HTMLImageElement | null {
 
 describe('MediaAttachmentComponent', () => {
   let mediaService: MediaServiceStub;
-  let fileSave: { save: Mock };
+  let fileSave: { save: Mock; support: Mock };
   let toast: { show: Mock };
 
   afterEach(() => {
@@ -90,6 +90,7 @@ describe('MediaAttachmentComponent', () => {
     toast = { show: vi.fn() };
     fileSave = {
       save: vi.fn().mockReturnValue(of({ kind: 'completed' as const })),
+      support: vi.fn().mockReturnValue(of({ kind: 'unavailable' as const })),
     };
   });
 
