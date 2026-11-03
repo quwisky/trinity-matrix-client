@@ -82,12 +82,45 @@
     color: var(--trinity-text-bright);
   }
 
-  // Touch targets: reaction chips are dense and frequently tapped — give them a taller
-  // minimum hit area on touch only. Density changes chrome, never the finger target.
+  // Touch targets: the chip stays a compact pill; its 44px finger target is an invisible
+  // ::before. Rows are spaced 44px apart and the side extension stops at half the chip gap,
+  // so neighbouring targets never overlap. Density changes chrome, never the finger target.
   @media (pointer: coarse) {
+    .reactions {
+      --reaction-target: var(--trinity-interaction-target-min-size);
+      --reaction-chip-height: calc(20px + 2 * var(--trinity-space-2));
+      --reaction-slack: calc(
+        var(--reaction-target) - var(--reaction-chip-height)
+      );
+
+      row-gap: var(--reaction-slack);
+
+      // Keeps the last row's target clear of whatever follows (the receipts).
+      padding-block-end: calc(var(--reaction-slack) * 0.5);
+    }
+
     .reaction {
-      min-width: var(--trinity-interaction-target-min-size);
-      min-height: var(--trinity-interaction-target-min-size);
+      position: relative;
+      padding-block: var(--trinity-space-2);
+
+      &::before {
+        content: '';
+        position: absolute;
+        inset-block: calc((100% - var(--reaction-target)) * 0.5);
+        inset-inline: min(
+          var(--trinity-density-item-gap) * -0.5,
+          (100% - var(--reaction-target)) * 0.5
+        );
+      }
+    }
+
+    // Too narrow to reach the target symmetrically: grow towards the end, away from the
+    // neighbouring chip.
+    .reaction--who::before {
+      inset-inline: calc(var(--trinity-density-item-gap) * -0.5)
+        calc(
+          100% + var(--trinity-density-item-gap) * 0.5 - var(--reaction-target)
+        );
     }
   }
 }

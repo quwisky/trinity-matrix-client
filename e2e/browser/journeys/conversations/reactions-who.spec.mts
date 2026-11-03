@@ -618,3 +618,63 @@ test.describe('Who reacted · Pixel 5 sheet', () => {
       page.keyboard.press('Escape'),
     ));
 });
+
+test.describe('Reaction chip shape on touch', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  test('keeps the pill shape while the finger target stays 44px', async ({
+    page,
+    request,
+  }) => {
+    const seeded = await seedReactedMessage(
+      request,
+      session.hs as string,
+      `${testResourceId('shape')}s`,
+    );
+    await login(page, seeded.reader);
+    await openRoom(page, seeded.roomName);
+    const row = page.locator('.scroll .msg', { hasText: seeded.body }).first();
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await seeded.sendReactions();
+    const chips = row.locator('.reaction');
+    await expect(row.locator('.reaction:not(.reaction--who)')).toHaveCount(
+      seeded.reactionGroupCount,
+      { timeout: 30_000 },
+    );
+    await chips.first().scrollIntoViewIfNeeded();
+
+    const total = await chips.count();
+    for (let index = 0; index < total; index += 1) {
+      const chip = chips.nth(index);
+      await chip.scrollIntoViewIfNeeded();
+      const box = await chip.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeLessThan(36);
+      const radius = await chip.evaluate((element) =>
+        parseFloat(getComputedStyle(element).borderTopLeftRadius),
+      );
+      expect(radius).toBeGreaterThanOrEqual(box!.height / 2 - 0.01);
+      // 21px above and below the centre is outside the pill but inside its 44px target.
+      // Scroll so the whole target sits clear of the scroller edge and the composer.
+      await chip.evaluate((element) =>
+        element.scrollIntoView({ block: 'center' }),
+      );
+      const centred = (await chip.boundingBox())!;
+      for (const dy of [-21, 21]) {
+        const hit = await chip.evaluate(
+          (element, [x, y]) => {
+            const found = document.elementFromPoint(x, y);
+            return found === element || `${found?.tagName}.${found?.className}`;
+          },
+          [centred.x + centred.width / 2, centred.y + centred.height / 2 + dy],
+        );
+        expect(hit, `chip ${index} at dy ${dy}`).toBe(true);
+      }
+    }
+  });
+});
