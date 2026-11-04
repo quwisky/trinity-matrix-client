@@ -13,7 +13,10 @@ import { onlyOn } from '../support/platform.mts';
 /** The pane under test, and the lowest `scrollTop` it has reported since the tap. */
 type TapProbe = Window & { tapPane?: Element; tapLowest?: number };
 
-/** The scrollable pane in front, at the centre of the topmost sheet or the screen: what a status bar tap should scroll. */
+/**
+ * The scrollable pane in front, at the centre of the topmost sheet or of the screen: what a
+ * status bar tap should scroll.
+ */
 const frontPane = (): Promise<{ name: string; top: number } | null> =>
   browser.execute(() => {
     // As the adapter does: the topmost open sheet's centre, since a half-height sheet's top
