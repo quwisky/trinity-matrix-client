@@ -4,6 +4,13 @@ import Foundation
 public struct LeaseTicket: Equatable, Sendable {
     let account: String
     let owner: String
+    let generation: UInt64
+
+    init(account: String, owner: String, generation: UInt64 = 0) {
+        self.account = account
+        self.owner = owner
+        self.generation = generation
+    }
 }
 
 public enum LeaseTake: Equatable, Sendable {
@@ -27,36 +34,37 @@ public protocol TokenLease: Sendable {
     func discardAll()
 }
 
-/// The lease as a file in the app group, `push-handoff/leases/<sha256 of the user id>.lease`, named
-/// by a hash because a user id is not a safe file name. No lock is held at any point: a process
-/// suspended holding a file lock is killed with `0xdead10cc`.
+/// The lease as numbered files in the app group, `push-handoff/leases/<sha256 of the user id>.<n>.lease`,
+/// named by a hash because a user id is not a safe file name. The highest number is the lease. No
+/// lock is held at any point: a process suspended holding a file lock is killed with `0xdead10cc`.
 ///
-/// Every change to the name is one atomic `renamex_np`, and a file's contents never change once it
-/// has been written. `RENAME_EXCL` creates the name. After that `RENAME_SWAP` replaces what is
-/// there, so the name is never empty, not even for a process killed between two steps. A release
-/// swaps in a long-expired file, and that file stays until the next take. Only a discard, when the
-/// tokens are removed, empties the name; a taker or holder reads that as a free lease.
+/// A file's contents never change once it has been written, and a number is claimed once, with
+/// `RENAME_EXCL`: a taker that finds `n` expired claims `n + 1`, and of several such takers one
+/// gets it. Nothing ever moves a live lease out of its name, so a taker killed or stalled at any
+/// point can strand nothing. A taker whose read was so old that it claims a number below the lease
+/// sees the higher one when it lists again, removes its own file and answers `.busy`. A release
+/// claims the next number with an expired file, so when a taker got there first the release does
+/// nothing. The winner of `n` removes the files below it.
 ///
-/// Two processes can still both believe they hold the lease until the older one next asks `holds`:
-/// - The wall clock jumps forward past a live lease's expiry, so it is taken over as expired.
-/// - A holder is suspended past its expiry and carries on when it wakes.
-/// - A taker with an old read is killed, or stuck, after swapping out a live lease. Its candidate
-///   then keeps the name until that candidate expires, which can be before the holder's own expiry.
-/// - A holder releases a lease that has expired, and a taker takes it over between the holder's read
-///   and its swap. The holder's expired file is then in the name for a moment, and a third process
-///   that reads it there takes it too. This needs no long stall, only that narrow timing.
+/// Expiry runs on the system's continuous clock, which every process shares, which counts time
+/// asleep, and which no one can set: a wall-clock change cannot make a live lease look expired, and
+/// a holder suspended past its expiry no longer holds it when it wakes. A restart begins it again
+/// near zero, so an older lease reads as further ahead than any lease can be, and is stale.
 ///
-/// A taker that answers `.busy` claims nothing, has removed its own file, and has left the name
-/// holding the file it found, however its swaps interleaved with other takers'. The exception is a
-/// taker that dies, has a swap back refused, or stalls past the put-back limit: 201 swaps, or the
-/// caller's remaining wait if that comes first, but at least 0.5 s. Other takers then cannot get
-/// their files back either, so the live lease can be stranded in a leftover file. What is left in
-/// the name decides what comes next: a taker's file blocks the lease until it expires, but a
-/// release's has already expired, so the next taker takes the lease at once.
+/// What is left: a holder learns it lost the lease only when it next asks `holds`, which the
+/// refresher does just before it sends a grant. A holder suspended from that check until its answer
+/// is written lets the lease lapse while its grant is in flight, and another process can then read
+/// the unchanged vault and send the same refresh token. Compare-before-write keeps the vault
+/// consistent, but the provider has seen the token twice; only the provider can fence that. The app
+/// starts a grant only with background time (`mayStartAppGrant`), and iOS ends the extension rather
+/// than suspending it, which is the lost answer instead. And a discard empties the
+/// names, so numbering starts again: a taker with a read from before the discard can then claim a
+/// number above a new holder's. A discard removes the account's tokens, so neither has any to send.
 public final class AppGroupTokenLease: TokenLease {
     private struct Body: Codable {
         let owner: String
-        let expiresAt: Date
+        /// Seconds of the continuous clock.
+        let expiresAt: TimeInterval
     }
 
     private struct Candidate {
@@ -70,41 +78,31 @@ public final class AppGroupTokenLease: TokenLease {
         case failed
     }
 
-    private enum Claim {
-        case won
-        case busy
-        case unavailable
-    }
-
-    /// Odd: a lone taker whose path holds the live file ends with it back in the name, even if it cannot read.
-    private static let putBackSwaps = 201
-    private static let putBackPause: useconds_t = 10_000
-    /// What a put-back may take past its caller's deadline, and all a release may take. A refresh
-    /// spends it once, barring a second stall past it: a retake that wins has no put-back, and one
-    /// that answers busy has lost the name, so its release has nothing to swap. That 12.5 s worst
-    /// case must stay under JavaScript's 13 s call timeout.
-    private static let putBackFloor: Duration = .milliseconds(500)
-
     private let directory: URL
-    private let now: @Sendable () -> Date
+    private let uptime: @Sendable () -> TimeInterval
     private let rename: @Sendable (String, String, UInt32) -> Int32
 
-    public convenience init(containerURL: URL, now: @escaping @Sendable () -> Date = { Date() }) {
-        self.init(containerURL: containerURL, now: now, rename: Self.systemRename)
+    public convenience init(containerURL: URL) {
+        self.init(containerURL: containerURL, uptime: Self.continuousUptime, rename: Self.systemRename)
     }
 
     /// - Parameter rename: `renamex_np`, answering 0 or the errno; a test replaces it to force a race.
-    init(
-        containerURL: URL, now: @escaping @Sendable () -> Date = { Date() },
-        rename: @escaping @Sendable (String, String, UInt32) -> Int32
+    package init(
+        containerURL: URL, uptime: @escaping @Sendable () -> TimeInterval = AppGroupTokenLease.continuousUptime,
+        rename: @escaping @Sendable (String, String, UInt32) -> Int32 = AppGroupTokenLease.systemRename
     ) {
         directory = containerURL.appendingPathComponent("push-handoff/leases", isDirectory: true)
-        self.now = now
+        self.uptime = uptime
         self.rename = rename
     }
 
-    static let systemRename: @Sendable (String, String, UInt32) -> Int32 = { from, to, flags in
+    package static let systemRename: @Sendable (String, String, UInt32) -> Int32 = { from, to, flags in
         renamex_np(from, to, flags) == 0 ? 0 : errno
+    }
+
+    /// Since boot, counting sleep, never adjusted: the same value in every process.
+    package static let continuousUptime: @Sendable () -> TimeInterval = {
+        TimeInterval(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)) / 1_000_000_000
     }
 
     public func take(_ account: String, lifetime: TimeInterval, wait: TimeInterval) async -> LeaseTake {
@@ -112,7 +110,7 @@ public final class AppGroupTokenLease: TokenLease {
         let clock = ContinuousClock()
         let deadline = clock.now + .seconds(wait)
         while true {
-            let answer = attempt(account, lifetime: lifetime, putBackUntil: deadline)
+            let answer = attempt(account, lifetime: lifetime)
             guard answer == .busy else { return answer }
             let left = clock.now.duration(to: deadline)
             guard left > .zero else { return .busy }
@@ -125,22 +123,25 @@ public final class AppGroupTokenLease: TokenLease {
     }
 
     public func holds(_ ticket: LeaseTicket) -> Bool {
-        guard case .contents(let data) = read(leaseURL(ticket.account)), let body = decoded(data) else { return false }
-        return body.owner == ticket.owner && body.expiresAt > now()
+        guard generations(ticket.account)?.max() == ticket.generation,
+              case .contents(let data) = read(leaseURL(ticket.account, ticket.generation)),
+              let body = decoded(data)
+        else { return false }
+        return body.owner == ticket.owner && !isStale(body)
     }
 
     public func release(_ ticket: LeaseTicket) {
-        let lease = leaseURL(ticket.account)
-        guard case .contents(let mine) = read(lease), decoded(mine)?.owner == ticket.owner,
-              let expired = writeCandidate(Body(owner: UUID().uuidString, expiresAt: .distantPast), beside: lease)
+        guard isNewest(ticket),
+              let expired = writeCandidate(Body(owner: UUID().uuidString, expiresAt: 0), for: ticket.account)
         else { return }
-        _ = replace(lease, seen: mine, with: expired, putBackUntil: .now)
+        if rename(expired.url.path, leaseURL(ticket.account, ticket.generation + 1).path, UInt32(RENAME_EXCL)) != 0 {
+            unlink(expired.url.path)
+        }
     }
 
     public func discard(_ ticket: LeaseTicket) {
-        let lease = leaseURL(ticket.account)
-        guard case .contents(let mine) = read(lease), decoded(mine)?.owner == ticket.owner else { return }
-        unlink(lease.path)
+        guard isNewest(ticket), let all = generations(ticket.account) else { return }
+        for generation in all { unlink(leaseURL(ticket.account, generation).path) }
     }
 
     /// Leaves another taker's candidate alone: its rename would otherwise fail as a platform refusal.
@@ -152,85 +153,85 @@ public final class AppGroupTokenLease: TokenLease {
     }
 
     /// Reads first, so polling a held lease writes nothing.
-    private func attempt(
-        _ account: String, lifetime: TimeInterval, putBackUntil limit: ContinuousClock.Instant
-    ) -> LeaseTake {
-        let lease = leaseURL(account)
-        let seen: Data?
-        switch read(lease) {
-        case .failed:
-            return .unavailable
-        case .absent:
-            seen = nil
-        case .contents(let data):
-            guard isStale(data) else { return .busy }
-            seen = data
+    private func attempt(_ account: String, lifetime: TimeInterval) -> LeaseTake {
+        guard let found = generations(account) else { return .unavailable }
+        let seen = found.max() ?? 0
+        if seen > 0 {
+            switch read(leaseURL(account, seen)) {
+            case .failed: return .unavailable
+            // Removed by the taker of a higher number since the listing.
+            case .absent: return .busy
+            case .contents(let data):
+                guard decoded(data).map(isStale) ?? true else { return .busy }
+            }
         }
         let owner = UUID().uuidString
-        // Above the longest lifetime a lease would read as a clock change, and be taken at once.
-        let expiresAt = now() + min(lifetime, TokenBudgets.longestLifetime)
-        guard let candidate = writeCandidate(Body(owner: owner, expiresAt: expiresAt), beside: lease) else {
+        // Above the longest lifetime a lease would read as a restart, and be taken at once.
+        let expiresAt = uptime() + min(lifetime, TokenBudgets.longestLifetime)
+        guard let candidate = writeCandidate(Body(owner: owner, expiresAt: expiresAt), for: account) else {
             return .unavailable
         }
-        switch seen.map({ replace(lease, seen: $0, with: candidate, putBackUntil: limit) })
-            ?? create(lease, with: candidate) {
-        case .won: return .taken(LeaseTicket(account: account, owner: owner))
-        case .busy: return .busy
-        case .unavailable: return .unavailable
-        }
-    }
-
-    private func create(_ lease: URL, with candidate: Candidate) -> Claim {
-        let result = rename(candidate.url.path, lease.path, UInt32(RENAME_EXCL))
-        if result == 0 { return .won }
-        unlink(candidate.url.path)
-        return result == EEXIST ? .busy : .unavailable
-    }
-
-    /// Swaps `candidate` into the lease's name. Its path then holds what was there, and that is
-    /// the only copy: nobody else can get this file, so only one process wins a stale lease.
-    private func replace(
-        _ lease: URL, seen: Data, with candidate: Candidate, putBackUntil limit: ContinuousClock.Instant
-    ) -> Claim {
-        let result = rename(candidate.url.path, lease.path, UInt32(RENAME_SWAP))
+        let claimed = leaseURL(account, seen + 1)
+        let result = rename(candidate.url.path, claimed.path, UInt32(RENAME_EXCL))
         guard result == 0 else {
             unlink(candidate.url.path)
-            return result == ENOENT ? .busy : .unavailable
+            return result == EEXIST ? .busy : .unavailable
         }
-        if case .contents(seen) = read(candidate.url) {
-            unlink(candidate.url.path)
-            return .won
+        guard let all = generations(account) else {
+            unlink(claimed.path)
+            return .unavailable
         }
-        putBack(lease, candidate, until: limit)
-        return .busy
+        guard all.max() == seen + 1 else {
+            unlink(claimed.path)
+            return .busy
+        }
+        for generation in all where generation <= seen { unlink(leaseURL(account, generation).path) }
+        removeOrphanedCandidates(account)
+        return .taken(LeaseTicket(account: account, owner: owner, generation: seen + 1))
     }
 
-    /// A live holder was swapped out by mistake, so it goes back. Takers doing this at once can
-    /// finish in any order and leave one another's files in each other's paths. Each therefore
-    /// swaps until its path holds its own file again, and when every taker has its own, the file
-    /// left in the lease's name is the live holder's.
-    private func putBack(_ lease: URL, _ candidate: Candidate, until limit: ContinuousClock.Instant) {
-        let limit = max(limit, ContinuousClock.now + Self.putBackFloor)
-        for swap in 1...Self.putBackSwaps {
-            guard rename(candidate.url.path, lease.path, UInt32(RENAME_SWAP)) == 0 else { return }
-            if case .contents(candidate.contents) = read(candidate.url) {
-                unlink(candidate.url.path)
-                return
-            }
-            // Only on an odd swap, for the reason at `putBackSwaps`.
-            if !swap.isMultiple(of: 2), ContinuousClock.now >= limit { break }
-            // This taker's file is in another's path, so swapping again cannot help until that one
-            // runs. Without a pause the swaps run out while it is off the CPU for about 2 ms.
-            usleep(Self.putBackPause)
-        }
-        // shortcut: a taker dead or stalled past the limit can strand the live lease, what is in
-        // this path stays behind as one small file, and a release's expired file can be taken while
-        // it is in the name. If devices show any of these, move to generation-named files made with
-        // `RENAME_EXCL`, which never swap a live lease out or put an expired file in its place.
+    /// The ticket's file is still the newest and still its owner's, expired or not.
+    private func isNewest(_ ticket: LeaseTicket) -> Bool {
+        guard generations(ticket.account)?.max() == ticket.generation,
+              case .contents(let data) = read(leaseURL(ticket.account, ticket.generation))
+        else { return false }
+        return decoded(data)?.owner == ticket.owner
     }
 
-    private func writeCandidate(_ body: Body, beside lease: URL) -> Candidate? {
-        let url = lease.appendingPathExtension(UUID().uuidString)
+    /// A taker killed between writing its candidate and claiming leaves it. One that old can't be
+    /// in use: no take lasts longer than a lease. The wall clock is enough for tidying.
+    private func removeOrphanedCandidates(_ account: String) {
+        let prefix = Self.hash(account) + ".lease."
+        let cutoff = Date().addingTimeInterval(-TokenBudgets.longestLifetime)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in names where name.hasPrefix(prefix) {
+            let path = directory.appendingPathComponent(name).path
+            guard let modified = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date,
+                  modified < cutoff
+            else { continue }
+            unlink(path)
+        }
+    }
+
+    /// The account's lease numbers, empty when there are none; nil when the directory can't be listed.
+    private func generations(_ account: String) -> [UInt64]? {
+        let prefix = Self.hash(account) + "."
+        let names: [String]
+        do {
+            names = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        } catch CocoaError.fileReadNoSuchFile {
+            return []
+        } catch {
+            return nil
+        }
+        return names.compactMap { name in
+            guard name.hasPrefix(prefix), name.hasSuffix(".lease") else { return nil }
+            return UInt64(name.dropFirst(prefix.count).dropLast(".lease".count))
+        }
+    }
+
+    private func writeCandidate(_ body: Body, for account: String) -> Candidate? {
+        let url = directory.appendingPathComponent(Self.hash(account) + ".lease." + UUID().uuidString)
         do {
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             var excluded = directory
@@ -266,16 +267,17 @@ public final class AppGroupTokenLease: TokenLease {
         try? JSONDecoder().decode(Body.self, from: data)
     }
 
-    /// Undecodable, expired, or further ahead than any lease can be, which means the clock moved
-    /// back: such a lease must not look held for hours.
-    private func isStale(_ data: Data) -> Bool {
-        guard let body = decoded(data) else { return true }
-        let now = now()
+    /// Expired, or further ahead than any lease can be, which means the device restarted.
+    private func isStale(_ body: Body) -> Bool {
+        let now = uptime()
         return body.expiresAt <= now || body.expiresAt > now + TokenBudgets.longestLifetime
     }
 
-    private func leaseURL(_ account: String) -> URL {
-        let hash = SHA256.hash(data: Data(account.utf8)).map { String(format: "%02x", $0) }.joined()
-        return directory.appendingPathComponent(hash + ".lease")
+    private func leaseURL(_ account: String, _ generation: UInt64) -> URL {
+        directory.appendingPathComponent("\(Self.hash(account)).\(generation).lease")
+    }
+
+    private static func hash(_ account: String) -> String {
+        SHA256.hash(data: Data(account.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }

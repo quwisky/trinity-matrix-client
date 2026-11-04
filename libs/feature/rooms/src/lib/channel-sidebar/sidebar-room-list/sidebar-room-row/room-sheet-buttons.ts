@@ -55,15 +55,19 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
       handler: act('mark-unread'),
     });
   }
+  const notify = buttons.length;
   for (const [mode, text, icon] of NOTIFY_CHOICES) {
     if (mode === c.mode) continue;
     buttons.push({
       text,
       icon,
+      cardBefore: buttons.length === notify,
       testId: `sheet-room-notify-${mode}`,
       handler: () => emit({ kind: 'notify', room, mode }),
     });
   }
+  // Removing, reporting and leaving make the last group.
+  const leaving = buttons.length;
   // The kebab explains a refusal in a tooltip; a sheet row has no hint, so the reason goes in the label, and a row that cannot say why is left out.
   if (c.spaceActive && (c.canCurate || c.curateReason)) {
     buttons.push({
@@ -96,5 +100,6 @@ export function roomSheetButtons(c: RoomSheetContext): ActionSheetButton[] {
     },
     { text: 'Cancel', role: 'cancel' },
   );
+  buttons[leaving] = { ...buttons[leaving], cardBefore: true };
   return buttons;
 }

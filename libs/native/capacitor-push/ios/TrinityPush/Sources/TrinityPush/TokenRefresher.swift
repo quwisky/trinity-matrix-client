@@ -28,18 +28,28 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
     private let lease: TokenLease
     private let client: TokenGrantClient
     private let now: @Sendable () -> Date
+    private let uptime: @Sendable () -> TimeInterval
     private let pendingLock = NSLock()
     // A pair the vault would not take. It lives as long as this process, and `current` reads it
     // without the lease.
     private var pending: [String: Unsaved] = [:]
 
-    public init(
+    public convenience init(
         vault: TokenVault, lease: TokenLease, client: TokenGrantClient, now: @escaping @Sendable () -> Date = { Date() }
+    ) {
+        self.init(vault: vault, lease: lease, client: client, now: now, uptime: AppGroupTokenLease.continuousUptime)
+    }
+
+    /// - Parameter uptime: the lease's clock, which bounds the budget too: the wall clock can step back.
+    package init(
+        vault: TokenVault, lease: TokenLease, client: TokenGrantClient, now: @escaping @Sendable () -> Date,
+        uptime: @escaping @Sendable () -> TimeInterval
     ) {
         self.vault = vault
         self.lease = lease
         self.client = client
         self.now = now
+        self.uptime = uptime
     }
 
     /// One instance per process: every caller in it must see the same unsaved pair.
@@ -72,6 +82,9 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         _ account: String, _ lineage: String, _ tokenSeen: String, _ budget: TimeInterval, recordsRefusal: Bool
     ) async -> TokenRefreshResult {
         let deadline = now().addingTimeInterval(budget)
+        let end = uptime() + budget
+        // A wall clock stepped back must not stretch the budget past the lease, which runs on `uptime`.
+        let left = { [now, uptime] in min(deadline.timeIntervalSince(now()), end - uptime()) }
         var ticket: LeaseTicket
         switch await lease.take(account, lifetime: budget + TokenBudgets.leaseMargin, wait: budget) {
         case .taken(let taken): ticket = taken
@@ -98,15 +111,21 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         if Task.isCancelled { return .transient }
         // With less left the answer can be lost after the provider spends the token, and the next
         // refresh is then refused, which ends a live session.
-        if deadline.timeIntervalSince(now()) < TokenBudgets.grantFloor { return .transient }
+        if left() < TokenBudgets.grantFloor { return .transient }
+        // Suspended past the lease's expiry since the read: another process may have spent this
+        // refresh token, so start again under a new lease.
+        guard lease.holds(ticket) else {
+            return await refreshUnderLease(
+                account, lineage, tokenSeen, left(), recordsRefusal: recordsRefusal)
+        }
         let started = now()
-        switch await client.grant(record, deadline: deadline) {
+        switch await client.grant(record, deadline: now().addingTimeInterval(left())) {
         case .failed:
             return .transient
         case .refused:
             // After a lapse the refusal may be another process's overlap: only the next try can tell.
             if recordsRefusal && !lease.holds(ticket) { return .transient }
-            guard let retaken = await retake(ticket, account, deadline) else { return .transient }
+            guard let retaken = await retake(ticket, account, left()) else { return .transient }
             ticket = retaken
             switch vault.read(account) {
             case .absent: return .gone
@@ -126,7 +145,7 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
             let next = record.rotated(access, refresh, expiresAt: expiresIn.map { started.addingTimeInterval($0) })
             // Tokens in hand are never dropped: without the lease, still compare and write. The old
             // token is spent, and a writer racing this compare is far rarer than losing the answer.
-            if let retaken = await retake(ticket, account, deadline) { ticket = retaken }
+            if let retaken = await retake(ticket, account, left()) { ticket = retaken }
             switch vault.read(account) {
             case .absent: return .gone
             case .unavailable: return keepUnsaved(account, base: onDisk, next)
@@ -253,9 +272,9 @@ public final class TokenRefresher: PushTokenRefreshing, @unchecked Sendable {
         }
     }
 
-    private func retake(_ ticket: LeaseTicket, _ account: String, _ deadline: Date) async -> LeaseTicket? {
+    private func retake(_ ticket: LeaseTicket, _ account: String, _ left: TimeInterval) async -> LeaseTicket? {
         if lease.holds(ticket) { return ticket }
-        let wait = max(deadline.timeIntervalSince(now()), Self.retakeFloor)
+        let wait = max(left, Self.retakeFloor)
         guard case .taken(let retaken) = await lease.take(
             account, lifetime: wait + TokenBudgets.leaseMargin, wait: wait)
         else { return nil }

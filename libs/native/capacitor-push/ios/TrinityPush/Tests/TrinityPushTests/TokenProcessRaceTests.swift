@@ -132,7 +132,73 @@ final class TokenProcessRaceTests: XCTestCase {
         XCTAssertEqual(try stored().accessToken, "race-access-3")
     }
 
+    /// The app froze after its read under the lease, before its grant, past the lease's expiry. The
+    /// push took the lapsed lease and rotated. Waking, the app must see it no longer holds the lease
+    /// and send nothing: the token it read is spent.
+    func testAHolderSuspendedPastItsExpirySendsNoSpentToken() throws {
+        let app = try start("app", account, firstAccess, "0.2", "stop-after-read")
+        XCTAssertEqual(app.line(), "ready")
+        app.say("go")
+        XCTAssertEqual(app.line(), "read")
+        Thread.sleep(forTimeInterval: 0.3)
+
+        XCTAssertEqual(try render(with: startPush()), "hello")
+        app.resume()
+
+        XCTAssertEqual(app.line(), "current")
+        XCTAssertEqual(provider.counts, .init(grants: 1))
+        XCTAssertEqual(try stored().accessToken, "race-access-1")
+    }
+
+    /// The wall clock jumps an hour ahead while the app holds the lease. The push must still find
+    /// it held, wait, and take the app's pair: the lease's expiry runs on a clock no one can set.
+    func testAWallClockJumpDoesNotHandOverALiveLease() throws {
+        let app = try start("app", account, firstAccess, "8", "stop-after-read")
+        XCTAssertEqual(app.line(), "ready")
+        app.say("go")
+        XCTAssertEqual(app.line(), "read")
+
+        let push = try start("push", account, provider.url.absoluteString, "3600")
+        XCTAssertEqual(push.line(), "ready")
+        push.say("go")
+        Thread.sleep(forTimeInterval: 0.5)
+        app.resume()
+
+        XCTAssertEqual(app.line(), "rotated", "the holder made the grant")
+        XCTAssertEqual(push.line(), "hello")
+        XCTAssertEqual(provider.counts, .init(grants: 1))
+    }
+
+    /// A taker read an expired lease, a fresh holder took it, and the taker was killed right after
+    /// its own rename. The fresh holder's lease must still be held for its whole lifetime.
+    func testATakerKilledAfterItsRenameLeavesTheLiveLeaseHeld() throws {
+        XCTAssertEqual(try runLeaseProbe(lifetime: 0), "taken")
+        let taker = try start("stalled-taker", account, "0.2")
+        XCTAssertEqual(taker.line(), "read")
+        XCTAssertEqual(try runLeaseProbe(lifetime: 30), "taken")
+
+        taker.say("go")
+        XCTAssertEqual(taker.line(), "", "the taker died")
+        Thread.sleep(forTimeInterval: 0.4)
+
+        XCTAssertEqual(try runLeaseProbe(lifetime: 30), "busy", "the fresh holder still holds it")
+    }
+
     // MARK: Helpers
+
+    /// The probe's default role: takes the lease without waiting, and exits without releasing.
+    private func runLeaseProbe(lifetime: TimeInterval) throws -> String {
+        let bundle = try XCTUnwrap(Bundle.allBundles.first { $0.bundlePath.hasSuffix(".xctest") })
+        let process = Process()
+        process.executableURL = bundle.bundleURL.deletingLastPathComponent().appendingPathComponent("token-lease-probe")
+        process.arguments = [container.path, account, String(lifetime), "0"]
+        let output = Pipe()
+        process.standardOutput = output
+        try process.run()
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     private var vaultFile: URL { container.appendingPathComponent("vault.json") }
 

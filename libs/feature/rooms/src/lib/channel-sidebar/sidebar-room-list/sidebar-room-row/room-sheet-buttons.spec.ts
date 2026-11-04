@@ -36,6 +36,18 @@ describe('roomSheetButtons', () => {
     expect(list.at(-2)?.variant).toBe('danger');
   });
 
+  it('starts a group at the notification choices and at the way out', () => {
+    const starts = (list: { text: string; cardBefore?: boolean }[]) =>
+      list.filter((b) => b.cardBefore).map((b) => b.text);
+    expect(starts(buttons().list)).toEqual([
+      'Mute except mentions & keywords',
+      'Report room',
+    ]);
+    expect(
+      starts(buttons({ canReport: false, spaceActive: true }).list),
+    ).toEqual(['Mute except mentions & keywords', 'Remove from space']);
+  });
+
   it('offers Mark as read for an unread room and nothing for the open one', () => {
     expect(
       texts(buttons({ room: roomSummary({ hasUnread: true }) }).list),

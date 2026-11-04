@@ -163,6 +163,17 @@ test.describe('Sidebar on a touch device', () => {
     expect(
       await page.evaluate(() => window.getSelection()?.toString() ?? ''),
     ).toBe('');
+    // The room's own state, its notifications and the way out each make a card.
+    const cards = page.getByTestId('action-sheet-group');
+    await expect(cards).toHaveCount(4);
+    await expect(
+      cards.nth(0).getByTestId('sheet-room-favourite'),
+    ).toBeVisible();
+    await expect(
+      cards.nth(1).locator('[data-testid^=sheet-room-notify-]'),
+    ).toHaveCount(2);
+    await expect(cards.nth(2).getByTestId('sheet-room-leave')).toBeVisible();
+    await expect(cards.nth(3)).toHaveText('Cancel');
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByTestId('sheet-room-leave')).toHaveCount(0);
 

@@ -164,6 +164,11 @@ test.describe('Modal surfaces', () => {
       const menu = page.getByRole('menu', { name: 'New message' });
       await expect(menu).toBeVisible();
       await expect(page.getByTestId('sheet-handle')).toHaveCount(0);
+      // The phone sheet's cards stay off the menu: compact rows, no cards.
+      await expect(menu.getByTestId('action-sheet-group')).toHaveCount(0);
+      for (const item of await menu.getByRole('menuitem').all()) {
+        expect((await item.boundingBox())!.height).toBeLessThan(44);
+      }
       await expect(menu.getByRole('menuitem', { name: 'Cancel' })).toHaveCount(
         0,
       );
@@ -255,6 +260,37 @@ test.describe('Modal surfaces', () => {
         await page.keyboard.press('Escape');
         await expect(menu).toBeHidden();
       }
+    });
+  });
+
+  test.describe('on a touch-screen laptop', () => {
+    test.use({
+      ...DESIGN_VIEWPORTS['desktop-standard'],
+      viewport: { width: 1280, height: 800 },
+      hasTouch: true,
+    });
+
+    test('opens the new-chat actions as a plain desktop sheet, without the phone cards', async ({
+      page,
+      request,
+    }) => {
+      await signIn(page, request, 'laptop');
+      // A coarse pointer refuses the menu; a desktop OS above md keeps the plain rows.
+      expect(
+        await page.evaluate(() => matchMedia('(pointer: coarse)').matches),
+      ).toBe(true);
+      const plus = page.getByRole('button', {
+        name: 'New room or direct message',
+      });
+      await expect(plus).toBeVisible({ timeout: 30_000 });
+      await plus.click();
+      const actions = page.getByRole('dialog', { name: 'New message' });
+      await expect(actions.getByTestId('action-sheet-surface')).toBeVisible();
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await expect(actions.getByTestId('action-sheet-group')).toHaveCount(0);
+      await expect(
+        actions.getByRole('button', { name: 'Create a room' }),
+      ).toHaveAttribute('data-trn-presentation', 'ghost');
     });
   });
 

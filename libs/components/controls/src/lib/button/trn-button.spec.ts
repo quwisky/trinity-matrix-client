@@ -23,6 +23,14 @@ class HostComponent {}
 class LoadingHostComponent {}
 
 @Component({
+  imports: [TrnButton],
+  template: `<button trnBtn shape="row" class="justify-center">
+    Centred
+  </button>`,
+})
+class OverrideHostComponent {}
+
+@Component({
   imports: [TrnButton, TrnIconButton],
   template: `
     <button trnBtn size="md">Label</button>
@@ -81,6 +89,20 @@ const INLINE_CLASSES = [
 ];
 
 describe('TrnButton', () => {
+  it('keeps a host layout class that Helm also emits, after another write to the class list', async () => {
+    // Helm's base emits `justify-center` and the row shape `justify-start`. Any outside write
+    // to `class` (a CDK focus class, a binding) re-reads the host classes, which once dropped
+    // the host's copy and let the row shape win.
+    const { fixture } = await render(OverrideHostComponent);
+    const button = fixture.nativeElement.querySelector('button') as HTMLElement;
+    button.classList.add('cdk-focused');
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(button.classList).toContain('justify-center');
+    expect(button.classList).not.toContain('justify-start');
+    expect(button.classList).toContain('cdk-focused');
+  });
+
   it('applies through the directive', async () => {
     @Component({
       imports: [TrnButton],
