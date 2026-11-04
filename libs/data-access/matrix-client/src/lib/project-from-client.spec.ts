@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { firstValueFrom, Subject } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { projectFromClient } from './project-from-client';
 import type { ProjectFromClientConfig } from './project-from-client';
@@ -85,6 +85,11 @@ function harness(
     tick,
   };
 }
+
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
 
 describe('projectFromClient', () => {
   it('exposes a cold owned lifetime that releases on unsubscribe', () => {

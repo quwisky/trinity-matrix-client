@@ -371,6 +371,12 @@ export class ProjectionRuntime {
         generation: attempt.generation,
         error: failure.error,
       };
+      if (typeof ngDevMode !== 'undefined' && ngDevMode) {
+        console.warn(
+          `[projection] rebuild failed: ${entry.definition.id}`,
+          failure.error,
+        );
+      }
     } else {
       entry.acknowledgedGeneration = attempt.generation;
     }

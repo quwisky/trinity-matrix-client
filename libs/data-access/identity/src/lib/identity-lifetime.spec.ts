@@ -14,6 +14,11 @@ import {
 } from './identity-lifetime';
 import { IdentityPresenceService } from './identity-presence.service';
 
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
 describe('IdentityLifetime', () => {
   const activeAccountId = signal<string | null>('@a:example.org');
   const demanded = signal(true);

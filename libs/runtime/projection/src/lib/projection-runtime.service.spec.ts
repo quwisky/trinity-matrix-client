@@ -1,5 +1,5 @@
 import { EMPTY, Observable, Subject, firstValueFrom, throwError } from 'rxjs';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
 import { ProjectionRuntime } from './projection-runtime.service';
 import type {
   ProjectionDefinition,
@@ -27,6 +27,11 @@ function definition(
     ...overrides,
   };
 }
+
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
 
 describe('ProjectionRuntime', () => {
   it('accepts only the four bounded projection scopes', () => {
@@ -269,6 +274,21 @@ describe('ProjectionRuntime', () => {
     await expect(
       firstValueFrom(runtime.waitFor(accountScope('@alice:example.org'))),
     ).rejects.toBe(defect);
+  });
+
+  it('warns in development mode, naming the projection and the error, when a rebuild fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const runtime = new ProjectionRuntime();
+    const defect = new Error('broken adapter');
+    runtime.activate(definition({ reconcile: () => throwError(() => defect) }));
+    await expect(
+      firstValueFrom(runtime.waitFor(accountScope('@alice:example.org'))),
+    ).rejects.toBe(defect);
+
+    expect(warn).toHaveBeenCalledWith(
+      '[projection] rebuild failed: test.projection',
+      defect,
+    );
   });
 
   it('isolates a named readiness barrier from failed sibling projections', async () => {

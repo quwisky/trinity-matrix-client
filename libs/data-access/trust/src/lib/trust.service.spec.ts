@@ -40,6 +40,11 @@ vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
 // A valid recovery key (round-trips through decodeRecoveryKey to 32 bytes).
 const VALID_KEY = encodeRecoveryKey(new Uint8Array(32)) as string;
 
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
 describe('TrustService', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
