@@ -33,8 +33,11 @@ const frontPane = (): Promise<{ name: string; top: number } | null> =>
     return null;
   });
 
-/** Scroll the pane down, tap the status bar the way a finger does, and wait for the top. */
-async function expectStatusTapScrollsToTop(): Promise<void> {
+/**
+ * Scroll the pane down by more than `minScroll` px, tap the status bar the way a finger does,
+ * and wait for the top.
+ */
+async function expectStatusTapScrollsToTop(minScroll = 200): Promise<void> {
   await browser.execute(() => {
     let el = document.elementFromPoint(
       window.innerWidth / 2,
@@ -53,9 +56,12 @@ async function expectStatusTapScrollsToTop(): Promise<void> {
       el = el.parentElement;
     }
   });
-  await browser.waitUntil(async () => ((await frontPane())?.top ?? 0) > 200, {
-    timeoutMsg: 'the pane never scrolled down',
-  });
+  await browser.waitUntil(
+    async () => ((await frontPane())?.top ?? 0) > minScroll,
+    {
+      timeoutMsg: 'the pane never scrolled down',
+    },
+  );
 
   // A timeline that reaches its top loads older history and keeps the reader's row, so its
   // scrollTop leaves 0 again within a few frames: watch for the top being reached, not kept.
@@ -116,7 +122,8 @@ describe('status bar tap', function () {
     await expect($('[role="dialog"][aria-label="Settings"]')).toBeDisplayed({
       wait: 20_000,
     });
-    await expectStatusTapScrollsToTop();
+    // The Settings section list fits its sheet and scrolls less than 200 px on a tall phone.
+    await expectStatusTapScrollsToTop(40);
     await tap('[data-testid="close-settings"]');
 
     const roomButton = `//button[contains(@class,"channel")][contains(.,"${roomName}")]`;

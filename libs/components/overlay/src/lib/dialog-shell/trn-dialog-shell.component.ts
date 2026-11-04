@@ -48,6 +48,7 @@ export class TrnDialogActions {}
   styleUrl: './trn-dialog-shell.component.scss',
   host: {
     '[attr.data-presentation]': 'layout()',
+    '[attr.data-sheet-handle]': "handled() ? '' : null",
     '[style.--trn-overlay-block-start]': 'blockStart',
   },
 })
@@ -69,6 +70,10 @@ export class TrnDialogShellComponent {
 
   /** A sheet the dialog service opened renders through the sheet frame, handle and swipe included. */
   protected readonly framed = computed(() => this.layout() === 'sheet');
+  /** The frame draws its handle unless the sheet was opened `disableClose`. */
+  protected readonly handled = computed(
+    () => this.framed() && !this.ref?.disableClose,
+  );
 
   readonly title = input.required<string>();
   readonly description = input<string>();

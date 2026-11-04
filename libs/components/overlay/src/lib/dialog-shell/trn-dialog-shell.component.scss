@@ -22,6 +22,12 @@
     padding-top: max(var(--trinity-space-5), env(safe-area-inset-top));
   }
 
+  // The sheet frame's handle already spaces the header from the top edge; without it the
+  // header keeps its inset clear of the rounded corners.
+  :host([data-sheet-handle]) .dialog-shell__header {
+    padding-top: var(--trinity-space-2);
+  }
+
   .dialog-shell__title {
     min-width: 0;
     flex: 1;

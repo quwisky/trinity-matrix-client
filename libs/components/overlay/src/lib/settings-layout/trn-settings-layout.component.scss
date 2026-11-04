@@ -341,13 +341,22 @@
     padding-inline: var(--settings-layout-gutter);
   }
 
+  // A dialog or sheet already stops below the status bar, so its panes don't pad for it again.
+  :host(:not([data-presentation='fullscreen']))
+    .settings-layout[data-compact='true']
+    :is(.settings-layout__nav, .settings-layout__column) {
+    padding-block-start: var(--settings-layout-inset);
+  }
+
   :host([data-presentation='dialog']) .settings-layout {
     block-size: min(44rem, calc(var(--settings-layout-viewport) - 6rem));
   }
 
-  // The sheet's own cap, less its header band.
+  // A sheet asks for its whole cap and shrinks into the body that its header band, home
+  // indicator inset and keyboard leave, so only the panes scroll.
   :host([data-presentation='sheet']) .settings-layout {
-    block-size: calc(min(90svh, var(--settings-layout-viewport)) - 4rem);
+    block-size: min(90svh, var(--settings-layout-viewport));
+    min-block-size: 0;
   }
 
   :host(:not([data-presentation='fullscreen'])) .settings-layout__nav {
