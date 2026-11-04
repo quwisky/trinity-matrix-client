@@ -5,7 +5,7 @@ import { ProjectionRuntime } from '@trinity/runtime/projection';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { lastValueFrom } from 'rxjs';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NotificationRuleHealth } from './notification-health.models';
 import { NotificationLifetime } from './notification-lifetime';
 import { RoomNotificationsService } from './room-notifications.service';
@@ -14,6 +14,11 @@ interface FaultableRoomNotifications {
   rebindClients(): void;
   retryProjection(): void;
 }
+
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
 
 describe('NotificationLifetime with the real Room-rule projection', () => {
   afterEach(() => TestBed.resetTestingModule());

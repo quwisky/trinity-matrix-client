@@ -12,6 +12,11 @@ import { TrustLifetime, type TrustLifetimeEvent } from './trust-lifetime';
 import { TrustService } from './trust.service';
 import { TrustVerificationService } from './trust-verification.service';
 
+// A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+});
+
 describe('TrustLifetime', () => {
   const activeAccountId = signal<string | null>('@a:example.org');
   let runtime: ProjectionRuntime;
