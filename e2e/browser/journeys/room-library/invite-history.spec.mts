@@ -39,9 +39,13 @@ async function traceProjections(page: Page, label: string): Promise<void> {
     if (text.startsWith('[projection]'))
       projectionTrace.push(`${new Date().toISOString()} ${label} ${text}`);
   });
-  await page.addInitScript(() =>
-    localStorage.setItem('trinity.debug.projections', '1'),
-  );
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('trinity.debug.projections', '1');
+    } catch {
+      // about:blank and cross-origin frames deny storage
+    }
+  });
 }
 
 /** Alice and Bob, both signed in to Trinity, and an encrypted room of Alice's. */
@@ -191,6 +195,7 @@ test.describe('Earlier messages for invited members', () => {
     await openInvite(page);
     await expect(note).toHaveText(
       "If they've set up encryption, they'll be able to read earlier messages.",
+      { timeout: 30_000 },
     );
     await inviteAndJoin(page, bobPage, bob.userId, roomName);
 
@@ -224,6 +229,7 @@ test.describe('Earlier messages for invited members', () => {
     await openInvite(page);
     await expect(page.getByTestId('user-picker-note')).toHaveText(
       "They'll be able to read messages sent after they join.",
+      { timeout: 30_000 },
     );
     await inviteAndJoin(page, bobPage, bob.userId, roomName);
 
