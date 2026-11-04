@@ -1,0 +1,100 @@
+<!-- The scroller, tiles included: at the largest text size the tiles alone outgrow the sheet. min-h-0 because a flex child will not shrink below its content
+     height without it, which would push the max-height back off the screen. -->
+<div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
+  @if (data().reactions?.length || tiles().length) {
+    <!-- Equal square tiles (auto-fill, so a lone tile stays tile-sized); below a 44px tile they wrap onto a new line. -->
+    <div
+      class="grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1 px-2.5 pb-4"
+      role="group"
+      aria-label="Quick reactions"
+    >
+      @for (reaction of data().reactions; track reaction.key) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          shape="row"
+          class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0 text-2xl"
+          [attr.data-testid]="'sheet-react-' + reaction.key"
+          (click)="reacted.emit(reaction)"
+        >
+          <!-- Named from content, not aria-label: the visible emoji is part of the name
+             (WCAG 2.5.3 label in name), the hidden prefix says what it does. -->
+          <span class="sr-only">React with</span> {{ reaction.key }}
+        </button>
+      }
+      @for (button of tiles(); track $index) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          shape="row"
+          class="aspect-square min-h-11 justify-center rounded-[var(--trinity-radius-xl)] px-0"
+          [disabled]="button.disabled"
+          [attr.data-testid]="button.testId"
+          (click)="picked.emit(button)"
+        >
+          @if (button.icon) {
+            <trn-icon [name]="button.icon" size="xl" />
+          }
+          <span class="sr-only">{{ button.text }}</span>
+        </button>
+      }
+    </div>
+  }
+  @for (group of groups(); track $index) {
+    @if (!$first) {
+      <div class="h-4" role="separator"></div>
+    }
+    <div
+      class="isolate mx-2.5 flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)]"
+      data-testid="action-sheet-group"
+    >
+      @for (button of group.rows; track $index) {
+        @if (!$first) {
+          <!-- Inset to the label: the row's px-4, the 1.5rem icon and gap-4. Decorative, so
+               it may vanish under forced colours; the cards' gaps still separate the groups. -->
+          <div
+            class="h-px shrink-0 bg-[color:var(--trinity-border-sheet-divider)]"
+            [class.ms-14]="group.icons"
+            [class.ms-4]="!group.icons"
+            data-testid="action-sheet-divider"
+          ></div>
+        }
+        <!-- Height from padding: the touch-target rule fixes min-height at 44px. The focused
+             row rises over its neighbours, which would otherwise cover its ring. -->
+        <button
+          trnBtn
+          shape="row"
+          [variant]="button.variant === 'danger' ? 'danger' : 'secondary'"
+          [presentation]="button.variant === 'danger' ? 'ghost' : 'solid'"
+          class="relative gap-4 rounded-none px-4 py-4 text-base first:rounded-t-[var(--trinity-radius-xl)] last:rounded-b-[var(--trinity-radius-xl)] focus-visible:z-[1]"
+          [disabled]="button.disabled"
+          [attr.data-trn-variant]="button.variant ?? 'neutral'"
+          [attr.data-testid]="button.testId"
+          (click)="picked.emit(button)"
+        >
+          @if (button.icon) {
+            <trn-icon [name]="button.icon" size="xl" />
+          } @else if (group.icons) {
+            <span class="size-6 shrink-0"></span>
+          }
+          <span
+            class="min-w-0 flex-1 wrap-anywhere"
+            data-testid="action-sheet-label"
+            >{{ button.text }}</span
+          >
+          @if (button.submenu) {
+            <trn-icon
+              name="chevron-right"
+              size="lg"
+              variant="muted"
+              class="rtl:-scale-x-100"
+              data-testid="action-sheet-chevron"
+            />
+          }
+        </button>
+      }
+    </div>
+  }
+</div>

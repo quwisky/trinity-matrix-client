@@ -130,6 +130,8 @@ Dialogs, menus, tooltips, and other overlays use the Trinity overlay defaults an
 
 Open every modal surface through `TrnSurfaceService` from `@trinity/components/overlay`. It applies one rule: a bottom sheet on any phone or tablet and below `md`, a centred dialog otherwise, and an anchored menu for an action list opened from a button on a large screen. Pass `align: 'top'` for a dialog whose height changes while it is open, such as the tabbed member card: on a large screen it hangs 10vh below the top, so its header stays still, and its height cap shrinks by the same amount; a sheet ignores it. Use `kind: 'fullscreen'` or `'popover'` only for those explicit layouts; side panels keep their own non-modal components. `scripts/surface-service-usage.spec.mjs` keeps the dialog and action-sheet services it wraps inside the overlay library.
 
+On a phone or tablet, an action list's sheet sets its rows in rounded cards on `--trinity-neutral-fill-surface`, with dividers in `--trinity-border-sheet-divider` inset to the label. A row's `separatorBefore` or `cardBefore` starts a new card, and Cancel always gets one of its own. `cardBefore` starts a card without drawing a rule in the menu. `submenu` adds a trailing chevron. `reactionTile` turns the row into the last quick-reaction tile. Anchored menus, and sheets on a desktop OS above `md`, keep the plain rows.
+
 App lock's cover (`trn-app-lock-cover` in Application Runtime) is the one exception. It is a native `<dialog>` opened with `showModal()`, not a `TrnSurfaceService` surface, because it has to do three things a surface can't:
 
 - paint in the first frame of a locked cold start, before any startup stage runs;

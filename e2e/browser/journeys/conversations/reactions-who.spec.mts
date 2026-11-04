@@ -618,3 +618,145 @@ test.describe('Who reacted · Pixel 5 sheet', () => {
       page.keyboard.press('Escape'),
     ));
 });
+
+test.describe('Reaction chip shape on touch', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+  });
+
+  for (const density of ['default', 'compact'] as const) {
+    test(`keeps the pill shape while the finger target stays 44px (${density})`, async ({
+      page,
+      request,
+    }) => {
+      const seeded = await seedReactedMessage(
+        request,
+        session.hs as string,
+        `${testResourceId('shape')}s`,
+      );
+      await login(page, seeded.reader);
+      await openRoom(page, seeded.roomName);
+      const row = page
+        .locator('.scroll .msg', { hasText: seeded.body })
+        .first();
+      await expect(row).toBeVisible({ timeout: 20_000 });
+      await seeded.sendReactions();
+      const chips = row.locator('.reaction');
+      await expect(row.locator('.reaction:not(.reaction--who)')).toHaveCount(
+        seeded.reactionGroupCount,
+        { timeout: 30_000 },
+      );
+      if (density === 'compact') {
+        await page.evaluate(() => {
+          document.documentElement.dataset['density'] = 'compact';
+        });
+      }
+      const tolerance = 0.01;
+      const gap = await chips
+        .first()
+        .evaluate((element) =>
+          parseFloat(getComputedStyle(element.parentElement!).columnGap),
+        );
+      const target = await chips
+        .first()
+        .evaluate((element) =>
+          parseFloat(
+            getComputedStyle(element, '::before').getPropertyValue('height'),
+          ),
+        );
+      expect(target).toBeCloseTo(44, 1);
+
+      const total = await chips.count();
+      for (let index = 0; index < total; index += 1) {
+        const chip = chips.nth(index);
+        await chip.evaluate((element) =>
+          element.scrollIntoView({ block: 'center' }),
+        );
+        const box = (await chip.boundingBox())!;
+        const container = (await row.locator('.reactions').boundingBox())!;
+        expect(box.height).toBeLessThan(36);
+        const radius = await chip.evaluate((element) =>
+          parseFloat(getComputedStyle(element).borderTopLeftRadius),
+        );
+        expect(radius).toBeGreaterThanOrEqual(box.height / 2 - tolerance);
+
+        // The target never leaves the block: it cannot cover the text above, the
+        // receipts below or the bubble edge.
+        const reach = (44 - box.height) / 2;
+        expect(box.y - container.y).toBeGreaterThanOrEqual(reach - tolerance);
+        expect(
+          container.y + container.height - (box.y + box.height),
+        ).toBeGreaterThanOrEqual(reach - tolerance);
+        expect(box.x - container.x).toBeGreaterThanOrEqual(gap / 2 - tolerance);
+        expect(
+          container.x + container.width - (box.x + box.width),
+        ).toBeGreaterThanOrEqual(gap / 2 - tolerance);
+
+        const hitFrom = (x: number, y: number) =>
+          chip.evaluate(
+            (element, [px, py]) => {
+              const found = document.elementFromPoint(px, py);
+              return found === element;
+            },
+            [x, y],
+          );
+        const centreX = box.x + box.width / 2;
+        const centreY = box.y + box.height / 2;
+        // Inside the 44px target but outside the pill, above and below.
+        for (const dy of [-21, 21]) {
+          expect(
+            await hitFrom(centreX, centreY + dy),
+            `chip ${index} dy ${dy}`,
+          ).toBe(true);
+        }
+        // Between two chips of one row every point lands on a reaction, and at the
+        // quarter points on the nearer one (a sub-pixel snap decides the exact middle).
+        if (index + 1 < total) {
+          const next = (await chips.nth(index + 1).boundingBox())!;
+          if (Math.abs(next.y - box.y) < 1) {
+            const left = box.x + box.width;
+            const span = next.x - left;
+            for (const [fraction, nearer] of [
+              [0.25, index],
+              [0.5, null],
+              [0.75, index + 1],
+            ] as const) {
+              const owner = await row.evaluate(
+                (element, [px, py]) => {
+                  const found = document
+                    .elementFromPoint(px, py)
+                    ?.closest('.reaction');
+                  const all = [...element.querySelectorAll('.reaction')];
+                  return found ? all.indexOf(found) : -1;
+                },
+                [left + span * fraction, centreY],
+              );
+              expect(
+                owner,
+                `chip ${index} gap ${fraction}`,
+              ).toBeGreaterThanOrEqual(0);
+              if (nearer !== null && span >= 4 - tolerance) {
+                expect(owner, `chip ${index} gap ${fraction}`).toBe(nearer);
+              }
+            }
+          }
+        }
+      }
+      // The who chip reaches the full target width and nothing scrolls sideways.
+      const who = row.getByTestId('reactions-who');
+      expect((await who.boundingBox())!.width).toBeGreaterThanOrEqual(
+        44 - tolerance,
+      );
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth -
+            document.documentElement.clientWidth,
+        ),
+      ).toBeLessThanOrEqual(1);
+    });
+  }
+});

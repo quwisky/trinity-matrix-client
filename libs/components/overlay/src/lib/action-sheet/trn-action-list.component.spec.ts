@@ -125,6 +125,40 @@ describe('TrnActionListComponent', () => {
       expect(closed).toHaveBeenCalledOnce();
     });
 
+    it('draws no rule for a card break, only for a separator', () => {
+      surfaces.openActions(
+        {
+          buttons: [
+            { text: 'Reply', handler: vi.fn() },
+            { text: 'Quote', cardBefore: true, handler: vi.fn() },
+          ],
+        },
+        { anchor: opener },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menu').querySelectorAll('[role=separator]'),
+      ).toHaveLength(0);
+    });
+
+    it('keeps a reaction-tile row as a menu item', () => {
+      surfaces.openActions(
+        {
+          buttons: [
+            { text: 'More reactions…', reactionTile: true, handler: vi.fn() },
+          ],
+        },
+        { anchor: opener },
+      );
+      tick();
+
+      expect(
+        screen.getByRole('menuitem', { name: 'More reactions…' }),
+      ).toBeTruthy();
+      expect(screen.queryByTestId('action-sheet-group')).toBeNull();
+    });
+
     it('names each reaction from its visible emoji', () => {
       surfaces.openActions(data(), { anchor: opener });
       tick();
@@ -257,6 +291,77 @@ describe('TrnActionListComponent', () => {
       expectReactionNamedFromItsEmoji();
     });
 
+    it('groups the rows into cards at each separator and for Cancel', () => {
+      media.narrow = true;
+      surfaces.openActions(data());
+      tick();
+
+      const cards = screen.getAllByTestId('action-sheet-group');
+      expect(
+        cards.map((card) =>
+          [...card.querySelectorAll('button')].map(
+            (row) => row.dataset['testid'],
+          ),
+        ),
+      ).toEqual([['row-create', 'row-archive'], ['row-leave'], ['row-cancel']]);
+      // A rule between rows inside a card, inset past the icon column; none after the last.
+      const dividers = screen.getAllByTestId('action-sheet-divider');
+      expect(dividers).toHaveLength(1);
+      expect(dividers[0].parentElement).toBe(cards[0]);
+      expect(dividers[0].classList).toContain('ms-14');
+      expect(cards[0].lastElementChild).toBe(screen.getByTestId('row-archive'));
+      expect(
+        screen.getByTestId('row-leave').getAttribute('data-trn-variant'),
+      ).toBe('danger');
+      expect(screen.getByTestId('row-archive')).toBeDisabled();
+    });
+
+    it('marks a row that opens another sheet with a chevron', () => {
+      media.narrow = true;
+      surfaces.openActions({
+        buttons: [
+          {
+            text: 'Format',
+            icon: 'pencil',
+            submenu: true,
+            testId: 'row-format',
+          },
+          { text: 'Poll', icon: 'vote', testId: 'row-poll' },
+        ],
+      });
+      tick();
+
+      const chevrons = screen.getAllByTestId('action-sheet-chevron');
+      expect(chevrons).toHaveLength(1);
+      expect(screen.getByTestId('row-format').contains(chevrons[0])).toBe(true);
+    });
+
+    it('shows a reaction-tile row as the last quick-reaction tile, not a row', () => {
+      media.narrow = true;
+      const more = vi.fn();
+      surfaces.openActions({
+        reactions: [{ key: '👍', handler: vi.fn() }],
+        buttons: [
+          {
+            text: 'More reactions…',
+            icon: 'smile',
+            reactionTile: true,
+            testId: 'row-more',
+            handler: more,
+          },
+          { text: 'Reply', testId: 'row-reply' },
+        ],
+      });
+      tick();
+
+      const tiles = screen.getByRole('group', { name: 'Quick reactions' });
+      const tile = screen.getByRole('button', { name: 'More reactions…' });
+      expect(tiles.lastElementChild).toBe(tile);
+      expect(screen.getAllByTestId('action-sheet-group')).toHaveLength(1);
+      tile.click();
+      expect(more).toHaveBeenCalledOnce();
+    });
+
     it('slides in like every other sheet', () => {
       surfaces.openActions(data());
       tick();
@@ -289,6 +394,31 @@ describe('TrnActionListComponent', () => {
 
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(document.activeElement).toBe(opener);
+    });
+
+    it('keeps the plain rows on a desktop sheet opened without an anchor', () => {
+      surfaces.openActions({
+        ...data(),
+        buttons: [
+          ...data().buttons,
+          { text: 'More reactions…', reactionTile: true, testId: 'row-more' },
+          { text: 'Quote', cardBefore: true, testId: 'row-quote' },
+        ],
+      });
+      tick();
+
+      expect(screen.queryByTestId('action-sheet-group')).toBeNull();
+      expect(
+        screen
+          .getByTestId('row-more')
+          .closest('[aria-label="Quick reactions"]'),
+      ).toBeNull();
+      // Only the separator draws a rule, as before.
+      expect(
+        screen
+          .getByTestId('action-sheet-surface')
+          .querySelectorAll('[role=separator]'),
+      ).toHaveLength(1);
     });
 
     it('leaves focus to the opener when it restores it itself', () => {

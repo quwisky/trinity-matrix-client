@@ -62,53 +62,62 @@
         {{ data().header }}
       </p>
     }
-    @if (data().reactions?.length) {
-      <div
-        class="flex shrink-0 items-center justify-around gap-1 px-1 pb-1.5"
-        role="group"
-        aria-label="Quick reactions"
-      >
-        @for (reaction of data().reactions; track reaction.key) {
+    @if (grouped) {
+      <trn-action-groups
+        [data]="data()"
+        [rows]="rows()"
+        (picked)="onClick($event)"
+        (reacted)="onReact($event)"
+      />
+    } @else {
+      @if (data().reactions?.length) {
+        <div
+          class="flex shrink-0 items-center justify-around gap-1 px-1 pb-1.5"
+          role="group"
+          aria-label="Quick reactions"
+        >
+          @for (reaction of data().reactions; track reaction.key) {
+            <button
+              trnBtn
+              type="button"
+              variant="secondary"
+              presentation="ghost"
+              size="lg"
+              class="min-h-11 min-w-11 px-0 text-xl"
+              [attr.data-testid]="'sheet-react-' + reaction.key"
+              (click)="onReact(reaction)"
+            >
+              <span class="sr-only">React with</span> {{ reaction.key }}
+            </button>
+          }
+        </div>
+      }
+      <!-- The scroller. min-h-0 because a flex child will not shrink below its content
+           height without it, which would push the max-height back off the screen. -->
+      <div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
+        @for (button of rows(); track $index) {
+          @if (button.separatorBefore) {
+            <div class="my-1 h-px bg-border" role="separator"></div>
+          }
           <button
             trnBtn
-            type="button"
-            variant="secondary"
+            [variant]="
+              buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
+            "
             presentation="ghost"
-            size="lg"
-            class="min-h-11 min-w-11 px-0 text-xl"
-            [attr.data-testid]="'sheet-react-' + reaction.key"
-            (click)="onReact(reaction)"
+            class="min-h-11 w-full justify-start gap-3"
+            [disabled]="button.disabled"
+            [attr.data-trn-variant]="buttonVariant(button)"
+            [attr.data-testid]="button.testId"
+            (click)="onClick(button)"
           >
-            <span class="sr-only">React with</span> {{ reaction.key }}
+            @if (button.icon) {
+              <trn-icon [name]="button.icon" />
+            }
+            {{ button.text }}
           </button>
         }
       </div>
     }
-    <!-- The scroller. min-h-0 because a flex child will not shrink below its content
-         height without it, which would push the max-height back off the screen. -->
-    <div class="min-h-0 flex-1 overflow-y-auto pb-1.5">
-      @for (button of rows(); track $index) {
-        @if (button.separatorBefore) {
-          <div class="my-1 h-px bg-border" role="separator"></div>
-        }
-        <button
-          trnBtn
-          [variant]="
-            buttonVariant(button) === 'danger' ? 'danger' : 'secondary'
-          "
-          presentation="ghost"
-          class="min-h-11 w-full justify-start gap-3"
-          [disabled]="button.disabled"
-          [attr.data-trn-variant]="buttonVariant(button)"
-          [attr.data-testid]="button.testId"
-          (click)="onClick(button)"
-        >
-          @if (button.icon) {
-            <trn-icon [name]="button.icon" />
-          }
-          {{ button.text }}
-        </button>
-      }
-    </div>
   </trn-sheet-frame>
 }

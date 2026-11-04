@@ -152,6 +152,30 @@ test.describe('Mobile composer insert sheet', () => {
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
 
+    test('puts Format in its own card with a chevron to its sheet', async ({
+      page,
+    }) => {
+      await openSeededRoom(page);
+      await page.getByTestId('composer-insert').click();
+      const dialog = page.getByRole('dialog', { name: 'Add to message' });
+      await sheetAtRest(dialog.getByTestId('action-sheet-surface'));
+
+      const format = dialog.getByTestId('insert-format');
+      await expect(format.getByTestId('action-sheet-chevron')).toBeVisible();
+      await expect(dialog.getByTestId('action-sheet-chevron')).toHaveCount(1);
+      const formatCard = dialog.getByTestId('action-sheet-group').filter({
+        has: page.getByTestId('insert-format'),
+      });
+      await expect(formatCard.locator('button')).toHaveCount(1);
+      // Attach and capture share the first card.
+      await expect(
+        dialog
+          .getByTestId('action-sheet-group')
+          .first()
+          .getByTestId('insert-attach'),
+      ).toBeVisible();
+    });
+
     test('opens the phone camera from Take photo and stages the shot', async ({
       page,
     }) => {

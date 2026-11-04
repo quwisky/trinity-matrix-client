@@ -439,6 +439,9 @@
     --trinity-surface-overlay: var(--trinity-surface-raised);
     --trinity-surface-overlay-footer: var(--trinity-sidebar);
     --trinity-border-overlay: var(--trinity-border-subtle);
+
+    // A rule between rows of a filled sheet card: the sheet itself showing through.
+    --trinity-border-sheet-divider: var(--trinity-surface-overlay);
     --trinity-surface-card: var(--trinity-surface-overlay);
     --trinity-surface-popover: var(--trinity-surface-overlay);
     --trinity-surface-control: oklch(95% 0.008 85deg);

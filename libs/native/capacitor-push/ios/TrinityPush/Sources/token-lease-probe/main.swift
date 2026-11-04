@@ -4,11 +4,13 @@ import TrinityPush
 // Usage: token-lease-probe <container> <account> <lifetime> <wait>
 // Takes the lease, prints `taken`, `busy` or `unavailable`, and exits without releasing.
 //
-// token-lease-probe waiter|app|push ...: see RaceRoles.swift.
+// token-lease-probe waiter|stalled-taker|app|push ...: see RaceRoles.swift.
 let arguments = CommandLine.arguments
 switch arguments[1] {
 case "waiter":
     await runWaiter(Array(arguments.dropFirst(2)))
+case "stalled-taker":
+    await runStalledTaker(Array(arguments.dropFirst(2)))
 case "app":
     await runApp(Array(arguments.dropFirst(2)))
 case "push":

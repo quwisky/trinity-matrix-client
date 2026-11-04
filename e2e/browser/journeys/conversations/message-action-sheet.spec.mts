@@ -16,6 +16,7 @@ import { registerUser } from '../../../support/account.mts';
 import {
   sheetAtRest,
   touchLongPress,
+  waitUntilStill,
 } from '../../../support/touch-platform.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
@@ -55,6 +56,7 @@ async function openRoomWithMessage(
   request: APIRequestContext,
   tag: string,
   messageCount = 1,
+  fromOther = false,
 ): Promise<string> {
   const hs = session.hs as string;
   const runId = `${testResourceId('run')}${tag}`;
@@ -88,9 +90,36 @@ async function openRoomWithMessage(
       },
     );
   }
+  let senderHeaders = headers;
+  if (fromOther) {
+    // Someone else's message: a second account joins and sends the last one.
+    const other = `sheetb-${runId}`;
+    await registerUser(request, other, `${other}-pass`);
+    const { access_token: otherToken, user_id: otherId } = await request
+      .post(`${hs}/_matrix/client/v3/login`, {
+        data: {
+          type: 'm.login.password',
+          identifier: { type: 'm.id.user', user: other },
+          password: `${other}-pass`,
+        },
+      })
+      .then((r) => r.json());
+    senderHeaders = { Authorization: `Bearer ${otherToken}` };
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/invite`,
+      { headers, data: { user_id: otherId } },
+    );
+    await request.post(
+      `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/join`,
+      { headers: senderHeaders, data: {} },
+    );
+  }
   await request.put(
     `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(room_id)}/send/m.room.message/s-${runId}`,
-    { headers, data: { msgtype: 'm.text', body: `act on me ${runId}` } },
+    {
+      headers: senderHeaders,
+      data: { msgtype: 'm.text', body: `act on me ${runId}` },
+    },
   );
 
   await login(page, { available: true, hs, user, pass } as HomeserverSession);
@@ -342,6 +371,210 @@ test.describe('Message actions on a phone', () => {
     );
   });
 
+  test('groups the actions into cards under a row of reaction tiles', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'g');
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await sheetAtRest(sheet);
+
+    const layout = await sheet.evaluate((surface) => {
+      const box = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return {
+          left: r.left,
+          right: r.right,
+          width: r.width,
+          height: r.height,
+        };
+      };
+      const tiles = surface.querySelector(
+        '[role=group][aria-label="Quick reactions"]',
+      );
+      const cards = [
+        ...surface.querySelectorAll('[data-testid=action-sheet-group]'),
+      ];
+      return {
+        sheet: box(surface),
+        tiles: [...(tiles?.querySelectorAll('button') ?? [])].map((tile) => ({
+          id: tile.dataset['testid'],
+          ...box(tile),
+        })),
+        cards: cards.map((card) => ({
+          ...box(card),
+          rows: [...card.querySelectorAll('button')].map((row) => ({
+            id: row.dataset['testid'] ?? row.textContent?.trim(),
+            height: row.getBoundingClientRect().height,
+            label: row.querySelector('span.flex-1')!.getBoundingClientRect()
+              .left,
+            icon: row.querySelector('trn-icon')?.getBoundingClientRect().right,
+          })),
+          dividers: [
+            ...card.querySelectorAll('[data-testid=action-sheet-divider]'),
+          ].map((divider) => divider.getBoundingClientRect().left),
+          endsOnRow: card.lastElementChild?.tagName === 'BUTTON',
+        })),
+      };
+    });
+
+    // Equal square tiles, the full picker last.
+    expect(layout.tiles.at(-1)?.id).toBe('sheet-react-more');
+    expect(layout.tiles).toHaveLength(7);
+    for (const tile of layout.tiles) {
+      expect(Math.abs(tile.width - layout.tiles[0].width)).toBeLessThanOrEqual(
+        0.01,
+      );
+      expect(Math.abs(tile.height - tile.width)).toBeLessThanOrEqual(0.01);
+      expect(tile.width).toBeGreaterThanOrEqual(43.99);
+    }
+
+    // Replies and Edit first, Delete opening the next card, Cancel on its own.
+    const ids = layout.cards.map((card) => card.rows.map((row) => row.id));
+    expect(ids[0]).toEqual(['sheet-reply', 'sheet-thread', 'sheet-edit']);
+    expect(ids[1][0]).toBe('sheet-delete');
+    expect(ids.at(-1)).toEqual(['Cancel']);
+    expect(ids.flat()).not.toContain('sheet-react-more');
+
+    for (const card of layout.cards) {
+      // A 16px margin on each side of the sheet.
+      expect(card.left - layout.sheet.left).toBeCloseTo(16, 0);
+      expect(layout.sheet.right - card.right).toBeCloseTo(16, 0);
+      expect(card.endsOnRow).toBe(true);
+      expect(card.dividers).toHaveLength(card.rows.length - 1);
+      for (const left of card.dividers) {
+        // Inset to the label (give or take the row's 1px focus border), clear of the icon.
+        expect(Math.abs(left - card.rows[0].label)).toBeLessThanOrEqual(1.01);
+        expect(left).toBeGreaterThan(card.rows[0].icon ?? card.left);
+      }
+      for (const row of card.rows) {
+        expect(row.height).toBeGreaterThanOrEqual(55.99);
+        expect(row.height).toBeLessThanOrEqual(64.01);
+      }
+    }
+  });
+
+  test("groups someone else's message without Edit, Report last", async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'o', 1, true);
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await sheetAtRest(sheet);
+
+    const ids = await sheet.evaluate((surface) =>
+      [...surface.querySelectorAll('[data-testid=action-sheet-group]')].map(
+        (card) =>
+          [...card.querySelectorAll('button')].map(
+            (row) => row.dataset['testid'] ?? row.textContent?.trim(),
+          ),
+      ),
+    );
+    expect(ids[0]).toEqual(['sheet-reply', 'sheet-thread']);
+    expect(ids.flat()).not.toContain('sheet-edit');
+    // The viewer made the room, so may delete it as a moderator; it opens the next card.
+    expect(ids[1][0]).toBe('sheet-delete');
+    expect(ids.at(-2)?.at(-1)).toBe('sheet-report');
+    expect(ids.at(-1)).toEqual(['Cancel']);
+  });
+
+  test('centres each reaction tile, in the built app', async ({
+    page,
+    request,
+  }) => {
+    // The merge that once dropped the tiles' `justify-center` only ran in a real browser.
+    const rowSel = await openRoomWithMessage(page, request, 'z');
+    await longPress(page, rowSel);
+    const tiles = page.getByRole('group', { name: 'Quick reactions' });
+    await sheetAtRest(page.getByTestId('action-sheet-surface'));
+
+    const offsets = await tiles.evaluate((group) =>
+      [...group.querySelectorAll('button')].map((tile) => {
+        const icon = tile.querySelector('trn-icon');
+        let content: DOMRect;
+        if (icon) {
+          content = icon.getBoundingClientRect();
+        } else {
+          const text = [...tile.childNodes].find(
+            (node) =>
+              node.nodeType === Node.TEXT_NODE && node.textContent?.trim(),
+          )!;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          content = range.getBoundingClientRect();
+        }
+        const box = tile.getBoundingClientRect();
+        return Math.abs(
+          content.left + content.width / 2 - (box.left + box.width / 2),
+        );
+      }),
+    );
+    expect(offsets).toHaveLength(7);
+    for (const offset of offsets) expect(offset).toBeLessThanOrEqual(1);
+  });
+
+  test('wraps labels and tiles at the largest text size without clipping', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'x');
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '250%';
+    });
+    await longPress(page, rowSel);
+    const sheet = page
+      .getByRole('dialog', { name: 'Message actions' })
+      .getByTestId('action-sheet-surface');
+    await sheetAtRest(sheet);
+
+    const layout = await sheet.evaluate((surface) => {
+      const right = surface.getBoundingClientRect().right;
+      return {
+        tilesRight: Math.max(
+          ...[
+            ...surface.querySelectorAll(
+              '[aria-label="Quick reactions"] button',
+            ),
+          ].map((tile) => tile.getBoundingClientRect().right),
+        ),
+        tileRows: new Set(
+          [
+            ...surface.querySelectorAll(
+              '[aria-label="Quick reactions"] button',
+            ),
+          ].map((tile) => Math.round(tile.getBoundingClientRect().top)),
+        ).size,
+        right,
+        labels: [
+          ...surface.querySelectorAll<HTMLElement>(
+            '[data-testid=action-sheet-label]',
+          ),
+        ].map((label) => ({
+          text: label.textContent?.trim(),
+          overflow: label.scrollWidth - label.clientWidth,
+          right: label.getBoundingClientRect().right,
+          rowRight: label.closest('button')!.getBoundingClientRect().right,
+        })),
+      };
+    });
+
+    expect(layout.tilesRight).toBeLessThanOrEqual(layout.right + 0.01);
+    expect(layout.tileRows).toBeGreaterThan(1);
+    expect(layout.labels.length).toBeGreaterThan(0);
+    for (const label of layout.labels) {
+      expect(label.overflow, label.text).toBeLessThanOrEqual(0);
+      expect(label.right, label.text).toBeLessThanOrEqual(
+        label.rowRight + 0.01,
+      );
+    }
+  });
+
   test('tapping outside closes the sheet without acting', async ({
     page,
     request,
@@ -360,6 +593,74 @@ test.describe('Message actions on a phone', () => {
     await expect(sheet).toHaveCount(0);
     // No reply started, no reaction added — dismissing is not choosing.
     await expect(page.locator('.composer__banner')).toHaveCount(0);
+  });
+
+  test('the finger that opened the sheet selects nothing in it', async ({
+    page,
+    request,
+  }) => {
+    // The finger is still down when the sheet opens under it, and the browser carries the same
+    // touch on (#1868): iOS WebKit into a selection and callout there, Chromium into a click on
+    // the sheet row its lift lands on. A real touch, held through the opening, nudged and lifted.
+    const rowSel = await openRoomWithMessage(page, request, 'sel');
+    const row = page.locator(rowSel);
+    const dialog = page.getByRole('dialog', { name: 'Message actions' });
+    const sheet = dialog.getByTestId('action-sheet-surface');
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await expect(async () => {
+        await waitUntilStill(row);
+        const box = (await row.locator('.msg__body').boundingBox())!;
+        const at = {
+          x: Math.round(box.x + box.width / 2),
+          y: Math.round(box.y + box.height / 2),
+          id: 1,
+        };
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart',
+          touchPoints: [at],
+        });
+        try {
+          // A sync re-render mid-hold drops the press; a person would press again.
+          await expect(sheet).toBeVisible({ timeout: 1_500 });
+          await page.waitForTimeout(600);
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: [{ ...at, x: at.x + 3, y: at.y + 2 }],
+          });
+        } finally {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchEnd',
+            touchPoints: [],
+          });
+        }
+      }).toPass({ timeout: 20_000 });
+    } finally {
+      await cdp.detach();
+    }
+
+    // The lift chose nothing: the sheet is still open and no row's action ran.
+    await expect(sheet).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(1);
+    expect(await page.evaluate(() => getSelection()?.toString() ?? '')).toBe(
+      '',
+    );
+    expect(
+      await sheet.evaluate((el) => {
+        const selection = getSelection();
+        return (
+          selection !== null &&
+          !selection.isCollapsed &&
+          selection.containsNode(el, true)
+        );
+      }),
+    ).toBe(false);
+    // Lifting the finger hands selection back for a fresh, deliberate press.
+    await expect
+      .poll(() =>
+        page.evaluate(() => getComputedStyle(document.body).userSelect),
+      )
+      .not.toBe('none');
   });
 
   test('keeps a windowed target connected and restores the latest state on close', async ({
