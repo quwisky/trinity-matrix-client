@@ -28,7 +28,12 @@
   // `clip`, not `hidden`, on the two frames around the panes: WebKit's scrollIntoView or focus
   // reveal can scroll a hidden box, and on a half-height sheet that moved the section's
   // heading out of sight. Only the panes themselves scroll.
+  // The workspace fills the frame by flexing, not `block-size: 100%`: in a half sheet the
+  // frame is a shrunk flex item of an auto-height sheet, and iOS 26 WebKit resolves the
+  // percentage against the frame's unshrunk height, so the panes ran past the sheet's bottom.
   .settings-layout {
+    display: flex;
+    flex-direction: column;
     block-size: 100%;
     min-block-size: 0;
     overflow: clip;
@@ -37,7 +42,7 @@
 
   .settings-layout__workspace {
     display: flex;
-    block-size: 100%;
+    flex: 1 1 0;
     min-block-size: 0;
     flex-direction: row;
     overflow: clip;

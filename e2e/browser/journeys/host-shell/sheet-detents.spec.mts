@@ -376,6 +376,46 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     await expectMedium(surface(dialog));
   });
 
+  test('the last section row of a half sheet scrolls into view and opens its section', async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+    const sheet = surface(dialog);
+    await expectMedium(sheet);
+    const directory = dialog.getByTestId('settings-dialog-directory');
+    // Every box from the sheet body down to the panes is sized by its parent's flex layout:
+    // iOS 26 WebKit resolved a percentage height there against the frame's unshrunk height,
+    // so the panes ran past the half sheet and their last rows could never scroll into view.
+    expect(
+      await directory.evaluate((nav) => {
+        const unflexed: string[] = [];
+        for (
+          let el: Element | null = nav;
+          el && !el.classList.contains('dialog-shell__body');
+          el = el.parentElement
+        ) {
+          if (getComputedStyle(el.parentElement!).display !== 'flex')
+            unflexed.push(el.className);
+        }
+        return unflexed;
+      }),
+    ).toEqual([]);
+    const sheetBottom = (await sheet.boundingBox())!;
+    const nav = (await directory.boundingBox())!;
+    expect(nav.y + nav.height).toBeLessThanOrEqual(
+      sheetBottom.y + sheetBottom.height + 1,
+    );
+    const last = directory.locator('.settings-layout__nav-item').last();
+    const name = (await last.innerText()).trim();
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toBeInViewport({ ratio: 1 });
+    await last.tap();
+    await expect(
+      dialog.locator('[data-testid="settings-detail"] h1'),
+    ).toHaveText(name);
+    await expectMedium(sheet);
+  });
+
   test('System status opens at half height, drags to full and back, and closes from half', async ({
     page,
   }, testInfo) => {
