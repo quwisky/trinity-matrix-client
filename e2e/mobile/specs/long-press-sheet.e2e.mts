@@ -98,7 +98,10 @@ describe('long press on a message', function () {
       await browser.waitUntil(
         () =>
           browser.execute(
-            () => getComputedStyle(document.body).userSelect !== 'none',
+            () =>
+              getComputedStyle(document.body).getPropertyValue(
+                '-webkit-user-select',
+              ) !== 'none',
           ),
         {
           timeout: RELEASE_TIMEOUT_MS,
