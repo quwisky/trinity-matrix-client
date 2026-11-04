@@ -178,7 +178,8 @@ test.describe('Settings scrollbars', () => {
           };
         });
         expect(geometry.documentOverflow).toBeLessThanOrEqual(1);
-        expect(geometry.shellOverflowY).toBe('hidden');
+        // `clip`: the shell clips and, unlike `hidden`, cannot be scrolled by a reveal either.
+        expect(geometry.shellOverflowY).toBe('clip');
         expect(geometry.frame.left).toBeGreaterThanOrEqual(0);
         expect(geometry.frame.right).toBeLessThanOrEqual(viewport.width + 1);
         expect(geometry.frame.top).toBeGreaterThanOrEqual(0);
@@ -238,7 +239,7 @@ test.describe('Settings scrollbars', () => {
           (shell) => getComputedStyle(shell).overflowY,
         ),
       )
-      .toBe('hidden');
+      .toBe('clip');
     await expect
       .poll(() => scrollbarPainters(page))
       .toEqual(['SECTION[settings-detail]']);
