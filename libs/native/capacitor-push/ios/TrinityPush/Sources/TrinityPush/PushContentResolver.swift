@@ -9,8 +9,9 @@ public enum PushResolution: Equatable {
 /// Turns a gateway push into the notification to show. A token the store marks expired is not
 /// sent: it is refreshed first, and a 401 refreshes once too. The push shows the room name with
 /// the expired-token text when an expired token could not be refreshed. Any other failed read
-/// shows "New message". Worst case 5 s + 15 s + 3 s grace + 1 s retake + 5 s, inside the
-/// extension's 30 s, and the extension's fallback still covers running out of it.
+/// shows "New message". Worst case 5 s + 8 s + 3 s grace + 1 s retake + 5 s = 22 s, and a refresh
+/// that starts late gets only what is left before ``TokenBudgets/serviceRefreshEnd``. The
+/// extension's fallback still covers running out of its roughly 30 s.
 public struct PushContentResolver {
     private let store: HandoffReading
     private let api: MatrixPushAPI
@@ -18,6 +19,7 @@ public struct PushContentResolver {
     private let budget: TimeInterval
     private let refreshBudget: TimeInterval
     private let now: () -> Date
+    private let arrived: Date
 
     public init(
         store: HandoffReading,
@@ -33,6 +35,7 @@ public struct PushContentResolver {
         self.budget = budget
         self.refreshBudget = refreshBudget
         self.now = now
+        arrived = now()
     }
 
     /// What to show if time runs out: the stored room name (else "Trinity") with "New
@@ -93,7 +96,8 @@ public struct PushContentResolver {
     private func refreshed(_ account: HandoffAccount, _ payload: PushPayload) async -> HandoffAccount? {
         guard store.notificationText() != .alwaysHide else { return nil }
         let answer = await tokens?.refreshForPush(
-            account: payload.accountId, tokenSeen: account.accessToken, budget: refreshBudget)
+            account: payload.accountId, tokenSeen: account.accessToken,
+            budget: max(0, min(refreshBudget, arrived.addingTimeInterval(TokenBudgets.serviceRefreshEnd).timeIntervalSince(now()))))
         switch answer {
         case .current(let record), .rotated(let record, _): return account.with(record: record)
         default: return nil
