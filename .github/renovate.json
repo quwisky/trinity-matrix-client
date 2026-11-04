@@ -70,9 +70,13 @@
         "@angular/**",
         "@schematics/angular",
         "angular-eslint",
-        "ng-packagr",
-        "@analogjs/**"
+        "ng-packagr"
       ]
+    },
+    {
+      "description": "Analog's Vite and Vitest plugins for Angular. They release on their own line, not in lockstep with Angular, so they get their own group and PR title. When an Angular major needs a newer Analog, the Analog PR is the one to merge first.",
+      "groupName": "analog",
+      "matchPackageNames": ["@analogjs/**"]
     },
     {
       "description": "Nx and its plugins are released in lockstep and share a workspace version.",
