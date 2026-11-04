@@ -15,6 +15,8 @@ const PRESSES = 5;
 const HOLD_MS = 1_500;
 /** Past the guard's 300 ms grace for the lift's click. */
 const AFTER_LIFT_MS = 600;
+/** For the guard to release after the lift; its own backstop is 10 s. */
+const RELEASE_TIMEOUT_MS = 2_000;
 /** The edit menu WebKit shows over a selection, and the callout of a held link or image. */
 const CALLOUT = `-ios predicate string:(type == "XCUIElementTypeMenuItem" OR type == "XCUIElementTypeButton") AND label IN {"Copy", "Look Up", "Translate", "Select All", "Share…", "Open Link"}`;
 
@@ -35,9 +37,6 @@ const afterLift = () =>
       sheetOpen: !!sheet,
       dialogs: document.querySelectorAll('[role="dialog"]').length,
       replying: !!document.querySelector('.composer__banner'),
-      bodySelect: getComputedStyle(document.body).getPropertyValue(
-        '-webkit-user-select',
-      ),
     };
   }, SHEET);
 
@@ -80,7 +79,7 @@ describe('long press on a message', function () {
         .perform();
       await browser.pause(AFTER_LIFT_MS);
 
-      const { bodySelect, ...left } = await afterLift();
+      const left = await afterLift();
       await native();
       const menus = await $$(CALLOUT).length;
       await webview();
@@ -94,7 +93,21 @@ describe('long press on a message', function () {
         replying: false,
         menus: 0,
       });
-      expect(bodySelect).not.toBe('none');
+      // The guard lets go 300 ms after the lift, and a slow runner can run that timer late. Well under
+      // its 10 s backstop, so a guard that stays stuck still fails.
+      await browser.waitUntil(
+        () =>
+          browser.execute(
+            () =>
+              getComputedStyle(document.body).getPropertyValue(
+                '-webkit-user-select',
+              ) !== 'none',
+          ),
+        {
+          timeout: RELEASE_TIMEOUT_MS,
+          timeoutMsg: `press ${press}: the guard never released body selection`,
+        },
+      );
 
       await sheetAtRest();
       // The backdrop is the way out; a tap at its centre would land on the sheet.
