@@ -1077,10 +1077,12 @@ describe('MessageListComponent', () => {
       });
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
-      // `strip` is the loading strip's height, counted while it is rendered.
-      const view = { st: 0, sh: 605, strip: 0 };
+      // `strip` and `older` (the `$older` row) are heights counted only while rendered.
+      const view = { st: 0, sh: 605, strip: 0, older: 0 };
       const height = () =>
-        view.sh + (scroll.querySelector('.load-older') ? view.strip : 0);
+        view.sh +
+        (scroll.querySelector('.load-older') ? view.strip : 0) +
+        (scroll.querySelector('[data-mid="$older"]') ? view.older : 0);
       Object.defineProperties(scroll, {
         scrollTop: {
           get: () => view.st,
@@ -1161,11 +1163,15 @@ describe('MessageListComponent', () => {
     // The strip renders between the reader's move and its scroll event: it must not push the rows
     // down, and the pin it would have queued for the fill must not undo the move.
     it('leaves a reader who scrolls up as the loading strip appears where they are', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
       const { fixture, cmp, view, runFrames } = await pastFullFill();
       view.strip = 38;
 
       view.st = 200;
-      await new Promise((resolve) => setTimeout(resolve, 200)); // the strip's delay
+      vi.runOnlyPendingTimers(); // the strip's delay
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.load-older')).not.toBeNull();
       cmp.onScroll();
@@ -1173,6 +1179,101 @@ describe('MessageListComponent', () => {
 
       expect(view.st).toBe(238);
       expect(notAtBottom(cmp)).toBe(true);
+    });
+
+    // The pin is queued while the reader is still pinned; their scroll is reported before it runs.
+    it('drops a pin queued for the fill once the reader has scrolled up', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      onTestFinished(() => {
+        vi.useRealTimers();
+      });
+      const { fixture, cmp, view, runFrames, atBottom } = await pastFullFill();
+      view.strip = 38;
+      vi.runOnlyPendingTimers(); // the strip's delay
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.load-older')).not.toBeNull();
+
+      view.st = 200;
+      cmp.onScroll();
+      runFrames();
+
+      expect(atBottom()).toBe(false);
+      expect(view.st).toBe(200);
+    });
+
+    // A fast page lands with no strip, ahead of the scroll event of a reader who just moved.
+    it('leaves a reader who scrolls up as the fill page lands where they are', async () => {
+      const { cmp, view, runFrames, land } = await pastFullFill();
+      view.older = EST; // the landing effect runs before the page renders
+
+      view.st = 200;
+      await land([msg('$older', '@a:hs', 'A', 1)], 0);
+      cmp.onScroll();
+      runFrames();
+
+      // Held by the history anchor (jsdom has no row geometry, so by distance from the end).
+      expect(view.st).toBe(200 + EST);
+      expect(notAtBottom(cmp)).toBe(true);
+    });
+
+    it('opens the next room at its bottom when the list moves there during a fill', async () => {
+      const { fixture, cmp, view, runFrames, atBottom } = await pastFullFill();
+
+      // The old room's page is still in flight: `loadingOlder` is shared across rooms.
+      view.sh = 1200;
+      fixture.componentRef.setInput('roomId', '!other:hs');
+      fixture.componentRef.setInput('messages', [
+        msg('$n0', '@a:hs', 'A', 1),
+        msg('$n1', '@a:hs', 'A', 2),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      runFrames();
+
+      expect(atBottom()).toBe(true);
+      expect(notAtBottom(cmp)).toBe(false);
+    });
+
+    // On iOS a correction under a finger is held as a margin; the reader's late scroll event then
+    // moves the anchor with them. Counting the move the fill already handed over again shifts it.
+    it('counts a move once on iOS when the fill page lands before its scroll event', async () => {
+      const ua = vi
+        .spyOn(navigator, 'userAgent', 'get')
+        .mockReturnValue(
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X)',
+        );
+      onTestFinished(() => ua.mockRestore());
+      const { fixture, cmp, view, land } = await pastFullFill();
+      const scroll = fixture.nativeElement.querySelector(
+        '.scroll',
+      ) as HTMLElement;
+      const held = () =>
+        Number.parseFloat(
+          scroll.style.getPropertyValue('--scroll-hold') || '0',
+        );
+      // The row under the reader: 450px into the rows, below the page once it has rendered.
+      const anchorTop = () =>
+        450 +
+        (scroll.querySelector('[data-mid="$older"]') ? EST : 0) +
+        held() -
+        view.st;
+      const row = scroll.querySelector('[data-mid="$2"]') as HTMLElement;
+      row.getBoundingClientRect = () => rect(anchorTop(), anchorTop() + 314);
+      const touch = new Event('touchstart', { bubbles: true });
+      Object.defineProperty(touch, 'touches', { value: { length: 1 } });
+      row.dispatchEvent(touch);
+
+      view.older = EST;
+      view.st = 200; // the reader moved; its scroll event is still to come
+      const before = anchorTop();
+      await land([msg('$older', '@a:hs', 'A', 1)], 0);
+      cmp.onScroll();
+      expect(held()).toBe(-EST);
+      const older = scroll.querySelector('[data-mid="$older"]') as Element;
+      rowObserver().emit([resizeEntry(older, 40)]); // drew at its real height: nothing moved
+
+      expect(held()).toBe(-EST);
+      expect(anchorTop()).toBe(before);
     });
 
     it('leaves a reader who scrolls up after an empty fill page where they are', async () => {

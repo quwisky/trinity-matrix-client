@@ -341,17 +341,13 @@ export class MessageListComponent extends MessageListBase {
       const firstBefore = this.lastFirstRowId;
       this.lastFirstRowId = ids[0] ?? null;
 
-      if (
+      // The reader moved during a fill and its scroll event, which ends the fill, is still to come:
+      // keep them where they are through the strip or the landed page, as that event would.
+      const movedDuringFill =
         this.backfilling &&
-        this.loadingOlder() &&
         el.scrollTop !== untracked(() => this.scrollTop()) &&
-        el.scrollHeight - el.scrollTop - el.clientHeight >= 1
-      ) {
-        // The reader moved during a fill and its scroll event, which ends the fill, is still to
-        // come: keep them where they are through the strip, as that event would (see onScroll).
-        this.prevScrollHeight = el.scrollHeight;
-        this.prevScrollTop = el.scrollTop;
-        this.capturePrependAnchor(el);
+        el.scrollHeight - el.scrollTop - el.clientHeight >= 1;
+      if (movedDuringFill) {
         this.pendingPrepend = true;
         this.backfilling = false;
       }
@@ -361,8 +357,9 @@ export class MessageListComponent extends MessageListBase {
         // before the view renders either). Recapturing only while loading would let a page
         // landing in the same frame as a scroll drag the reader back to the request point.
         if (
+          movedDuringFill ||
           el.scrollTop !==
-          (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
+            (this.expectedProgrammaticScrollTop ?? this.prevScrollTop)
         ) {
           this.prevScrollHeight = el.scrollHeight;
           this.prevScrollTop = el.scrollTop;
@@ -541,6 +538,7 @@ export class MessageListComponent extends MessageListBase {
     this.lastFirstRowId = null;
     this.lastBackfillOldestId = null;
     this.backfillRounds = 0;
+    this.backfilling = false;
     this.pendingPrepend = false;
     this.prependAnchorActive = false;
     this.prependAnchorGeneration++;
