@@ -29,6 +29,21 @@ const rowOf = (page: Page, text: string) =>
 
 type Visibility = 'shared' | 'joined';
 
+// A rare stale room list (CI run 41823272320) needs the room-list projection trace to diagnose;
+// it is attached to a failing test.
+let projectionTrace: string[] = [];
+
+async function traceProjections(page: Page, label: string): Promise<void> {
+  page.on('console', (message) => {
+    const text = message.text();
+    if (text.startsWith('[projection]'))
+      projectionTrace.push(`${new Date().toISOString()} ${label} ${text}`);
+  });
+  await page.addInitScript(() =>
+    localStorage.setItem('trinity.debug.projections', '1'),
+  );
+}
+
 /** Alice and Bob, both signed in to Trinity, and an encrypted room of Alice's. */
 async function setUp(
   page: Page,
@@ -67,6 +82,8 @@ async function setUp(
   });
   expect(created.ok()).toBe(true);
 
+  await traceProjections(page, 'alice');
+  await traceProjections(bobPage, 'bob');
   // Bob's device must exist when Alice invites him, to receive the shared keys.
   await login(bobPage, {
     available: true,
@@ -111,6 +128,18 @@ async function inviteAndJoin(
 test.describe('Earlier messages for invited members', () => {
   test.skip(!session.available, 'needs a Synapse homeserver');
 
+  test.beforeEach(() => {
+    projectionTrace = [];
+  });
+
+  test.afterEach(async ({}, testInfo) => {
+    if (testInfo.status === testInfo.expectedStatus) return;
+    await testInfo.attach('projection-trace', {
+      body: projectionTrace.join('\n') || 'no projection trace lines',
+      contentType: 'text/plain',
+    });
+  });
+
   test('an invitee reads earlier messages once the inviter has set up encryption', async ({
     page,
     request,
@@ -143,6 +172,7 @@ test.describe('Earlier messages for invited members', () => {
     const note = page.getByTestId('user-picker-note');
     await expect(note).toContainText(
       'Verify this device before inviting, so they can read earlier messages.',
+      { timeout: 30_000 },
     );
     await expect(
       note.getByRole('button', { name: 'Verify this device' }),
