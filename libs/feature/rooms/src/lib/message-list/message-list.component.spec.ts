@@ -1077,14 +1077,17 @@ describe('MessageListComponent', () => {
       });
       const cmp = fixture.componentInstance;
       const scroll = container.querySelector('.scroll') as HTMLElement;
-      const view = { st: 0, sh: 605 };
+      // `strip` is the loading strip's height, counted while it is rendered.
+      const view = { st: 0, sh: 605, strip: 0 };
+      const height = () =>
+        view.sh + (scroll.querySelector('.load-older') ? view.strip : 0);
       Object.defineProperties(scroll, {
         scrollTop: {
           get: () => view.st,
           set: (value: number) =>
-            (view.st = Math.max(0, Math.min(value, view.sh - 498))),
+            (view.st = Math.max(0, Math.min(value, height() - 498))),
         },
-        scrollHeight: { get: () => view.sh },
+        scrollHeight: { get: height },
         clientHeight: { value: 498 },
       });
       runFrames();
@@ -1152,6 +1155,23 @@ describe('MessageListComponent', () => {
       await land([msg('$older', '@a:hs', 'A', 1)], EST);
       runFrames();
       expect(atBottom()).toBe(false);
+      expect(notAtBottom(cmp)).toBe(true);
+    });
+
+    // The strip renders between the reader's move and its scroll event: it must not push the rows
+    // down, and the pin it would have queued for the fill must not undo the move.
+    it('leaves a reader who scrolls up as the loading strip appears where they are', async () => {
+      const { fixture, cmp, view, runFrames } = await pastFullFill();
+      view.strip = 38;
+
+      view.st = 200;
+      await new Promise((resolve) => setTimeout(resolve, 200)); // the strip's delay
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.load-older')).not.toBeNull();
+      cmp.onScroll();
+      runFrames();
+
+      expect(view.st).toBe(238);
       expect(notAtBottom(cmp)).toBe(true);
     });
 

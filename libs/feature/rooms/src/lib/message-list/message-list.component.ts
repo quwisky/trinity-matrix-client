@@ -341,6 +341,20 @@ export class MessageListComponent extends MessageListBase {
       const firstBefore = this.lastFirstRowId;
       this.lastFirstRowId = ids[0] ?? null;
 
+      if (
+        this.backfilling &&
+        this.loadingOlder() &&
+        el.scrollTop !== untracked(() => this.scrollTop()) &&
+        el.scrollHeight - el.scrollTop - el.clientHeight >= 1
+      ) {
+        // The reader moved during a fill and its scroll event, which ends the fill, is still to
+        // come: keep them where they are through the strip, as that event would (see onScroll).
+        this.prevScrollHeight = el.scrollHeight;
+        this.prevScrollTop = el.scrollTop;
+        this.capturePrependAnchor(el);
+        this.pendingPrepend = true;
+        this.backfilling = false;
+      }
       if (this.pendingPrepend) {
         // The viewport moves before the browser delivers its scroll event. Capture that
         // movement before the strip or landed page changes row geometry (this effect runs
@@ -418,13 +432,16 @@ export class MessageListComponent extends MessageListBase {
         (newestChanged &&
           (untracked(() => this.atBottomSig()) || !!latest?.isOwn)) ||
         // Content appeared or vanished above the rows: a pinned reader stays pinned.
-        (chromeToggled && untracked(() => this.atBottomSig())) ||
-        this.backfilling;
+        (chromeToggled && untracked(() => this.atBottomSig()));
       const jumpsBefore = this.jumpsRequested;
 
       requestAnimationFrame(() => {
         // A jump made as a loaded room opens lands before this frame, and the pin would undo it.
-        if (stickToBottom && jumpsBefore === this.jumpsRequested) {
+        // The fill is read now: a reader's scroll reported since has ended it and must not be undone.
+        if (
+          (stickToBottom || this.backfilling) &&
+          jumpsBefore === this.jumpsRequested
+        ) {
           this.pinToBottom(el);
         }
 
