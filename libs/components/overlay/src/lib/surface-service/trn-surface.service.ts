@@ -3,7 +3,7 @@ import type { Observable } from 'rxjs';
 import type { TrnActionSheetRef } from '../action-sheet/trn-action-sheet-ref';
 import type { ActionSheetData } from '../action-sheet/trn-action-list.component';
 import { TrnActionSheetService } from '../action-sheet/trn-action-sheet.service';
-import type { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import type { DialogDetents, TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
   TrnDialogService,
   prefersCentred,
@@ -15,13 +15,17 @@ import {
 /** `'auto'` applies the sheet-or-dialog rule; the others are explicit opt-outs. */
 export type TrnSurfaceKind = 'auto' | 'fullscreen' | 'popover';
 
-export interface TrnSurfaceOptions<C = object> {
+/** `detents` apply only to a sheet below `md`; elsewhere the surface keeps its own height. */
+export interface TrnSurfaceOptions<C = object> extends DialogDetents {
   /** Set on the opened component's inputs after creation. */
   inputs?: Record<string, unknown>;
   /** The dialog's accessible name; pass its visible title. */
   ariaLabel?: string;
   ariaDescribedBy?: string;
-  /** A selector, `'first-heading'`, `'dialog'` or `false`; the first tabbable otherwise. */
+  /**
+   * A selector, `'first-heading'`, `'dialog'` or `false`; otherwise the first tabbable, or the
+   * dialog for a phone sheet opened with `detents`.
+   */
   autoFocus?: TrnDialogAutoFocus;
   /** No X, handle or swipe; Esc, backdrop and Back are ignored. */
   disableClose?: boolean;

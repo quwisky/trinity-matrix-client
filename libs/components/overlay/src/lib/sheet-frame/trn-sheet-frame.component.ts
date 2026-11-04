@@ -27,6 +27,7 @@ import {
  * It only sits inside a dialog the surface service opened, so a swipe dismisses through that
  * dialog's ref and keeps its `dismissGuard` and `disableClose`. Content projected with
  * `trnSheetFrameHeader` joins the handle as the drag area; everything else is the body.
+ * Opened with `detents`, a phone sheet rests at half or full height instead of its content's.
  */
 @Component({
   selector: 'trn-sheet-frame',
@@ -53,6 +54,7 @@ import {
 })
 export class TrnSheetFrameComponent {
   private readonly ref = inject(TrnDialogRef);
+  protected readonly drag = inject(TrnSheetDrag);
 
   /** A sheet opened `disableClose` shows no handle; the drag directive ignores it too. */
   protected readonly swipeable = !this.ref.disableClose;
@@ -66,6 +68,9 @@ export class TrnSheetFrameComponent {
       hlm(
         trnOverlaySurfaceRecipe('neutral', this.size(), 'sheet'),
         'trn-overlay-enter-sheet flex flex-col border-[var(--trinity-border-overlay)] bg-[var(--trinity-surface-overlay)]',
+        // A detent sheet takes the height its drag sets, up to full height; both set by TrnSheetDrag.
+        this.drag.detent() &&
+          'h-[var(--trn-sheet-height)] max-h-[var(--trn-sheet-max-height)]',
       ),
     );
   }

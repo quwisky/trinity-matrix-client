@@ -2,9 +2,14 @@
   title="Reactions"
   [description]="total() + ' total'"
   size="xl"
+  bodyClass="flex flex-col"
   data-testid="reactions-dialog"
 >
-  <div class="reactions-dialog" [class.reactions-dialog--wide]="wide()">
+  <div
+    class="reactions-dialog"
+    [class.reactions-dialog--wide]="wide()"
+    [class.reactions-dialog--fit]="fitContent()"
+  >
     @if (sections().length === 0) {
       <trn-empty-state
         layout="line"

@@ -224,3 +224,66 @@ describe('TrnSheetKeyboardAvoidance (on every sheet frame)', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('TrnSheetKeyboardAvoidance on a detent sheet', () => {
+  let dialogs: TrnDialogService;
+  const tick = () => TestBed.inject(ApplicationRef).tick();
+  const detent = () => surface().getAttribute('data-sheet-detent');
+
+  beforeEach(() => {
+    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    dialogs = TestBed.inject(TrnDialogService);
+  });
+  afterEach(() => {
+    dialogs.closeAll();
+    platform.ios = false;
+    vi.unstubAllGlobals();
+  });
+
+  function open(disableClose = false): void {
+    dialogs.open(SearchSheetComponent, {
+      placement: 'bottom',
+      autoFocus: false,
+      detents: ['medium', 'large'],
+      disableClose,
+    });
+    tick();
+  }
+
+  it('raises a sheet opened disableClose too, which has no handle to drag', () => {
+    open(true);
+    expect(document.querySelector('[data-trn-sheet-toggle]')).toBeNull();
+
+    search().focus();
+    tick();
+
+    expect(detent()).toBe('large');
+  });
+
+  it.each([false, true])(
+    'rises from medium to large when a field takes focus (iOS shell: %s)',
+    (ios) => {
+      platform.ios = ios;
+      open();
+      expect(detent()).toBe('medium');
+
+      search().focus();
+      tick();
+
+      expect(detent()).toBe('large');
+      expect(surface().style.transition).toContain('height');
+    },
+  );
+
+  it('stays at medium when focus lands on a button, and never lowers on blur', () => {
+    open();
+    document.querySelector<HTMLElement>('[data-testid=probe-button]')!.focus();
+    tick();
+    expect(detent()).toBe('medium');
+
+    search().focus();
+    search().blur();
+    tick();
+    expect(detent()).toBe('large');
+  });
+});

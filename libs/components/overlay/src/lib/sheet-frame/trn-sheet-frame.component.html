@@ -1,11 +1,28 @@
 <!-- The drag area: the handle and whatever header the content projects into it. -->
 <div class="sheet-frame__grab" trnSheetDragHandle>
   @if (swipeable) {
-    <div
-      class="sheet-frame__handle"
-      data-testid="sheet-handle"
-      aria-hidden="true"
-    ></div>
+    @if (drag.toggleable(); as toggle) {
+      <button
+        type="button"
+        class="sheet-frame__toggle"
+        data-trn-sheet-toggle
+        aria-label="Sheet height"
+        [attr.aria-expanded]="toggle === 'collapse'"
+        (click)="drag.toggle()"
+      >
+        <span
+          class="sheet-frame__handle"
+          data-testid="sheet-handle"
+          aria-hidden="true"
+        ></span>
+      </button>
+    } @else {
+      <div
+        class="sheet-frame__handle"
+        data-testid="sheet-handle"
+        aria-hidden="true"
+      ></div>
+    }
   }
   <ng-content select="[trnSheetFrameHeader]" />
 </div>

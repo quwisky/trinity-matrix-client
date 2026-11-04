@@ -9,7 +9,32 @@
     flex: none;
   }
 
+  // Centred on the handle and no lower than the header's top padding, so it never covers
+  // the title, a header action or the body. The strip around it still drags.
+  .sheet-frame__toggle {
+    position: relative;
+    display: block;
+    width: 44px;
+    margin-inline: auto;
+
+    // The handle's top spacing, as padding so it is part of the target.
+    padding: var(--trinity-space-3) 0 0;
+    border: 0;
+    background: none;
+
+    .sheet-frame__handle {
+      margin-top: 0;
+    }
+
+    &::after {
+      position: absolute;
+      inset: 0 0 calc(-1 * var(--trinity-space-2));
+      content: '';
+    }
+  }
+
   .sheet-frame__handle {
+    display: block;
     width: 36px;
     height: 4px;
     margin: var(--trinity-space-3) auto 0;

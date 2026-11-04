@@ -13,8 +13,10 @@ import {
   TrnDialogRef,
   dialogTitleId,
   type ClosableRef,
+  type DialogDetents,
   type TrnDialogPresentation,
 } from './trn-dialog-ref';
+import { SHEET_LARGE_HEIGHT } from '../sheet-frame/sheet-detent';
 import { TrnDialogOpenerService } from './trn-dialog-opener.service';
 
 /** Structural position for a component dialog. Appearance belongs to its surface. */
@@ -24,7 +26,7 @@ export type TrnDialogPlacement =
 /** Trinity's focus target vocabulary, independent of CDK's configuration type. */
 export type TrnDialogAutoFocus = string | false;
 
-export interface DialogOptions<C = object> {
+export interface DialogOptions<C = object> extends DialogDetents {
   /** Set on the opened component as inputs after creation. */
   inputs?: Record<string, unknown>;
   /**
@@ -50,7 +52,9 @@ export interface DialogOptions<C = object> {
    */
   ariaDescribedBy?: string;
   /**
-   * Which element takes focus when the dialog opens, defaulting to CDK's `'first-tabbable'`.
+   * Which element takes focus when the dialog opens, defaulting to CDK's `'first-tabbable'`
+   * (`'dialog'` for a phone sheet opened with `detents`, whose first tabbable is its height
+   * button).
    * That default is wrong for a dialog whose header carries a Cancel/Close button ahead of the
    * field the user came to type in, and a component-side `focus()` can't fix it: CDK focuses
    * *after* attach and overrides the earlier call. Name the element instead: a CSS selector
@@ -138,8 +142,7 @@ export function prefersCentred(): boolean {
 }
 
 /** The sheet's height cap; the same value as the sheet surface recipe's, so the pane never clips it. */
-const SHEET_MAX_HEIGHT =
-  'min(90svh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--trinity-title-row-inset, 0px) - var(--trinity-keyboard-shrink, 0px)))';
+const SHEET_MAX_HEIGHT = `min(90svh, ${SHEET_LARGE_HEIGHT})`;
 
 /**
  * The presentation, CDK pane geometry and ref wiring for a dialog, decided once at open.
@@ -155,6 +158,7 @@ export function dialogPresentation(
   overlay: Overlay,
   placement: TrnDialogPlacement,
   anchor: HTMLElement | null,
+  detents: DialogDetents = {},
 ): {
   pane: {
     ariaLabelledBy: string;
@@ -221,7 +225,8 @@ export function dialogPresentation(
       ...(sheet && {
         width: '100vw',
         maxWidth: '100vw',
-        maxHeight: SHEET_MAX_HEIGHT,
+        // A detent sheet's surface carries its own cap, full height or the recipe's once wide.
+        ...(!detents.detents?.length && { maxHeight: SHEET_MAX_HEIGHT }),
       }),
       // Undefined lets CDK center the card; `'inline-end'` pins it to the logical end edge.
       ...(positionStrategy && { positionStrategy }),
@@ -234,6 +239,7 @@ export function dialogPresentation(
         placement === 'top' && presentation === 'dialog'
           ? DIALOG_BLOCK_START
           : null,
+        detents,
       ),
   };
 }
@@ -280,6 +286,7 @@ export class TrnDialogService {
       this.overlay,
       opts.placement ?? 'center',
       anchor,
+      opts,
     );
     let trinityRef: TrnDialogRef<R> | null = null;
     const ref = this.dialog.open<R, unknown, C>(component, {
@@ -298,7 +305,15 @@ export class TrnDialogService {
       ariaDescribedBy: opts.ariaDescribedBy,
       // Spelled out rather than left off: CDK merges the config over its defaults with a spread,
       // so an `autoFocus: undefined` key would clobber the default.
-      autoFocus: opts.autoFocus ?? 'first-tabbable',
+      // A phone detent sheet's first tabbable is its height button; the labelled dialog is
+      // better. Wider, detents are off and the first control keeps focus, read once at open.
+      autoFocus:
+        opts.autoFocus ??
+        (opts.detents?.length &&
+        opts.placement === 'bottom' &&
+        matchesQuery(BELOW_MD_QUERY)
+          ? 'dialog'
+          : 'first-tabbable'),
       // The pressed control, not only what held focus: a WebKit tap never focuses it.
       restoreFocus:
         opts.restoreFocus === false ? false : this.opener.restoreTarget(),

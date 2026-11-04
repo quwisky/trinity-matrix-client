@@ -202,7 +202,11 @@ export class ApplicationRootComponent {
         if (open && !ref) {
           const opened = this.surfaces.open<void, SystemStatusComponent>(
             SystemStatusComponent,
-            { ariaLabel: 'System status', autoFocus: '[data-autofocus]' },
+            {
+              ariaLabel: 'System status',
+              autoFocus: '[data-autofocus]',
+              detents: ['medium', 'large'],
+            },
           );
           ref = opened;
           opened.closed.subscribe(() => {

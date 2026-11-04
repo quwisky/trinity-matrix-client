@@ -9,7 +9,16 @@
     // A fixed height keeps the directory and the people list scrolling on their own,
     // inside the shell's body.
     height: min(32rem, (100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.6);
+    flex: none;
     flex-direction: column;
+  }
+
+  // A phone detent sheet sizes to its content and shrinks inside the flex body, so a short
+  // list rests at its own height and only the people list scrolls.
+  .reactions-dialog--fit {
+    height: auto;
+    min-height: 0;
+    flex: 0 1 auto;
   }
 
   .reactions-dialog__workspace {
