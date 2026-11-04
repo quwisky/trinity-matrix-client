@@ -25,10 +25,13 @@
     --settings-layout-gutter: 40px;
   }
 
+  // `clip`, not `hidden`, on the two frames around the panes: WebKit's scrollIntoView or focus
+  // reveal can scroll a hidden box, and on a half-height sheet that moved the section's
+  // heading out of sight. Only the panes themselves scroll.
   .settings-layout {
     block-size: 100%;
     min-block-size: 0;
-    overflow: hidden;
+    overflow: clip;
     contain: layout paint;
   }
 
@@ -37,7 +40,7 @@
     block-size: 100%;
     min-block-size: 0;
     flex-direction: row;
-    overflow: hidden;
+    overflow: clip;
   }
 
   .settings-layout__nav {

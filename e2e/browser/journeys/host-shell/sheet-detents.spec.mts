@@ -356,6 +356,26 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     await expectMedium(sheet);
   });
 
+  test('a section opened from below the fold of a half sheet shows its heading', async ({
+    page,
+  }) => {
+    const dialog = await openSettings(page);
+    await expectMedium(surface(dialog));
+    const row = dialog.getByTestId('settings-nav-appearance');
+    // As a reveal does: only the directory may scroll, never the frames around the panes.
+    await row.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    expect(
+      await dialog
+        .getByTestId('settings-workspace')
+        .evaluate((el) => [el.scrollTop, el.parentElement?.scrollTop]),
+    ).toEqual([0, 0]);
+    await row.tap();
+    const heading = dialog.locator('[data-testid="settings-detail"] h1');
+    await expect(heading).toHaveText('Appearance');
+    await expect(heading).toBeInViewport();
+    await expectMedium(surface(dialog));
+  });
+
   test('System status opens at half height, drags to full and back, and closes from half', async ({
     page,
   }, testInfo) => {
