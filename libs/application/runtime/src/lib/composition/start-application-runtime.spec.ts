@@ -5,7 +5,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { preloadCryptoWasm } from '@trinity/util/matrix';
-import { Subject, of, throwError } from 'rxjs';
+import { Subject, of, throwError, type Observable } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
@@ -17,7 +17,9 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => ({
   preloadCryptoWasm: vi.fn(),
 }));
 
-function fakeApplication({ storedAccount = true } = {}) {
+function fakeApplication({
+  hasAccounts = (): Observable<boolean> => of(true),
+} = {}) {
   const runtime = new Subject<never>();
   const markers = new Subject<never>();
   const handover = new Subject<never>();
@@ -33,7 +35,7 @@ function fakeApplication({ storedAccount = true } = {}) {
     [SessionHandoverWorkflow, { run: () => handover }],
     [NativeKeyboardInsetAdapter, { run: () => keyboardInset }],
     [NativeStatusBarTapAdapter, { run: () => statusBarTap }],
-    [SessionStorageService, { hasAccounts: () => of(storedAccount) }],
+    [SessionStorageService, { hasAccounts }],
   ]);
   const applicationRef = {
     injector: { get: (token: unknown) => services.get(token) },
@@ -72,11 +74,23 @@ describe('startApplicationRuntime', () => {
   });
 
   it('leaves the crypto engine to the sign-in when no account is stored', () => {
-    const app = fakeApplication({ storedAccount: false });
+    const app = fakeApplication({ hasAccounts: () => of(false) });
 
     startApplicationRuntime(app.applicationRef);
 
     expect(preloadCryptoWasm).not.toHaveBeenCalled();
+    expect(app.runtime.observed).toBe(true);
+  });
+
+  it('starts without the crypto engine when the account registry cannot be read', () => {
+    const app = fakeApplication({
+      hasAccounts: () => throwError(() => new SyntaxError('malformed')),
+    });
+
+    expect(() => startApplicationRuntime(app.applicationRef)).not.toThrow();
+
+    expect(preloadCryptoWasm).not.toHaveBeenCalled();
+    expect(app.handleError).not.toHaveBeenCalled();
     expect(app.runtime.observed).toBe(true);
   });
 

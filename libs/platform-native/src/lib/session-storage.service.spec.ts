@@ -177,6 +177,22 @@ describe('SessionStorageService', () => {
     await firstValueFrom(svc.save(ALICE));
 
     expect(await firstValueFrom(svc.hasAccounts())).toBe(true);
+
+    await firstValueFrom(svc.remove(ALICE.userId));
+
+    expect(JSON.parse(prefs.get('matrix.accounts') ?? '')).toMatchObject({
+      accounts: [],
+    });
+    expect(await firstValueFrom(svc.hasAccounts())).toBe(false);
+  });
+
+  it('reports a malformed registry through the stream instead of throwing', async () => {
+    const { svc } = setup();
+    prefs.set('matrix.accounts', '{not json');
+
+    const hasAccounts = svc.hasAccounts();
+
+    await expect(firstValueFrom(hasAccounts)).rejects.toThrow();
   });
 
   it('round-trips save → load (active account)', async () => {
