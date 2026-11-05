@@ -41,6 +41,9 @@ class TestMessageListComponent extends MessageListBase {
   override jumpTo(): void {
     // No scroll container to jump within.
   }
+  protected override unreadIsBelowWindow(): boolean {
+    return false;
+  }
 }
 
 function msg(id: string): MessageView {

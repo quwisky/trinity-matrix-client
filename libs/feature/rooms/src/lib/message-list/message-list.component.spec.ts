@@ -2027,39 +2027,11 @@ describe('MessageListComponent', () => {
       expect(await pillText('$20', false)).toBe('↑ New messages');
     });
 
-    it('points down when a collapsed run is the first rendered row', async () => {
-      // A run carries `data-mid="group:…"`, an id no message has.
-      const { fixture, container } = await renderList({ messages: many(200) });
-      const cmp = fixture.componentInstance;
-      const scroll = container.querySelector('.scroll') as HTMLElement;
-      setScrollGeometry(scroll, {
-        scrollTop: { get: () => 100, set: () => undefined },
-        clientHeight: 600,
-        scrollHeight: 200 * EST,
-      });
-      cmp.onScroll();
-      fixture.detectChanges();
-      const run = document.createElement('div');
-      run.dataset['mid'] = 'group:$0';
-      scroll.prepend(run);
-      fixture.componentRef.setInput('firstUnreadId', '$190');
-      fixture.detectChanges();
-
-      (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
-      fixture.detectChanges();
-
-      expect(
-        container
-          .querySelector('[data-testid=jump-to-unread]')
-          ?.textContent?.trim(),
-      ).toBe('↓ New messages');
-    });
-
     it.each([
       ['below', '$190', '↓ New messages'],
       ['above', '$20', '↑ New messages'],
     ])(
-      'points %s when only a collapsed run is rendered',
+      'points %s the window when the divider is not rendered',
       async (_where, unread, text) => {
         const { fixture, container } = await renderList({
           messages: many(200),
@@ -2067,21 +2039,14 @@ describe('MessageListComponent', () => {
         const cmp = fixture.componentInstance;
         const scroll = container.querySelector('.scroll') as HTMLElement;
         setScrollGeometry(scroll, {
-          scrollTop: { get: () => 100, set: () => undefined },
+          scrollTop: { get: () => 100 * EST, set: () => undefined },
           clientHeight: 600,
           scrollHeight: 200 * EST,
         });
         cmp.onScroll();
         fixture.detectChanges();
-        for (const row of scroll.querySelectorAll('[data-mid]')) row.remove();
-        const run = document.createElement('div');
-        run.dataset['mid'] = 'group:$100';
-        scroll.prepend(run);
         fixture.componentRef.setInput('firstUnreadId', unread);
         fixture.detectChanges();
-        for (const row of scroll.querySelectorAll('[data-mid]')) {
-          if (row !== run) row.remove();
-        }
 
         (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
         fixture.detectChanges();
@@ -2126,6 +2091,94 @@ describe('MessageListComponent', () => {
     it('points down when you scrolled up and the first unread is below', async () => {
       // Reading near the top of history, so a message that just arrived is far below.
       expect(await pillText('$190', true)).toBe('↓ New messages');
+    });
+  });
+
+  describe('scroll events and change detection', () => {
+    async function scrolledTo(top: number) {
+      const rendered = await renderList({
+        messages: many(200),
+        canLoadOlder: true,
+      });
+      const scroll = rendered.container.querySelector('.scroll') as HTMLElement;
+      const view = { st: top };
+      setScrollGeometry(scroll, {
+        scrollTop: { get: () => view.st, set: (v: number) => (view.st = v) },
+        clientHeight: 600,
+        scrollHeight: 200 * EST,
+      });
+      const scrollTo = (next: number) => {
+        view.st = next;
+        scroll.dispatchEvent(new Event('scroll'));
+      };
+      scrollTo(top);
+      rendered.fixture.detectChanges();
+      await rendered.fixture.whenStable();
+      return { ...rendered, scroll, scrollTo };
+    }
+
+    it('keeps the same window and rendered rows for a scroll that stays inside it', async () => {
+      const { fixture, scrollTo } = await scrolledTo(5000);
+      const cmp = fixture.componentInstance;
+      const rows = cmp.windowedRows();
+
+      scrollTo(5001);
+
+      expect(cmp.windowedRows()).toBe(rows);
+    });
+
+    it('re-checks no rows for a scroll that stays inside the window', async () => {
+      const { fixture, scrollTo } = await scrolledTo(5000);
+      // Called per rendered row whenever the template is checked.
+      const checked = vi.spyOn(
+        fixture.componentInstance as unknown as {
+          rowCaps(row: unknown): unknown;
+        },
+        'rowCaps',
+      );
+
+      scrollTo(5001);
+      await fixture.whenStable();
+
+      expect(checked).not.toHaveBeenCalled();
+      // A scroll that moves the window still renders it.
+      scrollTo(9000);
+      await fixture.whenStable();
+      expect(checked).toHaveBeenCalled();
+    });
+
+    it('still asks for older history from a scroll event near the top', async () => {
+      const { fixture, scrollTo } = await scrolledTo(5000);
+      const loadOlder = vi.fn();
+      fixture.componentInstance.loadOlder.subscribe(loadOlder);
+
+      scrollTo(40);
+
+      expect(loadOlder).toHaveBeenCalledOnce();
+    });
+
+    it('shows the unread pill from a scroll event and hides it once the divider is on screen', async () => {
+      const { fixture, container, scroll, scrollTo } = await scrolledTo(5000);
+      fixture.componentRef.setInput('firstUnreadId', '$190');
+      fixture.detectChanges();
+
+      scrollTo(5001);
+      fixture.detectChanges();
+      const pill = () =>
+        container
+          .querySelector('[data-testid=jump-to-unread]')
+          ?.textContent?.trim();
+      expect(pill()).toBe('↓ New messages');
+
+      scrollTo(190 * EST - 300);
+      fixture.detectChanges();
+      const divider = scroll.querySelector(
+        '[data-testid=new-messages-divider]',
+      ) as HTMLElement;
+      Object.defineProperty(divider, 'offsetTop', { value: 190 * EST });
+      scrollTo(190 * EST - 299);
+      fixture.detectChanges();
+      expect(pill()).toBeUndefined();
     });
   });
 

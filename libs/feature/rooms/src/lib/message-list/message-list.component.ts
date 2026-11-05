@@ -205,20 +205,29 @@ export class MessageListComponent extends MessageListBase {
   });
 
   /** Resolved render range + spacer heights (render-all fast path for short rooms). */
-  private readonly windowResult = computed<WindowResult>(() =>
-    computeWindow(
-      {
-        ids: this.ids(),
-        heights: { measured: this.measured, estimate: this.rowEstimate() },
-        scrollTop: this.scrollTop() + this.scrollHold.shift(),
-        viewportHeight: this.viewportH(),
-        overscanPx: OVERSCAN_PX,
-        pinBottom: this.atBottomSig(),
-        smallListThreshold: SMALL_LIST_ROWS,
-        enabled: this.windowed(),
-      },
-      this.prefix(),
-    ),
+  private readonly windowResult = computed<WindowResult>(
+    () =>
+      computeWindow(
+        {
+          ids: this.ids(),
+          heights: { measured: this.measured, estimate: this.rowEstimate() },
+          scrollTop: this.scrollTop() + this.scrollHold.shift(),
+          viewportHeight: this.viewportH(),
+          overscanPx: OVERSCAN_PX,
+          pinBottom: this.atBottomSig(),
+          smallListThreshold: SMALL_LIST_ROWS,
+          enabled: this.windowed(),
+        },
+        this.prefix(),
+      ),
+    // A scroll inside the same window keeps the object, so the rows are not re-sliced or re-checked.
+    {
+      equal: (a, b) =>
+        a.startIndex === b.startIndex &&
+        a.endIndex === b.endIndex &&
+        a.topPadPx === b.topPadPx &&
+        a.bottomPadPx === b.bottomPadPx,
+    },
   );
 
   /**
@@ -504,6 +513,12 @@ export class MessageListComponent extends MessageListBase {
         return;
       }
       this.viewportH.set(el.clientHeight);
+      // Not a template or host listener: those mark the view dirty, re-checking every row per scroll.
+      const onScroll = (): void => this.onScroll();
+      el.addEventListener('scroll', onScroll, { passive: true });
+      this.destroyRef.onDestroy(() =>
+        el.removeEventListener('scroll', onScroll),
+      );
       this.mediaGate.connect(el);
       if (typeof ResizeObserver === 'undefined') {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
@@ -530,6 +545,14 @@ export class MessageListComponent extends MessageListBase {
       if (this.scrollIdle !== null) clearTimeout(this.scrollIdle);
       if (this.jumpIdle !== null) clearTimeout(this.jumpIdle);
     });
+  }
+
+  protected unreadIsBelowWindow(): boolean {
+    const unread = this.unreadRowId();
+    return (
+      unread !== null &&
+      this.ids().indexOf(unread) > this.windowResult().startIndex
+    );
   }
 
   protected override resetOnRoomChange(): void {

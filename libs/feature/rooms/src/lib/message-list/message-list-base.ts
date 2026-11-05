@@ -415,17 +415,8 @@ export abstract class MessageListBase {
       '[data-testid="new-messages-divider"]',
     );
     if (!divider) {
-      // Not rendered (outside the windowed viewport), so off-screen: offer the jump. It lies
-      // before the rendered rows when its message sorts before the first one on screen.
-      // The first row on screen. A collapsed run is `group:` plus the id of the LAST message in
-      // it, so an unread message after that id is below the run.
-      const last = scroll
-        .querySelector<HTMLElement>('[data-mid]')
-        ?.dataset['mid']?.replace(/^group:/, '');
-      const ids = this.messages().map((m) => m.id);
-      this.unreadIsBelow.set(
-        last !== undefined && ids.indexOf(id) > ids.indexOf(last),
-      );
+      // Not rendered (outside the windowed viewport), so off-screen: offer the jump.
+      this.unreadIsBelow.set(this.unreadIsBelowWindow());
       this.showJumpToUnread.set(true);
       return;
     }
@@ -642,6 +633,9 @@ export abstract class MessageListBase {
    * scrolled to after the next render, because the caller has just changed its height.
    */
   abstract jumpTo(messageId: string, options?: JumpOptions): void;
+
+  /** Whether the unread row lies after the first rendered row, for when its divider is not rendered. */
+  protected abstract unreadIsBelowWindow(): boolean;
 
   /**
    * Per-row caps keyed by event id, memoized so the reference is stable across change-detection

@@ -22,7 +22,7 @@
 <ng-content select="[trnMessageListIntro]" />
 
 <div class="list">
-  <div class="scroll" #scroll data-message-scroller (scroll)="onScroll()">
+  <div class="scroll" #scroll data-message-scroller>
     @if (showLoadingOlder()) {
       <div class="load-older">Loading older messages…</div>
     }
