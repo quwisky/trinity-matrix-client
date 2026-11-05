@@ -713,7 +713,7 @@ describe('AppLockGroupComponent', () => {
       );
     });
 
-    it('says the app switcher shows a blurred cover where that is all the host’s does (iOS), naming the running app', async () => {
+    it('says the app switcher shows the start screen where that is all the host’s does (iOS), naming the running app', async () => {
       await setup({
         enabled: true,
         screenPrivacy: true,
@@ -723,7 +723,7 @@ describe('AppLockGroupComponent', () => {
       expect(
         screen.getByTestId('app-lock-screen-privacy').textContent?.trim(),
       ).toBe(
-        'While App lock is on, the app switcher shows a blurred cover instead of Trinity Next. On iPad, the cover may also show while you use another app beside Trinity Next.',
+        'While App lock is on, the app switcher shows the Trinity Next start screen instead of your conversations. On iPad, the start screen may also show while you use another app beside Trinity Next.',
       );
     });
 

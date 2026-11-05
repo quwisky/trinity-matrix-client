@@ -38,11 +38,12 @@ const FAILED: HostOperationOutcome = {
 };
 
 /**
- * iOS blurs the app-switcher snapshot. Android dims rather than drawing the splash,
+ * iOS covers the app-switcher snapshot with the launch screen (the plugin is patched to draw
+ * all of it, logo included). Android dims rather than drawing the splash,
  * whose path looks up a `Splash` theme Trinity doesn't have; FLAG_SECURE is set either way.
  */
 const COVER = {
-  ios: { blurEffect: 'dark' },
+  ios: { blurEffect: 'none' },
   android: { dimBackground: true },
 } as const satisfies PrivacyScreenConfig;
 
@@ -61,7 +62,7 @@ export class CapacitorScreenPrivacyAdapter implements HostScreenPrivacyOperation
   private readonly appLock = inject(AppLockPinBridge);
   private readonly deepLinks = inject(HostDeepLinksService);
 
-  /** Android's FLAG_SECURE also blocks capture; the iOS blur only covers the snapshot. */
+  /** Android's FLAG_SECURE also blocks capture; the iOS cover only hides the snapshot. */
   support(): Observable<HostScreenPrivacySupport> {
     return defer(() =>
       of<HostScreenPrivacySupport>(
