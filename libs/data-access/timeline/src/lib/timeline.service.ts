@@ -199,7 +199,10 @@ export class TimelineService {
     this.readiness?.retry();
   }
 
-  private readonly _messages = signal<MessageView[]>([]);
+  // Rows keep identity across refreshes, so a refresh that changes no row keeps the list.
+  private readonly _messages = signal<MessageView[]>([], {
+    equal: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]),
+  });
   readonly messages = this._messages.asReadonly();
 
   private readonly _loadingOlder = signal(false);
