@@ -104,13 +104,20 @@ describe('Message Presentation production boundary', () => {
   it('keeps syntax highlighting lazy and feature-local', () => {
     const paths = source('tsconfig.base.json');
     const contract = source('architecture/contract.json');
-    const directive = source(
-      'libs/feature/rooms/src/lib/message-presentation/code-highlight.directive.ts',
-    );
+    const folder = 'libs/feature/rooms/src/lib/message-presentation';
+    const directive = source(`${folder}/code-highlight.directive.ts`);
+    // The main-thread highlighter is the worker's fallback, loaded on demand by its owner.
+    const fallback = source(`${folder}/code-highlight.worker-client.ts`);
 
     expect(paths).not.toContain('@trinity/util/matrix/code-highlight');
     expect(contract).not.toContain('@trinity/util/matrix/code-highlight');
-    expect(directive).toContain("import('./code-highlight')");
-    expect(directive).not.toMatch(/^import .* from '\.\/code-highlight'/m);
+    expect(fallback).toContain("import('./code-highlight')");
+    expect(
+      productionSources.filter((file) =>
+        /^import .* from '\.\/code-highlight'/m.test(source(file)),
+      ),
+    ).toEqual([]);
+    // highlight.js itself reaches the page only through the worker and that lazy fallback.
+    expect(directive).not.toMatch(/from 'highlight\.js/);
   });
 });

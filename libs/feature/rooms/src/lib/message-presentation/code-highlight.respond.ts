@@ -28,11 +28,12 @@ function ensureGrammar(id: string): Promise<void> | null {
 }
 
 /**
- * The highlight worker's answer to one block: runs, plain (nothing to colour, or the output was
+ * The highlight worker's answer to one block, after `onStart` marks the start of tokenizing: runs, plain (nothing to colour, or the output was
  * not what highlight.js emits), or retry (its grammar failed to load). Never rejects.
  */
 export async function respond(
   request: HighlightRequest,
+  onStart: (seq: number) => void = () => undefined,
 ): Promise<HighlightReply> {
   const reply = (result: HighlightResult): HighlightReply => ({
     seq: request.seq,
@@ -46,6 +47,7 @@ export async function respond(
   } catch {
     return reply({ kind: 'retry' });
   }
+  onStart(request.seq);
   try {
     const lines = tokenize(
       hljs.highlight(request.code, {

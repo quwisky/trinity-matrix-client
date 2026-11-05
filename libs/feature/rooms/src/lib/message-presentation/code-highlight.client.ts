@@ -19,13 +19,20 @@ export interface HighlightReply {
   readonly result: HighlightResult;
 }
 
+/** The worker begins tokenizing `seq`; loading and queueing time before this does not count. */
+export interface HighlightStarted {
+  readonly seq: number;
+  readonly started: true;
+}
+
 /**
- * How long one block may take in the worker. Real blocks take a few milliseconds; a grammar that
- * loops on crafted input never answers, and every later block would queue behind it.
+ * How long one block may spend being tokenized. Real blocks take a few milliseconds; a grammar
+ * that loops on crafted input never answers, and every later block would queue behind it.
  */
 export const REQUEST_DEADLINE_MS = 2_000;
 
 const PLAIN: HighlightResult = { kind: 'plain' };
+const RETRY: HighlightResult = { kind: 'retry' };
 
 /** The highlight worker, or null where the host cannot start one. */
 export function createHighlightWorker(): Worker | null {
@@ -44,15 +51,16 @@ export function createHighlightWorker(): Worker | null {
 /**
  * Sends code blocks to the highlight worker and resolves each with its result. A worker error
  * makes the client unavailable for the session, so the caller uses the main-thread path. A block
- * that misses its deadline restarts the worker instead: the main thread must not run the input
- * that hung it, so the blocks waiting then stay plain.
+ * that runs past its deadline restarts the worker: that block stays plain (the main thread must
+ * not run the input that hung it) and the others waiting are retried. A retry answer also
+ * restarts it, so a grammar that failed to load is fetched again by a fresh module cache.
  */
 export class CodeHighlightClient {
   private readonly pending = new Map<
     number,
     {
       readonly resolve: (result: HighlightResult) => void;
-      readonly timer: ReturnType<typeof setTimeout>;
+      timer?: ReturnType<typeof setTimeout>;
     }
   >();
   private readonly ready: ReturnType<typeof signal<boolean>>;
@@ -74,8 +82,7 @@ export class CodeHighlightClient {
     const seq = ++this.seq;
     const message: HighlightRequest = { seq, id, code };
     return new Promise((resolve) => {
-      const timer = setTimeout(() => this.restart(), REQUEST_DEADLINE_MS);
-      this.pending.set(seq, { resolve, timer });
+      this.pending.set(seq, { resolve });
       this.worker?.postMessage(message);
     });
   }
@@ -84,28 +91,39 @@ export class CodeHighlightClient {
     this.worker = this.createWorker();
     this.ready.set(this.worker !== null);
     if (this.worker) {
-      this.worker.onmessage = ({ data }: MessageEvent<HighlightReply>) => {
+      this.worker.onmessage = ({
+        data,
+      }: MessageEvent<HighlightReply | HighlightStarted>) => {
         const entry = this.pending.get(data.seq);
         if (!entry) return;
+        if ('started' in data) {
+          entry.timer = setTimeout(
+            () => this.restart(data.seq),
+            REQUEST_DEADLINE_MS,
+          );
+          return;
+        }
         clearTimeout(entry.timer);
         this.pending.delete(data.seq);
         entry.resolve(data.result);
+        if (data.result.kind === 'retry') this.restart(null);
       };
       this.worker.onerror = () => this.stop();
     }
   }
 
-  private settleAll(): void {
-    for (const { resolve, timer } of this.pending.values()) {
+  /** Settle every waiting block: `stuck` (the one that hung, if any) as plain, the rest as `rest`. */
+  private settleAll(stuck: number | null, rest: HighlightResult): void {
+    for (const [seq, { resolve, timer }] of this.pending) {
       clearTimeout(timer);
-      resolve(PLAIN);
+      resolve(seq === stuck ? PLAIN : rest);
     }
     this.pending.clear();
   }
 
-  private restart(): void {
+  private restart(stuck: number | null): void {
     this.worker?.terminate();
-    this.settleAll();
+    this.settleAll(stuck, RETRY);
     this.start();
   }
 
@@ -113,6 +131,6 @@ export class CodeHighlightClient {
     this.worker?.terminate();
     this.worker = null;
     this.ready.set(false);
-    this.settleAll();
+    this.settleAll(null, PLAIN);
   }
 }

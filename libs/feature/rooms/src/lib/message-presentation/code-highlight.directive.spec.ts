@@ -380,4 +380,31 @@ describe('CodeHighlightDirective', () => {
     });
     expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
   });
+
+  it('charges a block waiting for its grammar, so a late grammar cannot push past the budget', async () => {
+    // Python (held) comes first: its 16 chars count from the first run, so only four of the five
+    // 3,900-char TypeScript blocks fit, before and after Python arrives.
+    let release = () => undefined as void;
+    grammars.hold.set('python', new Promise<void>((r) => (release = r)));
+    const big = (n: number) => `const w${n} = 1;\n`.repeat(260).slice(0, 3_900);
+    const filler = 'x = 1\n'.repeat(700).slice(0, 4_096 - 1);
+    const view = render(
+      fence(filler, 'python') +
+        [1, 2, 3, 4, 5].map((n) => fence(big(n))).join(''),
+    );
+    const codes = () => view.host.querySelectorAll('code');
+
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[4].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+
+    release();
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[0].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+  });
 });

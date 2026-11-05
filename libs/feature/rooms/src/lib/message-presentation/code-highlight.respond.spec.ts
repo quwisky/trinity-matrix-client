@@ -72,4 +72,15 @@ describe('respond (the highlight worker)', () => {
     ).toBe('lines');
     expect(grammars.calls.get('go')).toBe(2);
   });
+
+  it('reports the start of tokenizing only for blocks it highlights', async () => {
+    const started: number[] = [];
+    const onStart = (seq: number) => started.push(seq);
+
+    await respond({ seq: 8, id: 'python', code: 'x = 1' }, onStart);
+    await respond({ seq: 9, id: 'toml', code: 'a = 1' }, onStart);
+    await respond({ seq: 10, id: 'python', code: 'x'.repeat(4_097) }, onStart);
+
+    expect(started).toEqual([8]);
+  });
 });

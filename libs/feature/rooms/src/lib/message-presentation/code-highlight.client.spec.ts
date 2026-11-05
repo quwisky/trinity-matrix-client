@@ -24,6 +24,10 @@ class FakeWorker {
   reply(seq: number, result: HighlightResult): void {
     this.onmessage?.({ data: { seq, result } } as MessageEvent);
   }
+  /** The worker begins tokenizing `seq`: from here the block's deadline runs. */
+  start(seq: number): void {
+    this.onmessage?.({ data: { seq, started: true } } as MessageEvent);
+  }
   fail(): void {
     this.onerror?.(new Event('error'));
   }
@@ -87,38 +91,73 @@ describe('CodeHighlightClient', () => {
   describe('when the worker hangs', () => {
     afterEach(() => vi.useRealTimers());
 
-    it('restarts it after the deadline and leaves the pending blocks plain', async () => {
-      vi.useFakeTimers();
+    const restartable = () => {
       const workers: FakeWorker[] = [];
       const c = new CodeHighlightClient(() => {
         const created = new FakeWorker();
         workers.push(created);
         return created as unknown as Worker;
       });
-      const pending = c.request('python', 'a = 1');
+      return { workers, c };
+    };
+
+    it('restarts it when a started block misses its deadline: that block stays plain, the rest retry', async () => {
+      vi.useFakeTimers();
+      const { workers, c } = restartable();
+      const stuck = c.request('python', 'a = 1');
+      const queued = c.request('python', 'b = 2');
+      workers[0].start(workers[0].posted[0].seq);
 
       await vi.advanceTimersByTimeAsync(REQUEST_DEADLINE_MS);
 
-      expect(await pending).toEqual({ kind: 'plain' });
+      expect(await stuck).toEqual({ kind: 'plain' });
+      expect(await queued).toEqual({ kind: 'retry' });
       expect(workers[0].terminated).toBe(true);
       expect(workers).toHaveLength(2);
       expect(c.available()).toBe(true);
-      const next = c.request('python', 'b = 2');
+      const next = c.request('python', 'c = 3');
       expect(workers[1].posted).toHaveLength(1);
       workers[1].reply(workers[1].posted[0].seq, { kind: 'plain' });
       expect(await next).toEqual({ kind: 'plain' });
     });
 
+    it('does not time out a block that is still loading or queued', async () => {
+      vi.useFakeTimers();
+      const { workers, c } = restartable();
+      void c.request('python', 'a = 1');
+
+      await vi.advanceTimersByTimeAsync(REQUEST_DEADLINE_MS * 5);
+
+      expect(workers).toHaveLength(1);
+      expect(workers[0].terminated).toBe(false);
+    });
+
     it('does not restart a worker that answered in time', async () => {
       vi.useFakeTimers();
-      const { worker, client: c } = client();
+      const { workers, c } = restartable();
       const pending = c.request('python', 'a = 1');
-      worker.reply(worker.posted[0].seq, { kind: 'plain' });
+      workers[0].start(workers[0].posted[0].seq);
+      workers[0].reply(workers[0].posted[0].seq, { kind: 'plain' });
       await pending;
 
       await vi.advanceTimersByTimeAsync(REQUEST_DEADLINE_MS * 2);
 
-      expect(worker.terminated).toBe(false);
+      expect(workers[0].terminated).toBe(false);
     });
+  });
+
+  it('restarts the worker after a retry answer, so a failed grammar load gets a fresh module cache', async () => {
+    const workers: FakeWorker[] = [];
+    const c = new CodeHighlightClient(() => {
+      const created = new FakeWorker();
+      workers.push(created);
+      return created as unknown as Worker;
+    });
+    const pending = c.request('go', 'func a() {}');
+    workers[0].reply(workers[0].posted[0].seq, { kind: 'retry' });
+
+    expect(await pending).toEqual({ kind: 'retry' });
+    expect(workers[0].terminated).toBe(true);
+    expect(workers).toHaveLength(2);
   });
 });

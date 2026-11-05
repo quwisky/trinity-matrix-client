@@ -5,14 +5,13 @@ import {
   inject,
   input,
 } from '@angular/core';
+import type { CodeHighlightClient } from './code-highlight.client';
 import { linesFromRuns } from './code-lines';
 import { resolveLanguage, type CodeLanguage } from './code-languages';
 import {
   HighlightFallback,
   HighlightWorker,
 } from './code-highlight.worker-client';
-
-type Highlighter = typeof import('./code-highlight');
 
 /** Total characters of code one message body may have tokenized (blocks cap themselves). */
 const MAX_CHARS_PER_BODY = 20_000;
@@ -32,10 +31,11 @@ const languageOf = (code: Element): CodeLanguage | null => {
  */
 @Directive({ selector: '[trnCodeHighlight]' })
 export class CodeHighlightDirective {
-  readonly source = input('', { alias: 'trnCodeHighlight' });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly worker = inject(HighlightWorker);
   private readonly fallback = inject(HighlightFallback);
+
+  readonly source = input('', { alias: 'trnCodeHighlight' });
 
   constructor() {
     afterRenderEffect(() => {
@@ -53,47 +53,56 @@ export class CodeHighlightDirective {
         return;
       }
       const client = this.worker.client();
-      if (client.available()) {
-        let budget = MAX_CHARS_PER_BODY;
-        for (const { code, language } of blocks) {
-          const source = code.textContent ?? '';
-          if (!source || source.length > budget) continue;
-          // Highlighted blocks keep their share of the budget, so every run charges the same.
-          if (isHighlighted(code)) budget -= source.length;
-          if (!isPlain(code)) continue;
-          budget -= source.length;
-          if (this.worker.sent.get(code) === source) continue;
-          this.worker.sent.set(code, source);
-          void client.request(language.id, source).then((result) => {
-            // The row was re-rendered or edited while the worker ran: its reply is stale.
-            if (!code.isConnected || code.textContent !== source) return;
-            if (result.kind === 'retry') {
-              this.worker.retryLater(code);
-              return;
-            }
-            if (result.kind !== 'lines' || !isPlain(code)) return;
-            const lines = linesFromRuns(
-              result.lines,
-              source,
-              code.ownerDocument,
-            );
-            if (lines) place(code, lines);
-          });
-        }
-        return;
-      }
-      if (!highlighter) {
+      const viaWorker = client.available();
+      if (!viaWorker && !highlighter) {
         this.fallback.loadCore();
         return;
       }
       let budget = MAX_CHARS_PER_BODY;
       for (const { code, language } of blocks) {
-        if (ready.has(language.id)) {
-          budget -= apply(code, language.id, highlighter, budget);
-        } else {
+        const source = code.textContent ?? '';
+        if (!source || source.length > budget) continue;
+        // Every block that is or will be tokenized keeps its share, so each run charges the same.
+        if (isHighlighted(code)) {
+          budget -= source.length;
+          continue;
+        }
+        if (!isPlain(code)) continue;
+        budget -= source.length;
+        if (viaWorker) {
+          this.send(client, code, language, source);
+        } else if (highlighter && ready.has(language.id)) {
+          const lines = highlighter.highlightLines(
+            source,
+            language.id,
+            code.ownerDocument,
+          );
+          if (lines) place(code, lines);
+        } else if (highlighter) {
           this.fallback.loadLanguage(highlighter, language);
         }
       }
+    });
+  }
+
+  private send(
+    client: CodeHighlightClient,
+    code: Element,
+    language: CodeLanguage,
+    source: string,
+  ): void {
+    if (this.worker.sent.get(code) === source) return;
+    this.worker.sent.set(code, source);
+    void client.request(language.id, source).then((result) => {
+      // The row was re-rendered or edited while the worker ran: its reply is stale.
+      if (!code.isConnected || code.textContent !== source) return;
+      if (result.kind === 'retry') {
+        this.worker.retryLater(code);
+        return;
+      }
+      if (result.kind !== 'lines' || !isPlain(code)) return;
+      const lines = linesFromRuns(result.lines, source, code.ownerDocument);
+      if (lines) place(code, lines);
     });
   }
 }
@@ -128,21 +137,4 @@ function place(code: Element, lines: DocumentFragment[]): boolean {
     return true;
   }
   return false;
-}
-
-/** Tokenize one block in place on the main thread; returns the characters spent. */
-function apply(
-  code: Element,
-  id: string,
-  highlighter: Highlighter,
-  budget: number,
-): number {
-  const source = code.textContent ?? '';
-  // Highlighted blocks keep their share of the budget, so every run charges the same.
-  if (isHighlighted(code)) return source.length;
-  if (!isPlain(code) || !source || source.length > budget) {
-    return 0;
-  }
-  const lines = highlighter.highlightLines(source, id, code.ownerDocument);
-  return lines && place(code, lines) ? source.length : 0;
 }

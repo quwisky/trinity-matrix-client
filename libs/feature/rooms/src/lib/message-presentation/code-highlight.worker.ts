@@ -1,4 +1,8 @@
-import type { HighlightReply, HighlightRequest } from './code-highlight.client';
+import type {
+  HighlightReply,
+  HighlightRequest,
+  HighlightStarted,
+} from './code-highlight.client';
 import { respond } from './code-highlight.respond';
 
 /**
@@ -6,10 +10,12 @@ import { respond } from './code-highlight.respond';
  * builds the DOM and checks the text against the code it sent.
  */
 const scope = self as unknown as {
-  postMessage(reply: HighlightReply): void;
+  postMessage(message: HighlightReply | HighlightStarted): void;
   onmessage: ((event: MessageEvent<HighlightRequest>) => void) | null;
 };
 
 scope.onmessage = ({ data }) => {
-  void respond(data).then((reply) => scope.postMessage(reply));
+  void respond(data, (seq) => scope.postMessage({ seq, started: true })).then(
+    (reply) => scope.postMessage(reply),
+  );
 };
