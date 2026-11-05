@@ -2059,6 +2059,52 @@ describe('MessageListComponent', () => {
       },
     );
 
+    it('follows a collapsed membership run holding the first unread', async () => {
+      // $150–$153 are membership changes folded into one run row, so the first
+      // unread ($150) has no row of its own: the pill must follow the run's row.
+      const messages = many(200).map((m, i) =>
+        i >= 150 && i < 154
+          ? { ...m, kind: 'event' as const, summary: `A joined ${m.id}` }
+          : m,
+      );
+      const { fixture, container } = await renderList({ messages });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 100 * EST };
+      setScrollGeometry(scroll, {
+        scrollTop: { get: () => view.st, set: () => undefined },
+        clientHeight: 600,
+        scrollHeight: 197 * EST,
+      });
+      const pillAt = (top: number) => {
+        view.st = top;
+        cmp.onScroll();
+        fixture.detectChanges();
+        (cmp as unknown as { updateJumpToUnread(): void }).updateJumpToUnread();
+        fixture.detectChanges();
+        return container
+          .querySelector('[data-testid=jump-to-unread]')
+          ?.textContent?.trim();
+      };
+      cmp.onScroll();
+      fixture.detectChanges();
+      fixture.componentRef.setInput('firstUnreadId', '$150');
+      fixture.detectChanges();
+      expect(cmp.unreadRowId()).toBe('group:$153');
+      expect(container.querySelector('[data-mid="group:$153"]')).toBeNull();
+
+      expect(pillAt(100 * EST)).toBe('↓ New messages');
+      expect(pillAt(190 * EST)).toBe('↑ New messages');
+
+      pillAt(150 * EST - 300);
+      const divider = scroll.querySelector(
+        '[data-testid=new-messages-divider]',
+      ) as HTMLElement;
+      expect(divider).not.toBeNull();
+      Object.defineProperty(divider, 'offsetTop', { value: 150 * EST });
+      expect(pillAt(150 * EST - 299)).toBeUndefined();
+    });
+
     it.each([
       ['below the viewport', 5000, '↓ New messages'],
       ['above the viewport', 10, '↑ New messages'],
