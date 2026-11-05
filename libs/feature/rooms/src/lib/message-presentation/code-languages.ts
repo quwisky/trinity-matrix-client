@@ -90,3 +90,12 @@ export const CODE_LANGUAGES: ReadonlyMap<string, CodeLanguage> = new Map(
 export function resolveLanguage(fence: string): CodeLanguage | null {
   return CODE_LANGUAGES.get(fence.toLowerCase()) ?? null;
 }
+
+const BY_ID: ReadonlyMap<string, CodeLanguage> = new Map(
+  [...CODE_LANGUAGES.values()].map((entry) => [entry.id, entry]),
+);
+
+/** The grammar for a highlight.js id (which can differ from the fence name, as with `shell`). */
+export function languageById(id: string): CodeLanguage | null {
+  return BY_ID.get(id) ?? null;
+}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CODE_LANGUAGES, resolveLanguage } from './code-languages';
+import {
+  CODE_LANGUAGES,
+  languageById,
+  resolveLanguage,
+} from './code-languages';
 
 describe('code languages', () => {
   it('resolves every fence name the current spec covers', () => {
@@ -77,5 +81,12 @@ describe('code languages', () => {
       }
       loaders.set(entry.id, entry.load);
     }
+  });
+
+  it('finds a grammar by its highlight.js id, which can differ from the fence name', () => {
+    expect(languageById('shell')?.id).toBe('shell');
+    expect(resolveLanguage('shell')?.id).toBe('bash');
+    expect(languageById('ini')?.id).toBe('ini');
+    expect(languageById('toml')).toBeNull();
   });
 });
