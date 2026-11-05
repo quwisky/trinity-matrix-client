@@ -4,53 +4,18 @@ import {
   afterRenderEffect,
   inject,
   input,
-  signal,
 } from '@angular/core';
 import { linesFromRuns } from './code-lines';
 import { resolveLanguage, type CodeLanguage } from './code-languages';
-import { HighlightWorker } from './code-highlight.worker-client';
+import {
+  HighlightFallback,
+  HighlightWorker,
+} from './code-highlight.worker-client';
 
 type Highlighter = typeof import('./code-highlight');
 
 /** Total characters of code one message body may have tokenized (blocks cap themselves). */
 const MAX_CHARS_PER_BODY = 20_000;
-
-const core = signal<Highlighter | null>(null);
-/** Language ids whose grammar is registered; replaced, never mutated, so effects re-run. */
-const registered = signal<ReadonlySet<string>>(new Set());
-const inFlight = new Set<string>();
-let coreRequested = false;
-/** The text each block was last sent to the worker with, so a re-render does not resend it. */
-const sent = new WeakMap<Element, string>();
-
-/** Fetch highlight.js core once, on the first rendered block in a known language. */
-function loadCore(): void {
-  if (coreRequested) {
-    return;
-  }
-  coreRequested = true;
-  import('./code-highlight').then(
-    (module) => core.set(module),
-    // Plain code is a fine permanent fallback; allow a retry on the next render.
-    () => (coreRequested = false),
-  );
-}
-
-/** Fetch one grammar once; a failed fetch is forgotten so a later render retries it. */
-function loadLanguage(highlighter: Highlighter, language: CodeLanguage): void {
-  if (inFlight.has(language.id) || registered().has(language.id)) {
-    return;
-  }
-  inFlight.add(language.id);
-  language.load().then(
-    (module) => {
-      inFlight.delete(language.id);
-      highlighter.registerLanguage(language.id, module.default);
-      registered.update((ids) => new Set(ids).add(language.id));
-    },
-    () => inFlight.delete(language.id),
-  );
-}
 
 const languageOf = (code: Element): CodeLanguage | null => {
   const fence = /(?:^|\s)language-([\w-]+)(?:\s|$)/.exec(code.className)?.[1];
@@ -70,12 +35,14 @@ export class CodeHighlightDirective {
   readonly source = input('', { alias: 'trnCodeHighlight' });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly worker = inject(HighlightWorker);
+  private readonly fallback = inject(HighlightFallback);
 
   constructor() {
     afterRenderEffect(() => {
       this.source();
-      const highlighter = core();
-      const ready = registered();
+      this.worker.retryTick();
+      const highlighter = this.fallback.core();
+      const ready = this.fallback.registered();
       const blocks = [
         ...this.host.nativeElement.querySelectorAll('pre > code'),
       ].flatMap((code) => {
@@ -90,22 +57,33 @@ export class CodeHighlightDirective {
         let budget = MAX_CHARS_PER_BODY;
         for (const { code, language } of blocks) {
           const source = code.textContent ?? '';
-          if (!isPlain(code) || !source || source.length > budget) continue;
+          if (!source || source.length > budget) continue;
+          // Highlighted blocks keep their share of the budget, so every run charges the same.
+          if (isHighlighted(code)) budget -= source.length;
+          if (!isPlain(code)) continue;
           budget -= source.length;
-          if (sent.get(code) === source) continue;
-          sent.set(code, source);
-          void client.request(language.id, source).then((runs) => {
+          if (this.worker.sent.get(code) === source) continue;
+          this.worker.sent.set(code, source);
+          void client.request(language.id, source).then((result) => {
             // The row was re-rendered or edited while the worker ran: its reply is stale.
-            if (!runs || !code.isConnected || code.textContent !== source)
+            if (!code.isConnected || code.textContent !== source) return;
+            if (result.kind === 'retry') {
+              this.worker.retryLater(code);
               return;
-            const lines = linesFromRuns(runs, source, code.ownerDocument);
-            if (lines && isPlain(code)) place(code, lines);
+            }
+            if (result.kind !== 'lines' || !isPlain(code)) return;
+            const lines = linesFromRuns(
+              result.lines,
+              source,
+              code.ownerDocument,
+            );
+            if (lines) place(code, lines);
           });
         }
         return;
       }
       if (!highlighter) {
-        loadCore();
+        this.fallback.loadCore();
         return;
       }
       let budget = MAX_CHARS_PER_BODY;
@@ -113,11 +91,16 @@ export class CodeHighlightDirective {
         if (ready.has(language.id)) {
           budget -= apply(code, language.id, highlighter, budget);
         } else {
-          loadLanguage(highlighter, language);
+          this.fallback.loadLanguage(highlighter, language);
         }
       }
     });
   }
+}
+
+/** A block this directive already coloured. */
+function isHighlighted(code: Element): boolean {
+  return code.querySelector('[class^="tok-"]') !== null;
 }
 
 /** Sender markup (a link, bold) or an already highlighted block is left alone. */
@@ -155,6 +138,8 @@ function apply(
   budget: number,
 ): number {
   const source = code.textContent ?? '';
+  // Highlighted blocks keep their share of the budget, so every run charges the same.
+  if (isHighlighted(code)) return source.length;
   if (!isPlain(code) || !source || source.length > budget) {
     return 0;
   }

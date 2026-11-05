@@ -1,9 +1,12 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeHighlightDirective } from './code-highlight.directive';
-import { HIGHLIGHT_WORKER_FACTORY } from './code-highlight.worker-client';
+import {
+  HIGHLIGHT_WORKER_FACTORY,
+  RETRY_DELAY_MS,
+} from './code-highlight.worker-client';
 import type { HighlightRequest } from './code-highlight.client';
 import type { CodeLanguage } from './code-languages';
 
@@ -68,6 +71,9 @@ describe('CodeHighlightDirective', () => {
 
   beforeEach(async () => {
     workerFactory = () => null;
+    grammars.calls.clear();
+    grammars.hold.clear();
+    grammars.failOnce.clear();
     await TestBed.configureTestingModule({
       imports: [HostComponent],
       providers: [
@@ -251,16 +257,19 @@ describe('CodeHighlightDirective', () => {
       }
       answer(request: HighlightRequest): void {
         const [word, ...rest] = request.code.split(' ');
+        const lines = [
+          [
+            [word, 'keyword'],
+            [rest.length ? ` ${rest.join(' ')}` : '', null],
+          ].filter(([text]) => text),
+        ];
         this.onmessage?.({
-          data: {
-            seq: request.seq,
-            lines: [
-              [
-                [word, 'keyword'],
-                [rest.length ? ` ${rest.join(' ')}` : '', null],
-              ].filter(([text]) => text),
-            ],
-          },
+          data: { seq: request.seq, result: { kind: 'lines', lines } },
+        } as MessageEvent);
+      }
+      retry(request: HighlightRequest): void {
+        this.onmessage?.({
+          data: { seq: request.seq, result: { kind: 'retry' } },
         } as MessageEvent);
       }
       fail(): void {
@@ -324,5 +333,51 @@ describe('CodeHighlightDirective', () => {
       });
       expect(view.host.textContent).toBe('const fallback = 1;');
     });
+
+    it('sends a block again after a retry answer', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const view = render(fence('const later = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      worker.retry(worker.posted[0]);
+      await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+      view.fixture.detectChanges();
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(2));
+      worker.answer(worker.posted[1]);
+      await vi.waitFor(() => {
+        view.fixture.detectChanges();
+        expect(view.host.querySelector('.tok-keyword')?.textContent).toBe(
+          'const',
+        );
+      });
+    });
+
+    afterEach(() => vi.useRealTimers());
+  });
+
+  it('keeps counting already highlighted blocks against the budget when it runs again', async () => {
+    // Five 3,900-char blocks fill the 20,000-char budget; the sixth must stay plain even after a
+    // later grammar (Python, held until then) makes the effect run again.
+    let release = () => undefined as void;
+    grammars.hold.set('python', new Promise<void>((r) => (release = r)));
+    const big = (n: number) => `const v${n} = 1;\n`.repeat(260).slice(0, 3_900);
+    const view = render(
+      [1, 2, 3, 4, 5, 6].map((n) => fence(big(n))).join('') +
+        fence('def late(): pass', 'python'),
+    );
+    const codes = () => view.host.querySelectorAll('code');
+
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[4].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+
+    release();
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[6].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
   });
 });
