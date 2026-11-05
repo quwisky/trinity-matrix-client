@@ -18,6 +18,7 @@ import {
   reactionDetailsFor,
   reactionsFor,
   readReceiptsFor,
+  renderNormalizedTextBody,
   readersFrom,
   replyPreview,
   trackEncryptedNonMessages,
@@ -868,5 +869,69 @@ describe('mapStatus', () => {
 
   it('is failed for every other NOT_SENT echo', () => {
     expect(mapStatus(notSent(new Error('refused')))).toBe('failed');
+  });
+});
+
+describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
+  // A plain-text reply still carries a formatted_body for its <mx-reply> quote, with the reply's
+  // own words escaped: a pasted URL arrives as text, not as a link.
+  const reply = (words: string) => ({
+    body: `> <@alice:example.org> hello\n\n${words}`,
+    html:
+      '<mx-reply><blockquote><a href="https://matrix.to/#/!r:example.org/$e">In reply to</a> ' +
+      '<a href="https://matrix.to/#/@alice:example.org">@alice:example.org</a><br>hello</blockquote></mx-reply>' +
+      words.replaceAll('&', '&amp;').replaceAll('<', '&lt;'),
+  });
+
+  it('links a bare URL in a reply', () => {
+    const { body, html } = reply('see https://example.com/page.');
+    const { textHtml } = renderNormalizedTextBody(body, html, true, false);
+    const link = new DOMParser()
+      .parseFromString(textHtml ?? '', 'text/html')
+      .querySelector('a[href="https://example.com/page"]');
+
+    expect(link?.textContent).toBe('https://example.com/page');
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(textHtml).toContain('</a>.');
+  });
+
+  it('leaves URLs inside links, inline code and code blocks alone', () => {
+    const { textHtml } = renderNormalizedTextBody(
+      'x',
+      '<a href="https://a.example">https://b.example</a> <code>https://c.example</code>' +
+        '<pre><code>https://d.example</code></pre>',
+      false,
+      false,
+    );
+    const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
+
+    expect(doc.querySelectorAll('a')).toHaveLength(1);
+    expect(doc.querySelector('code')?.textContent).toBe('https://c.example');
+  });
+
+  it('keeps a media caption unlinked', () => {
+    const { html } = renderNormalizedTextBody(
+      'see https://example.com',
+      'see https://example.com',
+      false,
+      false,
+    );
+
+    expect(html).not.toContain('<a');
+  });
+
+  it('never builds a link from a non-http scheme or an escaped tag', () => {
+    const { textHtml } = renderNormalizedTextBody(
+      'x',
+      'javascript:alert(1) &lt;a href="https://evil.example"&gt;',
+      false,
+      false,
+    );
+    const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
+
+    expect(
+      [...doc.querySelectorAll('a')].map((a) => a.getAttribute('href')),
+    ).toEqual(['https://evil.example/']);
+    expect(doc.body.textContent).toContain('<a href="');
   });
 });

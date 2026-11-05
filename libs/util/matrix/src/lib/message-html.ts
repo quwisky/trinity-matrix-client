@@ -938,6 +938,53 @@ export function linkifyText(text: string): string | null {
   return (html + escapeHtml(text.slice(lastIndex))).replace(/\n/g, '<br>');
 }
 
+/**
+ * Sanitized message HTML with each bare http(s) URL in its text made a link, marked like
+ * {@link linkifyMessageText}. Text already inside a link, inline code or a code block is left
+ * alone. Senders often deliver URLs as plain text inside HTML: a plain-text rich reply carries a
+ * formatted_body only for its `<mx-reply>` quote. Links are built with createElement from the
+ * matched URL, so no text can become markup.
+ */
+export function linkifyHtml(html: string): string {
+  if (!/https?:\/\//.test(html)) {
+    return html;
+  }
+  const doc = new DOMParser().parseFromString(
+    `<!doctype html><body>${html}`,
+    'text/html',
+  );
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  const texts: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('a, code, pre')) texts.push(node as Text);
+  }
+  let linked = false;
+  for (const text of texts) {
+    const re = /https?:\/\/[^\s<>"']+/g;
+    const parts: Node[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text.data)) !== null) {
+      const url = trimTrailingUrlPunctuation(match[0]);
+      parts.push(doc.createTextNode(text.data.slice(lastIndex, match.index)));
+      const anchor = doc.createElement('a');
+      anchor.setAttribute('href', url);
+      anchor.textContent = url;
+      parts.push(anchor);
+      lastIndex = match.index + url.length;
+    }
+    if (parts.length === 0) continue;
+    parts.push(doc.createTextNode(text.data.slice(lastIndex)));
+    text.replaceWith(...parts);
+    linked = true;
+  }
+  if (!linked) {
+    return html;
+  }
+  markExternalLinks(doc.body);
+  return doc.body.innerHTML;
+}
+
 /** The first http(s) URL in `text` (trailing sentence punctuation trimmed), or null. */
 export function firstUrl(text: string): string | null {
   const match = /https?:\/\/[^\s<>"']+/.exec(text);
