@@ -124,7 +124,10 @@ export class AppLockLifecycleBinding {
   }
 
   /**
-   * The cover is on whenever App lock is on, locked or not, and each lock takes
+   * The cover is on whenever App lock is on, locked or not, except while full-screen system
+   * UI (the photo gallery, the camera) is open: the iOS cover goes up on resign-active and
+   * stays over the photo picker, which keeps the app inactive, as a black screen. Sheets keep
+   * the cover, as the room stays in view behind them. Each lock takes
    * down native UI Trinity presented over the web view, which the DOM cover can't reach.
    * Both are best effort: an answer that never comes or a failure never holds up locking or
    * unlocking, and a failure is recorded by its stable code only. A cover that failed to go
@@ -145,12 +148,12 @@ export class AppLockLifecycleBinding {
         ),
         this.lifecycle.events.pipe(filter((event) => event.kind === 'active')),
       ).pipe(
-        filter(() => !settled && untracked(() => this.appLock.enabled())),
+        filter(() => !settled && untracked(() => this.coverWanted())),
         map(() => true),
       );
       return merge(
         merge(
-          this.changes(() => this.appLock.enabled()),
+          this.changes(() => this.coverWanted()),
           retry,
         ).pipe(
           switchMap((enabled) => {
@@ -176,6 +179,10 @@ export class AppLockLifecycleBinding {
         ),
       ).pipe(ignoreElements());
     });
+  }
+
+  private coverWanted(): boolean {
+    return this.appLock.enabled() && !this.systemUi.fullScreenActive();
   }
 
   /** Runs a host call, recording anything but success or a host without it as an incident. */

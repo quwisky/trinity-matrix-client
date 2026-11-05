@@ -51,6 +51,11 @@ export interface PickedImages {
 @Injectable({ providedIn: 'root' })
 export class MediaPickerService {
   private readonly systemUi = inject(HostSystemUiService);
+  /**
+   * The iOS gallery and camera fill the screen. Android's photo picker can open as a sheet over
+   * the room, so there the app-switcher cover and its capture block stay on.
+   */
+  private readonly mediaUi = { fullScreen: Capacitor.getPlatform() === 'ios' };
 
   /** True when the native gallery picker should be used instead of `<input>`. */
   readonly available = Capacitor.isNativePlatform();
@@ -99,7 +104,8 @@ export class MediaPickerService {
     if (!this.available) {
       return of({ files: [], oversized: 0 });
     }
-    // The photo picker is Trinity's own system UI: App lock's away timer ignores it.
+    // The photo picker is Trinity's own system UI: App lock's away timer ignores it, and on iOS
+    // its app-switcher cover steps aside.
     return this.systemUi.track(
       defer(() => from(this.ensurePhotoAccess())).pipe(
         switchMap(() =>
@@ -128,6 +134,7 @@ export class MediaPickerService {
           return throwError(() => err);
         }),
       ),
+      this.mediaUi,
     );
   }
 
@@ -143,7 +150,8 @@ export class MediaPickerService {
     if (!this.captureSupported) {
       return of(null);
     }
-    // The camera is Trinity's own system UI: App lock's away timer ignores it.
+    // The camera is Trinity's own system UI: App lock's away timer ignores it, and on iOS its
+    // app-switcher cover steps aside.
     return this.systemUi.track(
       defer(() => from(this.ensureCameraAccess())).pipe(
         switchMap(() => from(open())),
@@ -175,6 +183,7 @@ export class MediaPickerService {
           return throwError(() => err);
         }),
       ),
+      this.mediaUi,
     );
   }
 

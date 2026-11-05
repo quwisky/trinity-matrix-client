@@ -18,6 +18,7 @@ import { MediaPickerService } from './media-picker.service';
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: vi.fn(() => false),
+    getPlatform: vi.fn(() => 'ios'),
     convertFileSrc: vi.fn((u: string) => u),
   },
 }));
@@ -50,6 +51,7 @@ function makeService(): MediaPickerService {
 describe('MediaPickerService host adapter', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('ios');
     chooseFromGallery.mockReset();
     stat.mockReset();
     // Default to already-granted photo access so the gallery branch runs; tests
@@ -83,8 +85,24 @@ describe('MediaPickerService host adapter', () => {
     const ui = TestBed.inject(HostSystemUiService);
     const pick = picker.pickImages().subscribe();
     expect(ui.active()).toBe(true);
+    // The gallery covers the whole screen, so App lock's app-switcher cover may step aside.
+    expect(ui.fullScreenActive()).toBe(true);
     choose({ results: [] });
     await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    expect(ui.fullScreenActive()).toBe(false);
+    pick.unsubscribe();
+  });
+
+  it('does not count the Android gallery as full screen, so its capture block stays on', () => {
+    // Android's photo picker can open as a half-height sheet over the room.
+    isNative.mockReturnValue(true);
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('android');
+    chooseFromGallery.mockReturnValueOnce(new Promise(() => undefined));
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const pick = picker.pickImages().subscribe();
+    expect(ui.active()).toBe(true);
+    expect(ui.fullScreenActive()).toBe(false);
     pick.unsubscribe();
   });
 
