@@ -1,5 +1,6 @@
 import hljs from 'highlight.js/lib/core';
 import type { LanguageFn } from './code-languages';
+import { roleOfClasses, type TokenRole } from './code-tokens';
 
 /**
  * Syntax highlighting for fenced code blocks, applied at the render leaf by CodeHighlightDirective.
@@ -8,21 +9,6 @@ import type { LanguageFn } from './code-languages';
  * rendered message holds a fenced block in a known language, then each grammar on first use
  * through `code-languages.ts`. A room without code downloads none of it.
  */
-
-/**
- * The token roles we colour. Deliberately small: each is a colour a Theme author must choose.
- *
- * Keep in step with the `--trinity-syntax-*` roles in Theme Foundation.
- */
-type TokenRole =
-  | 'keyword'
-  | 'string'
-  | 'number'
-  | 'comment'
-  | 'function'
-  | 'type'
-  | 'variable'
-  | 'punctuation';
 
 /**
  * Ceiling on what we will tokenize. Highlighting runs synchronously on the main thread and a sender
@@ -43,41 +29,6 @@ export function registerLanguage(id: string, grammar: LanguageFn): void {
 export function isRegistered(id: string): boolean {
   return hljs.getLanguage(id) !== undefined;
 }
-
-/** The role a highlight.js scope span carries, or null for scopes we leave uncoloured. */
-function roleOf(classes: DOMTokenList): TokenRole | null {
-  if (classes.contains('hljs-title')) {
-    if (classes.contains('function_')) return 'function';
-    if (classes.contains('class_')) return 'type';
-    return null;
-  }
-  for (const [scope, role] of SCOPE_ROLES) {
-    if (classes.contains(scope)) return role;
-  }
-  return null;
-}
-
-const SCOPE_ROLES: readonly (readonly [string, TokenRole])[] = [
-  ['hljs-keyword', 'keyword'],
-  ['hljs-built_in', 'keyword'],
-  ['hljs-literal', 'keyword'],
-  ['hljs-string', 'string'],
-  ['hljs-regexp', 'string'],
-  ['hljs-link', 'string'],
-  ['hljs-number', 'number'],
-  ['hljs-comment', 'comment'],
-  ['hljs-type', 'type'],
-  ['hljs-tag', 'type'],
-  ['hljs-name', 'type'],
-  ['hljs-section', 'type'],
-  ['hljs-variable', 'variable'],
-  ['hljs-params', 'variable'],
-  ['hljs-attr', 'variable'],
-  ['hljs-attribute', 'variable'],
-  ['hljs-punctuation', 'punctuation'],
-  ['hljs-operator', 'punctuation'],
-  ['hljs-bullet', 'punctuation'],
-];
 
 /**
  * Tokenize `code` into one fragment per line of `<span class="tok-*">` runs, or null when the
@@ -135,7 +86,8 @@ function collect(
 ): void {
   for (const child of node.childNodes) {
     if (child.nodeType === Node.ELEMENT_NODE) {
-      const role = roleOf((child as Element).classList) ?? inherited;
+      const role =
+        roleOfClasses([...(child as Element).classList]) ?? inherited;
       collect(child, role, lines, doc);
     } else if (child.nodeType === Node.TEXT_NODE) {
       (child.textContent ?? '').split('\n').forEach((piece, i) => {
