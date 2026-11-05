@@ -75,7 +75,7 @@ describe('CapacitorScreenPrivacyAdapter', () => {
       kind: 'completed',
     });
     expect(privacy.enable).toHaveBeenCalledExactlyOnceWith({
-      ios: { blurEffect: 'dark' },
+      ios: { blurEffect: 'none' },
       android: { dimBackground: true },
     });
     expect(privacy.disable).toHaveBeenCalledOnce();

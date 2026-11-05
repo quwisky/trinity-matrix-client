@@ -13,3 +13,70 @@ index c227d8bdce4ec14758db4063840ec75a3d766423..6bfb80c0eadab8c95e2397b267a70bf6
  
  android {
      namespace = "com.capacitorjs.plugins.privacyscreen"
+diff --git a/ios/Sources/PrivacyScreenPlugin/PrivacyScreenPlugin.swift b/ios/Sources/PrivacyScreenPlugin/PrivacyScreenPlugin.swift
+index 6656cfa641f63cd6d2342fd7171264d7c5f35e7b..e2f767cdf3ed117c2a32bc43fc27b3716c7dabe3 100644
+--- a/ios/Sources/PrivacyScreenPlugin/PrivacyScreenPlugin.swift
++++ b/ios/Sources/PrivacyScreenPlugin/PrivacyScreenPlugin.swift
+@@ -32,31 +32,41 @@ public class PrivacyScreenPlugin: CAPPlugin, CAPBridgedPlugin {
+         )
+     }
+ 
++    // Capacitor calls plugin methods on its bridge queue. The cover's state and UIKit stay on main,
++    // so enable, disable and resign-active apply in the order they arrive.
+     @objc func enable(_ call: CAPPluginCall) {
++        // nil: no `ios` config, keep the current effect.
++        var style: UIBlurEffect.Style??
+         if let config = call.getObject("ios"),
+            let blurEffectString = config["blurEffect"] as? String {
+             switch blurEffectString {
+             case "light":
+-                blurEffect = .light
++                style = .light
+             case "dark":
+-                blurEffect = .dark
++                style = .dark
+             default:
+-                blurEffect = nil
++                // "none" and unknown values: no blur (the launch screen), as upstream.
++                style = .some(nil)
+             }
+         }
+ 
+-        isEnabled = true
+-        call.resolve(["success": true])
++        DispatchQueue.main.async {
++            if let style { self.blurEffect = style }
++            self.isEnabled = true
++            call.resolve(["success": true])
++        }
+     }
+ 
+     @objc func disable(_ call: CAPPluginCall) {
+-        isEnabled = false
+-        unobscureScreen()
+-        call.resolve(["success": true])
++        DispatchQueue.main.async {
++            self.isEnabled = false
++            self.unobscureScreen()
++            call.resolve(["success": true])
++        }
+     }
+ 
+     @objc func isEnabled(_ call: CAPPluginCall) {
+-        call.resolve(["enabled": isEnabled])
++        DispatchQueue.main.async { call.resolve(["enabled": self.isEnabled]) }
+     }
+ 
+     private func obscureScreen() {
+@@ -104,7 +114,10 @@ public class PrivacyScreenPlugin: CAPPlugin, CAPBridgedPlugin {
+             } else {
+                 if let launchStoryboard = Bundle.main.object(forInfoDictionaryKey: "UILaunchStoryboardName") as? String,
+                    let launchVC = UIStoryboard(name: launchStoryboard, bundle: nil).instantiateInitialViewController() {
+-                    contentView.backgroundColor = launchVC.view.backgroundColor
++                    // The whole launch screen, logo included; a launch storyboard has no logic to host.
++                    launchVC.view.frame = contentView.bounds
++                    launchVC.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
++                    contentView.addSubview(launchVC.view)
+                 } else {
+                     contentView.backgroundColor = .white
+                 }

@@ -23,7 +23,7 @@ let package = Package(
         .package(name: "CapacitorKeyboard", path: "../../../node_modules/.pnpm/@capacitor+keyboard@8.0.6_@capacitor+core@8.6.0/node_modules/@capacitor/keyboard"),
         .package(name: "CapacitorLocalNotifications", path: "../../../node_modules/.pnpm/@capacitor+local-notifications@8.3.1_@capacitor+core@8.6.0/node_modules/@capacitor/local-notifications"),
         .package(name: "CapacitorPreferences", path: "../../../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.6.0/node_modules/@capacitor/preferences"),
-        .package(name: "CapacitorPrivacyScreen", path: "../../../node_modules/.pnpm/@capacitor+privacy-screen@2.0.1_patch_hash=f2f986331ec9f771718d52fed87b9d5ae7fa7f85c90f_425e246f2a0a7475015f67178fa4db66/node_modules/@capacitor/privacy-screen"),
+        .package(name: "CapacitorPrivacyScreen", path: "../../../node_modules/.pnpm/@capacitor+privacy-screen@2.0.1_patch_hash=895d821e62e80deee12f2e83515a60ebb6c4727b1cd8_d4f04b6130f1225954d8834d7244ec3a/node_modules/@capacitor/privacy-screen"),
         .package(name: "CapacitorPushNotifications", path: "../../../node_modules/.pnpm/@capacitor+push-notifications@8.1.3_@capacitor+core@8.6.0/node_modules/@capacitor/push-notifications"),
         .package(name: "CapacitorShare", path: "../../../node_modules/.pnpm/@capacitor+share@8.0.3_@capacitor+core@8.6.0/node_modules/@capacitor/share"),
         .package(name: "CapacitorStatusBar", path: "../../../node_modules/.pnpm/@capacitor+status-bar@8.0.4_@capacitor+core@8.6.0/node_modules/@capacitor/status-bar"),

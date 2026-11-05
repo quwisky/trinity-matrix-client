@@ -265,13 +265,13 @@ export interface HostLockIntegrationOperation {
 /**
  * What this host's app-switcher cover does. `blocksCapture`: it also blocks screenshots and
  * screen recording, screen sharing included (Android FLAG_SECURE); without it the cover only
- * hides the app-switcher snapshot (the iOS blur).
+ * hides the app-switcher snapshot (the iOS launch-screen cover).
  */
 export type HostScreenPrivacySupport =
   | { readonly kind: 'supported'; readonly blocksCapture: boolean }
   | Extract<HostCapabilitySupport, { readonly kind: 'unavailable' }>;
 
-/** The mobile app-switcher cover (iOS blur, Android FLAG_SECURE). */
+/** The mobile app-switcher cover (iOS launch screen, Android FLAG_SECURE). */
 export interface HostScreenPrivacyOperation {
   support(): Observable<HostScreenPrivacySupport>;
   set(enabled: boolean): Observable<HostOperationOutcome>;

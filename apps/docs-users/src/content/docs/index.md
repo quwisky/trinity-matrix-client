@@ -278,8 +278,8 @@ phone has no screen lock, the PIN is the only way to unlock; Settings suggests s
 share sheet or browser doesn't count as away, even if you leave Trinity from there: the timer
 starts once that view closes.
 
-While App lock is on, the app switcher on iPhone and iPad shows a blurred cover instead of
-Trinity. On iPad, the cover may also show over Trinity in Split View or Slide Over while you use
+While App lock is on, the app switcher on iPhone and iPad shows Trinity's start screen instead
+of your conversations. On iPad, the start screen may also show over Trinity in Split View or Slide Over while you use
 the other app. On Android, Trinity's preview in recent apps is blank, and screenshots, screen
 recording and screen sharing can't capture Trinity; Settings › Security says so. Turning App
 lock off brings all of these back. If Trinity locks while one of its own sheets is still open,
