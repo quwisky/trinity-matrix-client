@@ -170,6 +170,15 @@ describe('SessionStorageService', () => {
     });
   });
 
+  it('says whether any account is stored', async () => {
+    const { svc } = setup();
+    expect(await firstValueFrom(svc.hasAccounts())).toBe(false);
+
+    await firstValueFrom(svc.save(ALICE));
+
+    expect(await firstValueFrom(svc.hasAccounts())).toBe(true);
+  });
+
   it('round-trips save → load (active account)', async () => {
     const { svc } = setup();
     await firstValueFrom(svc.save(ALICE));

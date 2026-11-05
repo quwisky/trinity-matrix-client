@@ -2,6 +2,7 @@ import { ErrorHandler, type ApplicationRef } from '@angular/core';
 import {
   NativeKeyboardInsetAdapter,
   NativeStatusBarTapAdapter,
+  SessionStorageService,
 } from '@trinity/platform-native';
 import { preloadCryptoWasm } from '@trinity/util/matrix';
 import { Subject, of, throwError } from 'rxjs';
@@ -16,7 +17,7 @@ vi.mock('@trinity/util/matrix', async (importOriginal) => ({
   preloadCryptoWasm: vi.fn(),
 }));
 
-function fakeApplication() {
+function fakeApplication({ storedAccount = true } = {}) {
   const runtime = new Subject<never>();
   const markers = new Subject<never>();
   const handover = new Subject<never>();
@@ -32,6 +33,7 @@ function fakeApplication() {
     [SessionHandoverWorkflow, { run: () => handover }],
     [NativeKeyboardInsetAdapter, { run: () => keyboardInset }],
     [NativeStatusBarTapAdapter, { run: () => statusBarTap }],
+    [SessionStorageService, { hasAccounts: () => of(storedAccount) }],
   ]);
   const applicationRef = {
     injector: { get: (token: unknown) => services.get(token) },
@@ -67,6 +69,15 @@ describe('startApplicationRuntime', () => {
 
     expect(preloadCryptoWasm).toHaveBeenCalledOnce();
     expect(runtimeStartedFirst).toBe(false);
+  });
+
+  it('leaves the crypto engine to the sign-in when no account is stored', () => {
+    const app = fakeApplication({ storedAccount: false });
+
+    startApplicationRuntime(app.applicationRef);
+
+    expect(preloadCryptoWasm).not.toHaveBeenCalled();
+    expect(app.runtime.observed).toBe(true);
   });
 
   it('leaves a failed crypto engine load to the account that needs it', () => {

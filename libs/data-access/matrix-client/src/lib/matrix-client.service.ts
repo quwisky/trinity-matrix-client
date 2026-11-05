@@ -1010,12 +1010,12 @@ export class MatrixClientService {
         this.forgetOAuthTokens(session.userId, created);
         this.closeStore(store);
       };
-      let storageKey: Promise<Uint8Array | null> = Promise.resolve(null);
+      let pendingStorageKey: Promise<Uint8Array | null> = Promise.resolve(null);
       return from(this.wipes.get(session.userId) ?? Promise.resolve()).pipe(
         switchMap(() => {
           // Read alongside the sync cache; its failure still reports after the WASM step.
-          storageKey = this.storeKey(session);
-          storageKey.catch(() => undefined);
+          pendingStorageKey = this.storeKey(session);
+          pendingStorageKey.catch(() => undefined);
           store = this.createSyncStore(session.userId);
           // Before the client is built: startClient() resolves only after its first requests.
           this.allowCorsOrigin(session.baseUrl);
@@ -1059,7 +1059,7 @@ export class MatrixClientService {
         switchMap(() =>
           preloadCryptoWasm().pipe(catchError(classifyCryptoStartupFailure)),
         ),
-        switchMap(() => from(storageKey)),
+        switchMap(() => from(pendingStorageKey)),
         switchMap((storageKey) =>
           // An unset prefix (migrated legacy account) means the SDK default store, which
           // keeps its existing keys.

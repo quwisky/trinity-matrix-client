@@ -2,9 +2,10 @@ import { ApplicationRef, ErrorHandler } from '@angular/core';
 import {
   NativeKeyboardInsetAdapter,
   NativeStatusBarTapAdapter,
+  SessionStorageService,
 } from '@trinity/platform-native';
 import { preloadCryptoWasm } from '@trinity/util/matrix';
-import { take } from 'rxjs';
+import { filter, switchMap, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
 import { SessionHandoverWorkflow } from './session-handover.workflow';
@@ -14,8 +15,16 @@ import { SessionHandoverWorkflow } from './session-handover.workflow';
  * handover, the runtime itself, the diagnostic log's lifecycle markers and the iOS keyboard inset and status bar tap.
  */
 export function startApplicationRuntime(applicationRef: ApplicationRef): void {
-  // Compiles while startup runs; the account start that awaits it reports a failure.
-  preloadCryptoWasm().subscribe({ error: () => undefined });
+  // Only for a stored account: a failed load sticks for the page's life, so the sign-in
+  // screen keeps loading it on demand. The account start that awaits it reports a failure.
+  applicationRef.injector
+    .get(SessionStorageService)
+    .hasAccounts()
+    .pipe(
+      filter(Boolean),
+      switchMap(() => preloadCryptoWasm()),
+    )
+    .subscribe({ error: () => undefined });
   const runtime = applicationRef.injector.get(ApplicationRuntimeService);
   const errors = applicationRef.injector.get(ErrorHandler);
   // First, so another tab's "Use here" is heard from the moment this tab holds the lock.
