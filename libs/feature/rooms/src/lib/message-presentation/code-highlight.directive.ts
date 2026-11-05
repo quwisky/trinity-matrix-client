@@ -6,7 +6,9 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { linesFromRuns } from './code-lines';
 import { resolveLanguage, type CodeLanguage } from './code-languages';
+import { HighlightWorker } from './code-highlight.worker-client';
 
 type Highlighter = typeof import('./code-highlight');
 
@@ -18,6 +20,8 @@ const core = signal<Highlighter | null>(null);
 const registered = signal<ReadonlySet<string>>(new Set());
 const inFlight = new Set<string>();
 let coreRequested = false;
+/** The text each block was last sent to the worker with, so a re-render does not resend it. */
+const sent = new WeakMap<Element, string>();
 
 /** Fetch highlight.js core once, on the first rendered block in a known language. */
 function loadCore(): void {
@@ -56,13 +60,16 @@ const languageOf = (code: Element): CodeLanguage | null => {
 /**
  * Syntax-highlights the fenced blocks of a sanitized message body rendered with `[innerHTML]`.
  * The sanitizer leaves code as plain text, so a row shows readable code at once and this swaps
- * colours in (same characters, same layout) when its grammar has loaded, only for rows on screen.
- * Output is built from createElement and textContent, never markup.
+ * colours in (same characters, same layout) when its tokens arrive, only for rows on screen.
+ * Tokenizing runs in the highlight worker; where it cannot start, or after it fails, the main
+ * thread loads the grammars and tokenizes instead. Output is built from createElement and
+ * textContent, never markup.
  */
 @Directive({ selector: '[trnCodeHighlight]' })
 export class CodeHighlightDirective {
   readonly source = input('', { alias: 'trnCodeHighlight' });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly worker = inject(HighlightWorker);
 
   constructor() {
     afterRenderEffect(() => {
@@ -76,6 +83,25 @@ export class CodeHighlightDirective {
         return language ? [{ code, language }] : [];
       });
       if (blocks.length === 0) {
+        return;
+      }
+      const client = this.worker.client();
+      if (client.available()) {
+        let budget = MAX_CHARS_PER_BODY;
+        for (const { code, language } of blocks) {
+          const source = code.textContent ?? '';
+          if (!isPlain(code) || !source || source.length > budget) continue;
+          budget -= source.length;
+          if (sent.get(code) === source) continue;
+          sent.set(code, source);
+          void client.request(language.id, source).then((runs) => {
+            // The row was re-rendered or edited while the worker ran: its reply is stale.
+            if (!runs || !code.isConnected || code.textContent !== source)
+              return;
+            const lines = linesFromRuns(runs, source, code.ownerDocument);
+            if (lines && isPlain(code)) place(code, lines);
+          });
+        }
         return;
       }
       if (!highlighter) {
@@ -94,27 +120,17 @@ export class CodeHighlightDirective {
   }
 }
 
-/** Tokenize one block in place; returns the characters spent. */
-function apply(
-  code: Element,
-  id: string,
-  highlighter: Highlighter,
-  budget: number,
-): number {
-  const source = code.textContent ?? '';
-  const wrappers = [...code.children];
-  // Sender markup (a link, bold) or an already highlighted block: leave it alone.
-  const plain = wrappers.every(
+/** Sender markup (a link, bold) or an already highlighted block is left alone. */
+function isPlain(code: Element): boolean {
+  return [...code.children].every(
     (line) =>
       line.classList.contains('code-line') && line.children.length === 0,
   );
-  if (!plain || !source || source.length > budget) {
-    return 0;
-  }
-  const lines = highlighter.highlightLines(source, id, code.ownerDocument);
-  if (!lines) {
-    return 0;
-  }
+}
+
+/** Put highlighted lines into the block's line wrappers, or replace its text when it has none. */
+function place(code: Element, lines: DocumentFragment[]): boolean {
+  const wrappers = [...code.children];
   if (wrappers.length === 0) {
     const doc = code.ownerDocument;
     code.replaceChildren(
@@ -122,10 +138,26 @@ function apply(
         i ? [doc.createTextNode('\n'), line] : [line],
       ),
     );
-  } else if (wrappers.length <= lines.length) {
+    return true;
+  }
+  if (wrappers.length <= lines.length) {
     wrappers.forEach((wrapper, i) => wrapper.replaceChildren(lines[i]));
-  } else {
+    return true;
+  }
+  return false;
+}
+
+/** Tokenize one block in place on the main thread; returns the characters spent. */
+function apply(
+  code: Element,
+  id: string,
+  highlighter: Highlighter,
+  budget: number,
+): number {
+  const source = code.textContent ?? '';
+  if (!isPlain(code) || !source || source.length > budget) {
     return 0;
   }
-  return source.length;
+  const lines = highlighter.highlightLines(source, id, code.ownerDocument);
+  return lines && place(code, lines) ? source.length : 0;
 }

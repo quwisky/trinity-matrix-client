@@ -1,6 +1,7 @@
 import hljs from 'highlight.js/lib/core';
 import type { LanguageFn } from './code-languages';
-import { fitsCaps, tokenize, type Run, type TokenRole } from './code-tokens';
+import { linesFromRuns } from './code-lines';
+import { fitsCaps, tokenize } from './code-tokens';
 
 /**
  * Syntax highlighting for fenced code blocks, applied at the render leaf by CodeHighlightDirective.
@@ -11,6 +12,7 @@ import { fitsCaps, tokenize, type Run, type TokenRole } from './code-tokens';
  */
 
 export { MAX_CODE_CHARS, MAX_LINE_CHARS } from './code-tokens';
+export { linesFromRuns } from './code-lines';
 
 /** Add a loaded grammar; registering the same id again is a no-op. */
 export function registerLanguage(id: string, grammar: LanguageFn): void {
@@ -47,43 +49,4 @@ export function highlightLines(
     // A grammar tripping over one input degrades that block to plain code.
     return null;
   }
-}
-
-/**
- * One fragment per line of `<span class="tok-*">` runs, built with createElement and
- * createTextNode, or null unless the text is exactly `code`. No token spans a newline, so a
- * caller may wrap each fragment in its own line.
- */
-export function linesFromRuns(
-  runs: readonly (readonly Run[])[],
-  code: string,
-  doc: Document,
-): DocumentFragment[] | null {
-  const sourceLines = code.split('\n');
-  const lines = runs.map((line, i) => {
-    const fragment = doc.createDocumentFragment();
-    for (const [text, role] of line) {
-      fragment.appendChild(node(text, role, doc));
-    }
-    // Runs that dropped the CR of a CRLF get it back; the text check below still decides.
-    if (
-      sourceLines[i]?.endsWith('\r') &&
-      !fragment.textContent?.endsWith('\r')
-    ) {
-      fragment.appendChild(doc.createTextNode('\r'));
-    }
-    return fragment;
-  });
-  // The rebuilt text must be the sender's code exactly; anything else renders plain.
-  const text = lines.map((line) => line.textContent).join('\n');
-  return text === code ? lines : null;
-}
-
-function node(text: string, role: TokenRole | null, doc: Document): Node {
-  if (!role) return doc.createTextNode(text);
-  const span = doc.createElement('span');
-  span.className =
-    role === 'comment' ? 'tok-comment tok-italic' : `tok-${role}`;
-  span.textContent = text;
-  return span;
 }
