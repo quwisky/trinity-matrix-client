@@ -15,7 +15,5 @@ const scope = self as unknown as {
 };
 
 scope.onmessage = ({ data }) => {
-  void respond(data, (seq) => scope.postMessage({ seq, started: true })).then(
-    (reply) => scope.postMessage(reply),
-  );
+  void respond(data, (message) => scope.postMessage(message));
 };

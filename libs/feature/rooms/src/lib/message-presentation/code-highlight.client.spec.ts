@@ -146,17 +146,24 @@ describe('CodeHighlightClient', () => {
     });
   });
 
-  it('restarts the worker after a retry answer, so a failed grammar load gets a fresh module cache', async () => {
+  it('restarts the worker once it is idle after a retry answer, without disturbing other blocks', async () => {
     const workers: FakeWorker[] = [];
     const c = new CodeHighlightClient(() => {
       const created = new FakeWorker();
       workers.push(created);
       return created as unknown as Worker;
     });
-    const pending = c.request('go', 'func a() {}');
-    workers[0].reply(workers[0].posted[0].seq, { kind: 'retry' });
+    const broken = c.request('go', 'func a() {}');
+    const healthy = c.request('python', 'a = 1');
+    const [go, python] = workers[0].posted;
 
-    expect(await pending).toEqual({ kind: 'retry' });
+    workers[0].reply(go.seq, { kind: 'retry' });
+    expect(await broken).toEqual({ kind: 'retry' });
+    expect(workers[0].terminated).toBe(false);
+
+    workers[0].reply(python.seq, { kind: 'plain' });
+    expect(await healthy).toEqual({ kind: 'plain' });
+    // A fresh worker refetches the chunk that failed (a module cache keeps failures).
     expect(workers[0].terminated).toBe(true);
     expect(workers).toHaveLength(2);
   });

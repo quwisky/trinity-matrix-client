@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeHighlightDirective } from './code-highlight.directive';
 import {
   HIGHLIGHT_WORKER_FACTORY,
+  MAX_RETRIES,
   RETRY_DELAY_MS,
 } from './code-highlight.worker-client';
 import type { HighlightRequest } from './code-highlight.client';
@@ -350,6 +351,21 @@ describe('CodeHighlightDirective', () => {
           'const',
         );
       });
+    });
+
+    it('gives up on a block after the retry limit', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const view = render(fence('const never = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      for (let round = 1; round <= MAX_RETRIES + 2; round += 1) {
+        worker.retry(worker.posted[worker.posted.length - 1]);
+        await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+        view.fixture.detectChanges();
+        await view.fixture.whenStable();
+      }
+
+      expect(worker.posted).toHaveLength(MAX_RETRIES + 1);
     });
 
     afterEach(() => vi.useRealTimers());

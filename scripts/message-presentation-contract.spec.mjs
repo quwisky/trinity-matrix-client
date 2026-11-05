@@ -112,10 +112,11 @@ describe('Message Presentation production boundary', () => {
     expect(paths).not.toContain('@trinity/util/matrix/code-highlight');
     expect(contract).not.toContain('@trinity/util/matrix/code-highlight');
     expect(fallback).toContain("import('./code-highlight')");
+    // Any static import or re-export of the highlighter, one-line or wrapped, by any relative path.
+    const staticHighlighter =
+      /\b(?:import|export)\b[^;]*?\bfrom\s*['"][^'"]*\/code-highlight['"]|\bimport\s*['"][^'"]*\/code-highlight['"]/s;
     expect(
-      productionSources.filter((file) =>
-        /^import .* from '\.\/code-highlight'/m.test(source(file)),
-      ),
+      productionSources.filter((file) => staticHighlighter.test(source(file))),
     ).toEqual([]);
     // highlight.js itself reaches the page only through the worker and that lazy fallback.
     expect(directive).not.toMatch(/from 'highlight\.js/);

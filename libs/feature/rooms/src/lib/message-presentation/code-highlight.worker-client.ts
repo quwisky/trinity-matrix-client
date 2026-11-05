@@ -17,6 +17,9 @@ export const HIGHLIGHT_WORKER_FACTORY = new InjectionToken<() => Worker | null>(
 /** How long a block whose grammar failed to load waits before it is sent again. */
 export const RETRY_DELAY_MS = 5_000;
 
+/** Retries per block before it stays plain, e.g. a grammar chunk gone after a deploy. */
+export const MAX_RETRIES = 3;
+
 /** One highlight worker per session, started by the first code block in a known language. */
 @Injectable({ providedIn: 'root' })
 export class HighlightWorker {
@@ -24,6 +27,7 @@ export class HighlightWorker {
   private readonly retries = signal(0);
   private started: CodeHighlightClient | null = null;
   private retryScheduled = false;
+  private readonly attempts = new WeakMap<Element, number>();
 
   /** The text each block was last sent with, so a re-render does not resend it. */
   readonly sent = new WeakMap<Element, string>();
@@ -35,8 +39,11 @@ export class HighlightWorker {
     return this.started;
   }
 
-  /** Forget `code` was sent and send it again after the retry delay. */
+  /** Forget `code` was sent and send it again after the retry delay, up to the retry limit. */
   retryLater(code: Element): void {
+    const attempt = (this.attempts.get(code) ?? 0) + 1;
+    if (attempt > MAX_RETRIES) return;
+    this.attempts.set(code, attempt);
     this.sent.delete(code);
     if (this.retryScheduled) return;
     this.retryScheduled = true;

@@ -3,6 +3,7 @@ import type {
   HighlightReply,
   HighlightRequest,
   HighlightResult,
+  HighlightStarted,
 } from './code-highlight.client';
 import { languageById } from './code-languages';
 import { fitsCaps, tokenize } from './code-tokens';
@@ -28,17 +29,17 @@ function ensureGrammar(id: string): Promise<void> | null {
 }
 
 /**
- * The highlight worker's answer to one block, after `onStart` marks the start of tokenizing: runs, plain (nothing to colour, or the output was
- * not what highlight.js emits), or retry (its grammar failed to load). Never rejects.
+ * Answer one block: `started` just before tokenizing, then its result (runs; plain when there is
+ * nothing to colour or the output is not what highlight.js emits; retry when its grammar failed to
+ * load). Each reply is posted in the same turn as its tokenizing, so a block's deadline never
+ * covers another block's work. Never rejects.
  */
 export async function respond(
   request: HighlightRequest,
-  onStart: (seq: number) => void = () => undefined,
-): Promise<HighlightReply> {
-  const reply = (result: HighlightResult): HighlightReply => ({
-    seq: request.seq,
-    result,
-  });
+  post: (message: HighlightReply | HighlightStarted) => void,
+): Promise<void> {
+  const reply = (result: HighlightResult): void =>
+    post({ seq: request.seq, result });
   if (!fitsCaps(request.code)) return reply({ kind: 'plain' });
   const grammar = ensureGrammar(request.id);
   if (!grammar) return reply({ kind: 'plain' });
@@ -47,7 +48,7 @@ export async function respond(
   } catch {
     return reply({ kind: 'retry' });
   }
-  onStart(request.seq);
+  post({ seq: request.seq, started: true });
   try {
     const lines = tokenize(
       hljs.highlight(request.code, {
@@ -55,8 +56,8 @@ export async function respond(
         ignoreIllegals: true,
       }).value,
     );
-    return reply(lines ? { kind: 'lines', lines } : { kind: 'plain' });
+    reply(lines ? { kind: 'lines', lines } : { kind: 'plain' });
   } catch {
-    return reply({ kind: 'plain' });
+    reply({ kind: 'plain' });
   }
 }

@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CodeLanguage } from './code-languages';
-import { respond } from './code-highlight.respond';
+import type {
+  HighlightReply,
+  HighlightRequest,
+  HighlightStarted,
+} from './code-highlight.client';
+import { respond as respondTo } from './code-highlight.respond';
 
 // Counts grammar loads per id and lets a test fail one load.
 const grammars = vi.hoisted(() => ({
@@ -23,6 +28,24 @@ vi.mock('./code-languages', async (importOriginal) => {
     languageById: (id: string) => wrap(actual.languageById(id)),
   };
 });
+
+/** Run one request; returns its reply and every message the worker posted, in order. */
+async function respond(
+  request: HighlightRequest,
+  onStart?: (seq: number) => void,
+  log: (HighlightReply | HighlightStarted)[] = [],
+): Promise<HighlightReply> {
+  await respondTo(request, (message) => {
+    log.push(message);
+    if ('started' in message) onStart?.(message.seq);
+  });
+  const reply = log.find(
+    (message): message is HighlightReply =>
+      message.seq === request.seq && 'result' in message,
+  );
+  if (!reply) throw new Error(`no reply for ${request.seq}`);
+  return reply;
+}
 
 const text = (lines: readonly (readonly (readonly [string, unknown])[])[]) =>
   lines.map((line) => line.map(([t]) => t).join('')).join('\n');
@@ -82,5 +105,17 @@ describe('respond (the highlight worker)', () => {
     await respond({ seq: 10, id: 'python', code: 'x'.repeat(4_097) }, onStart);
 
     expect(started).toEqual([8]);
+  });
+
+  it('replies to each block straight after tokenizing it, even when blocks share a first load', async () => {
+    const log: (HighlightReply | HighlightStarted)[] = [];
+    await Promise.all([
+      respond({ seq: 11, id: 'kotlin', code: 'val a = 1' }, undefined, log),
+      respond({ seq: 12, id: 'kotlin', code: 'val b = 2' }, undefined, log),
+    ]);
+
+    expect(
+      log.map((m) => `${'started' in m ? 'start' : 'reply'}:${m.seq}`),
+    ).toEqual(['start:11', 'reply:11', 'start:12', 'reply:12']);
   });
 });

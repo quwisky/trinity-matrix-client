@@ -52,8 +52,8 @@ export function createHighlightWorker(): Worker | null {
  * Sends code blocks to the highlight worker and resolves each with its result. A worker error
  * makes the client unavailable for the session, so the caller uses the main-thread path. A block
  * that runs past its deadline restarts the worker: that block stays plain (the main thread must
- * not run the input that hung it) and the others waiting are retried. A retry answer also
- * restarts it, so a grammar that failed to load is fetched again by a fresh module cache.
+ * not run the input that hung it) and the others waiting are retried. After a retry answer it
+ * restarts once idle, so a grammar that failed to load is fetched again by a fresh module cache.
  */
 export class CodeHighlightClient {
   private readonly pending = new Map<
@@ -66,6 +66,8 @@ export class CodeHighlightClient {
   private readonly ready: ReturnType<typeof signal<boolean>>;
   private worker: Worker | null = null;
   private seq = 0;
+  /** A grammar failed to load: restart for a fresh module cache once nothing else is waiting. */
+  private restartWhenIdle = false;
 
   readonly available: Signal<boolean>;
 
@@ -106,7 +108,8 @@ export class CodeHighlightClient {
         clearTimeout(entry.timer);
         this.pending.delete(data.seq);
         entry.resolve(data.result);
-        if (data.result.kind === 'retry') this.restart(null);
+        if (data.result.kind === 'retry') this.restartWhenIdle = true;
+        if (this.restartWhenIdle && this.pending.size === 0) this.restart(null);
       };
       this.worker.onerror = () => this.stop();
     }
@@ -122,6 +125,7 @@ export class CodeHighlightClient {
   }
 
   private restart(stuck: number | null): void {
+    this.restartWhenIdle = false;
     this.worker?.terminate();
     this.settleAll(stuck, RETRY);
     this.start();
