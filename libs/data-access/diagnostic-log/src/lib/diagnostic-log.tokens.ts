@@ -34,6 +34,8 @@ export const DIAGNOSTIC_LOG_STORE_REMOVER = new InjectionToken<
  */
 export interface DiagnosticSdkCapture {
   setEnabled(enabled: boolean): void;
+  /** Detailed logging: the capture also takes the SDK's debug lines, not only info and above. */
+  setDetailed(detailed: boolean): void;
 }
 
 export const DIAGNOSTIC_SDK_CAPTURE = new InjectionToken<DiagnosticSdkCapture>(

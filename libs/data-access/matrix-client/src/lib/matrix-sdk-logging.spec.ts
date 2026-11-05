@@ -11,6 +11,7 @@ import {
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
   provideMatrixSdkLogging,
+  setMatrixSdkDetailedLogging,
   type MatrixSdkLogRecord,
   type MatrixSdkLogSink,
 } from './matrix-sdk-logging';
@@ -45,6 +46,7 @@ describe('configureMatrixSdkLogging', () => {
 
   afterEach(() => {
     // The SDK's loggers are process-wide; leave them at the SDK default for other specs.
+    setMatrixSdkDetailedLogging(false);
     configureMatrixSdkLogging('debug');
     vi.restoreAllMocks();
   });
@@ -131,6 +133,18 @@ describe('configureMatrixSdkLogging', () => {
     expect(matrixSdkLogLevel()).toBe('warn');
   });
 
+  it('leaves the console level alone when detailed logging is turned on without a sink', () => {
+    configureMatrixSdkLogging('warn');
+
+    setMatrixSdkDetailedLogging(true);
+    sdkRootLogger.debug('debug line');
+
+    expect((sdkRootLogger as unknown as loglevel.Logger).getLevel()).toBe(
+      loglevel.levels.WARN,
+    );
+    expect(debug).not.toHaveBeenCalled();
+  });
+
   describe('with a diagnostic sink', () => {
     function recordingSink(): MatrixSdkLogSink & {
       readonly records: MatrixSdkLogRecord[];
@@ -139,19 +153,63 @@ describe('configureMatrixSdkLogging', () => {
       return { records, write: (record) => records.push(record) };
     }
 
-    it('receives SDK debug lines while the console stays at warn', () => {
+    function levelOf(logger: unknown): number {
+      return (logger as loglevel.Logger).getLevel();
+    }
+
+    it('receives SDK info lines, not debug ones, while the console stays at warn', () => {
       const sink = recordingSink();
       configureMatrixSdkLogging('warn', sink);
 
       sdkRootLogger.debug('debug line');
+      sdkRootLogger.info('info line');
       sdkRootLogger.warn('warn line');
 
+      expect(levelOf(sdkRootLogger)).toBe(loglevel.levels.INFO);
       expect(debug).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith('warn line');
       expect(sink.records).toEqual([
-        { method: 'debug', logger: 'matrix', args: ['debug line'] },
+        { method: 'info', logger: 'matrix', args: ['info line'] },
         { method: 'warn', logger: 'matrix', args: ['warn line'] },
       ]);
+    });
+
+    it('receives debug lines while detailed logging is on, switching live both ways', () => {
+      const sink = recordingSink();
+      configureMatrixSdkLogging('warn', sink);
+      const early = sdkRootLogger.getChild('[detailed-early]');
+
+      setMatrixSdkDetailedLogging(true);
+      const late = sdkRootLogger.getChild('[detailed-late]');
+      early.debug('early on');
+      late.debug('late on');
+
+      expect(levelOf(sdkRootLogger)).toBe(loglevel.levels.DEBUG);
+      expect(levelOf(early)).toBe(loglevel.levels.DEBUG);
+      expect(levelOf(late)).toBe(loglevel.levels.DEBUG);
+
+      setMatrixSdkDetailedLogging(false);
+      early.debug('early off');
+      late.debug('late off');
+
+      expect(levelOf(early)).toBe(loglevel.levels.INFO);
+      expect(levelOf(late)).toBe(loglevel.levels.INFO);
+      expect(sink.records.map((record) => record.args)).toEqual([
+        ['early on'],
+        ['late on'],
+      ]);
+      expect(debug).not.toHaveBeenCalled();
+    });
+
+    it('keeps debug console output for development builds without recording it', () => {
+      const sink = recordingSink();
+      configureMatrixSdkLogging('debug', sink);
+
+      sdkRootLogger.debug('debug line');
+
+      expect(debug).toHaveBeenCalledWith('debug line');
+      expect(sink.records).toEqual([]);
     });
 
     it('receives each line from a grandchild exactly once, under its logger name', () => {
@@ -161,16 +219,16 @@ describe('configureMatrixSdkLogging', () => {
       const grandchild = sdkRootLogger
         .getChild('[sink-late]')
         .getChild('[grandchild]');
-      grandchild.debug('grandchild debug');
+      grandchild.info('grandchild info');
 
       expect(sink.records).toEqual([
         {
-          method: 'debug',
+          method: 'info',
           logger: 'matrix-[sink-late][grandchild]',
-          args: ['grandchild debug'],
+          args: ['grandchild info'],
         },
       ]);
-      expect(debug).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     });
 
     it('keeps the SDK logging when the sink throws', () => {
@@ -206,23 +264,23 @@ describe('configureMatrixSdkLogging', () => {
       configureMatrixSdkLogging('warn', sink);
 
       configureMatrixSdkLogging('warn');
-      sdkRootLogger.debug('after removal');
+      sdkRootLogger.info('after removal');
 
       expect(sink.records).toEqual([]);
-      expect(debug).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     });
 
     it('falls back to the console level when the sink is detached, and receives again once reattached', () => {
-      // "Keep a diagnostic log" off: no SDK logger may stay at debug level.
+      // "Keep a diagnostic log" off: no SDK logger may stay below the console level.
       const sink = recordingSink();
       configureMatrixSdkLogging('warn', sink);
       const child = sdkRootLogger.getChild(
         '[sink-detach]',
       ) as unknown as loglevel.Logger;
-      expect(child.getLevel()).toBe(loglevel.levels.DEBUG);
+      expect(child.getLevel()).toBe(loglevel.levels.INFO);
 
       configureMatrixSdkLogging(matrixSdkLogLevel(), null);
-      sdkRootLogger.debug('while detached');
+      sdkRootLogger.info('while detached');
 
       expect(child.getLevel()).toBe(loglevel.levels.WARN);
       expect((sdkRootLogger as unknown as loglevel.Logger).getLevel()).toBe(
@@ -231,12 +289,12 @@ describe('configureMatrixSdkLogging', () => {
       expect(sink.records).toEqual([]);
 
       configureMatrixSdkLogging(matrixSdkLogLevel(), sink);
-      sdkRootLogger.debug('reattached');
+      sdkRootLogger.info('reattached');
 
       expect(sink.records.map((record) => record.args)).toEqual([
         ['reattached'],
       ]);
-      expect(debug).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     });
 
     it('takes the sink from MATRIX_SDK_LOG_SINK when the root injector is created', () => {
@@ -249,12 +307,12 @@ describe('configureMatrixSdkLogging', () => {
       });
       TestBed.inject(EnvironmentInjector);
 
-      sdkRootLogger.debug('via provider');
+      sdkRootLogger.info('via provider');
 
       expect(sink.records.map((record) => record.args)).toEqual([
         ['via provider'],
       ]);
-      expect(debug).not.toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     });
   });
 });

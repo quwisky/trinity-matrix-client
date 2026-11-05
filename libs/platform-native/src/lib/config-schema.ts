@@ -338,6 +338,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
       'imported document must not switch logging on for another device, and an unreadable ' +
       'value already means off.',
   },
+  {
+    disposition: 'excluded',
+    key: 'trinity.diagnostics.detailed-log',
+    owner: 'data-access/diagnostic-log',
+    reason:
+      'Decides how much this device records, like `trinity.diagnostics.keep-log`; an ' +
+      'imported document must not raise it on another device.',
+  },
 
   // — data-access/notifications —
   {

@@ -17,6 +17,22 @@
       (checkedChange)="setKeepLog($event)"
     />
   </trn-settings-row>
+  @if (keepLog()) {
+    <trn-settings-row
+      label="Detailed logging"
+      description="Also keeps Matrix debug details, which help with sync and encryption problems. This uses more storage and battery, so turn it on only while you reproduce a problem."
+      for="advanced-detailed-diagnostic-log-switch"
+      data-testid="advanced-detailed-diagnostic-log"
+    >
+      <trn-switch
+        inputId="advanced-detailed-diagnostic-log-switch"
+        aria-describedby="advanced-detailed-diagnostic-log-switch-description"
+        [checked]="detailedLog()"
+        [disabled]="pending()"
+        (checkedChange)="setDetailedLog($event)"
+      />
+    </trn-settings-row>
+  }
   <div class="flex flex-wrap items-center gap-2 py-3">
     <button
       trnBtn

@@ -29,7 +29,9 @@ import {
 } from './diagnostic-log.tokens';
 import {
   KEEP_DIAGNOSTIC_LOG_PREFERENCE,
+  readDetailedLogSetting,
   readKeepLogSetting,
+  saveDetailedLogSetting,
   saveKeepLogSetting,
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
@@ -107,6 +109,9 @@ export class DiagnosticLogService {
     KEEP_DIAGNOSTIC_LOG_PREFERENCE.defaultValue,
   );
   private readonly _settingKnown = signal(false);
+  private readonly _detailedLog = signal(false);
+  /** Set once the user picks "Detailed logging", so a slower stored read can't undo it. */
+  private detailedChosen = false;
   private readonly recorder = new DiagnosticLogRecorder({
     openStore: () => this.openStore(),
     removeStore: inject(DIAGNOSTIC_LOG_STORE_REMOVER),
@@ -134,6 +139,8 @@ export class DiagnosticLogService {
    * one never is.
    */
   readonly settingKnown = this._settingKnown.asReadonly();
+  /** Settings › Advanced › Detailed logging: the log also keeps the SDK's debug lines. */
+  readonly detailedLog = this._detailedLog.asReadonly();
 
   /** Install capture and read the setting. Idempotent; undone when the root injector is destroyed. */
   start(): void {
@@ -297,6 +304,15 @@ export class DiagnosticLogService {
     );
   }
 
+  /** Turn detailed logging on or off; applies at once, the outcome is the save's. Cold. */
+  setDetailedLog(detailed: boolean): Observable<PreferenceCommandOutcome> {
+    return defer(() => {
+      this.detailedChosen = true;
+      this.applyDetailed(detailed);
+      return saveDetailedLogSetting(this.preferences, detailed);
+    });
+  }
+
   /**
    * Stop recording for the rest of this session and delete the stored log, without saving
    * the setting: for a factory reset, which wipes the setting itself and must not find a
@@ -308,6 +324,8 @@ export class DiagnosticLogService {
     return defer(() => {
       // First, as when the log is turned off: no SDK logger may stay at debug level.
       this.sdkCapture?.setEnabled(false);
+      // The reset returns "Detailed logging" to its default, off.
+      this.applyDetailed(false);
       this.early = null;
       this._keepLog.set(false);
       this._settingKnown.set(true);
@@ -348,6 +366,18 @@ export class DiagnosticLogService {
         // the next start, which reads the same stored "off".
         this.applySetting(stored === 'on').catch(() => undefined);
       });
+    readDetailedLogSetting(this.preferences)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((detailed) => {
+        if (detailed && !this.detailedChosen) {
+          this.applyDetailed(true);
+        }
+      });
+  }
+
+  private applyDetailed(detailed: boolean): void {
+    this._detailedLog.set(detailed);
+    this.sdkCapture?.setDetailed(detailed);
   }
 
   /** The setting is known: release what was held, or drop it and delete the stored log. */

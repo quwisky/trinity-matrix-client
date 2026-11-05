@@ -33,6 +33,8 @@ import {
 const BUILD: BuildInfo = { version: '1.2.3', commit: 'abc1234', builtAt: '' };
 /** "Keep a diagnostic log" stored as off, as the preference runtime writes it. */
 const KEEP_LOG_OFF = JSON.stringify({ version: 1, value: false });
+const DETAILED_LOG_KEY = 'trinity.diagnostics.detailed-log';
+const DETAILED_LOG_ON = JSON.stringify({ version: 1, value: true });
 
 describe('DiagnosticLogService', () => {
   let warn: ReturnType<typeof vi.spyOn>;
@@ -41,18 +43,27 @@ describe('DiagnosticLogService', () => {
   let remove: ReturnType<typeof vi.fn<() => Promise<void>>>;
   /** The app's switch for SDK debug capture; records every call in order. */
   let setSdkCapture: ReturnType<typeof vi.fn<(enabled: boolean) => void>>;
+  let storedDetailed: string | null;
+  let setSdkDetailed: ReturnType<typeof vi.fn<(detailed: boolean) => void>>;
 
-  /** Installation preference storage holding only "Keep a diagnostic log". */
+  /** Installation preference storage: "Keep a diagnostic log" and "Detailed logging". */
   function preferenceAdapter(): PreferenceStorageAdapter {
     return {
-      read: () =>
-        of(
-          storedSetting === null
+      read: (request) => {
+        const payload =
+          request.key === DETAILED_LOG_KEY ? storedDetailed : storedSetting;
+        return of(
+          payload === null
             ? ({ kind: 'missing' } as const)
-            : ({ kind: 'found', payload: storedSetting } as const),
-        ),
+            : ({ kind: 'found', payload } as const),
+        );
+      },
       write: (request) => {
-        storedSetting = request.payload;
+        if (request.key === DETAILED_LOG_KEY) {
+          storedDetailed = request.payload;
+        } else {
+          storedSetting = request.payload;
+        }
         return of({ kind: 'completed' } as const);
       },
     };
@@ -70,7 +81,7 @@ describe('DiagnosticLogService', () => {
         { provide: PREFERENCE_STORAGE_ADAPTER, useValue: adapter },
         {
           provide: DIAGNOSTIC_SDK_CAPTURE,
-          useValue: { setEnabled: setSdkCapture },
+          useValue: { setEnabled: setSdkCapture, setDetailed: setSdkDetailed },
         },
       ],
     });
@@ -107,6 +118,8 @@ describe('DiagnosticLogService', () => {
     // Deleting the database, emulated on the memory store the factory hands out.
     remove = vi.fn(() => store.clear());
     setSdkCapture = vi.fn();
+    storedDetailed = null;
+    setSdkDetailed = vi.fn();
   });
 
   afterEach(() => {
@@ -543,6 +556,50 @@ describe('DiagnosticLogService', () => {
       } finally {
         process.off('unhandledRejection', unhandled);
       }
+    });
+  });
+
+  describe('Detailed logging', () => {
+    it('is off by default and leaves the SDK at info', async () => {
+      const service = setup();
+      await stored();
+
+      expect(service.detailedLog()).toBe(false);
+      expect(setSdkDetailed).not.toHaveBeenCalled();
+    });
+
+    it('raises the SDK to debug at start when stored on', async () => {
+      storedDetailed = DETAILED_LOG_ON;
+      const service = setup();
+      await stored();
+
+      expect(service.detailedLog()).toBe(true);
+      expect(setSdkDetailed.mock.calls).toEqual([[true]]);
+    });
+
+    it('applies a change at once and saves it', async () => {
+      const service = setup();
+
+      const turnedOn = firstValueFrom(service.setDetailedLog(true));
+      expect(setSdkDetailed.mock.calls).toEqual([[true]]);
+      expect(await turnedOn).toEqual({ kind: 'completed' });
+      expect(service.detailedLog()).toBe(true);
+      expect(storedDetailed).toBe(DETAILED_LOG_ON);
+
+      await firstValueFrom(service.setDetailedLog(false));
+      expect(setSdkDetailed.mock.calls).toEqual([[true], [false]]);
+      expect(service.detailedLog()).toBe(false);
+    });
+
+    it('returns to off for the session on a factory reset', async () => {
+      storedDetailed = DETAILED_LOG_ON;
+      const service = setup();
+      await stored();
+
+      await firstValueFrom(service.discard());
+
+      expect(service.detailedLog()).toBe(false);
+      expect(setSdkDetailed.mock.calls.at(-1)).toEqual([false]);
     });
   });
 
