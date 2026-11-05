@@ -22,6 +22,7 @@ import {
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: vi.fn(() => true),
+    getPlatform: vi.fn(() => 'ios'),
     convertFileSrc: vi.fn((u: string) => `converted:${u}`),
   },
 }));

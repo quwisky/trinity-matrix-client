@@ -18,6 +18,7 @@ import { MediaPickerService } from './media-picker.service';
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
     isNativePlatform: vi.fn(() => false),
+    getPlatform: vi.fn(() => 'ios'),
     convertFileSrc: vi.fn((u: string) => u),
   },
 }));
@@ -89,6 +90,20 @@ describe('MediaPickerService host adapter', () => {
     await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
     expect(ui.fullScreenActive()).toBe(false);
     pick.unsubscribe();
+  });
+
+  it('does not count the Android gallery as full screen, so its capture block stays on', () => {
+    // Android's photo picker can open as a half-height sheet over the room.
+    isNative.mockReturnValue(true);
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('android');
+    chooseFromGallery.mockReturnValueOnce(new Promise(() => undefined));
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const pick = picker.pickImages().subscribe();
+    expect(ui.active()).toBe(true);
+    expect(ui.fullScreenActive()).toBe(false);
+    pick.unsubscribe();
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('ios');
   });
 
   it('counts no system UI on the web, which uses the file input instead', () => {
