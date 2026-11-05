@@ -127,6 +127,35 @@ describe('MatrixClientService', () => {
     expect(svc.instance).toBe(client);
   });
 
+  it('asks for the server versions before it starts crypto and the client', async () => {
+    const client = fakeClient();
+    let finishCrypto = (): void => undefined;
+    client.initRustCrypto.mockReturnValue(
+      new Promise<void>((resolve) => (finishCrypto = resolve)),
+    );
+    const { svc } = setup(client);
+
+    const started = firstValueFrom(svc.init(SESSION));
+    await vi.waitFor(() => expect(client.initRustCrypto).toHaveBeenCalled());
+
+    // In flight while crypto opens; startClient() reuses the SDK's memoized request.
+    expect(client.getVersions).toHaveBeenCalledOnce();
+    expect(client.startClient).not.toHaveBeenCalled();
+    finishCrypto();
+    await started;
+  });
+
+  it('starts the client when the early versions request fails', async () => {
+    const client = fakeClient();
+    client.getVersions.mockRejectedValue(new Error('offline'));
+    const { svc } = setup(client);
+
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(client.startClient).toHaveBeenCalledOnce();
+    expect(svc.isInitialized).toBe(true);
+  });
+
   it('scopes the crypto store to the account via cryptoDatabasePrefix', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
@@ -164,6 +193,59 @@ describe('MatrixClientService', () => {
         storageKey: KEY,
       });
       expect(svc.cryptoStoreEncrypted()).toBe(true);
+    });
+
+    it('reads the store key while the sync cache is still loading', async () => {
+      vi.stubGlobal('indexedDB', {});
+      const client = fakeClient();
+      let finishCache = (): void => undefined;
+      storeMock.startup.mockReturnValue(
+        new Promise<void>((resolve) => (finishCache = resolve)),
+      );
+      const { svc, storeKeys } = setup(client);
+      vi.mocked(storeKeys.read).mockResolvedValue({
+        kind: 'present',
+        key: KEY,
+      });
+
+      const started = firstValueFrom(svc.init(KEYED));
+      await vi.waitFor(() => expect(storeMock.startup).toHaveBeenCalled());
+
+      expect(storeKeys.read).toHaveBeenCalledWith('trinity-crypto:@me:hs:DEV');
+      expect(client.initRustCrypto).not.toHaveBeenCalled();
+      finishCache();
+      await started;
+      expect(client.initRustCrypto).toHaveBeenCalledWith(
+        expect.objectContaining({ storageKey: KEY }),
+      );
+    });
+
+    it('waits for the sync cache before it reports a lost store key', async () => {
+      vi.stubGlobal('indexedDB', {});
+      const client = fakeClient();
+      let finishCache = (): void => undefined;
+      storeMock.startup.mockReturnValue(
+        new Promise<void>((resolve) => (finishCache = resolve)),
+      );
+      const { svc, storeKeys } = setup(client);
+      vi.mocked(storeKeys.read).mockResolvedValue({ kind: 'missing' });
+      let outcome: unknown = null;
+
+      svc
+        .restorePersisted(KEYED, 'activate')
+        .subscribe((result) => (outcome = result));
+      await vi.waitFor(() => expect(storeKeys.read).toHaveBeenCalled());
+      await Promise.resolve();
+
+      expect(outcome).toBeNull();
+      expect(storeMock.destroy).not.toHaveBeenCalled();
+      finishCache();
+      await vi.waitFor(() =>
+        expect(outcome).toEqual({
+          kind: 'failed',
+          failure: 'crypto-store-key-lost',
+        }),
+      );
     });
 
     it('opens a store created before keys existed as it is, and says so', async () => {

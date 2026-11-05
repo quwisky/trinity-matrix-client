@@ -3,6 +3,7 @@ import {
   NativeKeyboardInsetAdapter,
   NativeStatusBarTapAdapter,
 } from '@trinity/platform-native';
+import { preloadCryptoWasm } from '@trinity/util/matrix';
 import { take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
@@ -13,6 +14,8 @@ import { SessionHandoverWorkflow } from './session-handover.workflow';
  * handover, the runtime itself, the diagnostic log's lifecycle markers and the iOS keyboard inset and status bar tap.
  */
 export function startApplicationRuntime(applicationRef: ApplicationRef): void {
+  // Compiles while startup runs; the account start that awaits it reports a failure.
+  preloadCryptoWasm().subscribe({ error: () => undefined });
   const runtime = applicationRef.injector.get(ApplicationRuntimeService);
   const errors = applicationRef.injector.get(ErrorHandler);
   // First, so another tab's "Use here" is heard from the moment this tab holds the lock.

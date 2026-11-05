@@ -3,12 +3,18 @@ import {
   NativeKeyboardInsetAdapter,
   NativeStatusBarTapAdapter,
 } from '@trinity/platform-native';
-import { Subject, of } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { preloadCryptoWasm } from '@trinity/util/matrix';
+import { Subject, of, throwError } from 'rxjs';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
 import { SessionHandoverWorkflow } from './session-handover.workflow';
 import { startApplicationRuntime } from './start-application-runtime';
+
+vi.mock('@trinity/util/matrix', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@trinity/util/matrix')>()),
+  preloadCryptoWasm: vi.fn(),
+}));
 
 function fakeApplication() {
   const runtime = new Subject<never>();
@@ -45,6 +51,36 @@ function fakeApplication() {
 }
 
 describe('startApplicationRuntime', () => {
+  beforeEach(() => {
+    vi.mocked(preloadCryptoWasm).mockReset().mockReturnValue(of(undefined));
+  });
+
+  it('loads the crypto engine before the runtime restores any account', () => {
+    const app = fakeApplication();
+    let runtimeStartedFirst = false;
+    vi.mocked(preloadCryptoWasm).mockImplementation(() => {
+      runtimeStartedFirst = app.runtime.observed;
+      return of(undefined);
+    });
+
+    startApplicationRuntime(app.applicationRef);
+
+    expect(preloadCryptoWasm).toHaveBeenCalledOnce();
+    expect(runtimeStartedFirst).toBe(false);
+  });
+
+  it('leaves a failed crypto engine load to the account that needs it', () => {
+    vi.mocked(preloadCryptoWasm).mockReturnValue(
+      throwError(() => new Error('wasm failed')),
+    );
+    const app = fakeApplication();
+
+    startApplicationRuntime(app.applicationRef);
+
+    expect(app.handleError).not.toHaveBeenCalled();
+    expect(app.runtime.observed).toBe(true);
+  });
+
   it('runs Application Runtime and the lifecycle markers for the life of the application', () => {
     const app = fakeApplication();
 

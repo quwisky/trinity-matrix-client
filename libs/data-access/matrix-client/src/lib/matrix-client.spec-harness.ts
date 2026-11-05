@@ -48,6 +48,7 @@ export function fakeClient(baseUrl = 'https://hs.example') {
     off: vi.fn(),
     initRustCrypto: vi.fn().mockResolvedValue(undefined),
     startClient: vi.fn().mockResolvedValue(undefined),
+    getVersions: vi.fn().mockResolvedValue({ versions: [] }),
     stopClient: vi.fn(),
     clearStores: vi.fn().mockResolvedValue(undefined),
     getCrypto: vi.fn().mockReturnValue(undefined),
