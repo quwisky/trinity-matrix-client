@@ -30,7 +30,7 @@ export const DIAGNOSTIC_LOG_STORE_REMOVER = new InjectionToken<
 /**
  * Switches matrix-js-sdk's debug capture on and off; implemented by the app, which owns the
  * SDK logging configuration. Called synchronously, first thing, whenever "Keep a diagnostic
- * log" turns off, so no SDK logger stays at debug level for a moment longer.
+ * log" turns off, so no SDK line reaches the log after that.
  */
 export interface DiagnosticSdkCapture {
   setEnabled(enabled: boolean): void;

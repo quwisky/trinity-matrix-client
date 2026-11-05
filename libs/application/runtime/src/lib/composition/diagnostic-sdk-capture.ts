@@ -11,8 +11,8 @@ import {
  * `DIAGNOSTIC_SDK_CAPTURE` for Application Runtime. Enabled, every SDK logger runs at info
  * (debug with detailed logging on) and feeds the sink; disabled, the sink is detached and the loggers fall back to the
  * console level `provideMatrixSdkLogging()` set, so nothing is built at debug. Synchronous:
- * `DiagnosticLogService` calls it first thing when the log turns off, so there is no window
- * with SDK loggers at debug. The sink is looked up on use, because its factory injects
+ * `DiagnosticLogService` calls it first thing when the log turns off, so no SDK line reaches
+ * the log after that. The sink is looked up on use, because its factory injects
  * `DiagnosticLogService`, which injects this.
  */
 export function matrixSdkCapture(): DiagnosticSdkCapture {

@@ -22,7 +22,7 @@ import {
 } from '@trinity/runtime/preferences';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError, type Observable } from 'rxjs';
+import { Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReportBugDialogComponent } from '../report-bug/report-bug-dialog.component';
 import { DiagnosticsGroupComponent } from './diagnostics-group.component';
@@ -33,6 +33,9 @@ interface SetupOptions {
   readonly keepLog?: boolean;
   /** Whether the stored setting has been read; it has unless a test says otherwise. */
   readonly settingKnown?: boolean;
+  /** Whether the stored Detailed logging value has been read; it has unless a test says otherwise. */
+  readonly detailedKnown?: boolean;
+  readonly detailedSaved?: () => Observable<PreferenceCommandOutcome>;
   readonly saved?: PreferenceCommandOutcome;
   readonly setKeepLogResult?: () => Observable<PreferenceCommandOutcome>;
 }
@@ -52,10 +55,14 @@ async function setup(options: SetupOptions = {}) {
   const detailedLog = signal(false);
   const setDetailedLog = vi.fn((detailed: boolean) => {
     detailedLog.set(detailed);
-    return of(options.saved ?? ({ kind: 'completed' } as const));
+    return (
+      options.detailedSaved?.() ??
+      of(options.saved ?? ({ kind: 'completed' } as const))
+    );
   });
   const available = signal(options.available ?? 'persistent');
   const settingKnown = signal(options.settingKnown ?? true);
+  const detailedKnown = signal(options.detailedKnown ?? true);
   const rendered = await render(DiagnosticsGroupComponent, {
     providers: [
       MockProvider(DiagnosticLogService, {
@@ -66,6 +73,7 @@ async function setup(options: SetupOptions = {}) {
         detailedLog: detailedLog.asReadonly(),
         available: available.asReadonly(),
         settingKnown: settingKnown.asReadonly(),
+        detailedLogKnown: detailedKnown.asReadonly(),
       }),
       MockProvider(TrnSurfaceService, { open }),
       MockProvider(TrnToastService, { show }),
@@ -77,6 +85,7 @@ async function setup(options: SetupOptions = {}) {
     ...rendered,
     available,
     settingKnown,
+    detailedKnown,
     open,
     show,
     clear,
@@ -123,6 +132,13 @@ async function setupWithService(
   await rendered.fixture.whenStable();
   rendered.fixture.detectChanges();
   return { ...rendered, show };
+}
+
+function detailedLogSwitch(
+  fixture: ComponentFixture<DiagnosticsGroupComponent>,
+): TrnSwitchComponent {
+  return fixture.debugElement.queryAll(By.directive(TrnSwitchComponent))[1]
+    .componentInstance as TrnSwitchComponent;
 }
 
 function keepLogSwitch(
@@ -179,6 +195,36 @@ describe('DiagnosticsGroupComponent', () => {
 
     expect(setDetailedLog).toHaveBeenCalledWith(true);
     expect(control.checked()).toBe(true);
+  });
+
+  it('disables Detailed logging until its stored value is read', async () => {
+    const { fixture, detailedKnown } = await setup({ detailedKnown: false });
+    const row = screen.getByTestId('advanced-detailed-diagnostic-log');
+
+    expect(detailedLogSwitch(fixture).disabled()).toBe(true);
+    expect(row.getAttribute('aria-busy')).toBe('true');
+
+    detailedKnown.set(true);
+    fixture.detectChanges();
+
+    expect(detailedLogSwitch(fixture).disabled()).toBe(false);
+    expect(row.getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('disables Detailed logging until its save finishes', async () => {
+    const saved = new Subject<PreferenceCommandOutcome>();
+    const { fixture } = await setup({ detailedSaved: () => saved });
+
+    detailedLogSwitch(fixture).checkedChange.emit(true);
+    fixture.detectChanges();
+
+    expect(detailedLogSwitch(fixture).disabled()).toBe(true);
+
+    saved.next({ kind: 'completed' });
+    fixture.detectChanges();
+
+    expect(detailedLogSwitch(fixture).disabled()).toBe(false);
+    expect(detailedLogSwitch(fixture).checked()).toBe(true);
   });
 
   it('hides Clear diagnostic logs and Detailed logging while the log is off, and keeps Report a bug', async () => {

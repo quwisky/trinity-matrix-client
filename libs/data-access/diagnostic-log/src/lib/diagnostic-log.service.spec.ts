@@ -577,6 +577,19 @@ describe('DiagnosticLogService', () => {
       expect(setSdkDetailed.mock.calls).toEqual([[true]]);
     });
 
+    it('is known once its stored value is read', async () => {
+      const reads = new Subject<PreferenceStorageReadOutcome>();
+      const service = setup(undefined, pendingAdapter(reads));
+
+      expect(service.detailedLogKnown()).toBe(false);
+
+      reads.next({ kind: 'missing' });
+      reads.complete();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(service.detailedLogKnown()).toBe(true);
+    });
+
     it('applies a change at once and saves it', async () => {
       const service = setup();
 
