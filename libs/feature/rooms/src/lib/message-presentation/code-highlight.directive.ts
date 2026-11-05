@@ -4,49 +4,17 @@ import {
   afterRenderEffect,
   inject,
   input,
-  signal,
 } from '@angular/core';
+import type { CodeHighlightClient } from './code-highlight.client';
+import { linesFromRuns } from './code-lines';
 import { resolveLanguage, type CodeLanguage } from './code-languages';
-
-type Highlighter = typeof import('./code-highlight');
+import {
+  HighlightFallback,
+  HighlightWorker,
+} from './code-highlight.worker-client';
 
 /** Total characters of code one message body may have tokenized (blocks cap themselves). */
 const MAX_CHARS_PER_BODY = 20_000;
-
-const core = signal<Highlighter | null>(null);
-/** Language ids whose grammar is registered; replaced, never mutated, so effects re-run. */
-const registered = signal<ReadonlySet<string>>(new Set());
-const inFlight = new Set<string>();
-let coreRequested = false;
-
-/** Fetch highlight.js core once, on the first rendered block in a known language. */
-function loadCore(): void {
-  if (coreRequested) {
-    return;
-  }
-  coreRequested = true;
-  import('./code-highlight').then(
-    (module) => core.set(module),
-    // Plain code is a fine permanent fallback; allow a retry on the next render.
-    () => (coreRequested = false),
-  );
-}
-
-/** Fetch one grammar once; a failed fetch is forgotten so a later render retries it. */
-function loadLanguage(highlighter: Highlighter, language: CodeLanguage): void {
-  if (inFlight.has(language.id) || registered().has(language.id)) {
-    return;
-  }
-  inFlight.add(language.id);
-  language.load().then(
-    (module) => {
-      inFlight.delete(language.id);
-      highlighter.registerLanguage(language.id, module.default);
-      registered.update((ids) => new Set(ids).add(language.id));
-    },
-    () => inFlight.delete(language.id),
-  );
-}
 
 const languageOf = (code: Element): CodeLanguage | null => {
   const fence = /(?:^|\s)language-([\w-]+)(?:\s|$)/.exec(code.className)?.[1];
@@ -56,19 +24,25 @@ const languageOf = (code: Element): CodeLanguage | null => {
 /**
  * Syntax-highlights the fenced blocks of a sanitized message body rendered with `[innerHTML]`.
  * The sanitizer leaves code as plain text, so a row shows readable code at once and this swaps
- * colours in (same characters, same layout) when its grammar has loaded, only for rows on screen.
- * Output is built from createElement and textContent, never markup.
+ * colours in (same characters, same layout) when its tokens arrive, only for rows on screen.
+ * Tokenizing runs in the highlight worker; where it cannot start, or after it fails, the main
+ * thread loads the grammars and tokenizes instead. Output is built from createElement and
+ * textContent, never markup.
  */
 @Directive({ selector: '[trnCodeHighlight]' })
 export class CodeHighlightDirective {
-  readonly source = input('', { alias: 'trnCodeHighlight' });
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly worker = inject(HighlightWorker);
+  private readonly fallback = inject(HighlightFallback);
+
+  readonly source = input('', { alias: 'trnCodeHighlight' });
 
   constructor() {
     afterRenderEffect(() => {
       this.source();
-      const highlighter = core();
-      const ready = registered();
+      this.worker.retryTick();
+      const highlighter = this.fallback.core();
+      const ready = this.fallback.registered();
       const blocks = [
         ...this.host.nativeElement.querySelectorAll('pre > code'),
       ].flatMap((code) => {
@@ -78,43 +52,77 @@ export class CodeHighlightDirective {
       if (blocks.length === 0) {
         return;
       }
-      if (!highlighter) {
-        loadCore();
+      const client = this.worker.client();
+      const viaWorker = client.available();
+      if (!viaWorker && !highlighter) {
+        this.fallback.loadCore();
         return;
       }
       let budget = MAX_CHARS_PER_BODY;
       for (const { code, language } of blocks) {
-        if (ready.has(language.id)) {
-          budget -= apply(code, language.id, highlighter, budget);
-        } else {
-          loadLanguage(highlighter, language);
+        const source = code.textContent ?? '';
+        if (!source || source.length > budget) continue;
+        // Every block that is or will be tokenized keeps its share, so each run charges the same.
+        if (isHighlighted(code)) {
+          budget -= source.length;
+          continue;
+        }
+        if (!isPlain(code)) continue;
+        budget -= source.length;
+        if (viaWorker) {
+          this.send(client, code, language, source);
+        } else if (highlighter && ready.has(language.id)) {
+          const lines = highlighter.highlightLines(
+            source,
+            language.id,
+            code.ownerDocument,
+          );
+          if (lines) place(code, lines);
+        } else if (highlighter) {
+          this.fallback.loadLanguage(highlighter, language);
         }
       }
     });
   }
+
+  private send(
+    client: CodeHighlightClient,
+    code: Element,
+    language: CodeLanguage,
+    source: string,
+  ): void {
+    if (this.worker.sent.get(code) === source) return;
+    this.worker.sent.set(code, source);
+    void client.request(language.id, source).then((result) => {
+      // The row was re-rendered or edited while the worker ran: its reply is stale.
+      if (!code.isConnected || code.textContent !== source) return;
+      if (result.kind === 'retry') {
+        this.worker.retryLater(code);
+        return;
+      }
+      if (result.kind !== 'lines' || !isPlain(code)) return;
+      const lines = linesFromRuns(result.lines, source, code.ownerDocument);
+      if (lines) place(code, lines);
+    });
+  }
 }
 
-/** Tokenize one block in place; returns the characters spent. */
-function apply(
-  code: Element,
-  id: string,
-  highlighter: Highlighter,
-  budget: number,
-): number {
-  const source = code.textContent ?? '';
-  const wrappers = [...code.children];
-  // Sender markup (a link, bold) or an already highlighted block: leave it alone.
-  const plain = wrappers.every(
+/** A block this directive already coloured. */
+function isHighlighted(code: Element): boolean {
+  return code.querySelector('[class^="tok-"]') !== null;
+}
+
+/** Sender markup (a link, bold) or an already highlighted block is left alone. */
+function isPlain(code: Element): boolean {
+  return [...code.children].every(
     (line) =>
       line.classList.contains('code-line') && line.children.length === 0,
   );
-  if (!plain || !source || source.length > budget) {
-    return 0;
-  }
-  const lines = highlighter.highlightLines(source, id, code.ownerDocument);
-  if (!lines) {
-    return 0;
-  }
+}
+
+/** Put highlighted lines into the block's line wrappers, or replace its text when it has none. */
+function place(code: Element, lines: DocumentFragment[]): boolean {
+  const wrappers = [...code.children];
   if (wrappers.length === 0) {
     const doc = code.ownerDocument;
     code.replaceChildren(
@@ -122,10 +130,11 @@ function apply(
         i ? [doc.createTextNode('\n'), line] : [line],
       ),
     );
-  } else if (wrappers.length <= lines.length) {
-    wrappers.forEach((wrapper, i) => wrapper.replaceChildren(lines[i]));
-  } else {
-    return 0;
+    return true;
   }
-  return source.length;
+  if (wrappers.length <= lines.length) {
+    wrappers.forEach((wrapper, i) => wrapper.replaceChildren(lines[i]));
+    return true;
+  }
+  return false;
 }

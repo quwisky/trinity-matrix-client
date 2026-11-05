@@ -4,9 +4,11 @@ import {
   MAX_CODE_CHARS,
   MAX_LINE_CHARS,
   highlightLines,
+  linesFromRuns,
   registerLanguage,
 } from './code-highlight';
 import { resolveLanguage } from './code-languages';
+import { GRAMMAR_SAMPLES } from './code-highlight.samples';
 
 /** Highlight a fenced block the way the render path does, and hand back the <code>. */
 async function highlight(lang: string, source: string): Promise<HTMLElement> {
@@ -93,39 +95,7 @@ describe('code highlighting', () => {
   // highlight.js language, a dropped import) shows up here as a language with no tokens
   // rather than as a silently plain block in someone's room. One case per grammar, so each
   // grammar's first compile has its own timeout rather than all of them sharing one.
-  it.each([
-    ['bash', 'echo "hi" # c'],
-    ['c', '#include <stdio.h>\nint main(){return 0;}'],
-    ['csharp', 'public class A { void B() {} }'],
-    ['css', 'a { color: red; }'],
-    ['dart', 'void main() { print("hi"); }'],
-    ['diff', '--- a\n+++ b\n-old\n+new'],
-    ['dockerfile', 'FROM node:24\nRUN echo hi'],
-    ['go', 'func main() {}'],
-    ['html', '<div class="x">hi</div>'],
-    ['ini', '[section]\nkey = value'],
-    ['java', 'class A { void b() {} }'],
-    ['javascript', 'const a = 1;'],
-    ['json', '{"a": 1}'],
-    ['kotlin', 'fun main() { println("hi") }'],
-    ['lua', 'local x = 1 -- c'],
-    ['makefile', 'all:\n\techo hi'],
-    ['markdown', '# Title\n**bold**'],
-    ['perl', 'my $x = 1; # c'],
-    ['php', '<?php echo "hi"; ?>'],
-    ['powershell', '$x = Get-Item -Path .'],
-    ['python', 'def a(): return 1'],
-    ['ruby', 'def a; puts "hi"; end'],
-    ['rust', 'fn main() { let a = 1; }'],
-    ['scala', 'object A { def b = 1 }'],
-    ['shellsession', '$ echo hi'],
-    ['sql', 'SELECT a FROM b;'],
-    ['swift', 'let x = 1 // c'],
-    ['toml', '[a]\nb = 1'],
-    ['typescript', 'const a: number = 1;'],
-    ['xml', '<root attr="v"><child/></root>'],
-    ['yaml', 'a: 1'],
-  ])('highlights %s', async (lang, source) => {
+  it.each(GRAMMAR_SAMPLES)('highlights %s', async (lang, source) => {
     expect(roles(await highlight(lang, source)).length).toBeGreaterThan(0);
   });
 
@@ -256,5 +226,40 @@ describe('code highlighting', () => {
 
   it('returns null for a language that is not registered', () => {
     expect(highlightLines('x', 'lua-not-loaded', document)).toBeNull();
+  });
+
+  it('builds lines from runs', () => {
+    const lines = linesFromRuns(
+      [
+        [
+          ['let', 'keyword'],
+          [' a', null],
+        ],
+      ],
+      'let a',
+      document,
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines?.[0].querySelector('span.tok-keyword')?.textContent).toBe(
+      'let',
+    );
+    expect(lines?.[0].textContent).toBe('let a');
+  });
+
+  it('rejects runs whose text differs from the code', () => {
+    expect(linesFromRuns([[['let', null]]], 'var', document)).toBeNull();
+  });
+
+  it('restores CR from runs', () => {
+    const lines = linesFromRuns(
+      [[['a = 1', null]], [['b = 2', null]]],
+      'a = 1\r\nb = 2',
+      document,
+    );
+
+    expect(lines?.map((line) => line.textContent).join('\n')).toBe(
+      'a = 1\r\nb = 2',
+    );
   });
 });

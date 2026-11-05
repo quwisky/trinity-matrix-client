@@ -1,8 +1,14 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeHighlightDirective } from './code-highlight.directive';
+import {
+  HIGHLIGHT_WORKER_FACTORY,
+  MAX_RETRIES,
+  RETRY_DELAY_MS,
+} from './code-highlight.worker-client';
+import type { HighlightRequest } from './code-highlight.client';
 import type { CodeLanguage } from './code-languages';
 
 // A vi.mock factory runs on the FIRST import of the module, so this flag is the proof that
@@ -61,8 +67,20 @@ const fence = (source: string, lang = 'typescript') =>
   );
 
 describe('CodeHighlightDirective', () => {
+  // The main-thread path unless a test hands the directive a worker.
+  let workerFactory: () => Worker | null = () => null;
+
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [HostComponent] });
+    workerFactory = () => null;
+    grammars.calls.clear();
+    grammars.hold.clear();
+    grammars.failOnce.clear();
+    await TestBed.configureTestingModule({
+      imports: [HostComponent],
+      providers: [
+        { provide: HIGHLIGHT_WORKER_FACTORY, useValue: () => workerFactory() },
+      ],
+    });
   });
 
   function render(html: string) {
@@ -227,5 +245,182 @@ describe('CodeHighlightDirective', () => {
       expect(go.querySelector('[class^="tok-"]')).not.toBeNull();
       expect(yaml.querySelector('[class^="tok-"]')).not.toBeNull();
     });
+  });
+
+  describe('with the highlight worker', () => {
+    /** Answers each request with its first word as a keyword, or fails on demand. */
+    class FakeWorker {
+      readonly posted: HighlightRequest[] = [];
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+      postMessage(request: HighlightRequest): void {
+        this.posted.push(request);
+      }
+      answer(request: HighlightRequest): void {
+        const [word, ...rest] = request.code.split(' ');
+        const lines = [
+          [
+            [word, 'keyword'],
+            [rest.length ? ` ${rest.join(' ')}` : '', null],
+          ].filter(([text]) => text),
+        ];
+        this.onmessage?.({
+          data: { seq: request.seq, result: { kind: 'lines', lines } },
+        } as MessageEvent);
+      }
+      retry(request: HighlightRequest): void {
+        this.onmessage?.({
+          data: { seq: request.seq, result: { kind: 'retry' } },
+        } as MessageEvent);
+      }
+      fail(): void {
+        this.onerror?.(new Event('error'));
+      }
+      terminate(): void {
+        /* nothing to stop */
+      }
+    }
+
+    let worker: FakeWorker;
+    beforeEach(() => {
+      worker = new FakeWorker();
+      workerFactory = () => worker as unknown as Worker;
+    });
+
+    it('applies a worker reply to the block it was sent for', async () => {
+      const view = render(fence('const sent = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      worker.answer(worker.posted[0]);
+      await vi.waitFor(() => {
+        view.fixture.detectChanges();
+        expect(view.host.querySelector('.tok-keyword')?.textContent).toBe(
+          'const',
+        );
+      });
+      expect(view.host.textContent).toBe('const sent = 1;');
+    });
+
+    it('ignores a reply for a block whose text changed', async () => {
+      const view = render(fence('let old = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      view.fixture.componentInstance.html.set(fence('var fresh = 2;'));
+      view.fixture.detectChanges();
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(2));
+      worker.answer(worker.posted[0]);
+      await view.fixture.whenStable();
+      view.fixture.detectChanges();
+      expect(view.tokens()).toBe(0);
+      expect(view.host.textContent).toBe('var fresh = 2;');
+
+      worker.answer(worker.posted[1]);
+      await vi.waitFor(() => {
+        view.fixture.detectChanges();
+        expect(view.host.querySelector('.tok-keyword')?.textContent).toBe(
+          'var',
+        );
+      });
+    });
+
+    it('falls back to the main thread when the worker fails', async () => {
+      const view = render(fence('const fallback = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      worker.fail();
+      await vi.waitFor(() => {
+        view.fixture.detectChanges();
+        expect(view.tokens()).toBeGreaterThan(0);
+      });
+      expect(view.host.textContent).toBe('const fallback = 1;');
+    });
+
+    it('sends a block again after a retry answer', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const view = render(fence('const later = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      worker.retry(worker.posted[0]);
+      await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+      view.fixture.detectChanges();
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(2));
+      worker.answer(worker.posted[1]);
+      await vi.waitFor(() => {
+        view.fixture.detectChanges();
+        expect(view.host.querySelector('.tok-keyword')?.textContent).toBe(
+          'const',
+        );
+      });
+    });
+
+    it('gives up on a block after the retry limit', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const view = render(fence('const never = 1;'));
+      await vi.waitFor(() => expect(worker.posted).toHaveLength(1));
+
+      for (let round = 1; round <= MAX_RETRIES + 2; round += 1) {
+        worker.retry(worker.posted[worker.posted.length - 1]);
+        await vi.advanceTimersByTimeAsync(RETRY_DELAY_MS);
+        view.fixture.detectChanges();
+        await view.fixture.whenStable();
+      }
+
+      expect(worker.posted).toHaveLength(MAX_RETRIES + 1);
+    });
+
+    afterEach(() => vi.useRealTimers());
+  });
+
+  it('keeps counting already highlighted blocks against the budget when it runs again', async () => {
+    // Five 3,900-char blocks fill the 20,000-char budget; the sixth must stay plain even after a
+    // later grammar (Python, held until then) makes the effect run again.
+    let release = () => undefined as void;
+    grammars.hold.set('python', new Promise<void>((r) => (release = r)));
+    const big = (n: number) => `const v${n} = 1;\n`.repeat(260).slice(0, 3_900);
+    const view = render(
+      [1, 2, 3, 4, 5, 6].map((n) => fence(big(n))).join('') +
+        fence('def late(): pass', 'python'),
+    );
+    const codes = () => view.host.querySelectorAll('code');
+
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[4].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+
+    release();
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[6].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+  });
+
+  it('charges a block waiting for its grammar, so a late grammar cannot push past the budget', async () => {
+    // Python (held) comes first: its 16 chars count from the first run, so only four of the five
+    // 3,900-char TypeScript blocks fit, before and after Python arrives.
+    let release = () => undefined as void;
+    grammars.hold.set('python', new Promise<void>((r) => (release = r)));
+    const big = (n: number) => `const w${n} = 1;\n`.repeat(260).slice(0, 3_900);
+    const filler = 'x = 1\n'.repeat(700).slice(0, 4_096 - 1);
+    const view = render(
+      fence(filler, 'python') +
+        [1, 2, 3, 4, 5].map((n) => fence(big(n))).join(''),
+    );
+    const codes = () => view.host.querySelectorAll('code');
+
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[4].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
+
+    release();
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(codes()[0].querySelector('[class^="tok-"]')).not.toBeNull();
+    });
+    expect(codes()[5].querySelector('[class^="tok-"]')).toBeNull();
   });
 });
