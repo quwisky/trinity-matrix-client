@@ -91,6 +91,7 @@ function decodeThumbnailsAs(width: number, height: number): void {
 describe('MediaPickerService capture', () => {
   beforeEach(() => {
     isNative.mockReturnValue(true);
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('ios');
     takePhoto.mockReset();
     recordVideo.mockReset();
     checkPermissions
@@ -130,6 +131,17 @@ describe('MediaPickerService capture', () => {
     expect(ui.active()).toBe(true);
     cancel({ code: 'OS-PLUG-CAMR-0017' });
     await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    capture.unsubscribe();
+  });
+
+  it('does not count the Android camera as full screen, so its capture block stays on', () => {
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('android');
+    takePhoto.mockReturnValueOnce(new Promise(() => undefined));
+    const picker = makeService();
+    const ui = TestBed.inject(HostSystemUiService);
+    const capture = picker.capturePhoto({ saveToGallery: false }).subscribe();
+    expect(ui.active()).toBe(true);
+    expect(ui.fullScreenActive()).toBe(false);
     capture.unsubscribe();
   });
 

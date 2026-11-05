@@ -51,6 +51,7 @@ function makeService(): MediaPickerService {
 describe('MediaPickerService host adapter', () => {
   beforeEach(() => {
     isNative.mockReturnValue(false);
+    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('ios');
     chooseFromGallery.mockReset();
     stat.mockReset();
     // Default to already-granted photo access so the gallery branch runs; tests
@@ -103,7 +104,6 @@ describe('MediaPickerService host adapter', () => {
     expect(ui.active()).toBe(true);
     expect(ui.fullScreenActive()).toBe(false);
     pick.unsubscribe();
-    (Capacitor.getPlatform as unknown as Mock).mockReturnValue('ios');
   });
 
   it('counts no system UI on the web, which uses the file input instead', () => {
