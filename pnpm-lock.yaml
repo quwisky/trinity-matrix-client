@@ -296,15 +296,6 @@ importers:
       '@sanity/diff-match-patch':
         specifier: ^3.2.0
         version: 3.2.1
-      '@shikijs/core':
-        specifier: 4.5.0
-        version: 4.5.0
-      '@shikijs/engine-javascript':
-        specifier: 4.5.0
-        version: 4.5.0
-      '@shikijs/langs':
-        specifier: 4.5.0
-        version: 4.5.0
       '@spartan-ng/brain':
         specifier: 1.9.0
         version: 1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)
