@@ -23,6 +23,7 @@ import {
   replyPreview,
   trackEncryptedNonMessages,
 } from './message-view';
+import { linkifyHtml } from './message-html';
 
 /** A reaction (`m.annotation`) event stub: only sender, redaction and timestamp are read. */
 function reaction(sender: string, redacted = false, ts = 0): MatrixEvent {
@@ -933,5 +934,44 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       [...doc.querySelectorAll('a')].map((a) => a.getAttribute('href')),
     ).toEqual(['https://evil.example/']);
     expect(doc.body.textContent).toContain('<a href="');
+  });
+
+  it('links a URL inside a spoiler without revealing it', () => {
+    const { textHtml } = renderNormalizedTextBody(
+      'x',
+      '<span data-mx-spoiler="">see https://example.com/secret</span>',
+      false,
+      false,
+    );
+    const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
+    const spoiler = doc.querySelector('.mx-spoiler');
+
+    expect(spoiler?.querySelector('a')?.getAttribute('href')).toBe(
+      'https://example.com/secret',
+    );
+    expect(spoiler?.classList.contains('is-revealed')).toBe(false);
+  });
+
+  it('keeps a bare matrix.to link in Trinity', () => {
+    const { textHtml } = renderNormalizedTextBody(
+      'x',
+      'room: https://matrix.to/#/#room:example.org',
+      false,
+      false,
+    );
+    const link = new DOMParser()
+      .parseFromString(textHtml ?? '', 'text/html')
+      .querySelector('a');
+
+    expect(link?.getAttribute('href')).toBe(
+      'https://matrix.to/#/#room:example.org',
+    );
+    expect(link?.hasAttribute('target')).toBe(false);
+  });
+
+  it('changes nothing when run on its own output', () => {
+    const once = linkifyHtml('<p>see https://example.com and <b>more</b></p>');
+
+    expect(linkifyHtml(once)).toBe(once);
   });
 });
