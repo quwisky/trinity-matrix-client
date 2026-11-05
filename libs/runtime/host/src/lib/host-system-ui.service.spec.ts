@@ -36,6 +36,22 @@ describe('HostSystemUiService', () => {
     b.unsubscribe();
   });
 
+  it('reports full-screen system UI apart from sheets', () => {
+    const ui = service();
+    const sheet = ui.track(new Subject<void>()).subscribe();
+    expect(ui.active()).toBe(true);
+    expect(ui.fullScreenActive()).toBe(false);
+    const gallery = ui
+      .track(new Subject<void>(), { fullScreen: true })
+      .subscribe();
+    expect(ui.fullScreenActive()).toBe(true);
+    gallery.unsubscribe();
+    expect(ui.fullScreenActive()).toBe(false);
+    expect(ui.active()).toBe(true);
+    sheet.unsubscribe();
+    expect(ui.active()).toBe(false);
+  });
+
   it('ends on error and on unsubscribe', async () => {
     const ui = service();
     await expect(

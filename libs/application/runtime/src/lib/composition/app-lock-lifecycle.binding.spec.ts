@@ -127,6 +127,7 @@ function setup(
   const lifecycle = new Subject<LifecycleEvent>();
   const requests = new Subject<HostLockRequest>();
   const systemUiActive = signal(false);
+  const systemUiFullScreen = signal(false);
   const lockNow = vi.fn(() => {
     status.set('locked');
     locked.set(true);
@@ -161,6 +162,7 @@ function setup(
         ? HostSystemUiService
         : MockProvider(HostSystemUiService, {
             active: systemUiActive.asReadonly(),
+            fullScreenActive: systemUiFullScreen.asReadonly(),
           }),
       MockProvider(HostScreenPrivacyService, {
         set: privacySet,
@@ -178,6 +180,7 @@ function setup(
     lifecycle,
     requests,
     systemUiActive,
+    systemUiFullScreen,
     status,
     enabled,
     locked,
@@ -546,15 +549,24 @@ describe('AppLockLifecycleBinding', () => {
       expect(privacySet).toHaveBeenLastCalledWith(false);
     });
 
-    it("lifts the cover while Trinity's own system UI is open, and puts it back after", () => {
+    it('lifts the cover while full-screen system UI is open, and puts it back after', () => {
       // A cover over the iOS photo picker stays up while the picker keeps the app inactive.
-      const { systemUiActive, privacySet } = setup();
+      const { systemUiActive, systemUiFullScreen, privacySet } = setup();
       systemUiActive.set(true);
+      systemUiFullScreen.set(true);
       TestBed.tick();
       expect(privacySet).toHaveBeenLastCalledWith(false);
       systemUiActive.set(false);
+      systemUiFullScreen.set(false);
       TestBed.tick();
       expect(privacySet).toHaveBeenLastCalledWith(true);
+    });
+
+    it('keeps the cover on under a sheet, which leaves the room in view', () => {
+      const { systemUiActive, privacySet } = setup();
+      systemUiActive.set(true);
+      TestBed.tick();
+      expect(privacySet).toHaveBeenCalledExactlyOnceWith(true);
     });
 
     it('leaves the cover off while App lock is off', () => {

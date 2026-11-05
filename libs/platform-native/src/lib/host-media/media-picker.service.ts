@@ -99,7 +99,8 @@ export class MediaPickerService {
     if (!this.available) {
       return of({ files: [], oversized: 0 });
     }
-    // The photo picker is Trinity's own system UI: App lock's away timer ignores it.
+    // The photo picker is Trinity's own full-screen system UI: App lock's away timer ignores it,
+    // and its app-switcher cover steps aside.
     return this.systemUi.track(
       defer(() => from(this.ensurePhotoAccess())).pipe(
         switchMap(() =>
@@ -128,6 +129,7 @@ export class MediaPickerService {
           return throwError(() => err);
         }),
       ),
+      { fullScreen: true },
     );
   }
 
@@ -143,7 +145,8 @@ export class MediaPickerService {
     if (!this.captureSupported) {
       return of(null);
     }
-    // The camera is Trinity's own system UI: App lock's away timer ignores it.
+    // The camera is Trinity's own full-screen system UI: App lock's away timer ignores it, and
+    // its app-switcher cover steps aside.
     return this.systemUi.track(
       defer(() => from(this.ensureCameraAccess())).pipe(
         switchMap(() => from(open())),
@@ -175,6 +178,7 @@ export class MediaPickerService {
           return throwError(() => err);
         }),
       ),
+      { fullScreen: true },
     );
   }
 

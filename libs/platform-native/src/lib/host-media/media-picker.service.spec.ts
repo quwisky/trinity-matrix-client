@@ -83,8 +83,11 @@ describe('MediaPickerService host adapter', () => {
     const ui = TestBed.inject(HostSystemUiService);
     const pick = picker.pickImages().subscribe();
     expect(ui.active()).toBe(true);
+    // The gallery covers the whole screen, so App lock's app-switcher cover may step aside.
+    expect(ui.fullScreenActive()).toBe(true);
     choose({ results: [] });
     await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
+    expect(ui.fullScreenActive()).toBe(false);
     pick.unsubscribe();
   });
 

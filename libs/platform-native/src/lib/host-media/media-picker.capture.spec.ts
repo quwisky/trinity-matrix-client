@@ -112,6 +112,7 @@ describe('MediaPickerService capture', () => {
       error: () => undefined,
     });
     expect(ui.active()).toBe(true);
+    expect(ui.fullScreenActive()).toBe(true);
     resolvePhoto({});
     await vi.waitFor(() => expect(ui.active()).toBe(false), { timeout: 1_000 });
     capture.unsubscribe();

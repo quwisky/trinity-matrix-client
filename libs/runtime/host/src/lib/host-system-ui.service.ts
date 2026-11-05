@@ -10,22 +10,34 @@ import { Observable, defer, finalize } from 'rxjs';
 @Injectable({ providedIn: 'root' })
 export class HostSystemUiService {
   private readonly open = signal(0);
+  private readonly fullScreen = signal(0);
 
   readonly active = computed(() => this.open() > 0);
+  /**
+   * System UI that covers the whole screen (the photo gallery, the camera) is open: no Trinity
+   * content shows, so App lock's app-switcher cover may step aside. A sheet leaves the room in view.
+   */
+  readonly fullScreenActive = computed(() => this.fullScreen() > 0);
 
   /**
    * Cold: counts from subscription until the work completes, errors or is unsubscribed.
    * It writes a signal: never call it or subscribe to it inside `computed()`.
    */
-  track<T>(work: Observable<T>): Observable<T> {
+  track<T>(
+    work: Observable<T>,
+    options: { readonly fullScreen?: boolean } = {},
+  ): Observable<T> {
     return defer(() => {
-      this.open.update((count) => count + 1);
+      const counts = options.fullScreen
+        ? [this.open, this.fullScreen]
+        : [this.open];
+      counts.forEach((count) => count.update((n) => n + 1));
       let ended = false;
       return work.pipe(
         finalize(() => {
           if (ended) return;
           ended = true;
-          this.open.update((count) => Math.max(0, count - 1));
+          counts.forEach((count) => count.update((n) => Math.max(0, n - 1)));
         }),
       );
     });
