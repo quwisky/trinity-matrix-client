@@ -546,6 +546,17 @@ describe('AppLockLifecycleBinding', () => {
       expect(privacySet).toHaveBeenLastCalledWith(false);
     });
 
+    it("lifts the cover while Trinity's own system UI is open, and puts it back after", () => {
+      // A cover over the iOS photo picker stays up while the picker keeps the app inactive.
+      const { systemUiActive, privacySet } = setup();
+      systemUiActive.set(true);
+      TestBed.tick();
+      expect(privacySet).toHaveBeenLastCalledWith(false);
+      systemUiActive.set(false);
+      TestBed.tick();
+      expect(privacySet).toHaveBeenLastCalledWith(true);
+    });
+
     it('leaves the cover off while App lock is off', () => {
       const { privacySet } = setup({ enabled: false });
       expect(privacySet).toHaveBeenCalledExactlyOnceWith(false);
