@@ -13,6 +13,24 @@ export type TokenRole =
   | 'variable'
   | 'punctuation';
 
+/**
+ * Ceiling on what we will tokenize: a sender can put a 60 KiB fenced block in every event. Past
+ * the cap the block renders as plain monospace.
+ */
+export const MAX_CODE_CHARS = 4_096;
+
+/** One minified line can cost more than many short ones; past this, the block stays plain. */
+export const MAX_LINE_CHARS = 1_000;
+
+/** Whether a block is worth tokenizing: not blank and within both caps. */
+export function fitsCaps(code: string): boolean {
+  return (
+    code.trim() !== '' &&
+    code.length <= MAX_CODE_CHARS &&
+    code.split('\n').every((line) => line.length <= MAX_LINE_CHARS)
+  );
+}
+
 /** One run of text and the role it is coloured with; null leaves it uncoloured. */
 export type Run = readonly [text: string, role: TokenRole | null];
 

@@ -4,6 +4,7 @@ import {
   MAX_CODE_CHARS,
   MAX_LINE_CHARS,
   highlightLines,
+  linesFromRuns,
   registerLanguage,
 } from './code-highlight';
 import { resolveLanguage } from './code-languages';
@@ -225,5 +226,40 @@ describe('code highlighting', () => {
 
   it('returns null for a language that is not registered', () => {
     expect(highlightLines('x', 'lua-not-loaded', document)).toBeNull();
+  });
+
+  it('builds lines from runs', () => {
+    const lines = linesFromRuns(
+      [
+        [
+          ['let', 'keyword'],
+          [' a', null],
+        ],
+      ],
+      'let a',
+      document,
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines?.[0].querySelector('span.tok-keyword')?.textContent).toBe(
+      'let',
+    );
+    expect(lines?.[0].textContent).toBe('let a');
+  });
+
+  it('rejects runs whose text differs from the code', () => {
+    expect(linesFromRuns([[['let', null]]], 'var', document)).toBeNull();
+  });
+
+  it('restores CR from runs', () => {
+    const lines = linesFromRuns(
+      [[['a = 1', null]], [['b = 2', null]]],
+      'a = 1\r\nb = 2',
+      document,
+    );
+
+    expect(lines?.map((line) => line.textContent).join('\n')).toBe(
+      'a = 1\r\nb = 2',
+    );
   });
 });
