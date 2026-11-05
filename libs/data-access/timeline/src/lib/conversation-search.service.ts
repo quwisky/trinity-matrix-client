@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import {
   SearchOrderBy,
   type ISearchRequestBody,
@@ -58,13 +58,22 @@ export class ConversationSearchController {
   private key: ConversationKey | null = null;
   private client: MatrixClient | null = null;
   private encryption = new RoomEncryptionFlags();
+  /** Bumps when the crypto store answers "encrypted", so a search reading it re-runs. */
+  private readonly encryptionAnswered = signal(0);
 
   /** Bind this controller to one immutable Conversation child. */
   attach(key: ConversationKey, client: MatrixClient): void {
     this.key = Object.freeze({ ...key });
     this.client = client;
-    this.encryption = new RoomEncryptionFlags();
-    void this.encryption.refresh(client.getCrypto?.(), key.roomId);
+    const encryption = new RoomEncryptionFlags();
+    this.encryption = encryption;
+    void encryption
+      .refresh(client.getCrypto?.(), key.roomId)
+      .then((encrypted) => {
+        if (encrypted && this.encryption === encryption) {
+          this.encryptionAnswered.update((n) => n + 1);
+        }
+      });
   }
 
   /** Retired handles fail closed rather than following the Active Account. */
@@ -74,6 +83,7 @@ export class ConversationSearchController {
   }
 
   searchLoaded(query: string): LoadedMessageSearch {
+    this.encryptionAnswered();
     const empty: LoadedMessageSearch = {
       hits: [],
       scanned: 0,
@@ -89,13 +99,10 @@ export class ConversationSearchController {
     if (!room) {
       return empty;
     }
-    const encrypted = room.hasEncryptionStateEvent();
+    const encrypted = this.encryption.isEncrypted(room);
     const qLower = query.trim().toLowerCase();
     const hits: MessageHit[] = [];
-    const unencryptedShield = unencryptedShieldFor(
-      room,
-      this.encryption.isEncrypted(room),
-    );
+    const unencryptedShield = unencryptedShieldFor(room, encrypted);
     let scanned = 0;
     for (const event of room.getLiveTimeline().getEvents()) {
       if (
