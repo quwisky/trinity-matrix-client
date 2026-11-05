@@ -6,37 +6,57 @@ import {
   input,
   signal,
 } from '@angular/core';
+import { resolveLanguage, type CodeLanguage } from './code-languages';
 
-type Highlight = typeof import('./code-highlight').highlightLines;
+type Highlighter = typeof import('./code-highlight');
 
 /** Total characters of code one message body may have tokenized (blocks cap themselves). */
 const MAX_CHARS_PER_BODY = 20_000;
 
-const highlighter = signal<Highlight | null>(null);
-let requested = false;
+const core = signal<Highlighter | null>(null);
+/** Language ids whose grammar is registered; replaced, never mutated, so effects re-run. */
+const registered = signal<ReadonlySet<string>>(new Set());
+const inFlight = new Set<string>();
+let coreRequested = false;
 
-/** Fetch the grammars once, on the first rendered code block. */
-function load(): void {
-  if (requested) {
+/** Fetch highlight.js core once, on the first rendered block in a known language. */
+function loadCore(): void {
+  if (coreRequested) {
     return;
   }
-  requested = true;
+  coreRequested = true;
   import('./code-highlight').then(
-    (module) => highlighter.set(module.highlightLines),
+    (module) => core.set(module),
     // Plain code is a fine permanent fallback; allow a retry on the next render.
-    () => (requested = false),
+    () => (coreRequested = false),
   );
 }
 
-const languageOf = (code: Element): string | null =>
-  /(?:^|\s)language-([\w-]+)(?:\s|$)/
-    .exec(code.className)?.[1]
-    ?.toLowerCase() ?? null;
+/** Fetch one grammar once; a failed fetch is forgotten so a later render retries it. */
+function loadLanguage(highlighter: Highlighter, language: CodeLanguage): void {
+  if (inFlight.has(language.id) || registered().has(language.id)) {
+    return;
+  }
+  inFlight.add(language.id);
+  language.load().then(
+    (module) => {
+      inFlight.delete(language.id);
+      highlighter.registerLanguage(language.id, module.default);
+      registered.update((ids) => new Set(ids).add(language.id));
+    },
+    () => inFlight.delete(language.id),
+  );
+}
+
+const languageOf = (code: Element): CodeLanguage | null => {
+  const fence = /(?:^|\s)language-([\w-]+)(?:\s|$)/.exec(code.className)?.[1];
+  return fence ? resolveLanguage(fence) : null;
+};
 
 /**
  * Syntax-highlights the fenced blocks of a sanitized message body rendered with `[innerHTML]`.
  * The sanitizer leaves code as plain text, so a row shows readable code at once and this swaps
- * colours in (same characters, same layout) when Shiki has loaded, only for rows on screen.
+ * colours in (same characters, same layout) when its grammar has loaded, only for rows on screen.
  * Output is built from createElement and textContent, never markup.
  */
 @Directive({ selector: '[trnCodeHighlight]' })
@@ -47,27 +67,40 @@ export class CodeHighlightDirective {
   constructor() {
     afterRenderEffect(() => {
       this.source();
-      const highlight = highlighter();
+      const highlighter = core();
+      const ready = registered();
       const blocks = [
         ...this.host.nativeElement.querySelectorAll('pre > code'),
-      ].filter((code) => languageOf(code));
+      ].flatMap((code) => {
+        const language = languageOf(code);
+        return language ? [{ code, language }] : [];
+      });
       if (blocks.length === 0) {
         return;
       }
-      if (!highlight) {
-        load();
+      if (!highlighter) {
+        loadCore();
         return;
       }
       let budget = MAX_CHARS_PER_BODY;
-      for (const code of blocks) {
-        budget -= apply(code, highlight, budget);
+      for (const { code, language } of blocks) {
+        if (ready.has(language.id)) {
+          budget -= apply(code, language.id, highlighter, budget);
+        } else {
+          loadLanguage(highlighter, language);
+        }
       }
     });
   }
 }
 
 /** Tokenize one block in place; returns the characters spent. */
-function apply(code: Element, highlight: Highlight, budget: number): number {
+function apply(
+  code: Element,
+  id: string,
+  highlighter: Highlighter,
+  budget: number,
+): number {
   const source = code.textContent ?? '';
   const wrappers = [...code.children];
   // Sender markup (a link, bold) or an already highlighted block: leave it alone.
@@ -78,7 +111,7 @@ function apply(code: Element, highlight: Highlight, budget: number): number {
   if (!plain || !source || source.length > budget) {
     return 0;
   }
-  const lines = highlight(source, languageOf(code) ?? '', code.ownerDocument);
+  const lines = highlighter.highlightLines(source, id, code.ownerDocument);
   if (!lines) {
     return 0;
   }

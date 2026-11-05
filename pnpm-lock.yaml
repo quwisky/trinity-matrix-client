@@ -296,15 +296,6 @@ importers:
       '@sanity/diff-match-patch':
         specifier: ^3.2.0
         version: 3.2.1
-      '@shikijs/core':
-        specifier: 4.5.0
-        version: 4.5.0
-      '@shikijs/engine-javascript':
-        specifier: 4.5.0
-        version: 4.5.0
-      '@shikijs/langs':
-        specifier: 4.5.0
-        version: 4.5.0
       '@spartan-ng/brain':
         specifier: 1.9.0
         version: 1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(ca48018b7d68c1117cffdb95a4fdd29a)
@@ -326,6 +317,9 @@ importers:
       dompurify:
         specifier: ^3.4.12
         version: 3.4.17
+      highlight.js:
+        specifier: ^11.12.0
+        version: 11.12.0
       katex:
         specifier: 0.19.1
         version: 0.19.1
@@ -6483,6 +6477,10 @@ packages:
   he@1.2.0:
     resolution: {integrity: sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==}
     hasBin: true
+
+  highlight.js@11.12.0:
+    resolution: {integrity: sha512-nbfWpyRMcMrPMmDwJB+dhX/eiaPKtc2RB+0QZskqJ3WjRA/FDS0e9hZrx8EC/lbEv8gXy98FcDbNa/dspAaJMg==}
+    engines: {node: '>=12.0.0'}
 
   hookified@1.15.1:
     resolution: {integrity: sha512-MvG/clsADq1GPM2KGo2nyfaWVyn9naPiXrqIe4jYjXNZQt238kWyOGrsyc/DmRAQ+Re6yeo6yX/yoNCG5KAEVg==}
@@ -16523,6 +16521,8 @@ snapshots:
       space-separated-tokens: 2.0.2
 
   he@1.2.0: {}
+
+  highlight.js@11.12.0: {}
 
   hookified@1.15.1: {}
 

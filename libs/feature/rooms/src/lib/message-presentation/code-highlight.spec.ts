@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
-import { MAX_CODE_CHARS, highlightLines } from './code-highlight';
+import {
+  MAX_CODE_CHARS,
+  MAX_LINE_CHARS,
+  highlightLines,
+  registerLanguage,
+} from './code-highlight';
+import { resolveLanguage } from './code-languages';
 
 /** Highlight a fenced block the way the render path does, and hand back the <code>. */
-function highlight(lang: string, source: string): HTMLElement {
+async function highlight(lang: string, source: string): Promise<HTMLElement> {
+  const entry = resolveLanguage(lang);
+  if (entry) {
+    registerLanguage(entry.id, (await entry.load()).default);
+  }
   const el = document.createElement('div');
   el.innerHTML = sanitizeMatrixHtml(
     `<pre><code class="language-${lang}">${source
@@ -12,7 +22,7 @@ function highlight(lang: string, source: string): HTMLElement {
       .replaceAll('>', '&gt;')}</code></pre>`,
   );
   const code = el.querySelector('code') as HTMLElement;
-  const lines = highlightLines(source, lang, document);
+  const lines = highlightLines(source, entry?.id ?? lang, document);
   if (lines) {
     // Same placement the directive uses: into the sanitizer's line wrappers.
     const wrappers = [...code.children];
@@ -47,8 +57,8 @@ const roles = (code: HTMLElement) =>
   allClasses(code).filter((token) => token !== CODE_LINE);
 
 describe('code highlighting', () => {
-  it('colours keywords, strings, comments and numbers', () => {
-    const code = highlight(
+  it('colours keywords, strings, comments and numbers', async () => {
+    const code = await highlight(
       'python',
       'def greet(n):  # hi\n    return "x" + str(42)',
     );
@@ -67,12 +77,12 @@ describe('code highlighting', () => {
     );
   });
 
-  it('reproduces the source exactly, character for character', () => {
+  it('reproduces the source exactly, character for character', async () => {
     // The assertion that matters most: tokenizing must not lose, add or reorder a single
     // character of someone's code.
     const source =
       'const x: string = f(1);\n\tif (a && b) {\n  return `t${x}`;\n}\n';
-    const code = highlight('typescript', source);
+    const code = await highlight('typescript', source);
 
     expect(code.textContent).toBe(source);
   });
@@ -80,7 +90,7 @@ describe('code highlighting', () => {
   // One sample per grammar, in that grammar's own syntax — a JS-ish sample is a false
   // negative for diff, ini or makefile, which is exactly how an earlier survey of this
   // set concluded they were unsupported. A grammar that stops resolving (a renamed
-  // @shikijs/langs entry, a dropped import) shows up here as a language with no tokens
+  // highlight.js language, a dropped import) shows up here as a language with no tokens
   // rather than as a silently plain block in someone's room. One case per grammar, so each
   // grammar's first compile has its own timeout rather than all of them sharing one.
   it.each([
@@ -115,11 +125,11 @@ describe('code highlighting', () => {
     ['typescript', 'const a: number = 1;'],
     ['xml', '<root attr="v"><child/></root>'],
     ['yaml', 'a: 1'],
-  ])('highlights %s', (lang, source) => {
-    expect(roles(highlight(lang, source)).length).toBeGreaterThan(0);
+  ])('highlights %s', async (lang, source) => {
+    expect(roles(await highlight(lang, source)).length).toBeGreaterThan(0);
   });
 
-  it('resolves short language aliases', () => {
+  it('resolves short language aliases', async () => {
     // ```js and ```py are far more common in the wild than the canonical names.
     for (const [alias, source] of [
       ['js', 'const a = 1;'],
@@ -128,19 +138,22 @@ describe('code highlighting', () => {
       ['yml', 'a: 1'],
       ['sh', 'echo hi'],
     ] as const) {
-      expect(roles(highlight(alias, source)).length, alias).toBeGreaterThan(0);
+      expect(
+        roles(await highlight(alias, source)).length,
+        alias,
+      ).toBeGreaterThan(0);
     }
   });
 
-  it('leaves an unknown language as plain text', () => {
-    const code = highlight('nosuchlang', 'whatever this is');
+  it('leaves an unknown language as plain text', async () => {
+    const code = await highlight('nosuchlang', 'whatever this is');
 
     expect(roles(code)).toEqual([]);
     expect(code.textContent).toBe('whatever this is');
   });
 
-  it('leaves an oversized block unhighlighted rather than freezing the timeline', () => {
-    const code = highlight(
+  it('leaves an oversized block unhighlighted rather than freezing the timeline', async () => {
+    const code = await highlight(
       'typescript',
       'const a = 1;\n'.repeat(Math.ceil(MAX_CODE_CHARS / 12) + 1),
     );
@@ -148,16 +161,16 @@ describe('code highlighting', () => {
     expect(roles(code)).toEqual([]);
   });
 
-  it('never emits a style attribute', () => {
+  it('never emits a style attribute', async () => {
     // Angular's [innerHTML] sanitizer drops `style` at the render leaf, so inline colours
     // would silently render as no colours at all. This is why we emit classes.
-    const code = highlight('typescript', 'const a = "b"; // c');
+    const code = await highlight('typescript', 'const a = "b"; // c');
 
     expect(code.innerHTML).not.toContain('style');
     expect(code.querySelector('[style]')).toBeNull();
   });
 
-  it('drops a class the sender put on their own markup, on any element', () => {
+  it('drops a class the sender put on their own markup, on any element', async () => {
     // The guard below cannot express this: `highlight()` escapes < and >, so its input can
     // never contain sender markup, and it only inspects <span>. This feeds real markup
     // straight to the sanitizer and checks EVERY element, which is what actually fails if
@@ -178,8 +191,8 @@ describe('code highlighting', () => {
     }
   });
 
-  it('emits only token classes, never anything the sender could have injected', () => {
-    const code = highlight('typescript', 'const a = 1;');
+  it('emits only token classes, never anything the sender could have injected', async () => {
+    const code = await highlight('typescript', 'const a = 1;');
 
     // Deliberately the UNFILTERED list. Two class families are ours and both are added
     // after DOMPurify, which is why neither is in ALLOWED_CLASS: `tok-*` from the
@@ -188,5 +201,60 @@ describe('code highlighting', () => {
     for (const token of allClasses(code)) {
       expect(token).toMatch(/^(?:tok-[a-z]+|code-line)$/);
     }
+  });
+
+  it('skips a block with a line over 1,000 characters', async () => {
+    const source = 'const a = 1; ' + 'x'.repeat(MAX_LINE_CHARS);
+    const code = await highlight('typescript', source);
+
+    expect(roles(code)).toEqual([]);
+    expect(code.textContent).toBe(source);
+  });
+
+  it('splits a multi-line comment into one coloured run per line', async () => {
+    const source = '/* one\ntwo */\nlet a = 1;';
+    await highlight('javascript', source);
+    const lines = highlightLines(source, 'javascript', document);
+
+    expect(lines).toHaveLength(3);
+    for (const line of lines?.slice(0, 2) ?? []) {
+      expect(line.querySelector('span.tok-comment')).not.toBeNull();
+    }
+  });
+
+  it('keeps tag-like content in an HTML fence as text', async () => {
+    const source = '<img src=x onerror=alert(1)>';
+    const code = await highlight('html', source);
+
+    expect(code.querySelector('img')).toBeNull();
+    expect(code.textContent).toBe(source);
+  });
+
+  it('round-trips <, >, & and quotes', async () => {
+    const source = 'const s = "<a> & \'b\'";';
+    const code = await highlight('typescript', source);
+
+    expect(code.textContent).toBe(source);
+  });
+
+  it('keeps CRLF text and line count', async () => {
+    await highlight('python', 'x = 1');
+    const lines = highlightLines('a = 1\r\nb = 2', 'python', document);
+
+    expect(lines).toHaveLength(2);
+    expect(lines?.map((line) => line.textContent).join('\n')).toBe(
+      'a = 1\r\nb = 2',
+    );
+  });
+
+  it('leaves an empty or blank fence plain', async () => {
+    await highlight('python', 'x = 1');
+
+    expect(highlightLines('', 'python', document)).toBeNull();
+    expect(highlightLines('  \n ', 'python', document)).toBeNull();
+  });
+
+  it('returns null for a language that is not registered', () => {
+    expect(highlightLines('x', 'lua-not-loaded', document)).toBeNull();
   });
 });

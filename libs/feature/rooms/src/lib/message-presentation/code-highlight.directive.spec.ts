@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { sanitizeMatrixHtml } from '@trinity/util/matrix';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CodeHighlightDirective } from './code-highlight.directive';
+import type { CodeLanguage } from './code-languages';
 
 // A vi.mock factory runs on the FIRST import of the module, so this flag is the proof that
 // the grammars are fetched lazily and only when a code block is rendered.
@@ -10,6 +11,40 @@ const loaded = vi.hoisted(() => ({ evaluated: false }));
 vi.mock('./code-highlight', async (importOriginal) => {
   loaded.evaluated = true;
   return importOriginal();
+});
+
+// Counts grammar loads per id, and lets a test hold a load open or fail it once.
+const grammars = vi.hoisted(() => ({
+  calls: new Map<string, number>(),
+  hold: new Map<string, Promise<void>>(),
+  failOnce: new Set<string>(),
+}));
+vi.mock('./code-languages', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./code-languages')>();
+  const byId = new Map<string, CodeLanguage>();
+  const wrap = (entry: CodeLanguage): CodeLanguage => {
+    const known = byId.get(entry.id);
+    if (known) return known;
+    const wrapped: CodeLanguage = {
+      id: entry.id,
+      load: async () => {
+        grammars.calls.set(entry.id, (grammars.calls.get(entry.id) ?? 0) + 1);
+        await grammars.hold.get(entry.id);
+        if (grammars.failOnce.delete(entry.id)) throw new Error('offline');
+        return entry.load();
+      },
+    };
+    byId.set(entry.id, wrapped);
+    return wrapped;
+  };
+  const table = new Map(
+    [...actual.CODE_LANGUAGES].map(([fence, entry]) => [fence, wrap(entry)]),
+  );
+  return {
+    ...actual,
+    CODE_LANGUAGES: table,
+    resolveLanguage: (fence: string) => table.get(fence.toLowerCase()) ?? null,
+  };
 });
 
 @Component({
@@ -125,12 +160,72 @@ describe('CodeHighlightDirective', () => {
     ).toBeNull();
   });
 
-  it('leaves an unknown language plain', async () => {
+  it('leaves an unknown language plain and loads no grammar for it', async () => {
+    const before = [...grammars.calls.values()].reduce((a, b) => a + b, 0);
     const view = render(fence('whatever', 'nosuchlang'));
-    await vi.waitFor(() => expect(loaded.evaluated).toBe(true));
     await view.fixture.whenStable();
 
     expect(view.tokens()).toBe(0);
     expect(view.host.textContent).toBe('whatever');
+    expect([...grammars.calls.values()].reduce((a, b) => a + b, 0)).toBe(
+      before,
+    );
+  });
+
+  it('loads one grammar once for many blocks', async () => {
+    const first = render(fence('{"a": 1}', 'json') + fence('[1, 2]', 'json'));
+    const second = render(fence('{"b": true}', 'JSON'));
+
+    await vi.waitFor(() => {
+      first.fixture.detectChanges();
+      second.fixture.detectChanges();
+      expect(first.tokens()).toBeGreaterThan(0);
+      expect(second.tokens()).toBeGreaterThan(0);
+    });
+    expect(grammars.calls.get('json')).toBe(1);
+  });
+
+  it('highlights a block once its language arrives', async () => {
+    let release = () => undefined as void;
+    grammars.hold.set('python', new Promise<void>((r) => (release = r)));
+    const view = render(fence('def a():\n    return 1', 'python'));
+
+    await vi.waitFor(() => expect(grammars.calls.get('python')).toBe(1));
+    view.fixture.detectChanges();
+    expect(view.tokens()).toBe(0);
+
+    release();
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(view.tokens()).toBeGreaterThan(0);
+    });
+  });
+
+  it('retries a grammar that failed to load', async () => {
+    grammars.failOnce.add('rust');
+    const view = render(fence('fn a() {}', 'rust'));
+    await vi.waitFor(() => expect(grammars.calls.get('rust')).toBe(1));
+    await view.fixture.whenStable();
+    expect(view.tokens()).toBe(0);
+
+    view.fixture.componentInstance.html.set(
+      fence('fn b() { let c = 1; }', 'rust'),
+    );
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      expect(view.tokens()).toBeGreaterThan(0);
+    });
+    expect(grammars.calls.get('rust')).toBe(2);
+  });
+
+  it('highlights two languages in one message', async () => {
+    const view = render(fence('func main() {}', 'go') + fence('a: 1', 'yaml'));
+
+    await vi.waitFor(() => {
+      view.fixture.detectChanges();
+      const [go, yaml] = view.host.querySelectorAll('code');
+      expect(go.querySelector('[class^="tok-"]')).not.toBeNull();
+      expect(yaml.querySelector('[class^="tok-"]')).not.toBeNull();
+    });
   });
 });
