@@ -91,7 +91,7 @@ jobs:
       # measures, the Markdown renderer and sanitizer that emit the code block's language
       # class and attribute, the code highlighter, and its spec, config, target, registry entry
       # and the fixtures and harness files it loads. A version bump of Playwright, Tailwind or
-      # Shiki, which render or measure what it checks, counts too. Pushes answer false, as for
+      # highlight.js, which render or measure what it checks, counts too. Pushes answer false, as for
       # `mas`: the weekly scheduled run covers main.
       - id: scrollbars
         env:
@@ -120,7 +120,7 @@ jobs:
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             # A version bump rewrites these packages' entries in the manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
-            packages="(@playwright/test|playwright(-core)?|tailwindcss|@tailwindcss/[a-z0-9-]+|shiki|@shikijs/[a-z0-9-]+)"
+            packages="(@playwright/test|playwright(-core)?|tailwindcss|@tailwindcss/[a-z0-9-]+|highlight\.js)"
             if grep -qE "$pattern" <<< "$changed" || grep -qE "^[+-][[:space:]]*['\"]?${packages}(['\"]?:|@)" <<< "$manifests"; then
               run=true
             fi
