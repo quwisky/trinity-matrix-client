@@ -36,7 +36,7 @@ include ':capacitor-preferences'
 project(':capacitor-preferences').projectDir = new File('../node_modules/.pnpm/@capacitor+preferences@8.0.1_@capacitor+core@8.6.0/node_modules/@capacitor/preferences/android')
 
 include ':capacitor-privacy-screen'
-project(':capacitor-privacy-screen').projectDir = new File('../node_modules/.pnpm/@capacitor+privacy-screen@2.0.1_patch_hash=bfbaf9206e460754ce822af39326b050ca3830691815_b4d11c0a6b9bb5d12fdcaea9b27d12c9/node_modules/@capacitor/privacy-screen/android')
+project(':capacitor-privacy-screen').projectDir = new File('../node_modules/.pnpm/@capacitor+privacy-screen@2.0.1_patch_hash=fbfe773962e8bafc4fd19a28ccc65603e1c5fe6364e8_d96eefae5e000939850e54919b4afd43/node_modules/@capacitor/privacy-screen/android')
 
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+push-notifications@8.1.3_@capacitor+core@8.6.0/node_modules/@capacitor/push-notifications/android')
