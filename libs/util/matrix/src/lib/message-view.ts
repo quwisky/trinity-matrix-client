@@ -20,6 +20,7 @@ import {
 import { MSC1767_AUDIO, MSC3245_VOICE } from './voice';
 import {
   linkedUserIds,
+  linkifyHtml,
   linkifyMessageText,
   mentionNamesIn,
   sanitizeMatrixHtml,
@@ -530,8 +531,12 @@ export function renderNormalizedTextBody(
       ? null
       : sanitizeMatrixHtml(strippedHtml, addressesViewer, mentionNames);
 
-  // Plain text (no formatted_body) still gets bare URLs linkified so they're clickable.
-  return { text, html, textHtml: html ?? linkifyMessageText(text) };
+  // Bare URLs are clickable in both forms a body arrives in; a caption keeps `html` unlinked.
+  return {
+    text,
+    html,
+    textHtml: html === null ? linkifyMessageText(text) : linkifyHtml(html),
+  };
 }
 
 /** A well-formed essence for an inline kind: a bare `image`, `video` or `audio` type. */
