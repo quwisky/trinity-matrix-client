@@ -977,7 +977,7 @@ describe('unread chats beyond the cap, on a phone', () => {
     ).toHaveLength(3);
     const dividers = groups[0].querySelectorAll('trn-inset-divider');
     expect(dividers).toHaveLength(2);
-    expect(dividers[0].classList.contains('ms-4')).toBe(true);
+    expect(dividers[0].classList.contains('ms-[min(1rem,16px)]')).toBe(true);
     const recent = groups[1].querySelector(
       '[data-testid=rail-overflow-show-recent]',
     );
