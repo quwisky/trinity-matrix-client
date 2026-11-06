@@ -2323,4 +2323,63 @@ describe('MessageListComponent', () => {
       expect(clear).toHaveBeenCalledWith(handle);
     });
   });
+
+  it('asks for no history once destroyed before its fill frame', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    onTestFinished(() => warn.mockRestore());
+    const { fixture } = await render(MessageListComponent, {
+      inputs: { messages: many(2), canLoadOlder: true, oldestEventId: '$0' },
+      imports: [MockComponent(MessageComposerComponent)],
+    });
+
+    fixture.destroy();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('NG0953'));
+  });
+
+  describe('canThread', () => {
+    it('passes no thread summaries and offers no thread action when off', async () => {
+      const summary = {
+        rootEventId: '$0',
+        rootPreview: 'root',
+        rootSenderName: 'A',
+        replyCount: 1,
+        latestReplyTs: 1000,
+        latestActivityTs: 1000,
+        latestReplyPreview: 'reply',
+        latestReplySenderName: 'B',
+        participants: [],
+        rootShield: null,
+        latestReplyShield: null,
+        unreadCount: 0,
+        highlight: false,
+      };
+      const { fixture, container } = await render(MessageListComponent, {
+        inputs: {
+          messages: many(2),
+          threadSummaries: { $0: summary },
+          canThread: false,
+        },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+      const cmp = fixture.componentInstance;
+
+      expect(container.querySelector('trn-message-thread-summary')).toBeNull();
+      expect(cmp.threadContinuationIds().size).toBe(0);
+      expect(cmp.rowCaps(cmp.rows()[0]).canThread).toBe(false);
+
+      fixture.componentRef.setInput('canThread', true);
+      fixture.detectChanges();
+      expect(
+        container.querySelector('trn-message-thread-summary'),
+      ).not.toBeNull();
+      expect(cmp.rowCaps(cmp.rows()[0]).canThread).toBe(true);
+    });
+  });
 });

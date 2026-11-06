@@ -65,7 +65,14 @@ import {
   vi,
 } from 'vitest';
 import { ThreadViewComponent } from './thread-view.component';
-import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
+import {
+  ConversationComposeStub,
+  ConversationMessagesStub,
+  ConversationTimelineStub,
+} from '../testing/conversation-timeline.stub';
+import { MessageListComponent } from '../message-list/message-list.component';
+import { MESSAGE_LIST_COMMANDS } from '../message-list/message-list-commands';
+import { ThreadCommands } from './thread-commands';
 import { messageView } from '../testing/message-view.fixture';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageSourceComponent } from '../message-source/message-source.component';
@@ -89,6 +96,14 @@ function composerOf(
 ): MessageComposerComponent {
   return fixture.debugElement.query(By.directive(MessageComposerComponent))
     .componentInstance as MessageComposerComponent;
+}
+
+/** The shared list this panel hosts. */
+function listOf(
+  fixture: ComponentFixture<ThreadViewComponent>,
+): MessageListComponent {
+  return fixture.debugElement.query(By.directive(MessageListComponent))
+    .componentInstance as MessageListComponent;
 }
 
 function row(id: string, senderId: string, body: string): MessageRow {
@@ -160,12 +175,15 @@ async function build(
     presentation: 'sheet',
     surface: null,
   });
+  // The room's compose seam: a thread must never drive it.
+  const roomCompose = new ConversationComposeStub();
+  const roomMessages = new ConversationMessagesStub(roomCompose);
   const membersFor = vi.fn((roomId: string | null) =>
     roomId === '!r:hs'
       ? roster.asReadonly()
       : signal<readonly MemberSummary[]>([]).asReadonly(),
   );
-  const { fixture, container } = await render(ThreadViewComponent, {
+  const rendered = await render(ThreadViewComponent, {
     inputs: { roomId: '!r:hs', rootEventId: '$root' },
     providers: [
       MockProvider(ConversationTimelineStub, {
@@ -184,6 +202,8 @@ async function build(
             of({ kind: 'applied' as const, operation });
           return {
             timeline: inject(ConversationTimelineStub),
+            compose: roomCompose,
+            messages: roomMessages,
             threads: {
               forRoot: vi.fn((rootEventId: string) => {
                 openThread('!r:hs', rootEventId);
@@ -274,12 +294,14 @@ async function build(
       ...extraProviders,
     ],
   });
+  const { fixture, container } = rendered;
   /** How many times the panel announced a close, for the dismissal assertions. */
   let dismissals = 0;
   fixture.componentInstance.dismissed.subscribe(() => (dismissals += 1));
   return {
     fixture,
     container,
+    queryByRole: rendered.queryByRole,
     threadMessages,
     roster,
     sheetOpen,
@@ -303,9 +325,230 @@ async function build(
     toastShow,
     sourceOpen,
     setTypingCalls,
+    roomCompose,
+    roomMessages,
     dismissals: () => dismissals,
   };
 }
+
+describe('ThreadViewComponent hosts the message list', () => {
+  /** Run the list's deferred frames now, as a settled render would. */
+  function settle(fixture: ComponentFixture<ThreadViewComponent>): void {
+    TestBed.tick();
+    fixture.detectChanges();
+  }
+  const three = [
+    msg('$root', '@a:hs', 'the root'),
+    msg('$r1', '@b:hs', 'one'),
+    msg('$r2', '@b:hs', 'two'),
+  ];
+
+  it('renders replies through trn-message-list', async () => {
+    const { fixture, container, threadMessages } = await build(three, {
+      canPaginate: true,
+      loadingOlder: true,
+    });
+    const list = listOf(fixture);
+
+    expect(container.querySelectorAll('trn-message-list')).toHaveLength(1);
+    expect(list.messages()).toBe(threadMessages());
+    expect(list.loadingOlder()).toBe(true);
+    expect(list.canLoadOlder()).toBe(true);
+    expect(list.composerEnabled()).toBe(false);
+    const composers = container.querySelectorAll('trn-message-composer');
+    expect(composers).toHaveLength(1);
+    expect(composers[0].closest('trn-message-list')).toBeNull();
+    expect(
+      container
+        .querySelector('trn-message-list')!
+        .compareDocumentPosition(composers[0]) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('has no Load older replies button', async () => {
+    const { queryByRole } = await build(three, { canPaginate: true });
+
+    expect(queryByRole('button', { name: 'Load older replies' })).toBeNull();
+  });
+
+  it('a short thread does not page', async () => {
+    const { fixture, paginateOpenThread } = await build(three, {
+      canPaginate: false,
+    });
+    settle(fixture);
+    await fixture.whenStable();
+
+    expect(paginateOpenThread).not.toHaveBeenCalled();
+  });
+
+  it("loads older on the list's loadOlder", async () => {
+    const { fixture, paginateOpenThread } = await build(three, {
+      canPaginate: true,
+    });
+    paginateOpenThread.mockClear();
+
+    listOf(fixture).loadOlder.emit();
+
+    expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides thread, pin and unread', async () => {
+    const { fixture, container } = await build(three);
+    const list = listOf(fixture);
+
+    for (const r of list.rows()) {
+      expect(list.rowCaps(r).canThread).toBe(false);
+      expect(list.rowCaps(r).canPin).toBe(false);
+    }
+    expect(list.firstUnreadId()).toBeNull();
+    expect(
+      container.querySelector('[data-testid="new-messages-divider"]'),
+    ).toBeNull();
+  });
+
+  it('shows day dividers', async () => {
+    const day = (id: string, date: number) => ({
+      ...msg(id, '@a:hs', id),
+      timestamp: new Date(2026, 6, date, 9).getTime(),
+    });
+    const { container } = await build([day('$a', 20), day('$b', 21)]);
+
+    expect(container.querySelectorAll('trn-timeline-divider')).toHaveLength(1);
+  });
+
+  it('asks before deleting', async () => {
+    const { fixture, confirm$, redactInThread } = await build([
+      { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+    ]);
+    const commands = fixture.debugElement.injector.get(ThreadCommands);
+    const del = vi.spyOn(commands, 'delete');
+    const list = listOf(fixture);
+
+    confirm$.mockReturnValueOnce(of(false));
+    list.onRowAction(list.rows()[0], { type: 'delete' });
+    expect(del).not.toHaveBeenCalled();
+
+    confirm$.mockReturnValueOnce(of(true));
+    list.onRowAction(list.rows()[0], { type: 'delete' });
+    expect(confirm$).toHaveBeenCalledTimes(2);
+    expect(del).toHaveBeenCalledExactlyOnceWith('$1');
+    expect(redactInThread).toHaveBeenCalledExactlyOnceWith('$1');
+  });
+
+  it('quotes into the thread composer', async () => {
+    const { fixture } = await build([
+      { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+    ]);
+    const commands = fixture.debugElement.injector.get(ThreadCommands);
+    const list = listOf(fixture);
+    list.startEdit(list.rows()[0]);
+    fixture.detectChanges();
+
+    list.onRowAction(list.rows()[0], { type: 'quote' });
+    fixture.detectChanges();
+    await Promise.resolve();
+
+    expect(composerOf(fixture).text()).toBe('> mine\n\n');
+    expect(commands.editingId()).toBeNull();
+  });
+
+  it('editing a thread reply leaves the room composer alone', async () => {
+    const { fixture, roomCompose, roomMessages } = await build([
+      { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+    ]);
+    const commands = fixture.debugElement.injector.get(ThreadCommands);
+    const startEdit = vi.spyOn(commands, 'startEdit');
+    const roomEdit = vi.spyOn(roomMessages, 'beginEdit');
+    const list = listOf(fixture);
+
+    list.startEdit(list.rows()[0]);
+
+    expect(startEdit).toHaveBeenCalledExactlyOnceWith('$1');
+    expect(roomEdit).not.toHaveBeenCalled();
+    expect(roomCompose.intent()).toEqual({ kind: 'message' });
+  });
+
+  it('thread provider routes edit/reply/cancel to ThreadCommands', async () => {
+    const { fixture } = await build(three);
+    const thread = fixture.debugElement.injector.get(ThreadCommands);
+    const seam = fixture.debugElement
+      .query(By.directive(MessageListComponent))
+      .injector.get(MESSAGE_LIST_COMMANDS);
+
+    seam.beginEdit('$r1', 'one');
+    expect(thread.editingId()).toBe('$r1');
+    expect(seam.editingId()).toBe('$r1');
+    seam.cancelEdit();
+    expect(thread.editingId()).toBeNull();
+
+    seam.beginReply('$r2');
+    expect(thread.replyingToId()).toBe('$r2');
+    expect(seam.replyingToId()).toBe('$r2');
+    seam.cancelReply();
+    expect(thread.replyingToId()).toBeNull();
+
+    expect(seam.sending).toBe(thread.sending);
+  });
+
+  it('reveal pages then jumps once', async () => {
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    onTestFinished(() => {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
+    const a = msg('$a', '@a:hs', 'first');
+    const b = msg('$b', '@a:hs', 'second');
+    const {
+      fixture,
+      container,
+      threadMessages,
+      canPaginateThread,
+      paginateOpenThread,
+    } = await build([b], { canPaginate: true });
+    const failed = vi.fn();
+    fixture.componentInstance.revealFailed.subscribe(failed);
+    const list = listOf(fixture);
+    const nonce = list.jumpToNonce();
+
+    fixture.componentRef.setInput('revealEventId', '$a');
+    settle(fixture);
+    expect(paginateOpenThread).toHaveBeenCalled();
+    expect(list.jumpToId()).toBeNull();
+
+    threadMessages.set([a, b]);
+    canPaginateThread.set(false);
+    settle(fixture);
+    expect(list.jumpToId()).toBe('$a');
+    expect(list.jumpToNonce()).toBe(nonce + 1);
+    await fixture.whenStable();
+    expect(scrollIntoView.mock.contexts.at(-1)).toBe(
+      container.querySelector('[data-mid="$a"]'),
+    );
+
+    threadMessages.set([a, b, msg('$c', '@a:hs', 'third')]);
+    settle(fixture);
+    expect(list.jumpToNonce()).toBe(nonce + 1);
+    expect(failed).not.toHaveBeenCalled();
+  });
+
+  it('switching threads resets the list', async () => {
+    const { fixture, container, threadMessages } = await build(three);
+    const list = listOf(fixture);
+    const key = list.resetKey();
+    threadMessages.set([...three, msg('$r3', '@b:hs', 'three')]);
+    settle(fixture);
+    expect(container.querySelector('.msg-enter')).not.toBeNull();
+
+    fixture.componentRef.setInput('rootEventId', '$next');
+    settle(fixture);
+
+    expect(listOf(fixture)).toBe(list);
+    expect(list.resetKey()).not.toBe(key);
+    expect(list.roomId()).toBe('!r:hs');
+    expect(container.querySelector('.msg-enter')).toBeNull();
+  });
+});
 
 describe('ThreadViewComponent reveal', () => {
   async function revealing(
@@ -632,7 +875,7 @@ describe('ThreadViewComponent', () => {
     ]);
     const cmp = fixture.componentInstance;
 
-    cmp.startEdit(row('$r1', '@me:hs', 'typo'));
+    listOf(fixture).startEdit(row('$r1', '@me:hs', 'typo'));
     cmp.onSubmit({ text: 'fixed', mentions: [] });
 
     expect(editInThread).toHaveBeenCalledWith('$r1', 'fixed', []);
@@ -646,7 +889,7 @@ describe('ThreadViewComponent', () => {
     ]);
     const cmp = fixture.componentInstance;
 
-    cmp.startReply(row('$r1', '@b:hs', 'a reply'));
+    listOf(fixture).startReply(row('$r1', '@b:hs', 'a reply'));
     cmp.onSubmit({ text: 'replying', mentions: [] });
 
     expect(replyInThread).toHaveBeenCalledWith('$r1', 'replying', []);
@@ -656,12 +899,11 @@ describe('ThreadViewComponent', () => {
 
   it('keeps a thread\u2019s draft when the thread changes mid-edit', async () => {
     const { fixture } = await build([msg('$r1', '@me:hs', 'mine')]);
-    const cmp = fixture.componentInstance;
     const store = TestBed.inject(DraftStoreService);
     composerOf(fixture).text.set('draft A');
     fixture.detectChanges();
 
-    cmp.startEdit(row('$r1', '@me:hs', 'mine'));
+    listOf(fixture).startEdit(row('$r1', '@me:hs', 'mine'));
     fixture.detectChanges();
     expect(composerOf(fixture).text()).toBe('mine');
 
@@ -691,9 +933,10 @@ describe('ThreadViewComponent', () => {
 
   it('quotes a thread message into the thread’s own composer', async () => {
     const { fixture } = await build([msg('$r1', '@b:hs', 'a reply')]);
-    const cmp = fixture.componentInstance;
 
-    cmp.onRowAction(row('$r1', '@b:hs', 'a reply'), { type: 'quote' });
+    listOf(fixture).onRowAction(row('$r1', '@b:hs', 'a reply'), {
+      type: 'quote',
+    });
 
     // The thread panel has its own composer; a quote raised here must not reach the
     // room's.
@@ -704,12 +947,12 @@ describe('ThreadViewComponent', () => {
     // Same ordering trap as the room list: the composer restores its draft when it leaves
     // edit mode, and that restore would land after a same-tick insert.
     const { fixture } = await build([msg('$r1', '@me:hs', 'mine')]);
-    const cmp = fixture.componentInstance;
+    const list = listOf(fixture);
 
-    cmp.startEdit(row('$r1', '@me:hs', 'mine'));
+    list.startEdit(row('$r1', '@me:hs', 'mine'));
     fixture.detectChanges();
 
-    cmp.startQuote(row('$r1', '@me:hs', 'mine'));
+    list.startQuote(row('$r1', '@me:hs', 'mine'));
     fixture.detectChanges();
     await Promise.resolve();
 
@@ -735,18 +978,21 @@ describe('ThreadViewComponent', () => {
   });
 
   it('copies a matrix.to permalink for a thread message', async () => {
+    const { fixture } = await build([msg('$r1', '@b:hs', 'a reply')]);
     const writeText = vi.fn();
     vi.stubGlobal('navigator', { clipboard: { writeText } });
-    const { fixture } = await build([msg('$r1', '@b:hs', 'a reply')]);
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
 
-    fixture.componentInstance.onRowAction(row('$r1', '@b:hs', 'a reply'), {
+    listOf(fixture).onRowAction(row('$r1', '@b:hs', 'a reply'), {
       type: 'copy-link',
     });
 
+    // The bare room id: the list resets per thread on its own key, not a widened room id.
     expect(writeText).toHaveBeenCalledWith(
-      expect.stringContaining('https://matrix.to/#/'),
+      expect.stringMatching(/^https:\/\/matrix\.to\/#\/(!|%21)r(:|%3A)hs\//),
     );
-    vi.unstubAllGlobals();
   });
 
   it('opens the raw source for a thread message', async () => {
@@ -754,7 +1000,7 @@ describe('ThreadViewComponent', () => {
       msg('$r1', '@b:hs', 'a reply'),
     ]);
 
-    fixture.componentInstance.onRowAction(row('$r1', '@b:hs', 'a reply'), {
+    listOf(fixture).onRowAction(row('$r1', '@b:hs', 'a reply'), {
       type: 'view-source',
     });
 
@@ -782,7 +1028,7 @@ describe('ThreadViewComponent', () => {
     });
     const target = { ...msg('$1', '@a:hs', 'hi'), showHeader: true };
 
-    expect(fixture.componentInstance.rowCaps(target).deletable).toBe(true);
+    expect(listOf(fixture).rowCaps(target).deletable).toBe(true);
   });
 
   it('does not let a regular member delete others’ thread messages', async () => {
@@ -791,7 +1037,7 @@ describe('ThreadViewComponent', () => {
     });
     const target = { ...msg('$1', '@a:hs', 'hi'), showHeader: true };
 
-    expect(fixture.componentInstance.rowCaps(target).deletable).toBe(false);
+    expect(listOf(fixture).rowCaps(target).deletable).toBe(false);
   });
 
   it('deletes a thread message only after a reactive confirmation', async () => {
@@ -801,39 +1047,34 @@ describe('ThreadViewComponent', () => {
     const target = row('$1', '@me:hs', 'mine');
 
     confirm$.mockReturnValueOnce(of(false));
-    fixture.componentInstance.onDelete(target);
+    listOf(fixture).onDelete(target);
     expect(redactInThread).not.toHaveBeenCalled();
 
     confirm$.mockReturnValueOnce(of(true));
-    fixture.componentInstance.onDelete(target);
+    listOf(fixture).onDelete(target);
     expect(redactInThread).toHaveBeenCalledWith('$1');
   });
 
-  it('shows a "Load older" affordance and paginates when it can load older', async () => {
-    const { container, paginateOpenThread } = await build([], {
-      canPaginate: true,
+  it('tells the list while older replies load', async () => {
+    const { fixture, loadingOlderThread } = await build([], {
+      loadingOlder: true,
     });
+    expect(listOf(fixture).loadingOlder()).toBe(true);
 
-    const btn = container.querySelector<HTMLElement>('.thread__load-older');
-    expect(btn).toBeTruthy();
-    expect(btn?.textContent).toContain('Load older');
-
-    btn?.click();
-    expect(paginateOpenThread).toHaveBeenCalled();
+    loadingOlderThread.set(false);
+    fixture.detectChanges();
+    expect(listOf(fixture).loadingOlder()).toBe(false);
   });
 
-  it('shows a loading note (not the button) while older replies load', async () => {
-    const { container } = await build([], { loadingOlder: true });
+  it('tells the list whether older history remains', async () => {
+    const { fixture, canPaginateThread } = await build([], {
+      canPaginate: false,
+    });
+    expect(listOf(fixture).canLoadOlder()).toBe(false);
 
-    const el = container.querySelector('.thread__load-older');
-    expect(el?.textContent).toContain('Loading older');
-    expect(el?.tagName).not.toBe('BUTTON');
-  });
-
-  it('omits the load-older affordance when there is no older history', async () => {
-    const { container } = await build([], { canPaginate: false });
-
-    expect(container.querySelector('.thread__load-older')).toBeNull();
+    canPaginateThread.set(true);
+    fixture.detectChanges();
+    expect(listOf(fixture).canLoadOlder()).toBe(true);
   });
 
   it('starts a reply preview’s target expanded, and scrolls after it renders', async () => {
@@ -868,7 +1109,7 @@ describe('ThreadViewComponent', () => {
       ],
     );
 
-    fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+    listOf(fixture).onRowAction(row('$b', '@a:hs', 'second'), {
       type: 'jump',
       id: '$a',
     });
@@ -886,24 +1127,36 @@ describe('ThreadViewComponent', () => {
     );
   });
 
+  // The list brings a focused control into view when the row holding it grows, as when
+  // keyboard focus expands a collapsed reply; its own spec covers the cases it leaves alone.
   describe('keyboard focus in a collapsed reply', () => {
-    /** A link inside a body wrapper with `wrapperClass`, focused by keyboard or by a pointer. */
-    async function focusLinkIn(wrapperClass: string, keyboard = true) {
-      const frames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
-        frames.push(frame);
-        return frames.length;
-      });
-      onTestFinished(() => {
-        vi.unstubAllGlobals();
-      });
-      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
-      const wrapper = document.createElement('div');
-      wrapper.className = wrapperClass;
+    async function growWithFocus(keyboard: boolean) {
+      const { container } = await build([msg('$a', '@a:hs', 'first')]);
+      const reply = container.querySelector('[data-mid="$a"]') as HTMLElement;
+      const observer = (
+        ResizeObserver as unknown as {
+          instances: {
+            observed: Set<Element>;
+            emit(entries: ResizeObserverEntry[]): void;
+          }[];
+        }
+      ).instances.find((o) => o.observed.has(reply));
+      if (!observer) throw new Error('reply is not observed');
+      const grow = (height: number) =>
+        observer.emit([
+          {
+            target: reply,
+            borderBoxSize: [{ blockSize: height, inlineSize: 0 }],
+            contentRect: { height },
+          } as unknown as ResizeObserverEntry,
+        ]);
+      grow(100);
+      const clamp = document.createElement('div');
+      clamp.className = 'msg__clamp msg__clamp--collapsed';
       const link = document.createElement('a');
       link.href = 'https://example.org/';
-      wrapper.append(link);
-      container.querySelector('[data-mid="$a"]')?.append(wrapper);
+      clamp.append(link);
+      reply.append(clamp);
       link.scrollIntoView = vi.fn();
       // jsdom's own :focus-visible depends on earlier tests' input.
       const matches = link.matches.bind(link);
@@ -911,65 +1164,22 @@ describe('ThreadViewComponent', () => {
         selector === ':focus-visible' ? keyboard : matches(selector),
       );
       link.focus();
-      await fixture.whenStable();
-      return { link, frames };
+      grow(900);
+      return link;
     }
 
     it('brings the focused control into view once the reply has expanded', async () => {
-      const { link, frames } = await focusLinkIn(
-        'msg__clamp msg__clamp--collapsed',
-      );
-      // Not before the frame after the render that shows the reply whole.
-      expect(link.scrollIntoView).not.toHaveBeenCalled();
-      for (const frame of frames.splice(0)) frame(0);
+      const link = await growWithFocus(true);
 
       expect(link.scrollIntoView).toHaveBeenCalledWith(
         expect.objectContaining({ block: 'nearest' }),
       );
     });
 
-    it('leaves focus in a reply that was not collapsed alone', async () => {
-      const shown = await focusLinkIn('msg__clamp msg__clamp--capped');
-      for (const frame of shown.frames.splice(0)) frame(0);
-      expect(shown.link.scrollIntoView).not.toHaveBeenCalled();
-    });
-
-    // Show more sits after the collapsed body, not in it: Enter on it must not scroll the
-    // thread to the button and past the text it reveals.
-    it('leaves keyboard focus on Show more alone', async () => {
-      const frames: FrameRequestCallback[] = [];
-      vi.stubGlobal('requestAnimationFrame', (frame: FrameRequestCallback) => {
-        frames.push(frame);
-        return frames.length;
-      });
-      onTestFinished(() => {
-        vi.unstubAllGlobals();
-      });
-      const { fixture, container } = await build([msg('$a', '@a:hs', 'first')]);
-      const row = container.querySelector('[data-mid="$a"]');
-      const clamp = document.createElement('div');
-      clamp.className = 'msg__clamp msg__clamp--collapsed';
-      const button = document.createElement('button');
-      row?.append(clamp, button);
-      button.scrollIntoView = vi.fn();
-      const matches = button.matches.bind(button);
-      vi.spyOn(button, 'matches').mockImplementation((selector) =>
-        selector === ':focus-visible' ? true : matches(selector),
-      );
-      button.focus();
-      await fixture.whenStable();
-      for (const frame of frames.splice(0)) frame(0);
-
-      expect(button.scrollIntoView).not.toHaveBeenCalled();
-    });
-
     it('leaves pointer focus in a collapsed reply alone', async () => {
-      const pointer = await focusLinkIn(
-        'msg__clamp msg__clamp--collapsed',
-        false,
-      );
-      for (const frame of pointer.frames.splice(0)) frame(0);
-      expect(pointer.link.scrollIntoView).not.toHaveBeenCalled();
+      const link = await growWithFocus(false);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
     });
   });
 
@@ -1017,7 +1227,7 @@ describe('ThreadViewComponent', () => {
         height: rowHeight,
       } as DOMRect);
 
-      fixture.componentInstance.onRowAction(row('$b', '@a:hs', 'second'), {
+      listOf(fixture).onRowAction(row('$b', '@a:hs', 'second'), {
         type: 'jump',
         id: '$a',
       });
@@ -1134,7 +1344,7 @@ describe('ThreadViewComponent members', () => {
 
   it('does not route a thread batch caption into an edit in progress', async () => {
     const { fixture, sendToThread, editInThread } = await build();
-    fixture.componentInstance.startEdit(row('$m1', '@me:hs', 'mine'));
+    listOf(fixture).startEdit(row('$m1', '@me:hs', 'mine'));
 
     composerOf(fixture).submitBatchCaption.emit({
       text: 'both of these',
@@ -1223,7 +1433,7 @@ describe('ThreadViewComponent members', () => {
     it('drops an edit in progress, so the next submit is a plain send', async () => {
       const { fixture, editInThread, sendToThread } = await build();
       const cmp = fixture.componentInstance;
-      cmp.startEdit(row('$r1', '@me:hs', 'typo'));
+      listOf(fixture).startEdit(row('$r1', '@me:hs', 'typo'));
       expect(cmp.editingId()).toBe('$r1');
 
       fixture.componentRef.setInput('rootEventId', '$next');
@@ -1238,7 +1448,7 @@ describe('ThreadViewComponent members', () => {
     it('drops a reply in progress', async () => {
       const { fixture, replyInThread } = await build();
       const cmp = fixture.componentInstance;
-      cmp.startReply(row('$r1', '@b:hs', 'hi'));
+      listOf(fixture).startReply(row('$r1', '@b:hs', 'hi'));
 
       fixture.componentRef.setInput('rootEventId', '$next');
       fixture.detectChanges();
@@ -1332,18 +1542,16 @@ describe('ThreadViewComponent members', () => {
     beforeEach(() => belowMembers(true));
     afterEach(() => vi.unstubAllGlobals());
 
-    const direction = (fixture: { componentInstance: unknown }) =>
-      (
-        fixture.componentInstance as { swipeDirection: () => string }
-      ).swipeDirection();
+    const direction = (fixture: ComponentFixture<ThreadViewComponent>) =>
+      listOf(fixture).swipeDirection();
 
     it('replies to a reply that is not ours', async () => {
-      // The mirror of `MessageListBase.onRowSwipe`, hand-copied because this panel does not
-      // extend that class — which is exactly how `(longPress)` was once missed here.
+      // Through the hosted list's own swipe handler, which now routes to ThreadCommands.
       const { fixture } = await build([msg('$1', '@ada:hs', 'a reply')]);
       const cmp = fixture.componentInstance;
+      const list = listOf(fixture);
 
-      cmp.onRowSwipe(cmp.rows()[0], 'reply');
+      list.onRowSwipe(list.rows()[0], 'reply');
 
       expect(cmp.replyingToId()).toBe('$1');
       expect(cmp.editingId()).toBeNull();
@@ -1358,8 +1566,9 @@ describe('ThreadViewComponent members', () => {
         { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
       ]);
       const cmp = fixture.componentInstance;
+      const list = listOf(fixture);
 
-      cmp.onRowSwipe(cmp.rows()[0], 'edit');
+      list.onRowSwipe(list.rows()[0], 'edit');
 
       expect(cmp.editingId()).toBe('$1');
       expect(cmp.replyingToId()).toBeNull();
@@ -1370,13 +1579,14 @@ describe('ThreadViewComponent members', () => {
         { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
       ]);
       const cmp = fixture.componentInstance;
-      const swiped = cmp.rows()[0];
+      const list = listOf(fixture);
+      const swiped = list.rows()[0];
 
       threadMessages.set([]);
       fixture.detectChanges();
-      expect(cmp.rows()).toEqual([]);
+      expect(list.rows()).toEqual([]);
 
-      cmp.onRowSwipe(swiped, 'edit');
+      list.onRowSwipe(swiped, 'edit');
 
       expect(cmp.editingId()).toBe('$1');
       expect(cmp.replyingToId()).toBeNull();
@@ -1416,7 +1626,7 @@ describe('ThreadViewComponent members', () => {
       msg('$1', '@ada:hs', 'first'),
       msg('$2', '@ada:hs', 'second'),
     ]);
-    const cmp = fixture.componentInstance;
+    const cmp = listOf(fixture);
     const [first, second] = cmp.rows();
     const firstBefore = cmp.rowCaps(first);
     const secondBefore = cmp.rowCaps(second);
@@ -1434,22 +1644,16 @@ describe('ThreadViewComponent members', () => {
   });
 
   it('closes its own action sheet when the panel is destroyed', async () => {
-    // The asymmetric consumer, and the reason `MessageActionSheetService` exists at all:
-    // this panel renders `trn-message-row` but does NOT extend `MessageListBase`, so it
-    // inherits none of that wiring and every guarantee has to be re-made here.
-    //
     // The sheet is a CDK overlay living outside the router outlet, so it outlives the panel.
     // Without this, closing the thread leaves a modal standing whose every row dispatches
-    // into a destroyed component. The mirror test on the list side cannot cover it — that
-    // one exercises two `MessageListBase` instances, which is the mechanism, not this
-    // configuration.
+    // into a destroyed component. Owned by the hosted list now, so destroying the panel
+    // must take the list, and its sheet, with it.
     const { fixture, sheetOpen, sheetClose } = await build([
       msg('$1', '@ada:hs', 'a reply'),
     ]);
 
-    fixture.componentInstance.onRowLongPress(
-      fixture.componentInstance.rows()[0],
-    );
+    const list = listOf(fixture);
+    list.onRowLongPress(list.rows()[0]);
     expect(sheetOpen).toHaveBeenCalledTimes(1);
 
     fixture.destroy();
@@ -1517,7 +1721,13 @@ describe('ThreadViewComponent members', () => {
       });
 
       expect(
-        container.querySelector('[data-testid="typing-status"]'),
+        container.querySelector(
+          '.thread__footer [data-testid="typing-status"]',
+        ),
+      ).toBeNull();
+      // Nor does the hosted list, which has no typing row of its own here.
+      expect(
+        container.querySelector('trn-message-list trn-typing-indicator'),
       ).toBeNull();
     });
   });

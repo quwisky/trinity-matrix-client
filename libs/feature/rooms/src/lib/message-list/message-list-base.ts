@@ -96,6 +96,8 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   readOnly: false,
 };
 
+const NO_THREAD_SUMMARIES: Record<string, ThreadSummary> = {};
+
 const LOAD_ERROR_COPY: Readonly<
   Record<Extract<TimelineLoadState, { kind: 'error' }>['reason'], string>
 > = {
@@ -111,9 +113,15 @@ const LOAD_ERROR_COPY: Readonly<
  */
 @Directive()
 export abstract class MessageListBase {
-  readonly messages = input<MessageView[]>([]);
+  readonly messages = input<readonly MessageView[]>([]);
   /** Thread summaries keyed by root event id, for the per-row thread indicator. */
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
+  /** False where threads cannot nest (inside a thread): no thread action, summaries or connectors. */
+  readonly canThread = input(true);
+  /** The summaries rows show: none while {@link canThread} is off. */
+  protected readonly shownThreadSummaries = computed(() =>
+    this.canThread() ? this.threadSummaries() : NO_THREAD_SUMMARIES,
+  );
   /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
   readonly canPin = input(false);
   /** Whether the current user may redact OTHER people's messages here (a moderator). */
@@ -191,6 +199,10 @@ export abstract class MessageListBase {
    * scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
+  /** A second reset trigger for a host that switches conversations within one room (a thread's root). */
+  readonly resetKey = input<string | null>(null);
+  /** Where a quote goes when the host owns the composer; null quotes into the list's own. */
+  readonly quoteInto = input<((text: string) => void) | null>(null);
   readonly accountId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
   readonly members = input<readonly MentionMember[]>([]);
@@ -297,7 +309,7 @@ export abstract class MessageListBase {
   private readonly rowModel = new MessageRowModel(
     this.messages,
     this.firstUnreadId,
-    this.threadSummaries,
+    this.shownThreadSummaries,
   );
 
   /** The grouped rows the list renders. */
@@ -361,6 +373,7 @@ export abstract class MessageListBase {
     // FIRST (effects fire in creation order) and the scroll effect sees a fresh load.
     effect(() => {
       this.roomId();
+      this.resetKey();
       untracked(() => this.resetOnRoomChange());
     });
 
@@ -505,7 +518,10 @@ export abstract class MessageListBase {
    */
   startQuote(row: MessageRow): void {
     this.cancelEdit();
-    this.composer()?.insertQuote(quoteBlock(row.body));
+    const text = quoteBlock(row.body);
+    const into = this.quoteInto();
+    if (into) into(text);
+    else this.composer()?.insertQuote(text);
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
@@ -655,7 +671,7 @@ export abstract class MessageListBase {
       {
         canRedactOthers: this.canRedactOthers(),
         canPin: this.canPin(),
-        canThread: true,
+        canThread: this.canThread(),
         pinnedIds: this.pinnedIds(),
         canAddToEmoji: addableImages(
           this.addToEmoji,
@@ -702,8 +718,8 @@ export abstract class MessageListBase {
   /**
    * A long press on a row (phone or tablet): offer its actions as a bottom sheet.
    *
-   * The sheet is held by {@link MessageActionSheetService} because `trn-message-row` has a third
-   * consumer that does not extend this class. Dispatch goes through `onRowAction`, like the hover toolbar.
+   * The sheet is held by {@link MessageActionSheetService}, scoped to this list, so the thread's
+   * list and the room's each close only their own. Dispatch goes through `onRowAction`, like the hover toolbar.
    */
   onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
     this.messageSheet.open(

@@ -2,15 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
-  Injector,
   OnDestroy,
-  afterNextRender,
   computed,
   effect,
   inject,
   input,
   output,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -19,28 +17,13 @@ import { ThreadCommands } from './thread-commands';
 import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
-  buildRowCapsMap,
-  addableImages,
-  dispatchSharedRowAction,
-} from '../shared/row-actions';
-import {
-  HapticsService,
   MessageGestureSettingsService,
   isMobileOs,
 } from '@trinity/platform-native';
-import { MessageActionSheetService } from '../message-actions/message-action-sheet.service';
-import {
-  UndecryptableFixService,
-  type UndecryptableFix,
-} from '../shared/undecryptable-fix.service';
-import {
-  type MessageSwipeAction,
-  type SwipeDirection,
-} from '../message-row/message-row.component';
+import { type SwipeDirection } from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import {
-  TrnSurfaceService,
   TrnOverlaySurfaceDirective,
   releaseInputTargetOnDestroy,
 } from '@trinity/components/overlay';
@@ -49,63 +32,22 @@ import {
   threadDraftKey,
 } from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
-import { quoteBlock } from '@trinity/util/matrix';
-import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
-import { newestMessageReaders } from '../message-list/message-row-model';
-import {
-  MessageRowComponent,
-  type MessageLongPressContext,
-  type MessageRow,
-  type MessageRowAction,
-  type MessageRowCaps,
-} from '../message-row/message-row.component';
-import { BodyOverflowObserver } from '../message-row/body-overflow';
-import { ExpandedBodiesStore } from '../rooms/expanded-bodies.store';
-import { scrollToJumpTarget } from '../message-list/jump-scroll';
-import { dismissKeyboardOnDrag } from '../message-list/drag-dismiss-keyboard';
-import { observeScrollerHeight } from '../message-list/scroller-height-anchor';
 import {
   MessageComposerComponent,
   type ComposerSubmit,
 } from '../message-composer/message-composer.component';
-import { ForwardService } from '../forward/forward.service';
-import { MediaSaveService } from '../media-attachment/media-save.service';
-import { AddToMyEmojiService } from '../shared/add-to-my-emoji.service';
-import { ReportService } from '../report/report.service';
-import { EditHistoryDialogService } from '../edit-history/edit-history.service';
-import { ReactionsDialogService } from '../reactions-dialog/reactions-dialog.service';
-import {
-  BELOW_MEMBERS_QUERY,
-  mediaQuerySignal,
-  scrollBehavior,
-} from '@trinity/util/ui';
-
-/** Group consecutive messages from the same sender within this window (Discord-style). */
-const GROUP_GAP_MS = 5 * 60 * 1000;
-
-/** Fallback caps for a row not present in the memoized map (defensive; unreached). */
-const THREAD_ROW_CAPS: MessageRowCaps = {
-  editable: false,
-  deletable: false,
-  canPin: false,
-  pinned: false,
-  canThread: false,
-  canQuote: false,
-  canRespond: true,
-  saveMedia: null,
-  canForward: false,
-  readOnly: false,
-};
+import { MessageListComponent } from '../message-list/message-list.component';
+import { MESSAGE_LIST_COMMANDS } from '../message-list/message-list-commands';
+import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /**
- * Thread view: the root message plus its replies, with an in-thread composer. Reuses
- * {@link MessageRowComponent} and {@link MessageComposerComponent} so a thread renders and
- * composes exactly like the main timeline.
+ * Thread view: the root message plus its replies, rendered by the room timeline's
+ * {@link MessageListComponent}, with an in-thread composer below it.
  *
- * Orchestration mirrors {@link MessageListComponent} but routes every action through the
- * exact {@link ConversationThread} child, whose commands carry the thread relation so
- * sends/edits/replies stay in the thread. It closes nothing itself: it announces
- * {@link ThreadViewComponent.dismissed} and the rooms page empties the slot.
+ * The list's edit/reply state is {@link ThreadCommands} (through `MESSAGE_LIST_COMMANDS`), and
+ * every command goes through the exact {@link ConversationThread} child, whose commands carry
+ * the thread relation so sends/edits/replies stay in the thread. It closes nothing itself: it
+ * announces {@link ThreadViewComponent.dismissed} and the rooms page empties the slot.
  */
 @Component({
   selector: 'trn-thread-view',
@@ -114,12 +56,14 @@ const THREAD_ROW_CAPS: MessageRowCaps = {
     SidePanelHeaderComponent,
     TypingIndicatorComponent,
     EmptyStateComponent,
-    MessageRowComponent,
-    MessageReceiptsComponent,
+    MessageListComponent,
     MessageComposerComponent,
     TrnOverlaySurfaceDirective,
   ],
-  providers: [ThreadCommands, BodyOverflowObserver],
+  providers: [
+    ThreadCommands,
+    { provide: MESSAGE_LIST_COMMANDS, useExisting: ThreadCommands },
+  ],
   templateUrl: './thread-view.component.html',
   styleUrl: './thread-view.component.scss',
 })
@@ -127,26 +71,13 @@ export class ThreadViewComponent implements OnDestroy {
   private readonly conversations = inject(ConversationRuntime);
   private readonly commands = inject(ThreadCommands);
   private readonly openedThread = this.commands.thread;
-  private readonly messageSheet = inject(MessageActionSheetService);
   private readonly roomMembers = inject(RoomMembersService);
-  private readonly dialog = inject(TrnSurfaceService);
-  private readonly forwardSvc = inject(ForwardService);
-  private readonly reportSvc = inject(ReportService);
-  private readonly mediaSave = inject(MediaSaveService);
-  private readonly addToEmoji = inject(AddToMyEmojiService);
-  private readonly editHistorySvc = inject(EditHistoryDialogService);
-  private readonly reactionsDialog = inject(ReactionsDialogService);
   private readonly timeline = this.conversations.timeline;
   protected readonly postUnavailableReason = computed(() =>
     this.timeline.canSendMessages() ? null : POST_UNAVAILABLE_COPY,
   );
+  protected readonly canRedactOthers = this.timeline.canRedactOthers;
   private readonly destroyRef = inject(DestroyRef);
-  private readonly injector = inject(Injector);
-
-  /** The rooms page's Show more state, shared with the timeline. */
-  private readonly expandedBodies = inject(ExpandedBodiesStore, {
-    optional: true,
-  });
 
   readonly roomId = input.required<string>();
   readonly accountId = input<string | null>(null);
@@ -193,7 +124,6 @@ export class ThreadViewComponent implements OnDestroy {
       return;
     }
     if (current) {
-      this.messageSheet.close(this);
       current.release();
       this.commands.reset();
       this.timeline.setTyping(false, 'thread');
@@ -203,44 +133,24 @@ export class ThreadViewComponent implements OnDestroy {
     );
   });
 
-  private readonly scrollEl = viewChild<ElementRef<HTMLElement>>('scroll');
-
   /** The thread's own composer, so a quote lands in it rather than the room's. */
   private readonly composer = viewChild(MessageComposerComponent);
 
-  /** The thread's messages (root first, then replies), grouped for display. */
-  readonly rows = computed<MessageRow[]>(() => {
-    const msgs = this.openedThread()?.messages() ?? [];
-    return msgs.map((m, i) => {
-      const prev = msgs[i - 1];
-      const showHeader =
-        !prev ||
-        prev.senderId !== m.senderId ||
-        m.timestamp - prev.timestamp > GROUP_GAP_MS ||
-        // A reply always shows its own header: the quoted preview breaks the visual flow, so
-        // a headerless continuation would look like the reply lost its author.
-        !!m.replyTo;
-      return { ...m, showHeader };
-    });
-  });
+  /** Hands the list's quote action to this panel's composer. */
+  protected readonly quoteIntoComposer = (text: string): void =>
+    this.composer()?.insertQuote(text);
+
+  /** The thread's messages, root first, then replies. */
+  readonly messages = computed(() => this.openedThread()?.messages() ?? []);
 
   readonly editingDraft = computed(
-    () =>
-      this.openedThread()
-        ?.messages()
-        .find((m) => m.id === this.editingId())?.body ?? '',
+    () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
   );
 
   readonly replyingToName = computed(
     () =>
-      this.openedThread()
-        ?.messages()
-        .find((m) => m.id === this.replyingToId())?.senderName ?? '',
-  );
-
-  /** Who has read the thread's newest message; readers further back aren't shown. */
-  protected readonly latestReceipts = computed(() =>
-    newestMessageReaders(this.rows()),
+      this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
+      '',
   );
 
   /** Whether older thread replies remain to be paged in. */
@@ -252,6 +162,10 @@ export class ThreadViewComponent implements OnDestroy {
     () => this.openedThread()?.loadingOlder() ?? false,
   );
 
+  /** The list's jump request; the nonce lets the same message be revealed again. */
+  protected readonly jumpToId = signal<string | null>(null);
+  protected readonly jumpToNonce = signal(0);
+
   private readonly revealBinding = effect(() => {
     const id = this.revealEventId();
     const request = this.revealRequest();
@@ -260,10 +174,11 @@ export class ThreadViewComponent implements OnDestroy {
       this.revealedEventId = null;
     }
     if (!id || id === this.revealedEventId) return;
-    if (this.rows().some((row) => row.id === id)) {
+    if (this.messages().some((message) => message.id === id)) {
       this.revealedEventId = id;
-      afterNextRender(() => this.jumpToRequested(id), {
-        injector: this.injector,
+      untracked(() => {
+        this.jumpToId.set(id);
+        this.jumpToNonce.update((nonce) => nonce + 1);
       });
     } else if (this.canLoadOlder() && !this.loadingOlder()) {
       untracked(() => this.pageToReveal(id));
@@ -274,21 +189,9 @@ export class ThreadViewComponent implements OnDestroy {
     // Otherwise a thread closed by a press or key inside it stays in memory, detached, as
     // the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
-    // The composer shares this panel's height, so a growing draft or the keyboard would
-    // otherwise cover the newest replies.
-    afterNextRender(() => {
-      const el = this.scrollEl()?.nativeElement;
-      if (el) {
-        this.destroyRef.onDestroy(observeScrollerHeight(el));
-        this.destroyRef.onDestroy(dismissKeyboardOnDrag(el));
-      }
-    });
   }
 
   ngOnDestroy(): void {
-    // The sheet is a modal over this panel; leaving it standing would dispatch against a
-    // thread that is no longer open.
-    this.messageSheet.close(this);
     this.openedThread()?.release();
     this.openedThread.set(null);
     // Closing the panel mid-reply otherwise leaves us marked as typing until the server's
@@ -312,40 +215,10 @@ export class ThreadViewComponent implements OnDestroy {
   );
 
   private readonly gestures = inject(MessageGestureSettingsService);
-  private readonly haptics = inject(HapticsService);
   private readonly belowMembers = mediaQuerySignal(
     BELOW_MEMBERS_QUERY,
     inject(DestroyRef),
   );
-
-  /**
-   * Dispatch the semantic action the row captured when its sideways drag committed. The
-   * snapshot stays valid after the row leaves the live caps map, so this mirrors
-   * `MessageListBase.onRowSwipe` without revalidating capabilities.
-   */
-  onRowSwipe(row: MessageRow, action: MessageSwipeAction): void {
-    this.haptics.gestureCommitted();
-    if (action === 'edit') {
-      this.startEdit(row);
-      return;
-    }
-    this.startReply(row);
-  }
-
-  /**
-   * A long press on a thread reply, on a phone or tablet. Easy to forget: this component
-   * renders `trn-message-row` but does NOT extend `MessageListBase`, so it inherits none of
-   * that wiring, and without this the row's `longPress` goes nowhere.
-   */
-  onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
-    this.messageSheet.open(
-      this,
-      this.rowCaps(row),
-      (action) => this.onRowAction(row, action),
-      context,
-      row.timestamp,
-    );
-  }
 
   /** Announce the close; the rooms page owns the slot and empties it. */
   close(): void {
@@ -379,8 +252,8 @@ export class ThreadViewComponent implements OnDestroy {
   /**
    * The room's typists, for the row above the thread composer. Room's, not thread's:
    * `m.typing` is a room-level EDU with no thread dimension, so somebody typing in the main
-   * timeline shows here too. The row does not own the announcement; the list behind it
-   * already announces the same names.
+   * timeline shows here too. The row does not own the announcement; the room's list behind
+   * it already announces the same names.
    */
   protected readonly typingNames = this.timeline.typingNames;
 
@@ -401,22 +274,12 @@ export class ThreadViewComponent implements OnDestroy {
     this.commands.sendMedia(batch);
   }
 
-  startEdit(row: MessageRow): void {
-    this.commands.startEdit(row.id);
-  }
-
   onCancelEdit(): void {
     this.commands.cancelEdit();
   }
 
-  startReply(row: MessageRow): void {
-    this.commands.startReply(row.id);
-  }
-
-  /** Pull a thread message's text into THIS panel's composer as a `>` block. */
-  startQuote(row: MessageRow): void {
-    this.commands.cancelEdit();
-    this.composer()?.insertQuote(quoteBlock(row.body));
+  onCancelReply(): void {
+    this.commands.cancelReply();
   }
 
   editLastOwn(): void {
@@ -445,157 +308,12 @@ export class ThreadViewComponent implements OnDestroy {
     this.commands.retry(messageId);
   }
 
-  onDelete(row: MessageRow): void {
-    this.commands.delete(row.id);
+  onCancelSend(messageId: string): void {
+    this.commands.cancel(messageId);
   }
 
-  /**
-   * Per-row caps keyed by event id, memoized so the reference is stable across ticks that
-   * don't change the messages; a fresh object would defeat the OnPush
-   * {@link MessageRowComponent} and re-render every row.
-   */
-  private readonly rowCapsById = computed<Map<string, MessageRowCaps>>(() => {
-    this.prevRowCaps = buildRowCapsMap(
-      this.rows(),
-      {
-        canRedactOthers: this.timeline.canRedactOthers(),
-        canPin: false,
-        canThread: false,
-        pinnedIds: [],
-        canAddToEmoji: addableImages(
-          this.addToEmoji,
-          this.timeline,
-          this.roomId(),
-        ),
-      },
-      this.prevRowCaps,
-    );
-    return this.prevRowCaps;
-  });
-
-  /** Last computed caps, for identity reuse across thread events. */
-  private prevRowCaps = new Map<string, MessageRowCaps>();
-
-  /** Per-row capabilities/state for a thread row (no pinning or nested threads). */
-  rowCaps(row: MessageRow): MessageRowCaps {
-    return this.rowCapsById().get(row.id) ?? THREAD_ROW_CAPS;
-  }
-
-  /** As in the main timeline: resolved only while a thread row can use it. */
-  readonly undecryptableFix = computed<UndecryptableFix | null>(() =>
-    this.rows().some((row) => row.undecryptable?.deviceFixable)
-      ? this.injector.get(UndecryptableFixService).fix()
-      : null,
-  );
-
-  /** Route a single row action to its thread handler. */
-  onRowAction(row: MessageRow, action: MessageRowAction): void {
-    if (
-      dispatchSharedRowAction(action, row, {
-        roomId: this.roomId(),
-        accountId: this.accountId(),
-        destroyRef: this.destroyRef,
-        dialog: this.dialog,
-        timeline: this.timeline,
-        forward: this.forwardSvc,
-        report: this.reportSvc,
-        mediaSave: this.mediaSave,
-        reactions: this.reactionsDialog,
-        editHistory: this.editHistorySvc,
-        addToEmoji: this.addToEmoji,
-        undecryptableFix: {
-          open: () => this.injector.get(UndecryptableFixService).open(),
-        },
-        react: (id, key) => this.onReact(id, key),
-        quote: (r) => this.startQuote(r),
-        // The thread panel routes no permalinks (its rows don't bind matrixLink), so a link
-        // followed out of the edit-history dialog just closes it.
-      })
-    ) {
-      return;
-    }
-    switch (action.type) {
-      case 'reply':
-        this.startReply(row);
-        break;
-      case 'edit':
-        this.startEdit(row);
-        break;
-      case 'delete':
-        void this.onDelete(row);
-        break;
-      case 'retry':
-        this.onRetry(row.id);
-        break;
-      case 'cancel':
-        this.commands.cancel(row.id);
-        break;
-      case 'jump':
-        this.jumpToRequested(action.id);
-        break;
-      // Pin/thread are not offered inside a thread (caps.canPin/canThread false).
-      case 'pin':
-      case 'thread':
-        break;
-      default: {
-        // Exhaustiveness guard: a new MessageRowAction variant without a case here
-        // becomes a compile error rather than a silently-dropped action.
-        const unhandled: never = action;
-        void unhandled;
-        break;
-      }
-    }
-  }
-
-  /**
-   * A reply preview's target starts expanded, as in the timeline. When that grows the row,
-   * the scroll waits for the render that shows it whole: the thread has no re-aim after a
-   * row measurement, so scrolling to the collapsed row would miss.
-   */
-  private jumpToRequested(id: string): void {
-    const store = this.expandedBodies;
-    if (!store || store.isExpanded(id)) {
-      this.jumpTo(id);
-      return;
-    }
-    store.expand(id);
-    afterNextRender(() => this.jumpTo(id), { injector: this.injector });
-  }
-
-  /**
-   * Keyboard focus moving into a collapsed reply expands it (`MessageRowComponent
-   * .expandBodyForFocus`, which handles the event first); the browser scrolled to the
-   * control while it was still clipped, so bring it into view once the reply shows whole.
-   * The thread makes no scroll corrections, so the frame after the render is enough (the
-   * timeline does this after its corrections: `MessageListComponent.revealFocusIn`).
-   */
-  revealFocusAfterExpand(event: FocusEvent): void {
-    const target = event.target;
-    if (
-      !(target instanceof Element) ||
-      !target.matches(':focus-visible') ||
-      !target.closest('.msg__clamp--collapsed')
-    ) {
-      return;
-    }
-    afterNextRender(
-      () =>
-        requestAnimationFrame(() => {
-          if (target.ownerDocument.activeElement === target) {
-            target.scrollIntoView({
-              block: 'nearest',
-              behavior: scrollBehavior(),
-            });
-          }
-        }),
-      { injector: this.injector },
-    );
-  }
-
-  /** Scroll the original message into view when its reply preview is clicked. */
-  jumpTo(messageId: string): void {
-    const scroller = this.scrollEl()?.nativeElement;
-    const target = scroller?.querySelector(`[data-mid="${messageId}"]`);
-    if (scroller && target) scrollToJumpTarget(target, scroller);
+  /** A delete the list has already confirmed. */
+  onDelete(messageId: string): void {
+    this.commands.delete(messageId);
   }
 }

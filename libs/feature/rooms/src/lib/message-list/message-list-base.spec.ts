@@ -361,3 +361,43 @@ describe('MessageListBase system runs', () => {
     expect(fixture.componentInstance.expandedRuns().size).toBe(0);
   });
 });
+
+describe('MessageListBase host hooks', () => {
+  it('hands a quote to quoteInto instead of its own composer, ending the edit', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    const quoted: string[] = [];
+    fixture.componentRef.setInput('quoteInto', (text: string) =>
+      quoted.push(text),
+    );
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.startEdit({ ...msg('$a'), showHeader: true });
+
+    cmp.startQuote({ ...msg('$a'), showHeader: true });
+
+    expect(quoted).toEqual(['> body $a\n\n']);
+    expect(cmp.editingId()).toBeNull();
+  });
+
+  it('resets per-conversation state when resetKey changes, keeping roomId', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.componentRef.setInput('resetKey', '$root1');
+    fixture.componentRef.setInput('messages', [
+      msg('m1'),
+      { ...msg('e1'), kind: 'event' },
+      { ...msg('e2'), kind: 'event' },
+    ]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.toggleRun('group:e2');
+    expect(cmp.expandedRuns().size).toBe(1);
+
+    fixture.componentRef.setInput('resetKey', '$root2');
+    fixture.detectChanges();
+
+    expect(cmp.expandedRuns().size).toBe(0);
+    expect(cmp.roomId()).toBe('!a:hs');
+  });
+});

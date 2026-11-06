@@ -763,7 +763,7 @@ export class MessageRowComponent {
    * (`:focus-visible`): a mouse press focuses links too, and expanding then would move the content
    * (the list re-pins to the bottom) before the button is released, so the click would miss. The
    * list brings the focused control into view after correcting its scroll for the taller row
-   * (`MessageListComponent.revealFocusIn`, `ThreadViewComponent.revealFocusAfterExpand`).
+   * (`MessageListComponent.revealFocusIn`, in the timeline and the thread view alike).
    */
   expandBodyForFocus(event: FocusEvent): void {
     const target = event.target;

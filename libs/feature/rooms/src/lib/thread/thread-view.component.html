@@ -14,44 +14,45 @@
     (closed)="close()"
   />
 
-  <div
-    class="thread flex-1 overflow-y-auto max-members:touch-pan-y"
-    #scroll
-    data-message-scroller
-    (focusin)="revealFocusAfterExpand($event)"
-  >
-    @if (loading()) {
-      <div class="thread__load-older" role="status">Loading thread…</div>
-    } @else if (loadingOlder()) {
-      <div class="thread__load-older">Loading older replies…</div>
-    } @else if (canLoadOlder()) {
-      <button type="button" class="thread__load-older" (click)="loadOlder()">
-        Load older replies
-      </button>
-    }
-
-    @for (row of rows(); track row.id) {
-      <trn-message-row
-        [row]="row"
-        [caps]="rowCaps(row)"
-        [undecryptableFix]="undecryptableFix()"
-        (action)="onRowAction(row, $event)"
-        (longPress)="onRowLongPress(row, $event)"
-        [swipeDirection]="swipeDirection()"
-        (swipe)="onRowSwipe(row, $event)"
-        (pollVote)="onPollVote($event)"
-        (pollEnd)="onPollEnd($event)"
-      />
-    } @empty {
-      @if (!loading()) {
-        <trn-empty-state body="No replies in this thread yet." />
+  @if (loading()) {
+    <div class="thread__loading flex-1" role="status">Loading thread…</div>
+  } @else {
+    <trn-message-list
+      [messages]="messages()"
+      [loadingOlder]="loadingOlder()"
+      [canLoadOlder]="canLoadOlder()"
+      [oldestEventId]="messages()[0]?.id ?? null"
+      [roomId]="roomId()"
+      [resetKey]="rootEventId()"
+      [accountId]="accountId()"
+      [canRedactOthers]="canRedactOthers()"
+      [swipeDirection]="swipeDirection()"
+      [composerEnabled]="false"
+      [canThread]="false"
+      [canPin]="false"
+      [pinnedIds]="[]"
+      [firstUnreadId]="null"
+      [threadSummaries]="{}"
+      [quoteInto]="quoteIntoComposer"
+      [jumpToId]="jumpToId()"
+      [jumpToNonce]="jumpToNonce()"
+      [introShown]="!messages().length"
+      (loadOlder)="loadOlder()"
+      (react)="onReact($event.id, $event.key)"
+      (retry)="onRetry($event)"
+      (cancelSend)="onCancelSend($event)"
+      (deleteMessage)="onDelete($event)"
+      (pollVote)="onPollVote($event)"
+      (pollEnd)="onPollEnd($event)"
+    >
+      @if (!messages().length) {
+        <trn-empty-state
+          trnMessageListIntro
+          body="No replies in this thread yet."
+        />
       }
-    }
-
-    @if (rows().length) {
-      <trn-message-receipts [receipts]="latestReceipts()" />
-    }
-  </div>
+    </trn-message-list>
+  }
 
   <div class="thread__footer">
     <trn-typing-indicator [names]="typingNames()" [announce]="false" />
@@ -73,7 +74,7 @@
       (submitBatchCaption)="onBatchCaption($event)"
       (submitMedia)="onSendMedia($event)"
       (cancelEdit)="onCancelEdit()"
-      (cancelReply)="replyingToId.set(null)"
+      (cancelReply)="onCancelReply()"
       (editLast)="editLastOwn()"
       (typing)="onTyping($event)"
     />

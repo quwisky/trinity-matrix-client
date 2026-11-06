@@ -42,6 +42,16 @@ describe('room message list commands', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
   });
 
+  it('cancels an edit intent once, and leaves it to a reply cancel', () => {
+    const { compose, commands } = setup();
+    const cancel = vi.spyOn(compose, 'cancelIntent');
+    compose.beginEdit('$e', 'b');
+    commands.cancelReply();
+    expect(cancel).not.toHaveBeenCalled();
+    commands.cancelEdit();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
   it('begins edit and reply through the runtime', () => {
     const { messages, commands } = setup();
     const edit = vi.spyOn(messages, 'beginEdit');

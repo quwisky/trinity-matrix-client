@@ -469,6 +469,8 @@ export class MessageListComponent extends MessageListBase {
       const jumpsBefore = this.jumpsRequested;
 
       requestAnimationFrame(() => {
+        // A list closed within a frame of opening (a thread) has no reader left to fill for.
+        if (this.destroyRef.destroyed) return;
         // A jump made as a loaded room opens lands before this frame, and the pin would undo it.
         // The fill is read now: a reader's scroll reported since has ended it and must not be undone.
         if (
