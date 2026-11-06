@@ -12,6 +12,10 @@ import {
 import { sendWithRetry } from '../../support/cs-api.mts';
 import { nextTestResourceId } from '../../../support/namespace.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // KaTeX maths in messages. Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
 
@@ -47,7 +51,7 @@ test.describe('Maths', () => {
     });
 
     await signInAndOpen(page, room);
-    const spoiler = page.locator('.scroll .mx-spoiler').first();
+    const spoiler = page.locator(`${ROOM_SCROLL} .mx-spoiler`).first();
     await expect(spoiler).toBeVisible({ timeout: 20_000 });
     // A negative check needs a window: let two frames pass, then hold for a second.
     await page.evaluate(
@@ -109,7 +113,7 @@ test.describe('Maths', () => {
 
     await signInAndOpen(page, room);
     await expect(
-      page.locator('.scroll').getByText('no formulas here', { exact: true }),
+      page.locator(ROOM_SCROLL).getByText('no formulas here', { exact: true }),
     ).toBeVisible({ timeout: 20_000 });
     // A negative check needs a window: the directive would ask for KaTeX within a frame of the
     // body rendering, so let two frames pass and then hold for a second.
@@ -124,23 +128,24 @@ test.describe('Maths', () => {
     expect(styles).toEqual([]);
 
     await openRoom(page, mathsRoomName);
-    await expect(page.locator('.scroll span.mx-maths .katex')).toBeVisible({
+    await expect(
+      page.locator(`${ROOM_SCROLL} span.mx-maths .katex`),
+    ).toBeVisible({
       timeout: 30_000,
     });
     await expect(
-      page.locator('.scroll div.mx-maths .katex-display'),
+      page.locator(`${ROOM_SCROLL} div.mx-maths .katex-display`),
     ).toBeVisible();
     await expect(
-      page.locator('.scroll .katex-mathml math').first(),
+      page.locator(`${ROOM_SCROLL} .katex-mathml math`).first(),
     ).toBeAttached();
-    await expect(page.locator('.scroll .katex-html').first()).toHaveAttribute(
-      'aria-hidden',
-      'true',
-    );
+    await expect(
+      page.locator(`${ROOM_SCROLL} .katex-html`).first(),
+    ).toHaveAttribute('aria-hidden', 'true');
     // The stylesheet MathsLoader links is the `katex` bundle the build emits: it loads and
     // its rules apply.
     await expect.poll(() => styleStatuses, { timeout: 15_000 }).toEqual([200]);
-    await expect(page.locator('.scroll span.mx-maths .katex')).toHaveCSS(
+    await expect(page.locator(`${ROOM_SCROLL} span.mx-maths .katex`)).toHaveCSS(
       'font-family',
       /KaTeX_Main/,
     );
@@ -152,7 +157,9 @@ test.describe('Maths', () => {
     // Back and forth: still one chunk and one stylesheet.
     await openRoom(page, room.roomName);
     await openRoom(page, mathsRoomName);
-    await expect(page.locator('.scroll span.mx-maths .katex')).toBeVisible({
+    await expect(
+      page.locator(`${ROOM_SCROLL} span.mx-maths .katex`),
+    ).toBeVisible({
       timeout: 30_000,
     });
     expect(chunks).toHaveLength(1);
@@ -178,7 +185,7 @@ test.describe('Maths', () => {
     });
     await signInAndOpen(page, room);
 
-    const body = page.locator('.scroll .msg__text--html', {
+    const body = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'around',
     });
     await expect(body.locator('.mx-maths .katex')).toHaveCount(2, {
@@ -251,13 +258,13 @@ test.describe('Maths', () => {
     });
     await signInAndOpen(page, room);
 
-    const legitBody = page.locator('.scroll .msg__text--html', {
+    const legitBody = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'legit:',
     });
-    const escapeBody = page.locator('.scroll .msg__text--html', {
+    const escapeBody = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'escape:',
     });
-    const sidewaysBody = page.locator('.scroll .msg__text--html', {
+    const sidewaysBody = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'sideways',
     });
     await expect(legitBody.locator('.mx-maths .katex')).toHaveCount(7, {
@@ -360,7 +367,7 @@ test.describe('Maths', () => {
     });
     await signInAndOpen(page, room);
 
-    const display = page.locator('.scroll div.mx-maths');
+    const display = page.locator(`${ROOM_SCROLL} div.mx-maths`);
     await expect(display.locator('.katex-tag')).toHaveText('(1)', {
       timeout: 30_000,
     });
@@ -415,13 +422,15 @@ test.describe('Maths', () => {
       await page.setViewportSize(viewport);
       await signInAndOpen(page, room);
 
-      const body = page.locator('.scroll .msg__text--html', {
+      const body = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
         hasText: 'wide:',
       });
       await expect(body.locator('.mx-maths .katex')).toHaveCount(3, {
         timeout: 30_000,
       });
-      const shield = page.locator('.scroll [data-testid^="msg-shield-"]');
+      const shield = page.locator(
+        `${ROOM_SCROLL} [data-testid^="msg-shield-"]`,
+      );
       await expect(shield).toBeVisible({ timeout: 30_000 });
       await page.evaluate(() => document.fonts.ready.then(() => undefined));
       // The hit test, the screenshots and the hover all need the rows where they will stay.
@@ -548,7 +557,7 @@ test.describe('Maths', () => {
       await page.setViewportSize(viewport);
       await signInAndOpen(page, room);
 
-      const pane = page.locator('.scroll');
+      const pane = page.locator(ROOM_SCROLL);
       for (const label of ['heading', 'grouped']) {
         const body = pane.locator('.msg__text--html', {
           hasText: `${label} first line`,
@@ -701,7 +710,7 @@ test.describe('Maths', () => {
     });
     await signInAndOpen(page, room);
 
-    const body = page.locator('.scroll .msg__text--html', {
+    const body = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'far along',
     });
     await expect(body).toBeVisible({ timeout: 20_000 });
@@ -776,7 +785,7 @@ test.describe('Maths', () => {
     );
     await signInAndOpen(page, room);
 
-    const rootBody = page.locator('.scroll .msg__text--html', {
+    const rootBody = page.locator(`${ROOM_SCROLL} .msg__text--html`, {
       hasText: 'root:',
     });
     await expect(rootBody.locator('.mx-maths .katex')).toHaveCount(2, {
@@ -811,7 +820,10 @@ test.describe('Maths', () => {
       scrolls: true,
       endShown: true,
     });
-    expect(await noSidewaysRange('.scroll')).toEqual({ pane: 0, page: 0 });
+    expect(await noSidewaysRange(ROOM_SCROLL)).toEqual({
+      pane: 0,
+      page: 0,
+    });
 
     // The pad-and-pull-back moves nothing: lifting it (and the clip) changes no pixel of the
     // narrow formula's paragraph.
@@ -855,7 +867,7 @@ test.describe('Maths', () => {
 
     // The same in the thread.
     await page
-      .locator('.scroll .msg', {
+      .locator(`${ROOM_SCROLL} .msg`, {
         has: page.locator('.msg__text--html', { hasText: 'root:' }),
       })
       .getByTestId('message-thread-summary')
@@ -872,7 +884,7 @@ test.describe('Maths', () => {
       endShown: true,
     });
     expect(
-      await noSidewaysRange('[data-testid="thread-view"] .thread'),
+      await noSidewaysRange('[data-testid="thread-view"] .scroll'),
     ).toEqual({ pane: 0, page: 0 });
   });
 
@@ -890,7 +902,7 @@ test.describe('Maths', () => {
     await page.emulateMedia({ forcedColors: 'active' });
     await signInAndOpen(page, room);
 
-    const maths = page.locator('.scroll .msg__text--html .mx-maths');
+    const maths = page.locator(`${ROOM_SCROLL} .msg__text--html .mx-maths`);
     await expect(maths.locator('.katex')).toBeVisible({ timeout: 30_000 });
     const phantom = maths.locator(".katex-html [style*='transparent']");
     await expect(phantom).toHaveCount(1);

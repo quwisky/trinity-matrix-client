@@ -11,6 +11,10 @@ import { registerUser } from '../../../support/account.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // Covers the thread composer (data-testid="thread-view"): the room-scoped actions
 // (poll/location/voice) are hidden there because they post to the main room,
 // not the thread; and a slash command typed in a thread is parsed (`/me waves` sends an
@@ -51,7 +55,9 @@ test.describe('Thread composer', () => {
     const composer = page.getByTestId('composer-input');
     await composer.fill(rootBody);
     await composer.press('Enter');
-    const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
+    const row = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
+      hasText: rootBody,
+    });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     // A thread hangs off its root's event id, so the root has to be sent for real
     // first — "Reply in thread" is withheld from an unsent local echo (whose id is
@@ -135,7 +141,9 @@ test.describe('Thread composer', () => {
     const composer = page.getByTestId('composer-input');
     await composer.fill(rootBody);
     await composer.press('Enter');
-    const row = page.locator('.scroll .msg[data-mid]', { hasText: rootBody });
+    const row = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
+      hasText: rootBody,
+    });
     await expect(row.first()).toBeVisible({ timeout: 20_000 });
     await waitForSent(row.first());
     await clickRowToolbar(
@@ -199,7 +207,7 @@ test.describe('Thread composer', () => {
       await composer.fill(body);
       await composer.press('Enter');
       rows[body] = page
-        .locator('.scroll .msg[data-mid]', { hasText: body })
+        .locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: body })
         .first();
       await expect(rows[body]).toBeVisible({ timeout: 20_000 });
       await waitForSent(rows[body]);
@@ -265,7 +273,7 @@ test.describe('Thread composer', () => {
     await composer.fill(root);
     await composer.press('Enter');
     const rootRow = page
-      .locator('.scroll .msg[data-mid]', { hasText: root })
+      .locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: root })
       .first();
     await expect(rootRow).toBeVisible({ timeout: 20_000 });
     await waitForSent(rootRow);

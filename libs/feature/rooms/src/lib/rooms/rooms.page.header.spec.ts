@@ -41,7 +41,7 @@ import {
 } from '@trinity/platform-native';
 import { MockComponent, MockProvider, ngMocks } from 'ng-mocks';
 import { NEVER, of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { ChannelSidebarComponent } from '../channel-sidebar/channel-sidebar.component';
 import { SidebarUserPanelComponent } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 import { ConnectivityBannerComponent } from '../connectivity-banner/connectivity-banner.component';
@@ -72,7 +72,7 @@ import {
   stubLiveLayout,
   workspacePanelStub,
 } from './rooms-page.spec-harness';
-import { BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
+import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { SessionActionsService } from './session-actions.service';
 import { ShellShortcutsService } from './shell-shortcuts.service';
 import { ShellStatusService } from './shell-status.service';
@@ -339,6 +339,7 @@ function renderHeader(
             openPinnedPanel: () => surfaces.transition({ kind: 'open-pinned' }),
             openMessageSearch: () =>
               surfaces.transition({ kind: 'open-search' }),
+            onMatrixLink: vi.fn(),
           }),
           deps: [RoomSurfaceLifecycle],
         },
@@ -401,6 +402,47 @@ describe('RoomsPage header actions and search field', () => {
   function surfaces() {
     return lastRender.fixture.debugElement.injector.get(RoomSurfaceLifecycle);
   }
+
+  function openThread() {
+    surfaces().transition({ kind: 'open-thread', rootEventId: '$root' });
+    lastRender.fixture.detectChanges();
+    return ngMocks.find(lastFixture.debugElement, ThreadViewComponent)
+      .componentInstance;
+  }
+
+  it('routes a matrix.to link clicked in a thread like one in the room', () => {
+    renderHeader(0);
+    const click = {
+      target: { kind: 'user' as const, userId: '@ada:hs' },
+    } as unknown as Parameters<MessageActionsService['onMatrixLink']>[0];
+
+    openThread().matrixLink.emit(click);
+
+    expect(
+      lastRender.fixture.debugElement.injector.get(MessageActionsService)
+        .onMatrixLink,
+    ).toHaveBeenCalledExactlyOnceWith(click);
+  });
+
+  // As a page over the room (below md) the room's list is inert, so its typing region is
+  // silent and the thread's own row must announce; beside the room it would say it twice.
+  it('has the thread announce typing only while it is a page over the room', () => {
+    renderHeader(0);
+    expect(openThread().announceTyping()).toBe(false);
+  });
+
+  it('has the thread page over an inert room announce typing', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === BELOW_MD_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    renderHeader(0);
+    expect(openThread().announceTyping()).toBe(true);
+  });
 
   it('hands the thread its message, and reports one it cannot reach', () => {
     renderHeader(0);

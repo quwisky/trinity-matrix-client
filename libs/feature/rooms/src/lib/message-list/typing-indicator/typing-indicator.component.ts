@@ -22,8 +22,9 @@ export class TypingIndicatorComponent {
   /** Display names of the members currently typing, excluding the local user. */
   readonly names = input<readonly string[]>([]);
   /**
-   * Whether this instance owns the announcement. False in the thread panel: `m.typing` is
-   * room-scoped, so two persistent live regions over one fact would announce it twice.
+   * Whether this instance owns the announcement. False in a thread panel beside the room:
+   * `m.typing` is room-scoped, so two persistent live regions over one fact would announce it
+   * twice. A thread page over an inert room announces, as the room's region is then silent.
    */
   readonly announce = input(true);
 

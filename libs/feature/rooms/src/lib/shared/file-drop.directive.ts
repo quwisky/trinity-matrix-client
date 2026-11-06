@@ -27,6 +27,13 @@ import {
   },
 })
 export class TrnFileDropDirective {
+  /**
+   * Whether the host can take files now; set by the host. While false a file drag shows no
+   * overlay and a drop stages nothing, but both are still prevented: the browser's own handling
+   * would open the file in place of the app.
+   */
+  accepts: () => boolean = () => true;
+
   /** Files were dropped on the host. Never empty. */
   readonly filesDropped = output<readonly File[]>();
 
@@ -36,7 +43,7 @@ export class TrnFileDropDirective {
   readonly active: Signal<boolean> = computed(() => this.depth() > 0);
 
   protected onDragEnter(event: DragEvent): void {
-    if (!this.carriesFiles(event)) {
+    if (!this.carriesFiles(event) || !this.accepts()) {
       return;
     }
     this.depth.update((current) => current + 1);
@@ -49,6 +56,8 @@ export class TrnFileDropDirective {
     // Without this the drop event never arrives: the default action is "reject the drag".
     event.preventDefault();
     if (event.dataTransfer) {
+      // 'copy' even where nothing can take the file: the drop must reach `onDrop` to be
+      // prevented. 'none' was left out because nothing verified the browser then keeps the tab.
       event.dataTransfer.dropEffect = 'copy';
     }
   }
@@ -66,7 +75,7 @@ export class TrnFileDropDirective {
     }
     event.preventDefault(); // or the browser navigates to the dropped file
     const files = Array.from(event.dataTransfer?.files ?? []);
-    if (files.length) {
+    if (files.length && this.accepts()) {
       this.filesDropped.emit(files);
     }
   }

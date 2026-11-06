@@ -69,7 +69,7 @@ The root theme foundation defines color, spacing, shape, typography, motion, and
 
 Global CSS owns resets, app-wide document behavior, and explicitly registered vendor surfaces. Component geometry stays in the component stylesheet. Avoid selectors that reach into another component's private DOM.
 
-A new live message slides in once: the timeline marks the row host `msg-enter` for about 260 ms when a message arrives while the reader is at the bottom, or when the reader sends one. Nothing is marked for the first batch, a room switch, back-pagination, a receive while scrolled up, or within 3 s of a jump, and a reduced-motion preference skips it. The animation uses only the motion tokens (`--trinity-duration-base`, `--trinity-ease-decelerate`).
+A new live message slides in once: the timeline marks the row host `msg-enter` for about 260 ms when a message arrives while the reader is at the bottom, or when the reader sends one. Nothing is marked for the first batch, a room switch, back-pagination, a receive while scrolled up, or within 3 s of a jump, and a reduced-motion preference skips it. The animation uses only the motion tokens (`--trinity-duration-base`, `--trinity-ease-decelerate`). The thread panel renders through the same `trn-message-list` as the timeline, so a thread slides in, pages, anchors, flashes and shows day dividers by the same rules.
 
 ## Choose a theme, surfaces, and density {#themes-and-density}
 

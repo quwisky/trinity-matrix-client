@@ -5,6 +5,7 @@ import { MessageListComponent } from './message-list.component';
 import type { MessageView } from '@trinity/data-access/timeline';
 import type { MessageListBase } from './message-list-base';
 import { setScrollGeometry as stubScrollGeometry } from '../testing/scroll-geometry.stub';
+import { provideTestMessageListCommands } from './message-list-commands.testing';
 
 /** The minimum a list needs to render a row and know its id. */
 function msg(id: string): MessageView {
@@ -98,6 +99,7 @@ describe('message list — jump across a resize', () => {
 
   async function create() {
     const result = await render(MessageListComponent, {
+      providers: [provideTestMessageListCommands()],
       inputs: { messages: [msg('$a:hs'), msg('$b:hs')] },
     });
     TestBed.tick();

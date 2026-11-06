@@ -63,6 +63,20 @@ describe('TrnFileDropDirective', () => {
     expect(dataTransfer.dropEffect).toBe('copy'); // a copy cursor, not a move
   });
 
+  it('offers nothing where the host cannot take files, and still keeps the browser from opening it', async () => {
+    const { cmp, fire } = await setup();
+    cmp.drop.accepts = () => false;
+
+    fire('dragenter');
+    const { prevented } = fire('dragover');
+    const dropped = fire('drop', { files: [png('a.png')] });
+
+    expect(cmp.drop.active()).toBe(false);
+    expect(prevented).toBe(true);
+    expect(dropped.prevented).toBe(true);
+    expect(cmp.dropped).toEqual([]);
+  });
+
   it('ignores a drag that is not carrying files', async () => {
     // Dragging selected text across the timeline must not raise the overlay, and must not
     // swallow the browser's own default handling of it.

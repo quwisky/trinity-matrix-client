@@ -59,13 +59,12 @@ type PayloadFreeAction = Exclude<
  *
  * ## Why a service, and not a method on the list
  *
- * `trn-message-row` has two consumers: the message list (`MessageListBase`) and
- * {@link ThreadViewComponent}, which carries its own `onRowAction`. A method on the list
- * left thread replies unreachable by touch. Shared here so a third consumer inherits it.
+ * The room timeline and the thread view each host their own message list, and the sheet is a
+ * CDK overlay that outlives either. Held here, one sheet at a time serves both lists.
  *
  * ## Why `open` and `close` take an owner
  *
- * One sheet at a time, in a `root` singleton with two consumers that outlive each other in
+ * One sheet at a time, in a `root` singleton with two lists that outlive each other in
  * either order. Without a token, a thread panel closing would shut the timeline's sheet
  * behind it. With one, a consumer can only dismiss the sheet it opened, so both can call
  * it unconditionally from teardown, which prevents an orphaned sheet: the overlay lives

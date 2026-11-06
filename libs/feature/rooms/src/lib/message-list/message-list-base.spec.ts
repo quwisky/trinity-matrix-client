@@ -13,6 +13,7 @@ import {
   ConversationComposeStub,
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 let compose: ConversationComposeStub;
 
@@ -20,6 +21,9 @@ beforeEach(() => {
   compose = new ConversationComposeStub();
   TestBed.overrideProvider(ConversationRuntime, {
     useValue: { compose, messages: new ConversationMessagesStub(compose) },
+  });
+  TestBed.configureTestingModule({
+    providers: [provideRoomMessageListCommands()],
   });
 });
 
@@ -355,5 +359,95 @@ describe('MessageListBase system runs', () => {
     fixture.componentRef.setInput('roomId', '!b:hs');
     fixture.detectChanges();
     expect(fixture.componentInstance.expandedRuns().size).toBe(0);
+  });
+});
+
+describe('MessageListBase host hooks', () => {
+  /** A host composer standing in for the list's own (the thread panel's). */
+  function hostComposer() {
+    return { insertQuote: vi.fn(), stageFiles: vi.fn() };
+  }
+
+  /** A real file drag on the list's host element; jsdom has no DragEvent or DataTransfer. */
+  function dropFiles(host: HTMLElement, files: File[]): Event {
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types: ['Files'], files, dropEffect: 'none' },
+    });
+    host.dispatchEvent(event);
+    return event;
+  }
+
+  it('hands a quote to the host composer instead of its own, ending the edit', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    const host = hostComposer();
+    fixture.componentRef.setInput('composerHost', host);
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.startEdit({ ...msg('$a'), showHeader: true });
+
+    cmp.startQuote({ ...msg('$a'), showHeader: true });
+
+    expect(host.insertQuote).toHaveBeenCalledExactlyOnceWith('> body $a\n\n');
+    expect(cmp.editingId()).toBeNull();
+  });
+
+  it('stages files dropped on the list into the host composer', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    const host = hostComposer();
+    fixture.componentRef.setInput('composerHost', host);
+    fixture.detectChanges();
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+
+    const event = dropFiles(fixture.nativeElement as HTMLElement, [file]);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(host.stageFiles).toHaveBeenCalledExactlyOnceWith([file]);
+  });
+
+  // Nothing can take the file, but the tab must not navigate away to open it either.
+  it('keeps a file drop with no composer from leaving the app, offering nothing', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const drop = fixture.debugElement.injector.get(TrnFileDropDirective);
+    const dropped: (readonly File[])[] = [];
+    drop.filesDropped.subscribe((files) => dropped.push(files));
+    const enter = new Event('dragenter', { bubbles: true, cancelable: true });
+    Object.defineProperty(enter, 'dataTransfer', {
+      value: { types: ['Files'], files: [], dropEffect: 'none' },
+    });
+    host.dispatchEvent(enter);
+    expect(drop.active()).toBe(false);
+
+    const event = dropFiles(host, [
+      new File(['x'], 'a.png', { type: 'image/png' }),
+    ]);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(drop.active()).toBe(false);
+    expect(dropped).toEqual([]);
+  });
+
+  it('resets per-conversation state when resetKey changes, keeping roomId', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.componentRef.setInput('resetKey', '$root1');
+    fixture.componentRef.setInput('messages', [
+      msg('m1'),
+      { ...msg('e1'), kind: 'event' },
+      { ...msg('e2'), kind: 'event' },
+    ]);
+    fixture.detectChanges();
+    const cmp = fixture.componentInstance;
+    cmp.toggleRun('group:e2');
+    expect(cmp.expandedRuns().size).toBe(1);
+
+    fixture.componentRef.setInput('resetKey', '$root2');
+    fixture.detectChanges();
+
+    expect(cmp.expandedRuns().size).toBe(0);
+    expect(cmp.roomId()).toBe('!a:hs');
   });
 });

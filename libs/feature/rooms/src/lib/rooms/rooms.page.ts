@@ -59,6 +59,7 @@ import { PinnedMessagesPanelComponent } from '../pinned/pinned-messages-panel.co
 import { MessageSearchComponent } from '../message-search/message-search.component';
 import { PaneHandleComponent } from './pane-handle.component';
 import { DrawerSwipeDirective } from './drawer-swipe.directive';
+import { provideRoomMessageListCommands } from '../message-list/message-list-commands';
 import { MessageListComponent } from '../message-list/message-list.component';
 import { EncryptionBannerComponent } from '../encryption-banner/encryption-banner.component';
 import { SignInAgainBannerComponent } from '../sign-in-again-banner/sign-in-again-banner.component';
@@ -122,6 +123,7 @@ const PANEL_DRAWER_PX = 480;
     ShellShortcutsService,
     SessionActionsService,
     ExpandedBodiesStore,
+    provideRoomMessageListCommands(),
   ],
   templateUrl: 'rooms.page.html',
   styleUrls: ['rooms.page.scss'],

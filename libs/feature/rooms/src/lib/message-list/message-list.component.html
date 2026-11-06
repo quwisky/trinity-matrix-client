@@ -62,7 +62,8 @@
           kind="unread"
           [threadConnected]="
             !row.showHeader &&
-            (threadContinuationIds().has(row.id) || !!threadSummaries()[row.id])
+            (threadContinuationIds().has(row.id) ||
+              !!shownThreadSummaries()[row.id])
           "
         />
       }
@@ -78,7 +79,7 @@
         <trn-message-row
           [entering]="enteringKeys().has(row.key)"
           [row]="row"
-          [threadSummary]="threadSummaries()[row.id] ?? null"
+          [threadSummary]="shownThreadSummaries()[row.id] ?? null"
           [threadContinues]="threadContinuationIds().has(row.id)"
           [caps]="rowCaps(row)"
           [undecryptableFix]="undecryptableFix()"
@@ -119,7 +120,9 @@
   }
 </div>
 
-<trn-typing-indicator [names]="typingNames()" />
+@if (showTyping()) {
+  <trn-typing-indicator [names]="typingNames()" />
+}
 
 @if (composerEnabled()) {
   <trn-message-composer

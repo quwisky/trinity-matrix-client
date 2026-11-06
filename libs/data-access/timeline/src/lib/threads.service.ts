@@ -142,6 +142,14 @@ export class ThreadsService {
   /** Whether the opened thread has older replies left to page in. */
   readonly canPaginateThread = this._canPaginateThread.asReadonly();
 
+  private readonly _oldestThreadEventId = signal<string | null>(null);
+  /**
+   * The oldest RAW event loaded in the opened thread's timeline, hidden ones (edits) included.
+   * Every page that brings anything moves it, so a list can tell a page landed even when no
+   * displayable reply did.
+   */
+  readonly oldestThreadEventId = this._oldestThreadEventId.asReadonly();
+
   // Latest thread event we have already sent a read receipt for, so live replies
   // arriving while the thread is open mark read without re-sending on every refresh.
   private lastReadEventId: string | null = null;
@@ -468,6 +476,7 @@ export class ThreadsService {
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
+    this._oldestThreadEventId.set(null);
     this._loadingOlderThread.set(false);
   }
 
@@ -823,6 +832,7 @@ export class ThreadsService {
     // displayable replies and are not counted; a hidden event type keeps the button,
     // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
+    this._oldestThreadEventId.set(thread?.events[0]?.getId() ?? null);
     // A redacted reply lowers the server count, so it must not count as loaded either.
     const loadedReplies = ordered.filter(
       (e) => e.getId() !== rootEventId && !e.isRedacted(),
@@ -846,15 +856,26 @@ export class ThreadsService {
     rootEventId: string,
     thread: Thread | null = this.thread ?? room.getThread(rootEventId),
   ): MatrixEvent[] {
-    const replies = (thread?.events ?? []).filter(isDisplayableMessage);
-    const seen = new Set(replies.map((e) => e.getId()));
-    const ordered: MatrixEvent[] = [];
-    const root = thread?.rootEvent ?? room.findEventById(rootEventId);
-    if (root && !seen.has(root.getId())) {
-      ordered.push(root);
-    }
-    ordered.push(...replies);
-    return ordered;
+    // The thread timeline is not reliably ordered: sync events that arrive while a page is
+    // landing sit before it, and the root lands mid-stream once the start is reached. So the
+    // root leads, and confirmed replies follow by server time; the sort is stable, so replies
+    // sent in the same millisecond keep the timeline's order. Our own unconfirmed sends come
+    // last in timeline order: they carry the device clock, which can run behind the server's.
+    // A reply delivered twice shows once.
+    const seen = new Set<string | undefined>([rootEventId]);
+    const replies = (thread?.events ?? []).filter((event) => {
+      if (!isDisplayableMessage(event) || seen.has(event.getId())) return false;
+      seen.add(event.getId());
+      return true;
+    });
+    const confirmed = replies.filter((event) => !event.status);
+    confirmed.sort((a, b) => a.getTs() - b.getTs());
+    const unconfirmed = replies.filter((event) => event.status);
+    const root =
+      thread?.rootEvent ??
+      thread?.events.find((event) => event.getId() === rootEventId) ??
+      room.findEventById(rootEventId);
+    return [...(root ? [root] : []), ...confirmed, ...unconfirmed];
   }
 
   /**
@@ -921,7 +942,12 @@ export class ThreadsService {
     if (this.attention && !untracked(this.attention.attentive)) {
       return;
     }
-    const latest = [...(thread.events ?? [])].reverse().find((e) => !e.status);
+    // The ordered thread, not the raw timeline, whose last event need not be the newest.
+    const room = this.threadRoom;
+    const ordered = room
+      ? this.orderedThreadEvents(room, rootEventId, thread)
+      : (thread.events ?? []);
+    const latest = [...ordered].reverse().find((e) => !e.status);
     const target = latest ?? thread.rootEvent ?? null;
     const id = target?.getId() ?? null;
     if (!target || !id || id === this.lastReadEventId) {

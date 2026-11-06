@@ -15,6 +15,7 @@ import { MessageListComponent } from './message-list.component';
 import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 /** The fixed estimate an unmeasured row is counted at with the flag off. */
 const EST = 64;
@@ -65,6 +66,9 @@ describe('MessageListComponent: blank rows while scrolling fast', () => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
       useValue: { compose, messages: new ConversationMessagesStub(compose) },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     vi.stubGlobal('requestAnimationFrame', () => 0);
     (ResizeObserver as unknown as { instances: unknown[] }).instances.length =

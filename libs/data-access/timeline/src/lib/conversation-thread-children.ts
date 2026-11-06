@@ -139,6 +139,9 @@ export function createConversationThreadChildren(
         canLoadOlder: computed(
           () => available() && options.projection.canPaginateThread(),
         ),
+        oldestEventId: computed(() =>
+          available() ? options.projection.oldestThreadEventId() : null,
+        ),
         media: Object.freeze({
           send: (
             media: StagedMediaReference,

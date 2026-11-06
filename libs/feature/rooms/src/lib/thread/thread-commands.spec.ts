@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { EMPTY, Subject, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import {
   TimelineActionsService,
   type ConversationThread,
@@ -27,7 +27,6 @@ function setup() {
     providers: [
       ThreadCommands,
       MockProvider(TimelineActionsService),
-      MockProvider(TrnAlertService),
       MockProvider(TrnToastService, { show }),
     ],
   });

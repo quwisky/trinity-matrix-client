@@ -62,6 +62,7 @@ import {
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
+import { MESSAGE_LIST_COMMANDS } from './message-list-commands';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { dismissKeyboardOnDrag } from './drag-dismiss-keyboard';
 import { observeScrollerHeight } from './scroller-height-anchor';
@@ -71,6 +72,12 @@ import {
   UndecryptableFixService,
   type UndecryptableFix,
 } from '../shared/undecryptable-fix.service';
+
+/** A composer the host renders outside the list, which takes the list's quotes and dropped files. */
+export type ComposerHost = Pick<
+  MessageComposerComponent,
+  'insertQuote' | 'stageFiles'
+>;
 
 /** How {@link MessageListBase.jumpTo} reaches a row already in the DOM. */
 export interface JumpOptions {
@@ -95,6 +102,8 @@ const DEFAULT_ROW_CAPS: MessageRowCaps = {
   readOnly: false,
 };
 
+const NO_THREAD_SUMMARIES: Record<string, ThreadSummary> = {};
+
 const LOAD_ERROR_COPY: Readonly<
   Record<Extract<TimelineLoadState, { kind: 'error' }>['reason'], string>
 > = {
@@ -110,9 +119,15 @@ const LOAD_ERROR_COPY: Readonly<
  */
 @Directive()
 export abstract class MessageListBase {
-  readonly messages = input<MessageView[]>([]);
+  readonly messages = input<readonly MessageView[]>([]);
   /** Thread summaries keyed by root event id, for the per-row thread indicator. */
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
+  /** False where threads cannot nest (inside a thread): no thread action, summaries or connectors. */
+  readonly canThread = input(true);
+  /** The summaries rows show: none while {@link canThread} is off. */
+  protected readonly shownThreadSummaries = computed(() =>
+    this.canThread() ? this.threadSummaries() : NO_THREAD_SUMMARIES,
+  );
   /** Whether the current user may pin/unpin in this room (drives the per-row Pin item). */
   readonly canPin = input(false);
   /** Whether the current user may redact OTHER people's messages here (a moderator). */
@@ -190,11 +205,20 @@ export abstract class MessageListBase {
    * scroll anchors leak between rooms.
    */
   readonly roomId = input<string | null>(null);
+  /** A second reset trigger for a host that switches conversations within one room (a thread's root). */
+  readonly resetKey = input<string | null>(null);
+  /**
+   * The composer quotes and dropped files go to when the host renders it outside the list (the
+   * thread panel); null uses the list's own.
+   */
+  readonly composerHost = input<ComposerHost | null>(null);
   readonly accountId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
   readonly members = input<readonly MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */
   readonly typingNames = input<string[]>([]);
+  /** False where the host shows its own typing row (the thread panel, above its composer). */
+  readonly showTyping = input(true);
   /** Event id of the first unread message: the "New messages" divider and jump pill key off it. */
   readonly firstUnreadId = input<string | null>(null);
   /** Which file of how many is uploading and how far along, or null when idle. */
@@ -238,20 +262,14 @@ export abstract class MessageListBase {
   readonly pollEnd = output<string>();
 
   protected readonly compose = inject(ConversationRuntime).compose;
-  protected readonly messageCommands = inject(ConversationRuntime).messages;
+  protected readonly commands = inject(MESSAGE_LIST_COMMANDS);
   private readonly timeline = inject(ConversationRuntime).timeline;
-  readonly editingId = computed(() => {
-    const intent = this.compose.intent();
-    return intent.kind === 'edit' ? intent.eventId : null;
-  });
+  readonly editingId = this.commands.editingId;
   readonly editingDraft = computed(
     () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
   );
 
-  readonly replyingToId = computed(() => {
-    const intent = this.compose.intent();
-    return intent.kind === 'reply' ? intent.eventId : null;
-  });
+  readonly replyingToId = this.commands.replyingToId;
   readonly replyingToName = computed(
     () =>
       this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
@@ -290,19 +308,24 @@ export abstract class MessageListBase {
   /** The composer rendered by each concrete list: quotes and dropped files go straight into it. */
   private readonly composer = viewChild(MessageComposerComponent);
 
+  /** Where quotes and dropped files go: the host's composer, else the list's own, else none. */
+  private readonly composerTarget = computed<ComposerHost | null>(
+    () => this.composerHost() ?? this.composer() ?? null,
+  );
+
   /**
    * Stage files dropped on the conversation. Goes through the composer because the attachments
    * service is provided BY the composer, so it does not exist at this level.
    */
   protected onFilesDropped(files: readonly File[]): void {
-    this.composer()?.stageFiles(files);
+    this.composerTarget()?.stageFiles(files);
   }
 
   /** Row grouping and its caches; declared after the inputs it reads. */
   private readonly rowModel = new MessageRowModel(
     this.messages,
     this.firstUnreadId,
-    this.threadSummaries,
+    this.shownThreadSummaries,
   );
 
   /** The grouped rows the list renders. */
@@ -355,6 +378,9 @@ export abstract class MessageListBase {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: the emitter drops subscribers when its host directive is destroyed with the component.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
+    // With no composer to stage into, a file drag offers nothing (no overlay, no staging); the
+    // directive still prevents it, so the tab does not navigate away to open the file.
+    this.fileDrop.accepts = () => this.composerTarget() !== null;
 
     // The sheet is a CDK overlay outside the router outlet, so it outlives this list.
     // `resetOnRoomChange` is not enough: settings, logout and deep links destroy the timeline
@@ -366,6 +392,7 @@ export abstract class MessageListBase {
     // FIRST (effects fire in creation order) and the scroll effect sees a fresh load.
     effect(() => {
       this.roomId();
+      this.resetKey();
       untracked(() => this.resetOnRoomChange());
     });
 
@@ -487,19 +514,19 @@ export abstract class MessageListBase {
   }
 
   startEdit(row: MessageRow): void {
-    this.messageCommands.beginEdit(row.id, row.body);
+    this.commands.beginEdit(row.id, row.body);
   }
 
   startReply(row: MessageRow): void {
-    this.messageCommands.beginReply(row.id);
+    this.commands.beginReply(row.id);
   }
 
   cancelEdit(): void {
-    if (this.compose.intent().kind === 'edit') this.compose.cancelIntent();
+    this.commands.cancelEdit();
   }
 
   cancelReply(): void {
-    if (this.compose.intent().kind === 'reply') this.compose.cancelIntent();
+    this.commands.cancelReply();
   }
 
   /**
@@ -510,7 +537,7 @@ export abstract class MessageListBase {
    */
   startQuote(row: MessageRow): void {
     this.cancelEdit();
-    this.composer()?.insertQuote(quoteBlock(row.body));
+    this.composerTarget()?.insertQuote(quoteBlock(row.body));
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
@@ -518,7 +545,7 @@ export abstract class MessageListBase {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (isEditableMessage(msgs[i])) {
-        this.messageCommands.beginEdit(msgs[i].id, msgs[i].body);
+        this.commands.beginEdit(msgs[i].id, msgs[i].body);
         return;
       }
     }
@@ -660,7 +687,7 @@ export abstract class MessageListBase {
       {
         canRedactOthers: this.canRedactOthers(),
         canPin: this.canPin(),
-        canThread: true,
+        canThread: this.canThread(),
         pinnedIds: this.pinnedIds(),
         canAddToEmoji: addableImages(
           this.addToEmoji,
@@ -707,8 +734,9 @@ export abstract class MessageListBase {
   /**
    * A long press on a row (phone or tablet): offer its actions as a bottom sheet.
    *
-   * The sheet is held by {@link MessageActionSheetService} because `trn-message-row` has a third
-   * consumer that does not extend this class. Dispatch goes through `onRowAction`, like the hover toolbar.
+   * The sheet is held by {@link MessageActionSheetService}, a root singleton keyed by owner token:
+   * this list opens it as its owner, so the thread's list and the room's each close only the sheet
+   * they opened. Dispatch goes through `onRowAction`, like the hover toolbar.
    */
   onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
     this.messageSheet.open(
@@ -796,7 +824,7 @@ export abstract class MessageListBase {
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
-    if (this.compose.sending()) return;
+    if (this.commands.sending()) return;
     this.send.emit({ body: text, mentions });
   }
 }

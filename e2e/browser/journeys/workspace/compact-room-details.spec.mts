@@ -20,6 +20,10 @@ import {
 } from '../../../support/account.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // End-to-end for the mobile (narrow-viewport) room navigation the desktop specs
 // never exercise, since the shared config runs at Desktop Chrome (1280px):
 //  - the room header collapses its secondary actions (Invite / Room settings /
@@ -103,7 +107,7 @@ async function openRoomMobile(page: Page, roomName: string): Promise<void> {
   const channel = page.locator('.channel', { hasText: roomName });
   await channel.first().waitFor({ state: 'visible', timeout: 30_000 });
   await channel.first().click(); // switches from the list page to the chat page
-  await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator(ROOM_SCROLL)).toBeVisible({ timeout: 15_000 });
 }
 
 /** Open the room-header overflow (⋮) menu. */
@@ -180,7 +184,9 @@ test.describe('Mobile room navigation', () => {
     await page.setViewportSize({ width: 800, height: 900 });
     await login(page, reader);
     await page.locator('.channel', { hasText: roomName }).first().click();
-    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(ROOM_SCROLL)).toBeVisible({
+      timeout: 15_000,
+    });
 
     // The member list is not shown on the narrow layout by default.
     await expect(page.locator('.chat-members')).toBeHidden();
@@ -365,7 +371,10 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
   // Polled: the page lands as the panel renders.
   await expect.poll(() => rounded(panel)).toEqual(main);
   await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
-  await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
+  // The room's list: a thread panel brings its own, which must stay live.
+  await expect(
+    page.locator('trn-message-list:not(trn-thread-view trn-message-list)'),
+  ).toHaveAttribute('inert', '');
   await expect(page.getByTestId('members-backdrop')).toBeHidden();
   // The way out leads the header as a Back button, as on the room page itself: first on
   // screen and first in reading and focus order.
@@ -587,9 +596,11 @@ for (const viewport of [
 
       const composer = page.getByTestId('composer-input');
       await composer.fill(`half typed ${runId}`);
-      const scroller = page.locator('.scroll').first();
+      const scroller = page.locator(ROOM_SCROLL).first();
       await expect(
-        page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+        page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
+          hasText: 'history 29',
+        }),
       ).toBeVisible({ timeout: 20_000 });
       await scroller.evaluate(
         (el) => (el.scrollTop = Math.max(0, el.scrollTop - 400)),
@@ -913,11 +924,11 @@ test.describe('Room panel pages from a link and out to the timeline', () => {
     await login(page, reader);
     await openRoomMobile(page, roomName);
     const roomUrl = page.url();
-    const pinnedRow = page.locator('.scroll .msg[data-mid]', {
+    const pinnedRow = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
       hasText: pinnedBody,
     });
     await expect(
-      page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+      page.locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: 'history 29' }),
     ).toBeVisible({ timeout: 20_000 });
     await expect(pinnedRow.first()).not.toBeInViewport();
 
@@ -979,7 +990,9 @@ test.describe('Room panels across widths', () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await login(page, reader);
     await page.locator('.channel', { hasText: roomName }).first().click();
-    await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator(ROOM_SCROLL)).toBeVisible({
+      timeout: 15_000,
+    });
     await page.getByTestId('toggle-members').click();
     const members = page.locator('.chat-members');
     await expect(members).toBeVisible();
@@ -1092,7 +1105,8 @@ for (const viewport of [
       // composer's inset, reaches the bottom edge of the page in the chat colour.
       const edges = await thread.evaluate((root) => {
         const footer = root.querySelector('.thread__footer')!;
-        const scroller = root.querySelector('.thread')!;
+        // Where the chat colour sits: the footer must match what the replies are drawn on.
+        const scroller = root.querySelector('trn-message-list')!;
         return {
           viewportBottom: window.innerHeight,
           rootBottom: Math.round(root.getBoundingClientRect().bottom),

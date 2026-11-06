@@ -349,6 +349,8 @@
                     [revealEventId]="panel.revealEventId ?? null"
                     [revealRequest]="panel"
                     [loading]="'loading' in panel"
+                    [announceTyping]="panelPage()"
+                    (matrixLink)="messageActions.onMatrixLink($event)"
                     (revealFailed)="
                       status.showError('Could not load that message.')
                     "

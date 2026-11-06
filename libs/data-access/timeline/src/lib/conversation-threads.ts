@@ -79,6 +79,8 @@ export interface ConversationThread {
   readonly messages: Signal<readonly MessageView[]>;
   readonly loadingOlder: Signal<boolean>;
   readonly canLoadOlder: Signal<boolean>;
+  /** The oldest raw event loaded, hidden ones included: moves with every page that lands. */
+  readonly oldestEventId: Signal<string | null>;
   readonly media: ConversationThreadMedia;
   loadOlder(): Observable<ConversationThreadOutcome>;
   send(

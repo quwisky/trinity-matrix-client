@@ -25,6 +25,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 function msg(
   id: string,
@@ -60,6 +61,9 @@ describe('MessageListComponent', () => {
         compose,
         messages: new ConversationMessagesStub(compose),
       },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     // Suppress the anchoring effect's async scroll writes (they'd assign
     // el.scrollTop, fighting the geometry these tests define); windowing is driven by
@@ -1298,6 +1302,64 @@ describe('MessageListComponent', () => {
      * `below` is extra height the page adds under the anchored row, so the restore leaves the
      * reader that far above the bottom.
      */
+    // A thread's root always leads, and its older replies land BELOW it: anchoring on the root
+    // would hold it and push the reply being read down by the whole page.
+    it('anchors history on the row after a leading row, which history lands below', async () => {
+      const lead = msg('$lead', '@a:hs', 'A', 0);
+      const { fixture, container } = await render(MessageListComponent, {
+        inputs: {
+          messages: [lead, ...many(30)],
+          canLoadOlder: true,
+          leadingRowId: '$lead',
+        },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 650, prepended: 0 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      // The lead reaches into the viewport first; $0 sits right below it, and the page lands between.
+      (
+        scroll.querySelector('[data-mid="$lead"]') as HTMLElement
+      ).getBoundingClientRect = () => rect(20 - view.st, 20 + EST - view.st);
+      const replyTop = () => 20 + EST + view.prepended - view.st;
+      (
+        scroll.querySelector('[data-mid="$0"]') as HTMLElement
+      ).getBoundingClientRect = () => rect(replyTop(), replyTop() + EST);
+      view.st = 50; // the bottom, so the pin below moves nothing
+      rowObserver().emit([
+        resizeEntry(scroll.querySelector('[data-mid="$29"]') as Element, 100),
+      ]);
+      cmp.onScroll(); // near the top: anchors and asks for history
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      const before = replyTop();
+
+      view.prepended = 110;
+      view.sh += 110;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        lead,
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(replyTop()).toBe(before);
+    });
+
     async function afterHistoryPage(below = 0) {
       const { fixture, container } = await renderList({
         messages: many(30),
@@ -1420,6 +1482,10 @@ describe('MessageListComponent', () => {
       rowObserver().emit([resizeEntry(newest, 100)]);
       const link = document.createElement('a');
       link.href = 'https://example.org/';
+      // Collapsed when focus arrives: the growth is the expansion focus caused.
+      newest
+        .querySelector('.msg__clamp')
+        ?.classList.add('msg__clamp--collapsed');
       newest.querySelector('.msg__text')?.append(link);
       const scrolledAt: number[] = [];
       link.scrollIntoView = vi.fn(() => scrolledAt.push(view.st));
@@ -1473,6 +1539,28 @@ describe('MessageListComponent', () => {
       expect(button.scrollIntoView).not.toHaveBeenCalled();
     });
 
+    // A body shown whole (capped, never collapsed) that grows under focus, as when an image in
+    // it loads: focus did not expand anything, so the list must not move the reader to it.
+    it('leaves keyboard focus in a reply that was not collapsed alone', async () => {
+      const { container } = await renderList({ messages: many(30) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const newest = scroll.querySelector('[data-mid="$29"]') as HTMLElement;
+      rowObserver().emit([resizeEntry(newest, 100)]);
+      const clamp = document.createElement('div');
+      clamp.className = 'msg__clamp msg__clamp--capped';
+      newest.append(clamp);
+      const link = keyboardFocused(
+        clamp,
+        Object.assign(document.createElement('a'), {
+          href: 'https://example.org/',
+        }),
+      );
+
+      rowObserver().emit([resizeEntry(newest, 1100)]);
+
+      expect(link.scrollIntoView).not.toHaveBeenCalled();
+    });
+
     it('leaves keyboard focus in a row that did not change alone', async () => {
       const { container } = await renderList({ messages: many(30) });
       const scroll = container.querySelector('.scroll') as HTMLElement;
@@ -1492,6 +1580,9 @@ describe('MessageListComponent', () => {
 
     it('brings keyboard focus into view after the history anchor is restored', async () => {
       const { scroll, view, newest, runFrames } = await afterHistoryPage(50);
+      newest
+        .querySelector('.msg__clamp')
+        ?.classList.add('msg__clamp--collapsed');
       const link = keyboardFocused(
         newest.querySelector('.msg__text'),
         Object.assign(document.createElement('a'), {
@@ -2317,6 +2408,85 @@ describe('MessageListComponent', () => {
       fixture.destroy();
 
       expect(clear).toHaveBeenCalledWith(handle);
+    });
+  });
+
+  it('asks for no history once destroyed before its fill frame', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    onTestFinished(() => warn.mockRestore());
+    const { fixture } = await render(MessageListComponent, {
+      inputs: { messages: many(2), canLoadOlder: true, oldestEventId: '$0' },
+      imports: [MockComponent(MessageComposerComponent)],
+    });
+
+    fixture.destroy();
+    for (const frame of frames.splice(0)) frame(0);
+
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining('NG0953'));
+  });
+
+  describe('typing row', () => {
+    it('shows the typing row with or without its composer', async () => {
+      const { container } = await render(MessageListComponent, {
+        inputs: { composerEnabled: false, typingNames: ['Ada'] },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+
+      expect(container.querySelector('trn-typing-indicator')).not.toBeNull();
+    });
+
+    it('leaves the typing row to a host that turns it off', async () => {
+      const { container } = await render(MessageListComponent, {
+        inputs: { showTyping: false, typingNames: ['Ada'] },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+
+      expect(container.querySelector('trn-typing-indicator')).toBeNull();
+    });
+  });
+
+  describe('canThread', () => {
+    it('passes no thread summaries and offers no thread action when off', async () => {
+      const summary = {
+        rootEventId: '$0',
+        rootPreview: 'root',
+        rootSenderName: 'A',
+        replyCount: 1,
+        latestReplyTs: 1000,
+        latestActivityTs: 1000,
+        latestReplyPreview: 'reply',
+        latestReplySenderName: 'B',
+        participants: [],
+        rootShield: null,
+        latestReplyShield: null,
+        unreadCount: 0,
+        highlight: false,
+      };
+      const { fixture, container } = await render(MessageListComponent, {
+        inputs: {
+          messages: many(2),
+          threadSummaries: { $0: summary },
+          canThread: false,
+        },
+        imports: [MockComponent(MessageComposerComponent)],
+      });
+      const cmp = fixture.componentInstance;
+
+      expect(container.querySelector('trn-message-thread-summary')).toBeNull();
+      expect(cmp.threadContinuationIds().size).toBe(0);
+      expect(cmp.rowCaps(cmp.rows()[0]).canThread).toBe(false);
+
+      fixture.componentRef.setInput('canThread', true);
+      fixture.detectChanges();
+      expect(
+        container.querySelector('trn-message-thread-summary'),
+      ).not.toBeNull();
+      expect(cmp.rowCaps(cmp.rows()[0]).canThread).toBe(true);
     });
   });
 });

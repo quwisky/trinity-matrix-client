@@ -20,6 +20,10 @@ import {
   type FormattedRoom,
 } from '../../support/formatted-message-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // Show more (spec C): long bodies collapse to 20 lines behind a button, a 21–24-line body is
 // shown whole, and the expanded state lasts while the room is open — across the virtual
 // timeline letting a row go and bringing it back — and is reset when the room is left. A body
@@ -34,7 +38,7 @@ const lines = (count: number, label: string): string =>
 
 /** The row of the message whose text contains `marker`. */
 const rowWith = (page: Page, marker: string): Locator =>
-  page.locator('.scroll .msg[data-mid]', { hasText: marker });
+  page.locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: marker });
 
 async function lineHeight(body: Locator): Promise<number> {
   return body.evaluate((element) =>
@@ -46,7 +50,7 @@ async function scrollTimelineTo(
   page: Page,
   edge: 'top' | 'bottom',
 ): Promise<void> {
-  await page.locator('.scroll').evaluate((element, where) => {
+  await page.locator(ROOM_SCROLL).evaluate((element, where) => {
     element.scrollTop = where === 'top' ? 0 : element.scrollHeight;
     element.dispatchEvent(new Event('scroll'));
   }, edge);
@@ -269,7 +273,7 @@ test.describe('Show more on long messages', () => {
       );
       await signInAndOpen(page, room);
       const newest = page
-        .locator('.scroll')
+        .locator(ROOM_SCROLL)
         .getByText('filler 99', { exact: true });
       await expect(newest).toBeVisible({ timeout: 30_000 });
 
@@ -349,7 +353,7 @@ test.describe('Show more on long messages', () => {
     }
     await signInAndOpen(page, room);
     await expect(
-      page.locator('.scroll').getByText('after 9', { exact: true }),
+      page.locator(ROOM_SCROLL).getByText('after 9', { exact: true }),
     ).toBeVisible({ timeout: 30_000 });
 
     await page.keyboard.press('ControlOrMeta+f');
@@ -584,7 +588,7 @@ test.describe('Show more on long messages', () => {
     );
     await signInAndOpen(page, room);
     await page
-      .locator('.scroll .msg[data-mid]', { hasText: 'a thread root' })
+      .locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: 'a thread root' })
       .getByTestId('message-thread-summary')
       .click({ timeout: 20_000 });
     const thread = page.getByTestId('thread-view');
@@ -708,7 +712,7 @@ test.describe('Show more on long messages', () => {
     await sendThreadReply(request, hs, room, rootId, lines(40, 'threaded'));
     await signInAndOpen(page, room);
 
-    const root = page.locator('.scroll .msg[data-mid]', {
+    const root = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
       hasText: 'a thread root',
     });
     await root.getByTestId('message-thread-summary').click({ timeout: 20_000 });

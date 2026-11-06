@@ -1,7 +1,7 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize, throwError, type Observable } from 'rxjs';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { TrnToastService } from '@trinity/components/overlay';
 import {
   TimelineActionsService,
   isEditableMessage,
@@ -9,7 +9,7 @@ import {
   type ConversationThreadOutcome,
 } from '@trinity/data-access/timeline';
 import { latestGuard } from '@trinity/util/ui';
-import { confirmMessageDeletion$ } from '../message-actions/confirm-message-deletion';
+import type { MessageListCommands } from '../message-list/message-list-commands';
 import type { ComposerSubmit } from '../message-composer/message-composer.component';
 import {
   batchFailureToast,
@@ -27,9 +27,8 @@ import {
  * {@link reset} when it switches to another one.
  */
 @Injectable()
-export class ThreadCommands {
+export class ThreadCommands implements MessageListCommands {
   private readonly timelineActions = inject(TimelineActionsService);
-  private readonly alert = inject(TrnAlertService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
   /** Identity allocator and current owner for the progress signal shared by threads. */
@@ -65,6 +64,19 @@ export class ThreadCommands {
 
   cancelEdit(): void {
     this.setEditing(null);
+  }
+
+  /** The message list's edit; the thread composer seeds the body from the row itself. */
+  beginEdit(id: string): void {
+    this.startEdit(id);
+  }
+
+  beginReply(id: string): void {
+    this.startReply(id);
+  }
+
+  cancelReply(): void {
+    this.replyingToId.set(null);
   }
 
   private setEditing(id: string | null): void {
@@ -218,12 +230,9 @@ export class ThreadCommands {
     this.run((t) => t.cancel(messageId), 'Could not cancel the message.');
   }
 
+  /** Redact a message the reader has already confirmed deleting (the message list asks). */
   delete(messageId: string): void {
-    confirmMessageDeletion$(this.alert)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() =>
-        this.run((t) => t.redact(messageId), 'Could not delete the message.'),
-      );
+    this.run((t) => t.redact(messageId), 'Could not delete the message.');
   }
 
   /** Run a fire-and-forget room action, surfacing a failure as a toast. */
