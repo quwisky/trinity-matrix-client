@@ -233,6 +233,22 @@ describe('message list — new messages slide in', () => {
     expect(host('$mine').classList).not.toContain('msg-enter');
   });
 
+  it('clears a mark whose row never mounts after a second', async () => {
+    const { cmp, scrollUp, append, host } = await setup(many(200));
+    const marked = () =>
+      (
+        cmp as unknown as { enteringKeys: () => ReadonlySet<string> }
+      ).enteringKeys();
+    scrollUp();
+
+    await append(msg('$mine', { isOwn: true }));
+    expect(host('$mine')).toBeNull();
+    expect(marked().has('$mine')).toBe(true);
+    vi.advanceTimersByTime(1_000);
+
+    expect(marked().size).toBe(0);
+  });
+
   // The unread divider splits a run: the first half takes the run's key, the second keeps its id.
   it('leaves a run its state when a split gives its key to another row', async () => {
     const line = (id: string) => msg(id, { kind: 'event' });
@@ -274,6 +290,16 @@ describe('message list — new messages slide in', () => {
       fixture.componentRef.setInput('loadingOlder', false);
 
       await show([msg('$old1'), ...current(), msg('$new')]);
+
+      expect(entering()).toHaveLength(0);
+    });
+
+    // Only a send that ends the update pins the list to it; one followed by a reply stays below.
+    it('your send followed by a receive while scrolled up', async () => {
+      const { append, scrollUp, entering } = await setup();
+      scrollUp();
+
+      await append(msg('$mine', { isOwn: true }), msg('$theirs'));
 
       expect(entering()).toHaveLength(0);
     });

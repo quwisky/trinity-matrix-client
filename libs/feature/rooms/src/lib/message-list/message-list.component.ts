@@ -197,7 +197,7 @@ export class MessageListComponent extends MessageListBase {
   private keyIds: ReadonlyMap<string, string> = new Map();
   private readonly enterTimers = new Set<ReturnType<typeof setTimeout>>();
   /** Marked batches whose rows have not mounted yet; see {@link startEnterClears}. */
-  private unmounted: { keys: readonly string[]; at: number }[] = [];
+  private unmounted: { keys: readonly string[] }[] = [];
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -682,14 +682,23 @@ export class MessageListComponent extends MessageListBase {
       .slice(first)
       .filter(
         (row) =>
-          (atBottom || row.isOwn) &&
+          // Scrolled up, only a send that ends the update is pinned to, so only it shows.
+          (atBottom || (row === rows[rows.length - 1] && row.isOwn)) &&
           row.id !== landing &&
           !row.systemRun?.events.some((event) => event.id === landing),
       )
       .map((row) => row.key);
     if (keys.length === 0) return;
     this.enteringKeys.update((marked) => new Set([...marked, ...keys]));
-    this.unmounted.push({ keys, at: Date.now() });
+    const batch = { keys };
+    this.unmounted.push(batch);
+    const drop = setTimeout(() => {
+      this.enterTimers.delete(drop);
+      if (!this.unmounted.includes(batch)) return;
+      this.unmounted = this.unmounted.filter((other) => other !== batch);
+      this.unmark(keys);
+    }, ENTER_MOUNT_WAIT_MS);
+    this.enterTimers.add(drop);
     this.startEnterClears();
   }
 
@@ -703,12 +712,7 @@ export class MessageListComponent extends MessageListBase {
     const rendered = new Set(
       untracked(() => this.windowedRows()).map((row) => row.key),
     );
-    const now = Date.now();
-    this.unmounted = this.unmounted.filter(({ keys, at }) => {
-      if (now - at > ENTER_MOUNT_WAIT_MS) {
-        this.unmark(keys);
-        return false;
-      }
+    this.unmounted = this.unmounted.filter(({ keys }) => {
       if (!rendered.has(keys[keys.length - 1])) return true;
       const timer = setTimeout(() => {
         this.enterTimers.delete(timer);

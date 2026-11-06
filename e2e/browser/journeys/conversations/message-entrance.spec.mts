@@ -233,6 +233,7 @@ test.describe('New-message entrance', () => {
     const oldest = page.locator('trn-message-row', { hasText: 'History 0 ' });
     await expect(oldest).toHaveCount(0);
     const scroll = page.locator('.scroll');
+    const paged = page.waitForRequest(/\/messages\?.*dir=b/);
     await expect
       .poll(
         async () => {
@@ -242,6 +243,7 @@ test.describe('New-message entrance', () => {
         { timeout: 60_000 },
       )
       .toBeGreaterThan(0);
+    await paged;
     await page.waitForTimeout(600);
     expect(await entrances(page)).toBe(0);
   });
