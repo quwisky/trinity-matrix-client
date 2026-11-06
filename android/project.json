@@ -69,6 +69,16 @@
         "cwd": "{projectRoot}"
       }
     },
+    "build-release-apk": {
+      "cache": false,
+      "dependsOn": ["sync"],
+      "outputs": ["{projectRoot}/app/build/outputs/apk/release"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "./gradlew assembleRelease",
+        "cwd": "{projectRoot}"
+      }
+    },
     "run": {
       "cache": false,
       "dependsOn": ["sync"],
