@@ -517,7 +517,7 @@ describe('TrnSettingsLayoutComponent', () => {
       compact: true,
     });
     const cards = container.querySelectorAll(
-      '[data-testid="settings-nav-group"]',
+      '[data-testid="settings-directory-group"]',
     );
     expect(cards).toHaveLength(2);
     expect(cards[0].previousElementSibling).toHaveClass(
@@ -541,7 +541,7 @@ describe('TrnSettingsLayoutComponent', () => {
       selectedSection: 'general',
     });
     expect(
-      container.querySelector('[data-testid="settings-nav-group"]'),
+      container.querySelector('[data-testid="settings-directory-group"]'),
     ).toBeNull();
     expect(
       container.querySelectorAll('.settings-layout__nav-item'),
@@ -552,6 +552,7 @@ describe('TrnSettingsLayoutComponent', () => {
   });
 
   it('group label is sentence case in compact', () => {
+    // jsdom applies no component styles, so this reads the rule from the scss text.
     const css = readFileSync(
       join(import.meta.dirname, 'trn-settings-layout.component.scss'),
       'utf8',

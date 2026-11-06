@@ -260,9 +260,9 @@ describe('SettingsPage (shell)', () => {
     const { harness } = await harnessAt('/settings');
     const el = harness.fixture.nativeElement as HTMLElement;
 
-    expect(
-      el.querySelectorAll('button[data-testid^="settings-nav-"]').length,
-    ).toBe(SECTIONS.length);
+    expect(el.querySelectorAll('[data-testid^="settings-nav-"]').length).toBe(
+      SECTIONS.length,
+    );
     for (const path of SECTIONS) {
       expect(
         el.querySelector(`[data-testid="settings-nav-${path}"]`),
@@ -280,7 +280,7 @@ describe('SettingsPage (shell)', () => {
     search!.dispatchEvent(new Event('input', { bubbles: true }));
     harness.detectChanges();
     expect(
-      root.querySelectorAll('button[data-testid^="settings-nav-"]'),
+      root.querySelectorAll('[data-testid^="settings-nav-"]'),
     ).toHaveLength(1);
     expect(
       root.querySelector('[data-testid="settings-nav-appearance"]'),
@@ -296,7 +296,7 @@ describe('SettingsPage (shell)', () => {
     harness.detectChanges();
     expect(
       Array.from(
-        root.querySelectorAll('button[data-testid^="settings-nav-"]'),
+        root.querySelectorAll('[data-testid^="settings-nav-"]'),
         (item) => item.textContent?.trim(),
       ),
     ).toEqual(['Appearance', 'Notifications', 'Privacy']);

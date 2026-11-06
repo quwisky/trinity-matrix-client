@@ -86,7 +86,7 @@
               @if (group.label) {
                 <p class="settings-layout__group-label">{{ group.label }}</p>
               }
-              <div trnInsetGroup data-testid="settings-nav-group">
+              <div trnInsetGroup data-testid="settings-directory-group">
                 @for (section of group.sections; track section.id) {
                   @if (!$first) {
                     <trn-inset-divider inset="icon" />
