@@ -14,6 +14,8 @@ describe('android version', () => {
       versionName: '0.7.0-next.1',
       versionCode: 70001,
     });
+    // release-please opens every prerelease cycle at -next.0.
+    expect(code('0.7.0-next.0')).toBe(70000);
     expect(code('0.7.0')).toBe(70099);
     expect(code('0.8.0-next.3')).toBe(80003);
     expect(code('1.2.3')).toBe(1020399);
@@ -23,10 +25,13 @@ describe('android version', () => {
   it('orders a prerelease below its stable release and above the previous stable', () => {
     const ordered = [
       '0.6.0',
+      '0.7.0-next.0',
       '0.7.0-next.1',
       '0.7.0-next.2',
       '0.7.0',
+      '0.7.1-next.0',
       '0.7.1-next.1',
+      '0.8.0-next.0',
     ].map(code);
     expect(ordered).toEqual([...ordered].sort((a, b) => a - b));
     expect(new Set(ordered).size).toBe(ordered.length);
@@ -36,7 +41,6 @@ describe('android version', () => {
     for (const version of [
       '1.100.0',
       '1.0.100',
-      '0.7.0-next.0',
       '0.7.0-next.99',
       '0.7.0-rc.1',
       'v0.7.0',
@@ -45,6 +49,7 @@ describe('android version', () => {
       '1.02.3',
       '1.2.03',
       '0.7.0-next.01',
+      '0.7.0-next.00',
       '21474.0.0',
       '210000.0.0',
     ]) {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const VERSION =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.([1-9]\d*))?$/;
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
 const MAX_VERSION_CODE = 2_100_000_000;
 
 /** Encodes a release-please version as an Android versionCode that rises with every release. */
@@ -19,10 +19,10 @@ export function androidVersion(semver) {
   if (
     minor > 99 ||
     patch > 99 ||
-    (prerelease && (counter < 1 || counter > 98))
+    (prerelease && (counter < 0 || counter > 98))
   ) {
     throw new Error(
-      `Cannot encode "${semver}": minor and patch must be below 100 and the next counter between 1 and 98`,
+      `Cannot encode "${semver}": minor and patch must be below 100 and the next counter between 0 and 98`,
     );
   }
   const versionCode = ((major * 100 + minor) * 100 + patch) * 100 + counter;
