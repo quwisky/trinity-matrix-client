@@ -195,6 +195,8 @@ export class MessageListComponent extends MessageListBase {
   private jumpIdle: ReturnType<typeof setTimeout> | null = null;
   /** Each row's id by key as of the last update, to follow a send's echo renaming its row. */
   private keyIds: ReadonlyMap<string, string> = new Map();
+  /** A control keyboard focus moved into while its body was collapsed: the growth is its doing. */
+  private focusExpanded: Element | null = null;
   private readonly enterTimers = new Set<ReturnType<typeof setTimeout>>();
   /** Marked batches whose rows have not mounted yet; see {@link startEnterClears}. */
   private unmounted: { keys: readonly string[] }[] = [];
@@ -292,6 +294,12 @@ export class MessageListComponent extends MessageListBase {
    * to the same condition as the `[trnMessageListIntro]` content: projection cannot report it.
    */
   readonly introShown = input(false);
+
+  /**
+   * A row that always leads the list, with older history landing below it (a thread's root).
+   * It never anchors a history page: holding it would push the rows being read down by the page.
+   */
+  readonly leadingRowId = input<string | null>(null);
 
   /**
    * {@link liveViewFrom} as it changes. The host passes it to the conversation, which while the
@@ -551,9 +559,22 @@ export class MessageListComponent extends MessageListBase {
       // Not a template or host listener: those mark the view dirty, re-checking every row per scroll.
       const onScroll = (): void => this.onScroll();
       el.addEventListener('scroll', onScroll, { passive: true });
-      this.destroyRef.onDestroy(() =>
-        el.removeEventListener('scroll', onScroll),
-      );
+      // Read before the row's own handler re-renders the body uncollapsed (it runs first, but
+      // the class only changes on the next render).
+      const onFocusIn = (event: FocusEvent): void => {
+        const target = event.target;
+        this.focusExpanded =
+          target instanceof Element &&
+          target.matches(':focus-visible') &&
+          target.closest('.msg__clamp--collapsed')
+            ? target
+            : null;
+      };
+      el.addEventListener('focusin', onFocusIn);
+      this.destroyRef.onDestroy(() => {
+        el.removeEventListener('scroll', onScroll);
+        el.removeEventListener('focusin', onFocusIn);
+      });
       this.mediaGate.connect(el);
       if (typeof ResizeObserver === 'undefined') {
         return; // jsdom / SSR — degrades to render-all via estimate heights.
@@ -965,16 +986,17 @@ export class MessageListComponent extends MessageListBase {
   private capturePrependAnchor(el: HTMLElement): void {
     this.prependAnchorId = '';
     const top = el.getBoundingClientRect().top;
+    const leading = this.leadingRowId();
     // A fling's placeholders stand where their rows are: they anchor as well as the rows.
     for (const m of Array.from(
       el.querySelectorAll('.msg, [data-placeholder-mid]'),
     )) {
+      const id =
+        m.getAttribute('data-mid') ?? m.getAttribute('data-placeholder-mid');
+      if (leading !== null && id === leading) continue;
       const rect = m.getBoundingClientRect();
       if (rect.bottom > top) {
-        this.prependAnchorId =
-          m.getAttribute('data-mid') ??
-          m.getAttribute('data-placeholder-mid') ??
-          '';
+        this.prependAnchorId = id ?? '';
         this.prependAnchorOffset = rect.top - top;
         return;
       }
@@ -1253,8 +1275,7 @@ export class MessageListComponent extends MessageListBase {
     const active = rows[0]?.ownerDocument.activeElement;
     if (
       active &&
-      active.matches(':focus-visible') &&
-      active.closest('.msg__clamp') &&
+      active === this.focusExpanded &&
       rows.some((row) => row !== active && row.contains(active))
     ) {
       active.scrollIntoView({ block: 'nearest', behavior: scrollBehavior() });

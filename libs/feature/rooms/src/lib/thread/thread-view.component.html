@@ -21,13 +21,15 @@
       [messages]="messages()"
       [loadingOlder]="loadingOlder()"
       [canLoadOlder]="canLoadOlder()"
-      [oldestEventId]="messages()[0]?.id ?? null"
+      [oldestEventId]="oldestReplyId()"
       [roomId]="roomId()"
       [resetKey]="rootEventId()"
+      [leadingRowId]="rootEventId()"
       [accountId]="accountId()"
       [canRedactOthers]="canRedactOthers()"
       [swipeDirection]="swipeDirection()"
       [composerEnabled]="false"
+      [showTyping]="false"
       [canThread]="false"
       [canPin]="false"
       [pinnedIds]="[]"
@@ -55,7 +57,10 @@
   }
 
   <div class="thread__footer">
-    <trn-typing-indicator [names]="typingNames()" [announce]="false" />
+    <trn-typing-indicator
+      [names]="typingNames()"
+      [announce]="announceTyping()"
+    />
     <trn-message-composer
       [accountId]="accountId()"
       placeholder="Reply…"

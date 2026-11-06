@@ -120,9 +120,11 @@
   }
 </div>
 
-@if (composerEnabled()) {
-  <!-- With its composer: a host that brings its own (the thread panel) has its own typing row. -->
+@if (showTyping()) {
   <trn-typing-indicator [names]="typingNames()" />
+}
+
+@if (composerEnabled()) {
   <trn-message-composer
     [accountId]="accountId()"
     [roomId]="roomId()"

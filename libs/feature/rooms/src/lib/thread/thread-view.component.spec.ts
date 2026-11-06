@@ -382,6 +382,40 @@ describe('ThreadViewComponent hosts the message list', () => {
     expect(paginateOpenThread).not.toHaveBeenCalled();
   });
 
+  it('keeps filling a short thread as older replies land', async () => {
+    // A short panel: jsdom reports no scroll height, so the list is never full. The fill
+    // frame is queued and run by hand, the way the list's own fill tests do.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const runFrames = () => {
+      for (const frame of frames.splice(0)) frame(0);
+    };
+    const root = msg('$root', '@a:hs', 'the root');
+    const { fixture, threadMessages, paginateOpenThread } = await build(
+      [root, msg('$r3', '@b:hs', 'three')],
+      { canPaginate: true },
+    );
+    settle(fixture);
+    runFrames();
+    expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+
+    threadMessages.set([
+      root,
+      msg('$r2', '@b:hs', 'two'),
+      msg('$r3', '@b:hs', 'three'),
+    ]);
+    settle(fixture);
+    runFrames();
+
+    expect(paginateOpenThread).toHaveBeenCalledTimes(2);
+  });
+
   it("loads older on the list's loadOlder", async () => {
     const { fixture, paginateOpenThread } = await build(three, {
       canPaginate: true,
@@ -685,6 +719,33 @@ describe('ThreadViewComponent reveal', () => {
     reveal('$a');
 
     expect(paginateOpenThread).not.toHaveBeenCalled();
+  });
+
+  it('says so once when the history runs out without the message', async () => {
+    const { fixture, reveal, settle, threadMessages, canPaginateThread } =
+      await revealing([b], { canPaginate: true });
+    const failed = vi.fn();
+    fixture.componentInstance.revealFailed.subscribe(failed);
+
+    reveal('$a');
+    expect(failed).not.toHaveBeenCalled();
+    canPaginateThread.set(false);
+    settle();
+    expect(failed).toHaveBeenCalledTimes(1);
+
+    threadMessages.set([b, msg('$c', '@a:hs', 'third')]);
+    settle();
+    expect(failed).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not fail a reveal while only the root has loaded', async () => {
+    const { fixture, reveal } = await revealing([msg('$root', '@a:hs', 'r')]);
+    const failed = vi.fn();
+    fixture.componentInstance.revealFailed.subscribe(failed);
+
+    reveal('$a');
+
+    expect(failed).not.toHaveBeenCalled();
   });
 
   it('stops paging, and says so, when a page is refused', async () => {
@@ -1711,6 +1772,20 @@ describe('ThreadViewComponent members', () => {
       expect((row?.textContent ?? '').replace(/\s+/g, ' ').trim()).toBe(
         'Alice is typing',
       );
+    });
+
+    it('announces the typists when asked to, as a page over an inert room', async () => {
+      const { fixture, container } = await build([msg('$a', '@ada:hs', 'hi')], {
+        typingNames: ['Alice'],
+      });
+      fixture.componentRef.setInput('announceTyping', true);
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector(
+          '.thread__footer [data-testid="typing-status"]',
+        ),
+      ).not.toBeNull();
     });
 
     it('does not announce the typists a second time', async () => {

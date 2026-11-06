@@ -89,6 +89,11 @@ export class ThreadViewComponent implements OnDestroy {
   /** A new value asks for the reveal again, as when the same message is opened a second time. */
   readonly revealRequest = input<unknown>(null);
   readonly revealFailed = output<void>();
+  /**
+   * Whether the typing row above the composer announces. Only when this panel is a page over
+   * an inert room: otherwise the room's list announces the same room-wide names.
+   */
+  readonly announceTyping = input(false);
   /** Its root is still loading: show the panel's loading state and open nothing yet. */
   readonly loading = input(false);
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
@@ -111,6 +116,8 @@ export class ThreadViewComponent implements OnDestroy {
   readonly uploadProgress = this.commands.uploadProgress;
   private revealedEventId: string | null = null;
   private revealedRequest: unknown = null;
+  /** The reveal already reported missing, so a later rows change does not report it again. */
+  private revealMissing: string | null = null;
   private readonly threadBinding = effect(() => {
     const loading = this.loading();
     const roomId = this.roomId();
@@ -143,6 +150,16 @@ export class ThreadViewComponent implements OnDestroy {
   /** The thread's messages, root first, then replies. */
   readonly messages = computed(() => this.openedThread()?.messages() ?? []);
 
+  /**
+   * The oldest loaded reply, the list's backfill marker. Not `messages()[0]`: the root always
+   * leads, so the marker would never move and the list would stop filling after one page.
+   */
+  protected readonly oldestReplyId = computed(
+    () =>
+      this.messages().find((message) => message.id !== this.rootEventId())
+        ?.id ?? null,
+  );
+
   readonly editingDraft = computed(
     () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
   );
@@ -172,6 +189,7 @@ export class ThreadViewComponent implements OnDestroy {
     if (request !== this.revealedRequest) {
       this.revealedRequest = request;
       this.revealedEventId = null;
+      this.revealMissing = null;
     }
     if (!id || id === this.revealedEventId) return;
     if (this.messages().some((message) => message.id === id)) {
@@ -180,8 +198,17 @@ export class ThreadViewComponent implements OnDestroy {
         this.jumpToId.set(id);
         this.jumpToNonce.update((nonce) => nonce + 1);
       });
-    } else if (this.canLoadOlder() && !this.loadingOlder()) {
-      untracked(() => this.pageToReveal(id));
+    } else if (this.canLoadOlder()) {
+      if (!this.loadingOlder()) untracked(() => this.pageToReveal(id));
+    } else if (
+      !this.loadingOlder() &&
+      // Root only: the replies have not arrived yet, so nothing is known to be missing.
+      this.oldestReplyId() !== null &&
+      this.revealMissing !== id
+    ) {
+      // Not marked revealed: a reply that still arrives live is jumped to after all.
+      this.revealMissing = id;
+      untracked(() => this.revealFailed.emit());
     }
   });
 
@@ -252,8 +279,8 @@ export class ThreadViewComponent implements OnDestroy {
   /**
    * The room's typists, for the row above the thread composer. Room's, not thread's:
    * `m.typing` is a room-level EDU with no thread dimension, so somebody typing in the main
-   * timeline shows here too. The row does not own the announcement; the room's list behind
-   * it already announces the same names.
+   * timeline shows here too. The row announces only per {@link announceTyping}; otherwise the
+   * room's list beside it announces the same names.
    */
   protected readonly typingNames = this.timeline.typingNames;
 

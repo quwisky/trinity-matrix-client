@@ -208,6 +208,8 @@ export abstract class MessageListBase {
   readonly members = input<readonly MentionMember[]>([]);
   /** Display names of members currently typing in the room (excludes the local user). */
   readonly typingNames = input<string[]>([]);
+  /** False where the host shows its own typing row (the thread panel, above its composer). */
+  readonly showTyping = input(true);
   /** Event id of the first unread message: the "New messages" divider and jump pill key off it. */
   readonly firstUnreadId = input<string | null>(null);
   /** Which file of how many is uploading and how far along, or null when idle. */
