@@ -88,8 +88,11 @@ export class AccountRuntimeService {
   private restoredOnce = false;
   private readonly backgroundRestoring = signal(false);
   private readonly pendingRestores = signal<ReadonlySet<string>>(new Set());
-  /** The last start's result, kept past a switch so a failed inactive Account stays retryable. */
-  private startResult: AccountRestoreResult | null = null;
+  /**
+   * Each inactive Account's latest outcome since a start whose Active Account restored, kept
+   * past a switch so a failed one stays retryable; one leaving never affects the others.
+   */
+  private readonly inactiveOutcomes = new Map<string, AccountRestoreOutcome>();
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -171,7 +174,17 @@ export class AccountRuntimeService {
         ),
         tap(({ result, background }) => {
           termination = 'settled';
-          this.startResult = result;
+          this.inactiveOutcomes.clear();
+          if (
+            result.kind === 'restored' ||
+            result.kind === 'restored-with-inactive-failures'
+          ) {
+            for (const account of result.accounts) {
+              if (account.role === 'inactive') {
+                this.inactiveOutcomes.set(account.accountId, account);
+              }
+            }
+          }
           this.runtimeState.set({ phase: 'settled', result });
           if (background) {
             this.restoreInBackground(background, sweepsNativeTokens);
@@ -207,17 +220,7 @@ export class AccountRuntimeService {
           operation: conflict,
         });
       }
-      const result = this.startResult;
-      if (
-        !result ||
-        (result.kind !== 'restored-with-inactive-failures' &&
-          result.kind !== 'restored')
-      ) {
-        return of({ kind: 'unavailable' } as const);
-      }
-      const previous = result.accounts.find(
-        (account) => account.accountId === accountId,
-      );
+      const previous = this.inactiveOutcomes.get(accountId);
       return this.inactiveRestore.run(previous, (outcome) =>
         this.publishInactiveOutcome(outcome),
       );
@@ -313,7 +316,7 @@ export class AccountRuntimeService {
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
     return defer(() => {
       const blocking = this.blockingLifecycleOperation();
-      if (!blocking) this.forgetStarted(accountId);
+      if (this.currentOperation() === null) this.forgetStarted(accountId);
       return this.lifecycleWorkflow.signOut(accountId, blocking);
     });
   }
@@ -322,7 +325,7 @@ export class AccountRuntimeService {
   removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
     return defer(() => {
       const blocking = this.blockingLifecycleOperation();
-      if (!blocking) this.forgetStarted(accountId);
+      if (this.currentOperation() === null) this.forgetStarted(accountId);
       return this.lifecycleWorkflow.removeDeleted(accountId, blocking);
     });
   }
@@ -385,31 +388,22 @@ export class AccountRuntimeService {
   }
 
   /**
-   * An Account a sign-out or removal starts on leaves the start's result, so a retry never
-   * restores it again, even when that command then fails: a later start restores it if it stays.
+   * An Account a sign-out or removal starts on is never retried again, even when that command
+   * then fails: a later start restores it if it stays.
    */
   private forgetStarted(accountId: string): void {
-    const result = this.startResult;
-    if (!result || !('activeAccountId' in result)) return;
-    this.startResult =
-      accountId === result.activeAccountId
-        ? null
-        : accountRestoreResultFor(
-            result.activeAccountId,
-            result.accounts.filter(
-              (account) => account.accountId !== accountId,
-            ),
-          );
+    this.inactiveOutcomes.delete(accountId);
   }
 
-  /** Into the start's result whatever the phase, and into the runtime state while it shows it. */
+  /** Kept for a retry, and merged into the start's result while the runtime state shows it. */
   private publishInactiveOutcome(outcome: AccountRestoreOutcome): void {
-    const result = this.startResult;
+    this.inactiveOutcomes.set(outcome.accountId, outcome);
+    const state = this.runtimeState();
+    if (state.phase !== 'settled') return;
+    const result = state.result;
     if (
-      !result ||
-      (result.kind !== 'restored-with-inactive-failures' &&
-        result.kind !== 'restored' &&
-        result.kind !== 'active-account-unavailable')
+      result.kind !== 'restored-with-inactive-failures' &&
+      result.kind !== 'restored'
     ) {
       return;
     }
@@ -421,13 +415,10 @@ export class AccountRuntimeService {
           account.accountId === outcome.accountId ? outcome : account,
         )
       : [...result.accounts, outcome];
-    this.startResult = accountRestoreResultFor(
-      result.activeAccountId,
-      accounts,
-    );
-    if (this.runtimeState().phase === 'settled') {
-      this.runtimeState.set({ phase: 'settled', result: this.startResult });
-    }
+    this.runtimeState.set({
+      phase: 'settled',
+      result: accountRestoreResultFor(result.activeAccountId, accounts),
+    });
   }
 
   /**
@@ -500,8 +491,9 @@ export class AccountRuntimeService {
   }
 
   /**
-   * After the start settles: the inactive Accounts, then the native token sweep. Sign-in,
-   * switching and lifecycle commands wait for both, so the sweep reads a list no sign-in changed.
+   * After the start settles: the inactive Accounts, then the native token sweep. Sign-in and the
+   * lifecycle commands wait for both, so the sweep reads a list no sign-in changed; a switch
+   * waits only for its own target.
    */
   private restoreInBackground(
     accountIds: readonly string[],

@@ -772,6 +772,52 @@ describe('AccountRuntimeService', () => {
       expect(test.restoreAccount).toHaveBeenCalledTimes(4);
     });
 
+    it('keeps a failed Account retryable when its sign-out was refused', async () => {
+      const { test, retry, runtime } = retrySetup();
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      const otherSignOut = new Subject<AccountSignOutOutcome>();
+      vi.mocked(test.adapter.signOutAccount).mockReturnValueOnce(otherSignOut);
+      runtime.signOutAccount('@other:hs').subscribe();
+
+      await expect(
+        firstValueFrom(runtime.signOutAccount('@failed:hs')),
+      ).resolves.toMatchObject({ kind: 'transition-in-progress' });
+      otherSignOut.next({
+        kind: 'ready',
+        accountId: '@other:hs',
+        activeAccountId: '@active:hs',
+        remainingAccountIds: ['@active:hs', '@failed:hs'],
+      });
+      otherSignOut.complete();
+
+      const outcome = firstValueFrom(
+        runtime.retryInactiveAccount('@failed:hs'),
+      );
+      retry.next({ kind: 'ready' });
+      retry.complete();
+      await expect(outcome).resolves.toMatchObject({
+        kind: 'ready',
+        accountId: '@failed:hs',
+      });
+    });
+
+    it('keeps the other failed Accounts retryable when the first Active Account leaves', async () => {
+      const { retry, runtime } = retrySetup();
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      await firstValueFrom(runtime.switchActiveAccount('@other:hs'));
+      await firstValueFrom(runtime.signOutAccount('@active:hs'));
+
+      const outcome = firstValueFrom(
+        runtime.retryInactiveAccount('@failed:hs'),
+      );
+      retry.next({ kind: 'ready' });
+      retry.complete();
+      await expect(outcome).resolves.toMatchObject({
+        kind: 'ready',
+        accountId: '@failed:hs',
+      });
+    });
+
     it.each([
       [
         'signed out',

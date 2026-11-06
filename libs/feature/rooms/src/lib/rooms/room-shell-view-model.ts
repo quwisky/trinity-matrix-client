@@ -486,7 +486,10 @@ export class RoomShellViewModel {
   });
 
   readonly activeAccountId = this.matrix.activeUserId;
-  /** Adding or removing an account waits until the background restore run has finished. */
+  /**
+   * Adding or removing an account waits while inactive accounts restore: the start's background
+   * run, or a retry of a failed one.
+   */
   readonly accountsRestoring = computed(() =>
     this.accountRuntime.restoringInBackground(),
   );
