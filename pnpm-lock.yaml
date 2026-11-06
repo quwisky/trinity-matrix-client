@@ -445,8 +445,8 @@ importers:
         specifier: 5.0.5
         version: 5.0.5(vitest@5.0.5)
       '@wdio/appium-service':
-        specifier: 10.1.0
-        version: 10.1.0(appium@3.9.0(@types/node@26.6.6)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1))(supports-color@8.1.1)(yauzl@3.4.0)
+        specifier: 10.1.1
+        version: 10.1.1(appium@3.9.0(@types/node@26.6.6)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1))(supports-color@8.1.1)(yauzl@3.4.0)
       '@wdio/cli':
         specifier: 10.1.0
         version: 10.1.0(@types/node@26.6.6)(appium@3.9.0(@types/node@26.6.6)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1))(expect-webdriverio@8.0.0(@wdio/types@10.1.0)(webdriverio@10.1.0(supports-color@8.1.1)(yauzl@3.4.0)))(supports-color@8.1.1)(yauzl@3.4.0)
@@ -4663,8 +4663,8 @@ packages:
   '@vscode/l10n@0.0.18':
     resolution: {integrity: sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ==}
 
-  '@wdio/appium-service@10.1.0':
-    resolution: {integrity: sha512-3EKv+oBoxfinzuXF5XH1hAEa+fsV3C6gT6+ml1d0tkPNbIjK4FyDHMh8tbaS2pEFlfh0JVE8oi6yoKY9ORE06g==}
+  '@wdio/appium-service@10.1.1':
+    resolution: {integrity: sha512-CTkjWo9YQ8NoQEMLhkVUKLDx0v569FsplM4f8WUuvpdIwNuh6iGWoqC8cb35hwTU72K/Rv4s/6fG11XQG+p+Hg==}
     engines: {node: '>=22.19.0'}
     hasBin: true
     peerDependencies:
@@ -14305,7 +14305,7 @@ snapshots:
 
   '@vscode/l10n@0.0.18': {}
 
-  '@wdio/appium-service@10.1.0(appium@3.9.0(@types/node@26.6.6)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1))(supports-color@8.1.1)(yauzl@3.4.0)':
+  '@wdio/appium-service@10.1.1(appium@3.9.0(@types/node@26.6.6)(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1))(supports-color@8.1.1)(yauzl@3.4.0)':
     dependencies:
       '@wdio/config': 10.1.0(supports-color@8.1.1)(yauzl@3.4.0)
       '@wdio/logger': 10.1.0
