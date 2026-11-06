@@ -861,6 +861,29 @@ describe('release Android signing', () => {
     expect(node.with).toEqual({ 'node-version-file': '.nvmrc' });
   });
 
+  it('sign-android reads only code-owned files next to the key', () => {
+    const owned = read('.github/CODEOWNERS')
+      .split('\n')
+      .filter((line) => line.startsWith('/'))
+      .map((line) => line.split(/\s+/)[0]);
+    const covers = (pattern, path) =>
+      pattern.endsWith('/')
+        ? path.startsWith(pattern)
+        : pattern.endsWith('/*')
+          ? path.startsWith(pattern.slice(0, -1)) &&
+            !path.slice(pattern.length - 1).includes('/')
+          : path === pattern;
+    const files = uses(job(), 'actions/checkout@')
+      .with['sparse-checkout'].trim()
+      .split('\n')
+      .map((file) => `/${file.replace(/^\//, '')}`);
+    for (const file of files)
+      expect(
+        owned.some((pattern) => covers(pattern, file)),
+        file,
+      ).toBe(true);
+  });
+
   it('sign-android checks the downloaded APK and its alignment before signing', () => {
     const steps = job().steps;
     const download = uses(job(), 'actions/download-artifact@');

@@ -32,7 +32,7 @@ The static verifier checks host contracts. Native verification runs Android unit
 
 The release target creates an AAB and stays unsigned unless all four `TRINITY_ANDROID_KEYSTORE`, `TRINITY_ANDROID_KEYSTORE_PASSWORD`, `TRINITY_ANDROID_KEY_ALIAS` and `TRINITY_ANDROID_KEY_PASSWORD` environment variables are set; those are for local builds. Build it with the release notes the app bundles: `TRINITY_RELEASE_NOTES=required GITHUB_TOKEN=$(gh auth token) pnpm android:build:release`.
 
-Each GitHub release attaches a signed `Trinity-<version>.apk`, built and signed by the release workflow. The version name is the release version, and the version code is `((major*100+minor)*100+patch)*100 + N`, where N is the `-next.N` counter or 99 for a stable release. Minor and patch must each be at most 99 and N from 1 to 98. Keep credentials and the signing procedure out of public documentation.
+Each GitHub release attaches a signed `Trinity-<version>.apk`, built and signed by the release workflow. The version name is the release version, and the version code is `((major*100+minor)*100+patch)*100 + N`, where N is the `-next.N` counter or 99 for a stable release. Minor and patch must each be at most 99 and N from 0 to 98. Keep credentials and the signing procedure out of public documentation.
 
 ## Push rendering {#push-rendering}
 

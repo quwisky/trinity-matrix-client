@@ -816,7 +816,7 @@ change before merging the release PR, following [testing](../../apps/docs-develo
 ## Package and review the draft
 
 The `release-notes` job reads the draft release body with the release App token and hands it to
-`package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
+`package`, `desktop-shell`, `package-web` and `android-apk` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
 read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
 notes failure fails the build. A dispatch therefore re-packages an existing release, draft or
 published, only: for a tag without one, `release-notes` fails and the builds are skipped. The Android APK is built and signed by `android-apk` and `sign-android` (see [Android signing](#android-signing)); the Android AAB and iOS builds run locally after publishing, and so do iOS builds unless uploaded with [TestFlight upload](#testflight-upload): set
@@ -921,8 +921,16 @@ sets them.
 certificate, without colons. It starts as `UNSET`, so the check fails and releases stay
 drafts until the maintainer commits the real digest.
 
+> [!WARNING]
+> `sign-android` reads the pin at the release tag. A release tagged while the file says
+> `UNSET` can never be signed, so its draft can never be published, and committing the
+> digest later does not fix it. A stuck prerelease also holds back the `next` container
+> image, Homebrew `trinity-next` and Release stable, which cuts from a published
+> prerelease. Generate the key and commit the real digest before the pull request that
+> added `sign-android` (#1961) merges, or at the latest before the next release PR merges.
+
 The `versionCode` is `((major*100+minor)*100+patch)*100 + N`, where N is the `-next.N`
-counter, or 99 for a stable release. Minor and patch must each be at most 99 and N from 1 to
+counter, or 99 for a stable release. Minor and patch must each be at most 99 and N from 0 to
 98 (`scripts/android-version.mjs` refuses anything else), so every release has a higher code
 than the one before.
 
@@ -935,17 +943,20 @@ One-time setup:
 
 1. Generate the key (a PKCS12 keystore, `-storetype PKCS12`, is fine):
    `keytool -genkeypair -v -keystore trinity-release.jks -alias trinity -keyalg RSA -keysize 4096 -validity 10000`
-2. Create the `release-android` environment with required reviewers before the first release
-   that uses it. Otherwise GitHub creates it unprotected on first use.
+2. Create the `release-android` environment with required reviewers before the pull request
+   that added `sign-android` (#1961) merges. Otherwise GitHub creates it unprotected on
+   first use.
 3. Add the four secrets to that environment. On macOS,
-   `base64 -i trinity-release.jks` gives `ANDROID_KEYSTORE_BASE64`.
-4. Run `keytool -list -v -keystore trinity-release.jks -alias trinity`, and commit the
-   certificate's SHA-256 as lowercase hex without colons to
-   `android/release-signing-cert.sha256`.
+   `base64 -i trinity-release.jks` gives `ANDROID_KEYSTORE_BASE64`. With keytool's default
+   PKCS12 store, `ANDROID_KEY_PASSWORD` is the same as the store password.
+4. Commit the certificate's SHA-256, as lowercase hex without colons, to
+   `android/release-signing-cert.sha256`:
+   `keytool -list -v -keystore trinity-release.jks -alias trinity | awk '/SHA256:/{print $2}' | tr -d : | tr A-F a-f > android/release-signing-cert.sha256`.
+   Do this before the next release is tagged (see the warning above).
 5. Back up the keystore and the passwords offline.
 
-Android and iOS retain independent `1.0` / build-code values for the iOS app and the
-Android AAB; the APK's version comes from the release. Their other build and distribution requirements
+Both Android outputs, the APK and the AAB, take their version from the release; only the
+iOS app keeps its independent `1.0` / build-code values. Their other build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 

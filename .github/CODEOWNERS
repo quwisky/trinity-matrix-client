@@ -27,3 +27,6 @@
 /electron/* @quwisky
 /electron/build/ @quwisky
 /electron/src/release-channel.ts @quwisky
+
+# The certificate digest sign-android checks the signed APK against.
+/android/release-signing-cert.sha256 @quwisky

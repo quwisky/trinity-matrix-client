@@ -62,7 +62,7 @@ unprotected on disk, and Security settings warns about it for as long as that la
 
 ## Android {#android}
 
-From the next release on, each release carries `Trinity-<version>.apk`. Download it from the [latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest),
+Releases from 0.7.0 on carry `Trinity-<version>.apk`. Download it from the [latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest),
 then allow installs from your browser or file manager. Each new version installs over the
 previous one.
 
@@ -84,6 +84,10 @@ brew install --cask quwisky/trinity/trinity@next
 
 On Debian and Ubuntu, the prerelease's `.deb` installs as a separate package,
 `trinity-next`.
+
+On Android there is no separate Trinity Next: a prerelease APK installs as Trinity itself,
+over the stable app. After you install a prerelease, Android won't install a lower stable
+version over it; uninstall Trinity first, which deletes its local data.
 
 Older prereleases installed as "Trinity": you can tell one by its name, Trinity, with a
 version ending in `-next.` and a number (for example `-next.3`). With Homebrew,
