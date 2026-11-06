@@ -8,6 +8,7 @@ import {
 import {
   AccountRuntimeService,
   type AccountLifecycleState,
+  type AccountRuntimeState,
 } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
@@ -56,6 +57,7 @@ function setup(
   const steps: string[] = [];
   const lifecycleBusy = signal(options.lifecycleBusy ?? false);
   const restoringAccounts = signal(options.restoringAccounts ?? false);
+  const runtimeState = signal<AccountRuntimeState>({ phase: 'idle' });
   const lifecycle = signal<AccountLifecycleState>({ phase: 'idle' });
   const requests = new Subject<void>();
   const matrix = {
@@ -113,6 +115,7 @@ function setup(
         lifecycleBusy: lifecycleBusy.asReadonly(),
         lifecycle: lifecycle.asReadonly(),
         restoringInBackground: () => restoringAccounts(),
+        state: runtimeState.asReadonly(),
       }),
     ],
   });
@@ -127,6 +130,7 @@ function setup(
     lifetime,
     lifecycleBusy,
     restoringAccounts,
+    runtimeState,
     lifecycle,
     handleError,
   };
@@ -384,6 +388,29 @@ describe('SessionHandoverWorkflow', () => {
     expect(steps).toEqual([]);
 
     restoringAccounts.set(false);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(steps).toEqual(HANDED_OVER);
+    lifetime.unsubscribe();
+  });
+
+  it('waits for the Active Account restore of a start, then hands over', async () => {
+    const { steps, requests, runtimeState, lifetime } = setup();
+    runtimeState.set({
+      phase: 'restoring',
+      activeAccountId: '@me:hs',
+      totalAccounts: 1,
+      outcomes: [],
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(steps).toEqual([]);
+
+    runtimeState.set({
+      phase: 'settled',
+      result: { kind: 'no-accounts', accounts: [] },
+    });
     await vi.advanceTimersByTimeAsync(500);
 
     expect(steps).toEqual(HANDED_OVER);

@@ -26,6 +26,7 @@ import {
   tap,
   throwError,
   throwIfEmpty,
+  toArray,
 } from 'rxjs';
 import {
   ACCOUNT_RESTORE_POLICY,
@@ -85,7 +86,7 @@ export class AccountRuntimeService {
   private readonly lateInactiveOutcomes = new Subject<AccountRestoreOutcome>();
   private establishment: InFlightAccountEstablishment | null = null;
   private restoredOnce = false;
-  private backgroundRestoring = false;
+  private readonly backgroundRestoring = signal(false);
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -137,7 +138,7 @@ export class AccountRuntimeService {
           if (snapshot.kind === 'corrupt-local-state') {
             return of({
               result: emptyAccountRestoreResult('local-state-unavailable'),
-              inactiveAccountIds: [],
+              background: null,
             });
           }
           activeAccountId = snapshot.activeAccountId;
@@ -145,13 +146,24 @@ export class AccountRuntimeService {
           this.publishProgress(activeAccountId, totalAccounts, outcomes);
           return this.restoreActive(snapshot, outcomes);
         }),
-        tap(({ result, inactiveAccountIds }) => {
+        // Without a background run, still restoring, so no sign-in can start until the sweep
+        // has read its list.
+        switchMap((restored) =>
+          restored.background ||
+          !sweepsNativeTokens ||
+          restored.result.kind === 'local-state-unavailable'
+            ? of(restored)
+            : this.adapter.sweepNativeTokens().pipe(
+                catchError(() => of(void 0)),
+                map(() => restored),
+              ),
+        ),
+        tap(({ result, background }) => {
           termination = 'settled';
           this.runtimeState.set({ phase: 'settled', result });
-          this.restoreInBackground(
-            inactiveAccountIds,
-            sweepsNativeTokens && result.kind !== 'local-state-unavailable',
-          );
+          if (background) {
+            this.restoreInBackground(background, sweepsNativeTokens);
+          }
         }),
         map(({ result }) => result),
         catchError((error: unknown) => {
@@ -310,7 +322,7 @@ export class AccountRuntimeService {
 
   /** Whether inactive Accounts are still restoring after the start, or being retried. */
   restoringInBackground(): boolean {
-    return this.backgroundRestoring || this.inactiveRestore.inProgress;
+    return this.backgroundRestoring() || this.inactiveRestore.inProgress;
   }
 
   /** The operation that would make an account deletion wait, or null when it may start. */
@@ -386,17 +398,22 @@ export class AccountRuntimeService {
     });
   }
 
+  /**
+   * Settles once the Active Account is ready, naming the inactive Accounts left for the
+   * background. When it is not ready, the start is blocked anyway, so the inactive Accounts
+   * restore inside it and the recovery commands are not refused by a background run.
+   */
   private restoreActive(
     snapshot: Extract<SavedAccountsSnapshot, { kind: 'available' }>,
     outcomes: Map<string, AccountRestoreOutcome>,
   ): Observable<{
     readonly result: AccountRestoreResult;
-    readonly inactiveAccountIds: readonly string[];
+    readonly background: readonly string[] | null;
   }> {
     if (snapshot.accountIds.length === 0) {
       return of({
         result: emptyAccountRestoreResult('no-accounts'),
-        inactiveAccountIds: [],
+        background: null,
       });
     }
     const activeAccountId = snapshot.activeAccountId;
@@ -407,20 +424,46 @@ export class AccountRuntimeService {
     ) {
       return of({
         result: emptyAccountRestoreResult('local-state-unavailable'),
-        inactiveAccountIds: [],
+        background: null,
       });
     }
+    const orderedAccountIds = [
+      activeAccountId,
+      ...snapshot.accountIds.filter(
+        (accountId) => accountId !== activeAccountId,
+      ),
+    ];
+    const record = (outcome: AccountRestoreOutcome): void => {
+      outcomes.set(outcome.accountId, outcome);
+      this.publishProgress(activeAccountId, orderedAccountIds.length, outcomes);
+    };
     // Alone, so the Active Account is first in the crypto setup queue.
     return this.restoreOne(activeAccountId, 'active').pipe(
-      map((outcome) => {
-        outcomes.set(activeAccountId, outcome);
-        return {
-          result: accountRestoreResultFor(activeAccountId, [outcome]),
-          inactiveAccountIds: snapshot.accountIds.filter(
-            (accountId) => accountId !== activeAccountId,
-          ),
-        };
-      }),
+      tap(record),
+      switchMap((active) =>
+        active.kind === 'ready'
+          ? of({
+              result: accountRestoreResultFor(activeAccountId, [active]),
+              background: orderedAccountIds.slice(1),
+            })
+          : from(orderedAccountIds.slice(1)).pipe(
+              mergeMap(
+                (accountId) =>
+                  this.restoreOne(accountId, 'inactive').pipe(tap(record)),
+                this.policy.concurrency,
+              ),
+              toArray(),
+              map(() => ({
+                result: accountRestoreResultFor(
+                  activeAccountId,
+                  orderedAccountIds.map((accountId) =>
+                    outcomes.get(accountId)!,
+                  ),
+                ),
+                background: null,
+              })),
+            ),
+      ),
     );
   }
 
@@ -433,19 +476,25 @@ export class AccountRuntimeService {
     sweepsNativeTokens: boolean,
   ): void {
     if (accountIds.length === 0 && !sweepsNativeTokens) return;
-    this.backgroundRestoring = true;
+    this.backgroundRestoring.set(true);
     concat(
       from(accountIds).pipe(
         mergeMap(
           (accountId) =>
             this.restoreOne(accountId, 'inactive').pipe(
+              catchError((error: unknown) => {
+                this.errors.handleError(error);
+                // An outcome all the same, so health reports it and a retry can reach it.
+                return of({
+                  kind: 'failed' as const,
+                  failure: 'unexpected' as const,
+                  accountId,
+                  role: 'inactive' as const,
+                });
+              }),
               tap((outcome) => {
                 this.publishInactiveOutcome(outcome);
                 this.lateInactiveOutcomes.next(outcome);
-              }),
-              catchError((error: unknown) => {
-                this.errors.handleError(error);
-                return EMPTY;
               }),
             ),
           this.policy.concurrency,
@@ -459,7 +508,7 @@ export class AccountRuntimeService {
         : EMPTY,
     )
       .pipe(
-        finalize(() => (this.backgroundRestoring = false)),
+        finalize(() => this.backgroundRestoring.set(false)),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
