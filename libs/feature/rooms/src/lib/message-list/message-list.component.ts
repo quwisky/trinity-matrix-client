@@ -18,7 +18,10 @@ import {
 import { outputFromObservable, toObservable } from '@angular/core/rxjs-interop';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
 import { MessageReceiptsComponent } from '../message-receipts/message-receipts.component';
-import { MessageRowComponent } from '../message-row/message-row.component';
+import {
+  MessageRowComponent,
+  type MessageRow,
+} from '../message-row/message-row.component';
 import { BodyOverflowObserver } from '../message-row/body-overflow';
 import { MessageListBase, type JumpOptions } from './message-list-base';
 import { scrollToJumpTarget } from './jump-scroll';
@@ -27,7 +30,7 @@ import { TimelineMediaGate } from '../shared/timeline-media-gate';
 import { FlingRows } from './fling-rows';
 import { NativeScrollHold } from './native-scroll-hold';
 import { isIosWebKit } from '@trinity/platform-native';
-import { scrollBehavior } from '@trinity/util/ui';
+import { prefersReducedMotion, scrollBehavior } from '@trinity/util/ui';
 import { TrnFileDropDirective } from '../shared/file-drop.directive';
 import { DropOverlayComponent } from './drop-overlay/drop-overlay.component';
 import { TimelineDividerComponent } from './timeline-divider/timeline-divider.component';
@@ -83,6 +86,9 @@ const SMALL_LIST_ROWS = 80;
 
 /** How long after the last scroll event a row under the pointer gets its hover work. */
 const SCROLL_IDLE_MS = 150;
+
+/** How long a new row keeps `msg-enter`: the 200 ms entrance plus margin. */
+export const ENTER_CLEAR_MS = 260;
 
 /**
  * The room timeline. With `windowed` on (the default) it renders only the rows in and near the
@@ -183,6 +189,9 @@ export class MessageListComponent extends MessageListBase {
   private jumping = false;
   /** Ends {@link jumping} once the jump has been still for the idle window. */
   private jumpIdle: ReturnType<typeof setTimeout> | null = null;
+  /** Each row's id by key as of the last update, to follow a send's echo renaming its row. */
+  private keyIds: ReadonlyMap<string, string> = new Map();
+  private readonly enterTimers = new Set<ReturnType<typeof setTimeout>>();
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -327,6 +336,9 @@ export class MessageListComponent extends MessageListBase {
   /** Reactive mirror of `!atBottom` for the template's jump-to-latest pill. */
   protected readonly notAtBottom = computed(() => !this.atBottomSig());
 
+  /** Keys of rows that arrived live; each slides in and loses its mark after {@link ENTER_CLEAR_MS}. */
+  protected readonly enteringKeys = signal<ReadonlySet<string>>(new Set());
+
   private lastChrome = '';
 
   constructor() {
@@ -346,6 +358,8 @@ export class MessageListComponent extends MessageListBase {
       if (!el) {
         return;
       }
+      const rows = untracked(() => this.rows());
+      const previousKeys = this.followRenames(rows);
       const ids = untracked(() => this.ids());
       const firstBefore = this.lastFirstRowId;
       this.lastFirstRowId = ids[0] ?? null;
@@ -412,6 +426,13 @@ export class MessageListComponent extends MessageListBase {
       const newest = latest?.id ?? '';
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
+      if (hadPrevious && !this.jumping && !prefersReducedMotion()) {
+        this.markEntering(
+          rows,
+          previousKeys,
+          untracked(() => this.atBottomSig()),
+        );
+      }
       if (newestChanged) {
         this.backfillRounds = 0;
         if (
@@ -544,6 +565,7 @@ export class MessageListComponent extends MessageListBase {
       this.ro?.disconnect();
       if (this.scrollIdle !== null) clearTimeout(this.scrollIdle);
       if (this.jumpIdle !== null) clearTimeout(this.jumpIdle);
+      this.enterTimers.forEach(clearTimeout);
     });
   }
 
@@ -572,6 +594,10 @@ export class MessageListComponent extends MessageListBase {
     this.atBottomSig.set(true);
     // Forget the old room's measured heights and scroll position: the new room starts from the top.
     this.measured.clear();
+    this.keyIds = new Map();
+    this.enterTimers.forEach(clearTimeout);
+    this.enterTimers.clear();
+    this.enteringKeys.set(new Set());
     this.bodyOverflow.clear();
     this.scrollActivity.reset();
     this.fling.end();
@@ -581,6 +607,72 @@ export class MessageListComponent extends MessageListBase {
     this.rowEstimate.set(ESTIMATED_ROW_HEIGHT_PX);
     this.scrollTop.set(0);
     this.heightVersion.update((v) => v + 1);
+  }
+
+  /**
+   * Move what the list keeps by row id to the new id of a row whose key stayed (a send's remote
+   * echo, a run of system lines that grew), before windowing reads it. Returns the previous keys.
+   */
+  private followRenames(
+    rows: readonly MessageRow[],
+  ): ReadonlyMap<string, string> {
+    const previous = this.keyIds;
+    this.keyIds = new Map(rows.map((row) => [row.key, row.id]));
+    const renamed = new Map<string, string>();
+    for (const [key, id] of this.keyIds) {
+      const old = previous.get(key);
+      if (old !== undefined && old !== id) renamed.set(old, id);
+    }
+    if (renamed.size === 0) return previous;
+    const expanded = untracked(() => this.expandedRuns());
+    for (const [old, id] of renamed) {
+      const height = this.measured.get(old);
+      if (height !== undefined) {
+        this.measured.delete(old);
+        this.measured.set(id, height);
+      }
+      if (expanded.has(old)) {
+        this.toggleRun(old);
+        this.toggleRun(id);
+      }
+    }
+    // The row element stays (tracked by key): its next measurement belongs to the new id.
+    for (const [el, old] of this.observed) {
+      const id = renamed.get(old);
+      if (id !== undefined) this.observed.set(el, id);
+    }
+    this.heightVersion.update((v) => v + 1);
+    return previous;
+  }
+
+  /**
+   * Mark the rows appended below the previous update's rows to slide in: all of them at the
+   * bottom, only your own while scrolled up. A list with no previous row left (a replaced window)
+   * marks none.
+   */
+  private markEntering(
+    rows: readonly MessageRow[],
+    previous: ReadonlyMap<string, string>,
+    atBottom: boolean,
+  ): void {
+    let first = rows.length;
+    while (first > 0 && !previous.has(rows[first - 1].key)) first--;
+    if (first === 0) return;
+    const keys = rows
+      .slice(first)
+      .filter((row) => atBottom || row.isOwn)
+      .map((row) => row.key);
+    if (keys.length === 0) return;
+    this.enteringKeys.update((marked) => new Set([...marked, ...keys]));
+    const timer = setTimeout(() => {
+      this.enterTimers.delete(timer);
+      this.enteringKeys.update((marked) => {
+        const next = new Set(marked);
+        for (const key of keys) next.delete(key);
+        return next;
+      });
+    }, ENTER_CLEAR_MS);
+    this.enterTimers.add(timer);
   }
 
   /**
