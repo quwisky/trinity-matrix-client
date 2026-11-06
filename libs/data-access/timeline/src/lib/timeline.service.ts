@@ -463,15 +463,22 @@ export class TimelineService {
     }
   };
 
-  // The event carries only the changed member; re-read the room's whole typing set so the
-  // signal reflects everyone typing, not one delta.
+  // The m.typing event lists everyone typing, so the names come from its user ids.
   private readonly onTyping = (
-    _event: MatrixEvent,
+    event: MatrixEvent,
     member: RoomMember,
   ): void => {
-    if (member.roomId === this.roomId) {
-      this.refreshTyping();
+    const ctx = member.roomId === this.roomId ? this.openContext() : null;
+    if (!ctx) {
+      return;
     }
+    const selfId = ctx.client.getUserId();
+    const userIds = event.getContent<{ user_ids?: string[] }>().user_ids ?? [];
+    this.setTypingNames(
+      userIds
+        .filter((id) => id !== selfId)
+        .map((id) => ctx.room.getMember(id)?.name ?? id),
+    );
   };
 
   /** The window regained focus: send the read receipt held back while unfocused. */
@@ -961,15 +968,27 @@ export class TimelineService {
   private refreshTyping(): void {
     const ctx = this.openContext();
     if (!ctx) {
-      this._typingNames.set([]);
+      this.setTypingNames([]);
       return;
     }
     const selfId = ctx.client.getUserId();
-    const names = ctx.room
-      .getMembers()
-      .filter((member) => member.typing && member.userId !== selfId)
-      .map((member) => member.name);
-    this._typingNames.set(names);
+    this.setTypingNames(
+      ctx.room
+        .getMembers()
+        .filter((member) => member.typing && member.userId !== selfId)
+        .map((member) => member.name),
+    );
+  }
+
+  /** Publish only a changed list, so an unchanged typing event wakes no consumer. */
+  private setTypingNames(names: string[]): void {
+    const current = this._typingNames();
+    if (
+      names.length !== current.length ||
+      names.some((name, i) => name !== current[i])
+    ) {
+      this._typingNames.set(names);
+    }
   }
 
   /** The raw (effective) JSON of an event for "view source", or null if not loaded. */

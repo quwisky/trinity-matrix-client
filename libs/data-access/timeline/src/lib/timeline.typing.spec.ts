@@ -35,6 +35,10 @@ beforeEach(() => {
 });
 afterEach(() => vi.restoreAllMocks());
 
+const typingEvent = (...userIds: string[]) => ({
+  getContent: () => ({ user_ids: userIds }),
+});
+
 describe('typing', () => {
   /** Open a room with the given members and return handles for typing assertions. */
   function setupTyping(members: ReturnType<typeof fakeMember>[] = []) {
@@ -243,19 +247,43 @@ describe('typing', () => {
 
     // Fire the RoomMember.typing listener the service registered in open().
     client.handlers.get('RoomMember.typing')?.(
-      {},
+      typingEvent('@alice:hs', '@me:hs'),
       fakeMember('@alice:hs', true, 'Alice'),
     );
 
     expect(svc.typingNames()).toEqual(['Alice']);
   });
 
+  it("reads the event's user ids instead of scanning the members, and keeps the list when unchanged", () => {
+    const members = [fakeMember('@alice:hs', true, 'Alice')];
+    const { svc, client } = setupTyping(members);
+    const getMembers = vi.spyOn(
+      client.getRoom() as { getMembers: () => unknown },
+      'getMembers',
+    );
+    const fire = () =>
+      client.handlers.get('RoomMember.typing')?.(
+        typingEvent('@alice:hs'),
+        members[0],
+      );
+
+    fire();
+    const first = svc.typingNames();
+    fire();
+
+    expect(first).toEqual(['Alice']);
+    expect(svc.typingNames()).toBe(first);
+    expect(getMembers).not.toHaveBeenCalled();
+  });
+
   it('ignores typing changes from other rooms', () => {
     const { svc, client } = setupTyping([fakeMember('@alice:hs', true)]);
-    client.handlers.get('RoomMember.typing')?.(
-      {},
-      { userId: '@x:hs', typing: true, name: 'X', roomId: '!other:hs' },
-    );
+    client.handlers.get('RoomMember.typing')?.(typingEvent('@x:hs'), {
+      userId: '@x:hs',
+      typing: true,
+      name: 'X',
+      roomId: '!other:hs',
+    });
     expect(svc.typingNames()).toEqual([]);
   });
 });
