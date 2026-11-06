@@ -4,6 +4,7 @@ import {
   Injector,
   computed,
   inject,
+  type Type,
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { filter, take, takeUntil } from 'rxjs';
@@ -14,6 +15,7 @@ import { runWithBusy } from '@trinity/util/ui';
 import type { MemberInfoComponent } from '../member-info/member-info.component';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { UserCardComponent } from '../user-card/user-card.component';
+import { LazyPanelOpener } from './lazy-panel-opener';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { ShellStatusService } from './shell-status.service';
@@ -30,6 +32,9 @@ export class MemberActionsService {
   private readonly rooms = inject(RoomLibraryService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly panels = new LazyPanelOpener(this.destroyRef, (message) =>
+    this.status.showError(message),
+  );
   private readonly injector = inject(Injector);
 
   /** Member-list row: open the member's info over the list; "Message" opens/reuses a DM. */
@@ -37,7 +42,7 @@ export class MemberActionsService {
     const accountId = this.store.activeAccountId();
     const roomId = this.store.activeRoomId();
     if (accountId && roomId) {
-      void this.openMemberInfo(member, { accountId, roomId });
+      this.openMemberInfo(member, { accountId, roomId });
     }
   }
 
@@ -53,18 +58,26 @@ export class MemberActionsService {
    * navigation does not close overlays, so when another Room or Account becomes active this
    * closes it, and nothing it started runs as the new Account.
    */
-  private async openMemberInfo(
+  private openMemberInfo(
     member: MemberSummary,
     owner: ExactRoomSelection,
-  ): Promise<void> {
-    const { MemberInfoComponent } =
-      await import('../member-info/member-info.component').catch(() => ({
-        MemberInfoComponent: null,
-      }));
-    if (!MemberInfoComponent) {
-      void this.status.showError('Could not open member info.');
-      return;
-    }
+  ): void {
+    void this.panels.open(
+      () => import('../member-info/member-info.component'),
+      'Could not open member info. Reload to try again.',
+      () =>
+        this.store.activeAccountId() === owner.accountId &&
+        this.store.activeRoomId() === owner.roomId,
+      ({ MemberInfoComponent }) =>
+        this.showMemberInfo(MemberInfoComponent, member, owner),
+    );
+  }
+
+  private showMemberInfo(
+    MemberInfoComponent: Type<MemberInfoComponent>,
+    member: MemberSummary,
+    owner: ExactRoomSelection,
+  ): void {
     const ref = this.dialog.open<string, MemberInfoComponent>(
       MemberInfoComponent,
       {

@@ -882,6 +882,18 @@ describe('RoomsPage rendered inbox', () => {
     expect(root.querySelector('trn-sidebar-user-panel')).not.toBeNull();
   });
 
+  it('holds the column with a placeholder until the inbox has loaded', () => {
+    const { fixture, inboxView } = buildPage();
+    fixture.detectChanges();
+    inboxView.set(true);
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+
+    const placeholder = root.querySelector('[data-testid="inbox-placeholder"]');
+    expect(placeholder?.classList.contains('shell-side__rooms')).toBe(true);
+    expect(root.querySelector('trn-channel-sidebar')).toBeNull();
+  });
+
   function inboxFrom(fixture: ComponentFixture<RoomsPage>) {
     return fixture.debugElement.query(By.directive(NotificationInboxComponent))
       .componentInstance as NotificationInboxComponent;

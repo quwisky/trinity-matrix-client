@@ -14,9 +14,10 @@ import {
   TrnAlertService,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
-import { filter, from, map, Observable, of, switchMap, throwError } from 'rxjs';
+import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
 import { runWithBusy } from '@trinity/util/ui';
+import { LazyPanelOpener } from './lazy-panel-opener';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -48,6 +49,9 @@ export class SpaceActionsService {
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly panels = new LazyPanelOpener(this.destroyRef, (message) =>
+    this.status.showError(message),
+  );
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
   onCreateSpace(): void {
@@ -328,10 +332,15 @@ export class SpaceActionsService {
     spaceId: string,
     initialSection?: 'general' | 'contents' | 'members',
   ): void {
-    from(import('../space-settings/space-settings.component'))
-      .pipe(
-        switchMap(({ SpaceSettingsComponent }) =>
-          this.dialog.openAndWait$(SpaceSettingsComponent, {
+    void this.panels.open(
+      () => import('../space-settings/space-settings.component'),
+      'Could not open space settings. Reload to try again.',
+      () =>
+        this.store.activeAccountId() === accountId &&
+        this.store.activeSpaceId() === spaceId,
+      ({ SpaceSettingsComponent }) =>
+        this.dialog
+          .openAndWait$(SpaceSettingsComponent, {
             ariaLabel: 'Space settings',
             autoFocus: '[data-autofocus]',
             dismissGuard: (component) =>
@@ -342,14 +351,10 @@ export class SpaceActionsService {
               spaceDisplayName: this.vm.activeSpaceName(),
               initialSection,
             },
-          }),
-        ),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        error: () =>
-          void this.status.showError('Could not open space settings.'),
-      });
+          })
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(),
+    );
   }
 
   /** Space overflow "Add existing rooms": link rooms the user is already in. */

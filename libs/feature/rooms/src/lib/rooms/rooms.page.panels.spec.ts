@@ -202,6 +202,43 @@ describe('RoomsPage panels, pins and media', () => {
     });
   });
 
+  it('opens room settings once when it is requested twice before it loads', async () => {
+    const shell = build();
+    roomsSignal.set([
+      roomSummary({ id: '!r:hs', accountId: '@me:hs', name: 'General' }),
+    ]);
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+
+    shell.rooms.onOpenRoomSettings();
+    shell.rooms.onOpenRoomSettings();
+    await vi.dynamicImportSettled();
+
+    expect(
+      dialogOpen.mock.calls.filter(([c]) => c === RoomSettingsComponent),
+    ).toHaveLength(1);
+  });
+
+  it('does not open room settings for a room the user left while it loaded', async () => {
+    const shell = build();
+    roomsSignal.set([
+      roomSummary({ id: '!r:hs', accountId: '@me:hs', name: 'General' }),
+      roomSummary({ id: '!other:hs', accountId: '@me:hs', name: 'Other' }),
+    ]);
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+
+    shell.rooms.onOpenRoomSettings();
+    setRouteRoom('!other:hs');
+    await settleWorkspace();
+    await vi.dynamicImportSettled();
+
+    expect(dialogOpen).not.toHaveBeenCalledWith(
+      RoomSettingsComponent,
+      expect.anything(),
+    );
+  });
+
   it('opens room settings at the given section', async () => {
     const shell = build();
     roomsSignal.set([
