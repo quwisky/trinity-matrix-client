@@ -60,12 +60,19 @@
           shape="row"
           [variant]="button.variant === 'danger' ? 'danger' : 'secondary'"
           [presentation]="button.variant === 'danger' ? 'ghost' : 'solid'"
+          [class]="
+            button.role === 'cancel'
+              ? 'justify-center! text-center! font-semibold'
+              : ''
+          "
           [disabled]="button.disabled"
           [attr.data-trn-variant]="button.variant ?? 'neutral'"
           [attr.data-testid]="button.testId"
           (click)="picked.emit(button)"
         >
-          @if (button.icon) {
+          @if (button.role === 'cancel') {
+            <!-- A centred label alone, like the dialog shell's Cancel block. -->
+          } @else if (button.icon) {
             <trn-icon [name]="button.icon" size="xl" />
           } @else if (group.icons) {
             <span class="size-6 shrink-0"></span>

@@ -31,6 +31,31 @@ describe('AccountPickerComponent', () => {
     ).toBeTruthy();
   });
 
+  it('puts the check after the label, trailing the row', async () => {
+    const { container } = await renderPicker();
+
+    const alice = row(container, '@alice:hs');
+    const label = alice.querySelector('trn-account-pick-label')!;
+    const check = alice.querySelector('trn-icon[name="check"]')!;
+    expect(
+      label.compareDocumentPosition(check) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(alice.querySelector('.account-pick__indicator')).toBeNull();
+  });
+
+  it('draws the rows as inset rows in a sheet, keeping the checkbox contract', async () => {
+    const { container } = await renderPicker('@alice:hs', ACCOUNTS, 'sheet');
+
+    const group = container.querySelector('[trnInsetGroup]');
+    expect(group).not.toBeNull();
+    const bob = row(container, '@bob:hs');
+    expect(group?.contains(bob)).toBe(true);
+    expect(bob.hasAttribute('trninsetrow')).toBe(true);
+    expect(bob.getAttribute('role')).toBe('checkbox');
+    expect(bob.getAttribute('aria-checked')).toBe('true');
+    expect(container.querySelectorAll('trn-inset-divider')).toHaveLength(2);
+  });
+
   let selected: ReturnType<typeof signal<ReadonlySet<string>>>;
   let toggle: Mock;
   let close: Mock;
@@ -44,6 +69,7 @@ describe('AccountPickerComponent', () => {
   function renderPicker(
     activeUserId: string | null = '@alice:hs',
     accounts: AccountSummary[] = ACCOUNTS,
+    presentation: 'dialog' | 'sheet' = 'dialog',
   ) {
     return render(AccountPickerComponent, {
       inputs: { accounts, activeUserId },
@@ -60,7 +86,7 @@ describe('AccountPickerComponent', () => {
           })),
           toggleAccount: toggle,
         }),
-        { provide: TrnDialogRef, useValue: { close } },
+        { provide: TrnDialogRef, useValue: { close, presentation } },
       ],
     });
   }

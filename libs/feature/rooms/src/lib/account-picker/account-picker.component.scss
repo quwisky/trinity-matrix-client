@@ -26,17 +26,9 @@
   // The active account is always shown, so its row is disabled to stop it being unticked.
   // Undo the disabled dimming: greying out the one row that is guaranteed present reads as
   // "excluded", the exact opposite of what it means.
-  .account-pick[data-disabled] {
+  .account-pick[data-disabled],
+  [trnInsetRow][data-disabled] {
     opacity: 1;
     cursor: default;
-  }
-
-  .account-pick__indicator {
-    order: 3;
-    display: flex;
-    flex: 0 0 16px;
-    align-items: center;
-    justify-content: center;
-    color: var(--trinity-link);
   }
 }

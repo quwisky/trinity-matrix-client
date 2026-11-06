@@ -152,6 +152,21 @@ test.describe('Mobile composer insert sheet', () => {
       await expect(trigger).toHaveAttribute('aria-expanded', 'false');
     });
 
+    test('ends with a Cancel card that dismisses and restores focus to +', async ({
+      page,
+    }) => {
+      await openSeededRoom(page);
+      const trigger = page.getByTestId('composer-insert');
+      await trigger.click();
+      const dialog = page.getByRole('dialog', { name: 'Add to message' });
+      const sheet = dialog.getByTestId('action-sheet-surface');
+      await sheetAtRest(sheet);
+
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      await expect(sheet).toBeHidden();
+      await expect(trigger).toBeFocused();
+    });
+
     test('puts Format in its own card with a chevron to its sheet', async ({
       page,
     }) => {

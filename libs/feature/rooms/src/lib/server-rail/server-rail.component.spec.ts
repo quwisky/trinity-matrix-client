@@ -960,6 +960,31 @@ describe('unread chats beyond the cap, on a phone', () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it('lists the chats in one inset card with the Recent link in its own, and offers Cancel', async () => {
+    platform.mobile = true;
+    const { fixture, trigger } = await renderOverflow();
+    trigger.click();
+    await fixture.whenStable();
+
+    const groups = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-testid=rail-overflow-list] [trnInsetGroup]',
+      ),
+    ];
+    expect(groups.length).toBeGreaterThanOrEqual(2);
+    expect(
+      groups[0].querySelectorAll('[data-testid=rail-overflow-chat]'),
+    ).toHaveLength(3);
+    const dividers = groups[0].querySelectorAll('trn-inset-divider');
+    expect(dividers).toHaveLength(2);
+    expect(dividers[0].classList.contains('ms-4')).toBe(true);
+    const recent = groups[1].querySelector(
+      '[data-testid=rail-overflow-show-recent]',
+    );
+    expect(recent?.hasAttribute('trninsetrow')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+  });
+
   it('names the sheet by its live title as the count changes', async () => {
     platform.mobile = true;
     const { fixture, trigger } = await renderOverflow();
