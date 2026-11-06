@@ -76,12 +76,14 @@ export class SelectedRoomLibraryService {
   private readonly sources = new SelectedAccountSourceRegistry(
     this.matrix,
     (domains) => this.scheduleProjection(domains),
+    () => this.projectionFlusher.flush(),
   );
+  // One sync's events span several tasks; project once per sync, not once per room.
   private readonly projectionFlusher = coalesce(() => {
     const domains = new Set(this.pendingDomains);
     this.pendingDomains.clear();
     this.publishSelection(domains);
-  });
+  }, 100);
   private watcher: EffectRef | null = null;
 
   private readonly _view = signal<SelectedRoomLibraryView>({

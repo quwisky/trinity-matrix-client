@@ -69,6 +69,15 @@ function timelineEvent(over: {
   };
 }
 
+/** Wait out the room list's coalescing window (`coalesceMs`), on real timers. */
+const windowEnds = () =>
+  new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+/** The event a `MatrixEventEvent.Decrypted` listener receives, in room `!a:hs`. */
+function decryptedEvent(id: string) {
+  return { getId: () => id, getRoomId: () => '!a:hs', threadRootId: undefined };
+}
+
 // Minimal fakes shaped like the bits of matrix-js-sdk that RoomLibraryService reads.
 function fakeRoom(opts: {
   roomId: string;
@@ -332,12 +341,12 @@ describe('RoomLibraryService', () => {
     // A member event for someone we have no DM with must NOT rebuild the whole list.
     const callsBefore = getRoomsCalls;
     handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@stranger:hs' });
-    await Promise.resolve();
+    await windowEnds();
     expect(getRoomsCalls).toBe(callsBefore);
 
     peer.avatarMxc = 'mxc://hs/bob';
     handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@bob:hs' });
-    await Promise.resolve(); // the rebuild is coalesced into a microtask
+    await windowEnds();
 
     expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
   });
@@ -417,7 +426,7 @@ describe('RoomLibraryService', () => {
     const preview = () => svc.rooms()[0].lastMessage;
     const pageIn = async () => {
       handlers.get(RoomEvent.Timeline)?.({}, room, true);
-      await Promise.resolve(); // the rebuild is coalesced into a microtask
+      await windowEnds();
     };
     expect(preview()).not.toBe('');
 
@@ -816,7 +825,7 @@ describe('RoomLibraryService', () => {
           ? { getContent: () => ({ unread: true }) }
           : undefined;
       handlers.get(RoomEvent.AccountData)?.();
-      await Promise.resolve(); // the rebuild is coalesced into a microtask
+      await windowEnds();
 
       expect(svc.rooms()[0].markedUnread).toBe(true);
     });
@@ -1255,7 +1264,7 @@ describe('RoomLibraryService', () => {
 
     expect(room('!c:hs')?.lastMessage).toBe('');
     // The unanswered room holds the batch only until the cap; the answered one then shows.
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1600);
     expect(room('!p:hs')?.lastMessage).toBe('hello all');
     expect(room('!p:hs')?.encrypted).toBe(false);
     // Unanswered still: no preview yet.
@@ -1295,7 +1304,7 @@ describe('RoomLibraryService', () => {
       resolve(true);
       await new Promise((r) => setTimeout(r));
     }
-    await new Promise((r) => setTimeout(r));
+    await new Promise((r) => setTimeout(r, 100));
 
     expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
     expect(getRooms.mock.calls.length - initial).toBe(1);
@@ -1322,11 +1331,11 @@ describe('RoomLibraryService', () => {
     svc.runProjection().subscribe();
     const initial = getRooms.mock.calls.length;
 
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1600);
     expect(svc.rooms().filter((r) => r.encrypted)).toHaveLength(3);
 
     landed[0](true);
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(110);
 
     expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
     expect(getRooms.mock.calls.length - initial).toBeLessThanOrEqual(2);
@@ -1480,7 +1489,7 @@ describe('RoomLibraryService', () => {
       svc.runProjection().subscribe();
       const initial = getRooms.mock.calls.length;
       for (let i = 0; i < 5; i++) await Promise.resolve();
-      await new Promise((resolve) => setTimeout(resolve));
+      await new Promise((resolve) => setTimeout(resolve, 150));
       expect(
         svc.rooms().every((r) => r.encrypted === (stateEncrypted || stored)),
       ).toBe(true);
@@ -1593,12 +1602,17 @@ describe('RoomLibraryService', () => {
 
   it('refreshes unread on MatrixEventEvent.Decrypted (encrypted message decrypts late)', async () => {
     const unread = { count: 0 };
-    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    const room = {
+      ...fakeRoom({ roomId: '!a:hs', name: 'a' }),
+      hasUserReadEvent: () => false,
+    };
     room.getUnreadNotificationCount = (type?: string) =>
       type === 'highlight' ? 0 : unread.count;
-    const handlers = new Map<string, () => void>();
+    const handlers = new Map<string, (event?: unknown) => void>();
     const client = {
       baseUrl: 'https://hs.example',
+      getUserId: () => '@me:hs',
+      getRoom: () => room,
       getRooms: () => [room],
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
@@ -1610,10 +1624,69 @@ describe('RoomLibraryService', () => {
     // The count only settles once the ciphertext decrypts, which fires Decrypted
     // (not a fresh Sync) — relying on Sync alone would drop the increment.
     unread.count = 1;
-    handlers.get(MatrixEventEvent.Decrypted)?.();
-    await Promise.resolve();
+    handlers.get(MatrixEventEvent.Decrypted)?.(decryptedEvent('$new'));
+    await vi.waitFor(() => expect(svc.totalUnread()).toBe(1));
+  });
 
-    expect(svc.totalUnread()).toBe(1);
+  describe('when an event decrypts', () => {
+    function decryptionSetup(read: readonly string[]) {
+      vi.useFakeTimers();
+      const events = ['$old', '$older-message', '$latest'].map((id) => ({
+        ...timelineEvent({ body: id }),
+        getId: () => id,
+      }));
+      const room = {
+        ...fakeRoom({ roomId: '!a:hs', name: 'a', events }),
+        hasUserReadEvent: (_userId: string, eventId: string) =>
+          read.includes(eventId),
+      };
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      let builds = 0;
+      const client = {
+        baseUrl: 'https://hs.example',
+        getUserId: () => '@me:hs',
+        getRoom: (id: string) => (id === '!a:hs' ? room : null),
+        getRooms: () => {
+          builds++;
+          return [room];
+        },
+        on: (event: string, cb: (...args: unknown[]) => void) =>
+          handlers.set(event, cb),
+        off: vi.fn(),
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      const decrypt = async (id: string): Promise<number> => {
+        const before = builds;
+        handlers.get(MatrixEventEvent.Decrypted)?.(decryptedEvent(id));
+        await vi.advanceTimersByTimeAsync(200);
+        return builds - before;
+      };
+      return { decrypt };
+    }
+
+    it('does not rebuild for a read event older than the preview, as when scrolling back', async () => {
+      const { decrypt } = decryptionSetup([
+        '$old',
+        '$older-message',
+        '$latest',
+      ]);
+      expect(await decrypt('$old')).toBe(0);
+    });
+
+    it('rebuilds for an unread event, whose decryption raises the count', async () => {
+      const { decrypt } = decryptionSetup(['$old']);
+      expect(await decrypt('$older-message')).toBe(1);
+    });
+
+    it('rebuilds for the event the preview shows, even once read', async () => {
+      const { decrypt } = decryptionSetup([
+        '$old',
+        '$older-message',
+        '$latest',
+      ]);
+      expect(await decrypt('$latest')).toBe(1);
+    });
   });
 
   it('rebuilds on MatrixEventEvent.Replaced, which fires once a cancelled edit is unwound', async () => {
@@ -1637,7 +1710,7 @@ describe('RoomLibraryService', () => {
 
     events.pop();
     handlers.get(MatrixEventEvent.Replaced)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms()[0]?.lastMessage).toBe('server text');
   });
@@ -1660,7 +1733,7 @@ describe('RoomLibraryService', () => {
       fakeRoom({ roomId: '!b:hs', name: 'b', unread: 5 }),
     ];
     handlers.get(ClientEvent.Room)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
     expect(svc.totalUnread()).toBe(7);
@@ -2123,7 +2196,7 @@ describe('RoomLibraryService setFavourite', () => {
       fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
     ]);
     handlers.get(RoomEvent.Tags)?.();
-    await Promise.resolve();
+    await windowEnds();
     expect(svc.rooms()[0].lowPriority).toBe(true);
 
     // Now the tag is gone server-side, and only the post-write refresh can pick that up.
@@ -2143,7 +2216,7 @@ describe('RoomLibraryService setFavourite', () => {
 
     setRooms([fakeRoom({ roomId: '!a:hs', name: 'general', favourite: true })]);
     handlers.get(RoomEvent.Tags)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms()[0].favourite).toBe(true);
   });

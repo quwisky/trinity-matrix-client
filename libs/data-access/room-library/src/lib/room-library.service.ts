@@ -44,6 +44,7 @@ import {
 import {
   buildRoomSummary,
   compareRoomSummaries,
+  decryptionChangesRow,
   directMapOf,
   isMarkedUnread,
 } from './room-projection';
@@ -258,6 +259,18 @@ export class RoomLibraryService {
     }
   };
 
+  /**
+   * In an encrypted room the SDK raises the unread count, and the preview can show the message,
+   * only once it decrypts, after the Sync that carried it. History decrypting on a scroll-back
+   * changes neither, so it does not rebuild the list.
+   */
+  private readonly onDecrypted = (event: MatrixEvent): void => {
+    const client = this.projection.client();
+    if (client && decryptionChangesRow(client, event)) {
+      this.projection.schedule();
+    }
+  };
+
   /** Who is typing, per room; see {@link RoomTyping.typingByRoom}. */
   readonly typingByRoom = this.typing.typingByRoom;
 
@@ -293,12 +306,8 @@ export class RoomLibraryService {
       ClientEvent.Room,
       RoomEvent.Name,
       RoomEvent.MyMembership,
-      // Keep unread badges live. In an encrypted room the notification count is only recomputed
-      // once the message DECRYPTS (async), after the Sync that carried the ciphertext, so Sync
-      // alone drops those increments. Decrypted (re-emitted at the client) fires then. Receipt
-      // fires when a room is read and its count clears. (UnreadNotifications is Room-only, not
-      // re-emitted here.)
-      MatrixEventEvent.Decrypted,
+      // Receipt fires when a room is read and its count clears. (UnreadNotifications is
+      // Room-only, not re-emitted here.) Decrypted is bound below.
       // Which edit the preview resolves to can change with no Sync: a cancelled echo.
       MatrixEventEvent.Replaced,
       RoomEvent.Receipt,
@@ -310,16 +319,20 @@ export class RoomLibraryService {
       RoomEvent.AccountData,
     ],
     rebuild: () => this.refresh(),
+    // One sync's events span several tasks; rebuild once per sync, not once per room.
+    coalesceMs: 100,
     // Bound by hand because typing has its own per-Room coalescer and member changes only
     // rebuild the Room list when a DM peer's profile affects its summary. Room
     // Administration owns the member-roster projection itself.
     bind: (client) => {
+      client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.on(RoomEvent.Timeline, this.onPagedIn);
       client.on(RoomStateEvent.Members, this.onMemberChanged);
       client.on(RoomEvent.MyMembership, this.typing.onMyMembership);
       client.on(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     unbind: (client) => {
+      client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.off(RoomEvent.Timeline, this.onPagedIn);
       client.off(RoomStateEvent.Members, this.onMemberChanged);
       client.off(RoomEvent.MyMembership, this.typing.onMyMembership);

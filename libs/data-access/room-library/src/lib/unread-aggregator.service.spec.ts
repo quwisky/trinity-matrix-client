@@ -1,7 +1,7 @@
 import { ApplicationRef, WritableSignal, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ClientEvent, MatrixEventEvent, RoomEvent } from 'matrix-js-sdk';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UnreadAggregatorService } from './unread-aggregator.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
@@ -42,6 +42,18 @@ function fakeRoom(
             },
           ],
     getMxcAvatarUrl: () => opts.avatarMxc ?? null,
+    /** Event ids in the live timeline, oldest first, and those the user has read. */
+    timeline: [] as string[],
+    read: [] as string[],
+    getLiveTimeline: () => ({
+      getEvents: () =>
+        room.timeline.map((id) => ({
+          getId: () => id,
+          getType: () => 'm.room.message',
+        })),
+    }),
+    hasUserReadEvent: (_userId: string, eventId: string) =>
+      room.read.includes(eventId),
     getAvatarFallbackMember: () => undefined,
     getAccountData: (type: string) =>
       opts.markedUnread && type === 'm.marked_unread'
@@ -59,6 +71,8 @@ function fakeClient(
   const handlers = new Map<string, Set<Listener>>();
   return {
     getRooms: () => rooms,
+    getUserId: () => '@me:hs',
+    getRoom: (id: string) => rooms.find((room) => room.roomId === id) ?? null,
     getAccountData: (type: string) =>
       type === 'm.direct' ? { getContent: () => direct } : undefined,
     on(evt: string, handler: Listener) {
@@ -69,8 +83,8 @@ function fakeClient(
     off(evt: string, handler: Listener) {
       handlers.get(evt)?.delete(handler);
     },
-    emit(evt: string) {
-      handlers.get(evt)?.forEach((handler) => handler());
+    emit(evt: string, ...args: unknown[]) {
+      handlers.get(evt)?.forEach((handler) => handler(...args));
     },
     listenerCount() {
       let total = 0;
@@ -101,16 +115,23 @@ function harness(): {
   });
   const svc = TestBed.inject(UnreadAggregatorService);
   const appRef = TestBed.inject(ApplicationRef);
-  // Run the reconcile effect, then drain the coalescing microtask that writes totals.
+  // Run the reconcile effect, then wait out the coalescing window that writes totals.
+  vi.useFakeTimers();
   const flush = async (): Promise<void> => {
     appRef.tick();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(100);
   };
   return { svc, accountIds, clients, flush };
 }
 
+/** The event a `MatrixEventEvent.Decrypted` listener receives. */
+function decrypted(room: { roomId: string }, id: string) {
+  return { getId: () => id, getRoomId: () => room.roomId };
+}
+
 describe('UnreadAggregatorService', () => {
+  afterEach(() => vi.useRealTimers());
+
   it('sums unread across every signed-in account', async () => {
     const { svc, accountIds, clients, flush } = harness();
     clients.set('@a:hs', fakeClient([fakeRoom(3)]));
@@ -186,10 +207,52 @@ describe('UnreadAggregatorService', () => {
     expect(svc.totalUnread()).toBe(0);
 
     room.unread = 1;
-    client.emit(MatrixEventEvent.Decrypted);
+    room.timeline = ['$new'];
+    client.emit(MatrixEventEvent.Decrypted, decrypted(room, '$new'));
     await flush();
 
     expect(svc.totalUnread()).toBe(1);
+  });
+
+  it('does not recompute when history the user has read decrypts', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(0);
+    room.timeline = ['$old', '$latest'];
+    room.read = ['$old', '$latest'];
+    const client = fakeClient([room]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    const before = svc.unreadByAccount();
+
+    room.unread = 4; // would show if the list were recomputed
+    client.emit(MatrixEventEvent.Decrypted, decrypted(room, '$old'));
+    await flush();
+
+    expect(svc.unreadByAccount()).toBe(before);
+  });
+
+  it('recomputes once for events spread over several tasks, and at once on Sync', async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(1);
+    const client = fakeClient([room]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+
+    room.unread = 2;
+    client.emit(RoomEvent.Receipt);
+    await vi.advanceTimersByTimeAsync(40);
+    client.emit(RoomEvent.Receipt);
+    await vi.advanceTimersByTimeAsync(40);
+    expect(svc.totalUnread()).toBe(1);
+    await vi.advanceTimersByTimeAsync(20);
+    expect(svc.totalUnread()).toBe(2);
+
+    room.unread = 3;
+    client.emit(RoomEvent.Receipt);
+    client.emit(ClientEvent.Sync);
+    expect(svc.totalUnread()).toBe(3);
   });
 
   it('rebuilds the totals once for a burst of events fired within one task', async () => {
@@ -211,9 +274,9 @@ describe('UnreadAggregatorService', () => {
 
     // Several unread-affecting events fire synchronously within one task.
     room.unread = 9;
-    client.emit(ClientEvent.Sync);
-    client.emit(ClientEvent.Sync);
     client.emit(RoomEvent.Receipt);
+    client.emit(RoomEvent.Receipt);
+    client.emit(RoomEvent.MyMembership);
     await flush();
 
     // The coalescer collapses the burst: one rebuild, one getRooms read — not one per event.

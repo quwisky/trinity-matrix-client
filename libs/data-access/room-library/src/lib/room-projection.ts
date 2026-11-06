@@ -2,6 +2,7 @@ import {
   EventType,
   NotificationCountType,
   type MatrixClient,
+  type MatrixEvent,
   type Room,
 } from 'matrix-js-sdk';
 import {
@@ -86,6 +87,30 @@ function lastMessageOf(
     }
   }
   return { text: '', mark: null };
+}
+
+/**
+ * Whether a decrypted event can change its room's row: no newer message in the live timeline
+ * already supplies the preview, or it is unread, so the SDK raises the room's count for it (the
+ * same read check as its `fixNotificationCountOnDecryption`). History decrypting during a
+ * scroll-back is neither.
+ */
+export function decryptionChangesRow(
+  client: MatrixClient,
+  event: MatrixEvent,
+): boolean {
+  const room = client.getRoom(event.getRoomId());
+  const eventId = event.getId();
+  if (!room || !eventId) return false;
+  const events = room.getLiveTimeline().getEvents();
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (events[i].getId() === eventId) return true;
+    if (events[i].getType() === EventType.RoomMessage) break;
+  }
+  const userId = client.getUserId();
+  if (!userId) return false;
+  const reader = event.threadRootId ? room.getThread(event.threadRootId) : room;
+  return !!reader && !reader.hasUserReadEvent(userId, eventId);
 }
 
 /**

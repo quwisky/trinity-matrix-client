@@ -320,4 +320,97 @@ describe('ProjectionRuntime', () => {
       'sibling failed',
     );
   });
+
+  describe('with a flush window', () => {
+    afterEach(() => vi.useRealTimers());
+
+    function windowed(overrides: Partial<ProjectionDefinition> = {}) {
+      vi.useFakeTimers();
+      const runtime = new ProjectionRuntime();
+      const hooks = { invalidate: (): void => undefined, flush: () => {} };
+      const reconcile = vi.fn<ProjectionDefinition['reconcile']>(() => EMPTY);
+      const lease = runtime.activate(
+        definition({
+          coalesceMs: 100,
+          attach: (invalidate, flush) => {
+            hooks.invalidate = invalidate;
+            hooks.flush = flush;
+          },
+          reconcile,
+          ...overrides,
+        }),
+      );
+      return { runtime, hooks, reconcile, lease };
+    }
+
+    it('reconciles invalidations spread over several tasks once, within the window', async () => {
+      const { hooks, reconcile } = windowed();
+      expect(reconcile).toHaveBeenCalledTimes(1); // the first build stays synchronous
+
+      // The SDK awaits storage between rooms, so one sync spans several tasks.
+      hooks.invalidate();
+      await vi.advanceTimersByTimeAsync(30);
+      hooks.invalidate();
+      await vi.advanceTimersByTimeAsync(30);
+      hooks.invalidate();
+      expect(reconcile).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(40);
+      expect(reconcile).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(reconcile).toHaveBeenCalledTimes(2);
+    });
+
+    it('reconciles at once when flushed, as at the end of a sync', async () => {
+      const { hooks, reconcile } = windowed();
+      hooks.invalidate();
+      hooks.flush();
+      expect(reconcile).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(reconcile).toHaveBeenCalledTimes(2);
+      hooks.flush(); // nothing pending
+      expect(reconcile).toHaveBeenCalledTimes(2);
+    });
+
+    it('cancels the window timer on release', async () => {
+      const { hooks, reconcile, lease } = windowed();
+      hooks.invalidate();
+      lease.release();
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(reconcile).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('cancels the window timer on reattach and builds the new generation at once', async () => {
+      const { runtime, hooks, reconcile } = windowed();
+      hooks.invalidate();
+      runtime.transition(accountScope('@alice:example.org')).subscribe();
+      expect(reconcile).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(reconcile).toHaveBeenCalledTimes(2);
+    });
+
+    it('still drops a stale generation published after a later invalidation', async () => {
+      const published: number[] = [];
+      const contexts: ProjectionReconcileContext[] = [];
+      const { hooks } = windowed({
+        reconcile: (context) => {
+          contexts.push(context);
+          return new Observable<void>();
+        },
+      });
+      hooks.invalidate();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(contexts).toHaveLength(2);
+
+      hooks.invalidate();
+      expect(contexts[1].publish(() => published.push(2))).toBe(false);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(contexts[2].publish(() => published.push(3))).toBe(true);
+      expect(published).toEqual([3]);
+    });
+  });
 });

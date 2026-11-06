@@ -1,6 +1,7 @@
 import { computed, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
+  ClientEvent,
   MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
@@ -31,6 +32,8 @@ interface FakeRoomOptions {
   readonly lowPriority?: boolean;
   /** The body of a last message that arrived in clear. */
   readonly message?: string;
+  /** Event ids the user has read. */
+  readonly read?: readonly string[];
 }
 
 function fakeRoom(id: string, options: FakeRoomOptions = {}) {
@@ -54,12 +57,15 @@ function fakeRoom(id: string, options: FakeRoomOptions = {}) {
         ? (options.highlight ?? 0)
         : (options.unread ?? 0),
     getLastActiveTimestamp: () => 0,
+    hasUserReadEvent: (_userId: string, eventId: string) =>
+      options.read?.includes(eventId) ?? false,
     getLiveTimeline: () => ({
       getEvents: () =>
         options.message === undefined
           ? []
           : [
               {
+                getId: () => '$message',
                 getType: () => 'm.room.message',
                 getTs: () => 1,
                 getContent: () => ({ body: options.message }),
@@ -135,8 +141,8 @@ function fakeClient(
     off(event: string, handler: Listener) {
       if (handlers.get(event)?.delete(handler)) detachmentCount++;
     },
-    emit(event: string) {
-      handlers.get(event)?.forEach((handler) => handler());
+    emit(event: string, ...args: unknown[]) {
+      handlers.get(event)?.forEach((handler) => handler(...args));
     },
     listenerCount(event?: string) {
       if (event) return handlers.get(event)?.size ?? 0;
@@ -227,9 +233,9 @@ function setup(
   };
 }
 
+/** Wait out the selected projection's coalescing window, on real timers. */
 async function flushProjection(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 100));
 }
 
 describe('SelectedRoomLibraryService', () => {
@@ -418,7 +424,7 @@ describe('SelectedRoomLibraryService', () => {
       resolve(true);
       await new Promise((r) => setTimeout(r));
     }
-    await new Promise((r) => setTimeout(r));
+    await flushProjection();
 
     expect(
       harness.service
@@ -706,6 +712,7 @@ describe('SelectedRoomLibraryService', () => {
         ['@b:hs', b],
       ]),
     });
+    TestBed.tick(); // the selection effect's first projection
     const before = harness.service.view();
     a.getRooms.mockClear();
 
@@ -722,6 +729,72 @@ describe('SelectedRoomLibraryService', () => {
       before.spaceChildRoomIdsByAccount,
     );
     expect(after.invitations).toBe(before.invitations);
+  });
+
+  describe('with the coalescing window', () => {
+    function mixed(rooms: ReturnType<typeof fakeRoom>[]) {
+      const a = fakeClient('@a:hs', rooms);
+      const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+      const harness = setup({
+        selected: new Set(['@a:hs', '@b:hs']),
+        live: ['@a:hs', '@b:hs'],
+        clients: new Map([
+          ['@a:hs', a],
+          ['@b:hs', b],
+        ]),
+      });
+      TestBed.tick(); // the selection effect's first projection
+      a.getRooms.mockClear();
+      return { a, harness };
+    }
+
+    it('re-projects once for events spread over several tasks, and at once on Sync', async () => {
+      vi.useFakeTimers();
+      try {
+        const { a } = mixed([fakeRoom('!a:hs')]);
+
+        a.emit(RoomEvent.Receipt);
+        await vi.advanceTimersByTimeAsync(40);
+        a.emit(RoomEvent.Receipt);
+        await vi.advanceTimersByTimeAsync(40);
+        expect(a.getRooms).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(20);
+        expect(a.getRooms).toHaveBeenCalledTimes(1);
+
+        a.getRooms.mockClear();
+        a.emit(RoomEvent.Receipt);
+        a.emit(ClientEvent.Sync);
+        expect(a.getRooms).toHaveBeenCalled(); // Sync re-projects every domain at once
+        a.getRooms.mockClear();
+        await vi.advanceTimersByTimeAsync(200);
+        expect(a.getRooms).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('re-projects for an unread decrypted event but not for read history', async () => {
+      vi.useFakeTimers();
+      try {
+        const { a } = mixed([
+          fakeRoom('!a:hs', { message: 'latest', read: ['$old', '$message'] }),
+        ]);
+        const decrypted = (id: string) => ({
+          getId: () => id,
+          getRoomId: () => '!a:hs',
+        });
+
+        a.emit(MatrixEventEvent.Decrypted, decrypted('$old'));
+        await vi.advanceTimersByTimeAsync(200);
+        expect(a.getRooms).not.toHaveBeenCalled();
+
+        a.emit(MatrixEventEvent.Decrypted, decrypted('$unread'));
+        await vi.advanceTimersByTimeAsync(200);
+        expect(a.getRooms).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('rebuilds the mixed list when a cancelled edit changes a preview', async () => {
