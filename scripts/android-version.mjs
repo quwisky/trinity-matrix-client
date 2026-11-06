@@ -1,7 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-next\.(\d+))?$/;
+const VERSION =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.([1-9]\d*))?$/;
+const MAX_VERSION_CODE = 2_100_000_000;
 
 /** Encodes a release-please version as an Android versionCode that rises with every release. */
 export function androidVersion(semver) {
@@ -23,10 +25,13 @@ export function androidVersion(semver) {
       `Cannot encode "${semver}": minor and patch must be below 100 and the next counter between 1 and 98`,
     );
   }
-  return {
-    versionName: semver,
-    versionCode: ((major * 100 + minor) * 100 + patch) * 100 + counter,
-  };
+  const versionCode = ((major * 100 + minor) * 100 + patch) * 100 + counter;
+  if (versionCode > MAX_VERSION_CODE) {
+    throw new Error(
+      `Cannot encode "${semver}": versionCode ${versionCode} exceeds Android's limit of ${MAX_VERSION_CODE}`,
+    );
+  }
+  return { versionName: semver, versionCode };
 }
 
 if (import.meta.main) {

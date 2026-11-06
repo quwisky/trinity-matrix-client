@@ -17,6 +17,7 @@ describe('android version', () => {
     expect(code('0.7.0')).toBe(70099);
     expect(code('0.8.0-next.3')).toBe(80003);
     expect(code('1.2.3')).toBe(1020399);
+    expect(code('2099.99.99')).toBe(2099999999);
   });
 
   it('orders a prerelease below its stable release and above the previous stable', () => {
@@ -40,6 +41,12 @@ describe('android version', () => {
       '0.7.0-rc.1',
       'v0.7.0',
       'abc',
+      '01.2.3',
+      '1.02.3',
+      '1.2.03',
+      '0.7.0-next.01',
+      '21474.0.0',
+      '210000.0.0',
     ]) {
       expect(() => androidVersion(version), version).toThrow(version);
     }

@@ -3,10 +3,14 @@ apply plugin: 'com.android.application'
 // The release version is the single source of truth: scripts/android-version.mjs derives both values from package.json.
 def androidVersion
 try {
-    def versionJson = providers.exec {
+    def versionExec = providers.exec {
         commandLine 'node', file("${rootDir}/../scripts/android-version.mjs").absolutePath
-    }.standardOutput.asText.get()
-    androidVersion = new groovy.json.JsonSlurper().parseText(versionJson)
+        ignoreExitValue = true
+    }
+    if (versionExec.result.get().exitValue != 0) {
+        throw new GradleException(versionExec.standardError.asText.get().trim())
+    }
+    androidVersion = new groovy.json.JsonSlurper().parseText(versionExec.standardOutput.asText.get())
 } catch (Exception e) {
     throw new GradleException("Could not read the Android version from scripts/android-version.mjs (is node on PATH?): ${e.message}", e)
 }
