@@ -572,14 +572,14 @@ test.describe('Edit history', () => {
       .poll(async () => (await dialog.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(766);
     await expect(header.getByTestId('dialog-close')).toHaveCount(0);
-    const cancel = dialog
+    const closeBlock = dialog
       .getByTestId('dialog-footer')
-      .getByRole('button', { name: 'Cancel' });
-    await expect(cancel).toHaveAttribute('data-testid', 'dialog-close');
+      .getByRole('button', { name: 'Close', exact: true });
+    await expect(closeBlock).toHaveAttribute('data-testid', 'dialog-close');
     await expect
       .poll(() => dialog.evaluate((el) => el.scrollWidth <= el.clientWidth))
       .toBe(true);
-    await cancel.click();
+    await closeBlock.click();
     await expect(dialog).toBeHidden();
     await page.setViewportSize(viewport!);
   });

@@ -167,8 +167,8 @@ test.describe('System status navigation placement', () => {
 
       const dialog = page.getByRole('dialog', { name: 'System status' });
       await expect(dialog).toBeVisible();
-      // A phone sheet closes from its Cancel block.
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      // A phone sheet closes from its Close block.
+      await dialog.getByRole('button', { name: 'Close', exact: true }).click();
       await expect(dialog).toBeHidden();
       await expect(overflow).toBeFocused();
 

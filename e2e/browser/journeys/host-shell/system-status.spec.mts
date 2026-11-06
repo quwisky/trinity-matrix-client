@@ -319,7 +319,7 @@ test.describe('System status on a mobile OS', () => {
     );
     await expect(back).toBeVisible();
     await expect(
-      dialog.getByRole('button', { name: 'Cancel' }),
+      dialog.getByRole('button', { name: 'Close', exact: true }),
     ).toBeInViewport();
     expect(
       await dialog.evaluate(

@@ -585,7 +585,9 @@ test.describe('Multiple accounts', () => {
         'overflow-y',
         'auto',
       );
-      await expect(picker.getByTestId('account-picker-done')).toBeVisible();
+      // The sheet's Done block stands in for the footer Done, which it hides.
+      const done = picker.getByRole('button', { name: 'Done', exact: true });
+      await expect(done).toBeVisible();
       await expect(page.getByTestId('user-menu-trigger')).toBeVisible();
 
       // The same row contract the desktop submenu carries.
@@ -652,10 +654,8 @@ test.describe('Multiple accounts', () => {
         `@${userB}:`,
       );
 
-      await expect(page.getByTestId('account-picker-done')).toBeInViewport({
-        ratio: 1,
-      });
-      await page.getByTestId('account-picker-done').click();
+      await expect(done).toBeInViewport({ ratio: 1 });
+      await done.click();
       await expect(picker).toHaveCount(0);
       await expect(page.getByTestId('user-menu-trigger')).toBeFocused();
 

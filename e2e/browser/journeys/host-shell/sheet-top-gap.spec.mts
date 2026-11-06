@@ -32,7 +32,9 @@ async function sheetTop(
   );
   await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
   await expect(dialog.getByRole('button', { name: closeName })).toHaveCount(0);
-  await expect(dialog.getByRole('button', { name: 'Cancel' })).toBeInViewport();
+  await expect(
+    dialog.getByRole('button', { name: 'Close', exact: true }),
+  ).toBeInViewport();
   const [sheet, title, first] = await Promise.all(
     [surface, dialog.locator('.dialog-shell__header'), content].map(
       async (locator) => (await locator.boundingBox())!,
