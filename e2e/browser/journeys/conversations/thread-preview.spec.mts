@@ -21,6 +21,10 @@ import {
 import { createRoom } from '../../support/space-journey.mts';
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // Covers the rendered thread summary on a real timeline: keyboard activation on desktop,
 // touch activation on a Pixel 5, and the long-preview layout in the browser engine.
 // Needs a Synapse homeserver (Docker) and self-skips when it is unavailable.
@@ -228,7 +232,7 @@ async function assertPreview(
   seeded: SeededThread,
 ): Promise<Locator> {
   const root = page
-    .locator('.scroll .msg', { hasText: seeded.rootBody })
+    .locator(`${ROOM_SCROLL} .msg`, { hasText: seeded.rootBody })
     .first();
   await expect(root).toBeVisible({ timeout: 20_000 });
   const summary = root.getByTestId('message-thread-summary');
@@ -323,7 +327,7 @@ async function assertShortPreviewLayout(
 ): Promise<Locator> {
   if (image) {
     const imageRoot = page
-      .locator('.scroll .msg', { has: page.getByTestId('media-bubble') })
+      .locator(`${ROOM_SCROLL} .msg`, { has: page.getByTestId('media-bubble') })
       .first();
     const bubble = imageRoot.getByTestId('media-bubble');
     await expect(bubble).toHaveAttribute('data-media-state', 'ready', {
@@ -341,9 +345,11 @@ async function assertShortPreviewLayout(
   }
   const root = image
     ? page
-        .locator('.scroll .msg', { has: page.getByTestId('media-bubble') })
+        .locator(`${ROOM_SCROLL} .msg`, {
+          has: page.getByTestId('media-bubble'),
+        })
         .first()
-    : page.locator('.scroll .msg', { hasText: seeded.rootBody }).first();
+    : page.locator(`${ROOM_SCROLL} .msg`, { hasText: seeded.rootBody }).first();
   await expect(root).toBeVisible({ timeout: 20_000 });
   const summary = root.getByTestId('message-thread-summary');
   await expect(summary).toContainText('2 replies');
@@ -435,7 +441,7 @@ test.describe('Thread preview', () => {
 
     // Ordinary thread replies carry the protocol fallback marker. They belong to the
     // thread summary, not to a reply-preview treatment in the room timeline.
-    await expect(page.locator('.scroll .msg__reply')).toHaveCount(0);
+    await expect(page.locator(`${ROOM_SCROLL} .msg__reply`)).toHaveCount(0);
     const summary = await assertPreview(page, seeded);
     await summary.click();
 

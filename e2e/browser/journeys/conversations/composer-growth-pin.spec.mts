@@ -16,6 +16,10 @@ import {
   sendMessage,
 } from '../../support/formatted-message-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // Measuring a growing composer must not move the timeline: jsdom cannot show the browser
 // clamping scrollTop during the measurement's forced layout, so this needs real layout.
 const session = homeserverSession();
@@ -25,7 +29,7 @@ const ROWS = 20;
 
 const gapOf = (page: Page): Promise<number> =>
   page
-    .locator('.scroll')
+    .locator(ROOM_SCROLL)
     .evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
 
 const expectPinned = (page: Page): Promise<void> =>
@@ -38,7 +42,11 @@ const settled = (field: Locator) =>
       requestAnimationFrame(() => requestAnimationFrame(done)),
     );
     return {
-      top: (document.querySelector('.scroll') as HTMLElement).scrollTop,
+      top: (
+        document.querySelector(
+          'trn-message-list:not(trn-thread-view trn-message-list) .scroll',
+        ) as HTMLElement
+      ).scrollTop,
       height: (input as HTMLElement).offsetHeight,
     };
   });
@@ -68,7 +76,7 @@ async function openFullRoom(
   );
   expect(
     await page
-      .locator('.scroll')
+      .locator(ROOM_SCROLL)
       .evaluate((el) => el.scrollHeight > el.clientHeight),
   ).toBe(true);
   await expectPinned(page);
@@ -104,7 +112,9 @@ test.describe('Composer growth at the bottom of a room', () => {
 
       // Slightly up is a reading position: the field keeps growing, the reader does not move.
       const up = await field.evaluate(() => {
-        const el = document.querySelector('.scroll') as HTMLElement;
+        const el = document.querySelector(
+          'trn-message-list:not(trn-thread-view trn-message-list) .scroll',
+        ) as HTMLElement;
         el.scrollTop -= 3;
         return el.scrollTop;
       });
@@ -159,7 +169,7 @@ test.describe('Composer growth at the bottom of a room', () => {
     }
     await login(page, room.session);
     await page.locator('.channel', { hasText: room.roomName }).first().click();
-    const rootRow = page.locator('.scroll .msg[data-mid]', {
+    const rootRow = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
       hasText: 'Thread root',
     });
     await expect(rootRow).toBeVisible({ timeout: 30_000 });

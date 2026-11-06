@@ -15,6 +15,10 @@ import {
   type InboxSeed,
 } from '../../support/inbox-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // The inbox view in the real app: its rows come from the server's /notifications list, filtered
 // by the reader's own push rules. A two-person room makes the server notify every message, so
 // plain messages show under All and only the ones with the keyword highlight under Mentions.
@@ -68,7 +72,7 @@ test.describe('Mentions inbox', () => {
 
     await rows(page).first().click();
 
-    const message = page.locator('.scroll .msg', { hasText: mention });
+    const message = page.locator(`${ROOM_SCROLL} .msg`, { hasText: mention });
     await expect(message).toBeInViewport({ timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       seed.roomName,

@@ -6,6 +6,10 @@ import {
 } from '../../support/formatted-message-journey.mts';
 import { cdpSwipe } from '../../../support/touch-platform.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 // Dragging the timeline down with the keyboard up dismisses it, as phones do. Real touch through
 // CDP, on a phone profile: a drag that never reaches the page as touch events proves nothing.
 const session = homeserverSession();
@@ -41,7 +45,7 @@ test.describe('Dragging the timeline with the keyboard up', () => {
     );
     await field.click();
     await expect(field).toBeFocused();
-    const box = (await page.locator('.scroll').boundingBox())!;
+    const box = (await page.locator(ROOM_SCROLL).boundingBox())!;
     const x = box.x + box.width / 2;
     const y = box.y + box.height / 2;
     return { field, x, y };
@@ -84,7 +88,7 @@ test.describe('Dragging the timeline with the keyboard up', () => {
     }
     await login(page, room.session);
     await page.locator('.channel', { hasText: room.roomName }).first().click();
-    const rootRow = page.locator('.scroll .msg[data-mid]', {
+    const rootRow = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
       hasText: 'Thread root',
     });
     await expect(rootRow).toBeVisible({ timeout: 30_000 });

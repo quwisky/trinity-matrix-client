@@ -18,6 +18,10 @@ import {
 import { openNamedRoom as openRoom } from '../../../support/message-composer.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
+/** The room's scroller: a thread panel brings a second message list with its own. */
+const ROOM_SCROLL =
+  'trn-message-list:not(trn-thread-view trn-message-list) .scroll';
+
 /**
  * The open room is in the URL, so a room is linkable and survives a reload.
  *
@@ -201,9 +205,9 @@ test.describe('The open room lives in the URL', () => {
     // and Back and Forward through it, now that each is a navigation.
     const composer = page.getByTestId('composer-input');
     await composer.fill(`half typed ${runId}`);
-    const scroller = page.locator('.scroll').first();
+    const scroller = page.locator(ROOM_SCROLL).first();
     await expect(
-      page.locator('.scroll .msg[data-mid]', { hasText: 'history 29' }),
+      page.locator(`${ROOM_SCROLL} .msg[data-mid]`, { hasText: 'history 29' }),
     ).toBeVisible({ timeout: 20_000 });
     await scroller.evaluate(
       (el) => (el.scrollTop = Math.max(0, el.scrollTop - 400)),
@@ -350,7 +354,7 @@ test.describe('The open room lives in the URL', () => {
     // link's `event` leaves the URL once a panel opens, and its row is still there after.
     const eventUrl = withPanel({ event: rootId });
     await page.goto(eventUrl);
-    const rootRow = page.locator('.scroll .msg[data-mid]', {
+    const rootRow = page.locator(`${ROOM_SCROLL} .msg[data-mid]`, {
       hasText: rootBody,
     });
     await expect(rootRow.first()).toBeVisible({ timeout: 30_000 });
