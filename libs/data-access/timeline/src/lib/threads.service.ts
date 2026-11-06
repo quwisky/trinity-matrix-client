@@ -142,6 +142,14 @@ export class ThreadsService {
   /** Whether the opened thread has older replies left to page in. */
   readonly canPaginateThread = this._canPaginateThread.asReadonly();
 
+  private readonly _oldestThreadEventId = signal<string | null>(null);
+  /**
+   * The oldest RAW event loaded in the opened thread's timeline, hidden ones (edits) included.
+   * Every page that brings anything moves it, so a list can tell a page landed even when no
+   * displayable reply did.
+   */
+  readonly oldestThreadEventId = this._oldestThreadEventId.asReadonly();
+
   // Latest thread event we have already sent a read receipt for, so live replies
   // arriving while the thread is open mark read without re-sending on every refresh.
   private lastReadEventId: string | null = null;
@@ -468,6 +476,7 @@ export class ThreadsService {
     this._openThreadRootId.set(null);
     this._threadMessages.set([]);
     this._canPaginateThread.set(false);
+    this._oldestThreadEventId.set(null);
     this._loadingOlderThread.set(false);
   }
 
@@ -823,6 +832,7 @@ export class ThreadsService {
     // displayable replies and are not counted; a hidden event type keeps the button,
     // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
+    this._oldestThreadEventId.set(thread?.events[0]?.getId() ?? null);
     // A redacted reply lowers the server count, so it must not count as loaded either.
     const loadedReplies = ordered.filter(
       (e) => e.getId() !== rootEventId && !e.isRedacted(),

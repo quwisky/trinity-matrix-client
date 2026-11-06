@@ -150,11 +150,8 @@ export class ThreadViewComponent implements OnDestroy {
   /** The thread's messages, root first, then replies. */
   readonly messages = computed(() => this.openedThread()?.messages() ?? []);
 
-  /**
-   * The oldest loaded reply, the list's backfill marker. Not `messages()[0]`: the root always
-   * leads, so the marker would never move and the list would stop filling after one page.
-   */
-  protected readonly oldestReplyId = computed(
+  /** The oldest loaded reply; null while only the root has loaded. */
+  private readonly oldestReplyId = computed(
     () =>
       this.messages().find((message) => message.id !== this.rootEventId())
         ?.id ?? null,
@@ -168,6 +165,16 @@ export class ThreadViewComponent implements OnDestroy {
     () =>
       this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
       '',
+  );
+
+  /**
+   * The list's backfill marker: the thread's oldest raw event, which every landed page moves,
+   * hidden events included. Not the oldest reply: the root always leads, and a page of edits
+   * adds no reply, so the list would stop filling. The root stands in before any event has
+   * loaded, so the first fill differs from the list's initial null.
+   */
+  protected readonly backfillMarker = computed(
+    () => this.openedThread()?.oldestEventId() ?? this.rootEventId(),
   );
 
   /** Whether older thread replies remain to be paged in. */

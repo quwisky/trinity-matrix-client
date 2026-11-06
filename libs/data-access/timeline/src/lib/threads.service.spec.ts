@@ -1673,6 +1673,33 @@ describe('ThreadsService', () => {
   });
 
   describe('history pagination', () => {
+    it('exposes the oldest raw thread event as the backfill marker, a hidden one included', () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const edit = fakeEvent({
+        id: '$e1',
+        sender: '@b:hs',
+        body: '* edited',
+        editRelation: true,
+      });
+      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'reply' });
+      const { svc } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [edit, reply],
+          paginationToken: 'tok',
+        }),
+      ]);
+      svc.attachThreadRoot('$root');
+
+      // Hidden from the replies, but a page that brought only it still moved the marker.
+      expect(svc.threadMessages().map((m) => m.id)).not.toContain('$e1');
+      expect(svc.oldestThreadEventId()).toBe('$e1');
+
+      svc.closeThread();
+      expect(svc.oldestThreadEventId()).toBeNull();
+    });
+
     it('exposes canPaginate from the thread timeline’s backward token', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const { svc } = setup([

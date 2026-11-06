@@ -135,6 +135,8 @@ async function build(
   const threadMessages = signal<MessageView[]>(messages);
   const canPaginateThread = signal(state.canPaginate ?? false);
   const loadingOlderThread = signal(state.loadingOlder ?? false);
+  /** The thread's oldest raw event, hidden ones included; null before any has loaded. */
+  const oldestThreadEvent = signal<string | null>(null);
   const openThread = vi.fn();
   const closeThread = vi.fn();
   const paginateOpenThread = vi.fn().mockReturnValue(of(void 0));
@@ -217,6 +219,7 @@ async function build(
                   messages: threadMessages.asReadonly(),
                   canLoadOlder: canPaginateThread.asReadonly(),
                   loadingOlder: loadingOlderThread.asReadonly(),
+                  oldestEventId: oldestThreadEvent.asReadonly(),
                   media: { send: sendMediaToThread },
                   loadOlder: vi.fn(() => {
                     paginateOpenThread();
@@ -309,6 +312,7 @@ async function build(
     membersFor,
     canPaginateThread,
     loadingOlderThread,
+    oldestThreadEvent,
     openThread,
     closeThread,
     paginateOpenThread,
@@ -397,14 +401,15 @@ describe('ThreadViewComponent hosts the message list', () => {
       for (const frame of frames.splice(0)) frame(0);
     };
     const root = msg('$root', '@a:hs', 'the root');
-    const { fixture, threadMessages, paginateOpenThread } = await build(
-      [root, msg('$r3', '@b:hs', 'three')],
-      { canPaginate: true },
-    );
+    const { fixture, threadMessages, oldestThreadEvent, paginateOpenThread } =
+      await build([root, msg('$r3', '@b:hs', 'three')], { canPaginate: true });
+    oldestThreadEvent.set('$r3');
     settle(fixture);
     runFrames();
     expect(paginateOpenThread).toHaveBeenCalledTimes(1);
 
+    // The page lands: the replies and the thread's oldest raw event both move.
+    oldestThreadEvent.set('$r2');
     threadMessages.set([
       root,
       msg('$r2', '@b:hs', 'two'),
@@ -414,6 +419,57 @@ describe('ThreadViewComponent hosts the message list', () => {
     runFrames();
 
     expect(paginateOpenThread).toHaveBeenCalledTimes(2);
+  });
+
+  describe('a short thread that must page', () => {
+    /** Queue the list's fill frames to run by hand: jsdom reports no height, so never full. */
+    function queueFrames() {
+      const frames: FrameRequestCallback[] = [];
+      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return frames.length;
+      });
+      onTestFinished(() => {
+        vi.unstubAllGlobals();
+      });
+      return () => {
+        for (const frame of frames.splice(0)) frame(0);
+      };
+    }
+
+    it('asks for a page when only the root has loaded', async () => {
+      const runFrames = queueFrames();
+      const { fixture, paginateOpenThread } = await build(
+        [msg('$root', '@a:hs', 'the root')],
+        { canPaginate: true },
+      );
+      settle(fixture);
+      runFrames();
+
+      expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps filling after a page that brought only hidden events', async () => {
+      const runFrames = queueFrames();
+      const replies = [
+        msg('$root', '@a:hs', 'the root'),
+        msg('$r3', '@b:hs', 'three'),
+      ];
+      const { fixture, threadMessages, oldestThreadEvent, paginateOpenThread } =
+        await build(replies, { canPaginate: true });
+      oldestThreadEvent.set('$r3');
+      settle(fixture);
+      runFrames();
+      expect(paginateOpenThread).toHaveBeenCalledTimes(1);
+
+      // An edit paged in: no reply is new, but the raw oldest event moved.
+      oldestThreadEvent.set('$edit');
+      threadMessages.set([...replies]);
+      settle(fixture);
+      runFrames();
+
+      expect(paginateOpenThread).toHaveBeenCalledTimes(2);
+    });
   });
 
   it("loads older on the list's loadOlder", async () => {

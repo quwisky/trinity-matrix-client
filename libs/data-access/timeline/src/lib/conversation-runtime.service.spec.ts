@@ -132,6 +132,7 @@ function setup(
         threadMessages: signal([...messages]).asReadonly(),
         loadingOlderThread: signal(false).asReadonly(),
         canPaginateThread: signal(false).asReadonly(),
+        oldestThreadEventId: signal<string | null>('$oldest').asReadonly(),
         attachThreadRoot: vi.fn(),
         closeThread: vi.fn(),
         paginateOpenThread: vi.fn(() => of(void 0)),
@@ -1271,6 +1272,7 @@ describe('ConversationRuntime', () => {
     expect(
       controller('!room:example.org').threads.attachThreadRoot,
     ).toHaveBeenCalledWith('$root');
+    expect(thread?.oldestEventId()).toBe('$oldest');
     const command = thread?.toggleReaction('$reply', '👍');
     expect(messageAdapter.toggleReaction).not.toHaveBeenCalled();
     await expect(firstValueFrom(command!)).resolves.toEqual({
@@ -1355,6 +1357,7 @@ describe('ConversationRuntime', () => {
       failure: 'conversation-unavailable',
     });
     expect(first.messages()).toEqual([]);
+    expect(first.oldestEventId()).toBeNull();
   });
 
   it('releases the active thread on parent blur and rejects its staged media', async () => {
