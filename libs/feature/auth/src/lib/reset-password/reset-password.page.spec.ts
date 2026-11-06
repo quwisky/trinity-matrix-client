@@ -101,9 +101,12 @@ describe('ResetPasswordPage', () => {
       'https://hs.example',
       'a@b.c',
     );
+    // A server may answer an unknown address as if it sent a link, so the copy cannot
+    // promise a delivery; resending stays available for a mistyped address.
     expect(screen.getByTestId('reset-sent')).toHaveTextContent(
-      'We sent a link to a@b.c. Open it and confirm, then come back here.',
+      'If an account uses a@b.c, we sent a link. Open it and confirm, then come back here.',
     );
+    expect(screen.getByTestId('reset-resend')).toBeVisible();
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { level: 2 }),
     );

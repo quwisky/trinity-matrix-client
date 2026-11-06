@@ -13,7 +13,7 @@ export const RESET_PASSWORD_COPY = {
   sentTitle: 'Check your email',
   passwordTitle: 'Choose a new password',
   sent: (email: string) =>
-    `We sent a link to ${email}. Open it and confirm, then come back here.`,
+    `If an account uses ${email}, we sent a link. Open it and confirm, then come back here.`,
   continue: 'Continue',
   resend: 'Resend link',
   passwordLabel: 'New password',
