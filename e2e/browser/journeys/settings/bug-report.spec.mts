@@ -259,9 +259,21 @@ test.describe('Report a bug', () => {
     );
     await storeMarker(page, `[bug-report-e2e] first session done ${runId}`);
     const firstSession = await storedMessages(page);
+    // FetchHttpApi logs requests only at debug: these prove sign-in and the first sync were
+    // captured in detail. A bare `/v3/login` would also match the sign-in options GET.
+    const debugRequest = (method: string, path: string) =>
+      firstSession.some(
+        (message) =>
+          message.includes(`FetchHttpApi: --> ${method} `) &&
+          message.includes(path),
+      );
     expect(
-      firstSession.some((message) => message.includes('/v3/login')),
-      'the sign-in request is in the log',
+      debugRequest('POST', '/v3/login'),
+      'the sign-in request is in the log at debug',
+    ).toBe(true);
+    expect(
+      debugRequest('GET', '/v3/sync'),
+      'the first sync is in the log at debug',
     ).toBe(true);
     expectNoSecret(
       firstSession.join('\n'),
