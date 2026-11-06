@@ -179,11 +179,12 @@ describe('TrnSettingsLayoutComponent', () => {
         .querySelector('trn-dialog-shell [data-testid="dialog-surface"]')
         ?.getAttribute('data-trn-layout'),
     ).toBe('sheet');
-    // A sheet closes from the shell's Cancel block, not an X.
+    // A sheet closes from the shell's block, labelled Close since nothing is cancelled.
     expect(queryAllByRole('button', { name: 'Close settings' })).toHaveLength(
       0,
     );
-    expect(getAllByRole('button', { name: 'Cancel' })).toHaveLength(1);
+    expect(queryAllByRole('button', { name: 'Cancel' })).toHaveLength(0);
+    expect(getAllByRole('button', { name: 'Close' })).toHaveLength(1);
   });
 
   it('puts Back and the section heading on one row under a framed header', async () => {
