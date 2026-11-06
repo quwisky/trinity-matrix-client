@@ -282,8 +282,7 @@ describe('TrnButton', () => {
           'w-full',
           'justify-center',
           'rounded-none',
-          'px-4',
-          'py-4',
+          'p-4',
           'text-base',
         ]) {
           expect(button.classList).toContain(cls);
@@ -323,7 +322,7 @@ describe('TrnButton', () => {
 
       const save = getByRole('button', { name: 'Save' });
       expect(save.getAttribute('data-trn-shape')).toBe('label');
-      expect(save.classList).not.toContain('py-4');
+      expect(save.classList).not.toContain('p-4');
     });
   });
 });

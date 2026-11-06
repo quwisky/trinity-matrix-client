@@ -300,7 +300,7 @@ describe('TrnDialogShellComponent', () => {
     expect(actions.classList).not.toContain('justify-end');
     for (const button of actions.querySelectorAll('button')) {
       expect(button.classList).toContain('w-full');
-      expect(button.classList).toContain('py-4');
+      expect(button.classList).toContain('p-4');
     }
     // The actions card sits above the Cancel block.
     const cancel = screen.getByRole('button', { name: 'Cancel' });
@@ -335,7 +335,7 @@ describe('TrnDialogShellComponent', () => {
     expect(actions.classList).toContain('justify-end');
     expect(
       screen.getByRole('button', { name: 'Leave' }).classList,
-    ).not.toContain('py-4');
+    ).not.toContain('p-4');
   });
 
   it('marks a sheet that draws its handle, which tightens its header', async () => {
