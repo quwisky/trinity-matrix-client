@@ -250,6 +250,8 @@ describe('TrnDialogShellComponent', () => {
     // Row geometry and the card come from the inset primitives, over the recipe's own.
     expect(cancel.classList).toContain('py-4');
     expect(cancel.classList).toContain('justify-center');
+    expect(cancel.classList).toContain('text-center');
+    expect(cancel.classList).toContain('wrap-anywhere');
     expect(cancel.classList).not.toContain('px-2.5');
     expect(cancel.parentElement?.classList).toContain(
       'bg-[color:var(--trinity-neutral-fill-surface)]',
@@ -298,6 +300,9 @@ describe('TrnDialogShellComponent', () => {
     );
     expect(actions.classList).toContain('flex-col');
     expect(actions.classList).not.toContain('justify-end');
+    // Rows draw their own dividers; clipping would cut the focus ring.
+    expect(actions.classList).not.toContain('overflow-hidden');
+    expect(actions.className).not.toContain('divide-');
     for (const button of actions.querySelectorAll('button')) {
       expect(button.classList).toContain('w-full');
       expect(button.classList).toContain('p-4');

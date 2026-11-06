@@ -10,6 +10,7 @@ export {
   TrnDialogActions,
   TrnDialogShellComponent,
 } from './lib/dialog-shell/trn-dialog-shell.component';
+export { TrnDialogDismiss } from './lib/dialog-shell/trn-dialog-dismiss';
 export {
   TrnSurfaceService,
   type TrnActionsOptions,

@@ -50,8 +50,9 @@
             trnInsetRow
             variant="secondary"
             shape="row"
-            class="w-full justify-center font-semibold"
+            class="justify-center text-center font-semibold wrap-anywhere"
             [attr.data-testid]="closeTestId()"
+            [attr.data-autofocus]="cancelAutofocus() ? '' : null"
             (click)="requestClose()"
           >
             {{ cancelText() }}

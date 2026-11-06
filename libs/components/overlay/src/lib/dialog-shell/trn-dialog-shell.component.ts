@@ -6,6 +6,7 @@ import {
   contentChild,
   inject,
   input,
+  signal,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { outputFromObservable } from '@angular/core/rxjs-interop';
@@ -47,7 +48,7 @@ import type {
 export class TrnDialogActions {
   protected readonly sheet = inject(TRN_BUTTON_ROW_CONTEXT);
   protected readonly sheetClasses =
-    'isolate flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)] divide-y divide-[color:var(--trinity-border-sheet-divider)] overflow-hidden';
+    'isolate flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)]';
 }
 
 /**
@@ -82,6 +83,7 @@ export class TrnDialogShellComponent {
   private readonly ref = inject(TrnDialogRef, { optional: true });
   private readonly closeRequests = new Subject<void>();
 
+  protected readonly cancelAutofocus = signal(false);
   /** The opener labels its dialog container with this id; a bare shell mints its own. */
   protected readonly titleId = this.ref?.titleId ?? dialogTitleId();
   /** A top-anchored dialog's offset, which the card's height cap subtracts. */
@@ -127,6 +129,11 @@ export class TrnDialogShellComponent {
    * `dismissGuard` like Escape does.
    */
   readonly closed = outputFromObservable(this.closeRequests);
+
+  /** A hidden `trnDialogDismiss` hands its `data-autofocus` mark to the Cancel block. */
+  autofocusCancel(): void {
+    this.cancelAutofocus.set(true);
+  }
 
   protected requestClose(): void {
     if (this.closeRequests.observed) {
