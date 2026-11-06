@@ -123,7 +123,7 @@ async function openSettings(page: Page, large = false): Promise<Locator> {
 const statusFirstRow = (dialog: Locator) =>
   dialog
     .locator(
-      '.settings-layout__topbar:visible, .settings-layout__nav-item:visible',
+      '.settings-layout__topbar:visible, [data-trn-settings-section]:visible',
     )
     .first();
 

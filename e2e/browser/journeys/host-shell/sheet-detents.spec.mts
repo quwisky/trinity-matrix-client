@@ -405,7 +405,7 @@ test.describe('Sheet detents on a 390 px phone with a 47 px status bar', () => {
     expect(nav.y + nav.height).toBeLessThanOrEqual(
       sheetBottom.y + sheetBottom.height + 1,
     );
-    const last = directory.locator('.settings-layout__nav-item').last();
+    const last = directory.locator('[data-trn-settings-section]').last();
     const name = (await last.innerText()).trim();
     await last.scrollIntoViewIfNeeded();
     await expect(last).toBeInViewport({ ratio: 1 });
