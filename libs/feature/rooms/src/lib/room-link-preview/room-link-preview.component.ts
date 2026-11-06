@@ -25,6 +25,7 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnInsetGroup,
@@ -58,6 +59,7 @@ export interface RoomLinkPreviewResult {
     TrnIconComponent,
     TrnSpinnerComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnInsetGroup,
     NgTemplateOutlet,

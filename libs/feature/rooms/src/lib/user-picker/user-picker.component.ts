@@ -25,6 +25,7 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -64,6 +65,7 @@ export interface UserPickerNote {
     AvatarComponent,
     TrnSpinnerComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnButton,
     TrnInput,

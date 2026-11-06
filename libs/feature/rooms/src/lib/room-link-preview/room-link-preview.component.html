@@ -1,5 +1,6 @@
 <trn-dialog-shell
   title="Room information"
+  cancelText="Close"
   (closed)="close()"
   data-testid="room-link-preview"
   [attr.aria-busy]="loading() || acting()"
@@ -126,17 +127,16 @@
 
   @if (preview()) {
     <div trnDialogActions>
-      @if (!sheet) {
-        <button
-          trnBtn
-          type="button"
-          variant="secondary"
-          presentation="link"
-          (click)="close()"
-        >
-          Close
-        </button>
-      }
+      <button
+        trnBtn
+        trnDialogDismiss
+        type="button"
+        variant="secondary"
+        presentation="link"
+        (click)="close()"
+      >
+        Close
+      </button>
       @if (primaryAction() !== 'none') {
         <button
           trnBtn

@@ -7,6 +7,7 @@ import {
 } from '@angular/core';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -33,6 +34,7 @@ import { isoDateOf, localDayStartFromIso } from '@trinity/util/matrix';
     TrnButton,
     TrnInput,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
   ],
   templateUrl: './jump-to-date.component.html',

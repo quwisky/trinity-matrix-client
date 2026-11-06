@@ -113,7 +113,11 @@
         (choose)="setRole($event)"
       />
     }
-    @if (sheet) {
+    @if (
+      sheet &&
+      (showModerationAction(permissions().kick) ||
+        showModerationAction(permissions().ban))
+    ) {
       <div trnInsetGroup>
         @if (showModerationAction(permissions().kick)) {
           <button
@@ -158,7 +162,7 @@
           </button>
         }
       </div>
-    } @else {
+    } @else if (!sheet) {
       @if (showModerationAction(permissions().kick)) {
         <button
           trnBtn

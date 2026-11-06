@@ -1,6 +1,7 @@
 <trn-dialog-shell
   title="Room state"
   size="xl"
+  cancelText="Close"
   (closed)="close()"
   data-testid="room-state-viewer"
 >
@@ -82,6 +83,7 @@
   <div trnDialogActions>
     <button
       trnBtn
+      trnDialogDismiss
       type="button"
       variant="secondary"
       presentation="link"

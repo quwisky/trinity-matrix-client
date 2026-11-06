@@ -197,6 +197,21 @@ describe('MemberManageTabComponent', () => {
     ).not.toBeNull();
   });
 
+  it('draws no empty moderation card in a sheet when only the role picker shows', async () => {
+    const { container } = await build(member(), {
+      canSetPower: true,
+      myPower: 50,
+      inputs: { hideUnavailableModeration: true },
+      presentation: 'sheet',
+    });
+
+    const moderation = container.querySelector(
+      'section:has(trn-member-role-picker)',
+    );
+    expect(moderation).not.toBeNull();
+    expect(moderation?.querySelector('[trnInsetGroup]')).toBeNull();
+  });
+
   it('sets Block, Report and the moderation actions in cards in a sheet, kick and ban as danger rows', async () => {
     const { container } = await build(member(), {
       canKick: true,

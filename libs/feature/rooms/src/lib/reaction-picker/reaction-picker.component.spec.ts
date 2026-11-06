@@ -57,10 +57,12 @@ describe('ReactionPickerComponent', () => {
     ).toBeTruthy();
   });
 
-  it('has no Cancel block in a sheet, since picking closes it', async () => {
-    await setup('sheet');
+  it('keeps a Cancel block in a sheet, its one on-screen dismissal', async () => {
+    const { close } = await setup('sheet');
 
-    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    screen.getByRole('button', { name: 'Cancel' }).click();
+    expect(close).toHaveBeenCalledOnce();
+    expect(close.mock.calls[0][0]).toBeUndefined();
   });
 
   it('closes with the chosen native emoji', async () => {

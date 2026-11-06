@@ -99,15 +99,16 @@ describe('RoomLinkPreviewComponent', () => {
     expect(container.querySelectorAll('[trnInsetGroup] > div').length).toBe(3);
   });
 
-  it('leaves dismissing to the shell Cancel in a sheet', async () => {
+  it('leaves dismissing to the shell block, labelled Close, in a sheet', async () => {
     await build({ presentation: 'sheet' });
 
-    expect(
-      within(screen.getByTestId('dialog-footer')).queryByRole('button', {
-        name: 'Close',
-      }),
-    ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    const closes = within(screen.getByTestId('dialog-footer')).getAllByRole(
+      'button',
+      { name: 'Close' },
+    );
+    expect(closes).toHaveLength(1);
+    expect(closes[0].getAttribute('data-testid')).toBe('dialog-close');
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
   it('keeps its own Close in a dialog', async () => {

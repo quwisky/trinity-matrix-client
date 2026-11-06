@@ -15,6 +15,7 @@ import { TrnLabel } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnToastService,
@@ -37,6 +38,7 @@ import { TrnIconComponent } from '@trinity/components/foundations';
     TrnButton,
     TrnInput,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnLabel,
     TrnSpinnerComponent,
