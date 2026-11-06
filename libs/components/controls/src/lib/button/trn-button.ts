@@ -33,7 +33,7 @@ import {
   host: {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
     '[attr.data-trn-presentation]': 'resolvedPresentation()',
-    '[attr.data-trn-variant]': 'variant()',
+    '[attr.data-trn-variant]': 'resolvedVariant()',
     '[attr.data-trn-shape]': 'resolvedShape()',
     '[attr.aria-busy]': 'loading() ? "true" : null',
     '[attr.data-loading]': 'loading() ? "" : null',
@@ -88,7 +88,10 @@ export class TrnButton {
           size: this.size(),
           variant: this.resolvedVariant(),
         }),
-        this.inRow() && 'w-full justify-center rounded-none p-4 text-base',
+        // The inset-row treatment: the focused row rises over its neighbours, and every row but
+        // the first draws the divider, which out-ranks the recipe's `border-transparent`.
+        this.inRow() &&
+          'relative w-full justify-center rounded-none p-4 text-center text-base wrap-anywhere not-first:border-t-[color:var(--trinity-border-sheet-divider)] first:rounded-t-xl last:rounded-b-xl focus-visible:z-1',
         this.inRow() && this.variant() === 'primary' && 'font-semibold',
       ),
     );

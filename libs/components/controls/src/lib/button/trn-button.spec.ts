@@ -284,9 +284,18 @@ describe('TrnButton', () => {
           'rounded-none',
           'p-4',
           'text-base',
+          'text-center',
+          'wrap-anywhere',
+          'relative',
+          'focus-visible:z-1',
+          'first:rounded-t-xl',
+          'last:rounded-b-xl',
+          // The divider out-ranks the recipe's own `border-transparent`.
+          'not-first:border-t-[color:var(--trinity-border-sheet-divider)]',
         ]) {
           expect(button.classList).toContain(cls);
         }
+        expect(button.classList).toContain('border-transparent');
         expect(button.classList).not.toContain('px-2.5');
         expect(button.classList).not.toContain('rounded-lg');
         expect(button.classList).not.toContain('justify-start');
@@ -299,6 +308,8 @@ describe('TrnButton', () => {
 
       const save = getByRole('button', { name: 'Save' });
       expect(save.getAttribute('data-trn-presentation')).toBe('solid');
+      // The global disabled-primary treatment keys on this; a row is never a primary fill.
+      expect(save.getAttribute('data-trn-variant')).toBe('secondary');
       expect(save.classList).toContain('font-semibold');
       expect(save.classList).toContain(
         'bg-[color:var(--trinity-neutral-fill-surface)]',
