@@ -1,6 +1,11 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { fireEvent, render, screen } from '@trinity/testing';
+import { Subject } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  TrnDialogRef,
+  type TrnDialogPresentation,
+} from '../dialog/trn-dialog-ref';
 import {
   type AlertDialogData,
   TrnAlertDialogComponent,
@@ -136,5 +141,60 @@ describe('TrnAlertDialogComponent', () => {
     expect(confirm.className).toContain(
       'bg-[color:var(--trinity-danger-solid)]',
     );
+  });
+
+  describe('by presentation', () => {
+    const data: AlertDialogData = {
+      kind: 'confirm',
+      header: 'Leave room?',
+      confirmText: 'Leave',
+      cancelText: 'Stay',
+      variant: 'neutral',
+    };
+
+    async function renderIn(presentation: TrnDialogPresentation) {
+      const close = vi.fn();
+      const cdkRef = { closed: new Subject(), close };
+      await render(TrnAlertDialogComponent, {
+        providers: [
+          { provide: DIALOG_DATA, useValue: data },
+          { provide: DialogRef, useValue: cdkRef },
+          {
+            provide: TrnDialogRef,
+            useValue: new TrnDialogRef(cdkRef, presentation),
+          },
+        ],
+      });
+      return close;
+    }
+
+    it('a sheet cancels from the shell Cancel block only', async () => {
+      const close = await renderIn('sheet');
+
+      const cancels = screen.getAllByRole('button', { name: 'Stay' });
+      expect(cancels).toHaveLength(1);
+      expect(cancels[0].getAttribute('data-testid')).toBe('alert-cancel');
+      // The shell's own block, outside the actions card.
+      expect(cancels[0].closest('[trnDialogActions]')).toBeNull();
+      expect(screen.getByTestId('dialog-footer').contains(cancels[0])).toBe(
+        true,
+      );
+      fireEvent.click(cancels[0]);
+
+      expect(close).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledWith(false);
+    });
+
+    it('a centred alert keeps its in-footer text Cancel and no X', async () => {
+      const close = await renderIn('dialog');
+
+      expect(screen.queryByTestId('dialog-close')).toBeNull();
+      const cancel = screen.getByRole('button', { name: 'Stay' });
+      expect(cancel.getAttribute('data-testid')).toBe('alert-cancel');
+      expect(cancel.className).toContain('underline-offset-4');
+      fireEvent.click(cancel);
+
+      expect(close).toHaveBeenCalledWith(false);
+    });
   });
 });

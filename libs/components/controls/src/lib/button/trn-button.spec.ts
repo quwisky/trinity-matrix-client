@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { TrnActionAvailability, TrnButton, TrnIconButton } from './trn-button';
+import { TRN_BUTTON_ROW_CONTEXT } from './trn-button-row-context';
 import {
   type TrnButtonPresentation,
   type TrnButtonShape,
@@ -251,5 +252,78 @@ describe('TrnButton', () => {
       document.querySelector('[data-testid="action-unavailable-feedback"]')
         ?.textContent,
     ).toBe('Only room admins can do this.');
+  });
+
+  describe('in a row context', () => {
+    @Component({
+      imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(true) }],
+      template: `
+        <button trnBtn data-testid="primary">Save</button>
+        <button trnBtn variant="secondary" presentation="link">Skip</button>
+        <button trnBtn variant="danger" disabled>Delete</button>
+      `,
+    })
+    class RowContextHostComponent {}
+
+    @Component({
+      imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(false) }],
+      template: `<button trnBtn>Save</button>`,
+    })
+    class OffContextHostComponent {}
+
+    it('turns every button into a full-width centred row that overrides the recipe geometry', async () => {
+      const { container } = await render(RowContextHostComponent);
+
+      for (const button of container.querySelectorAll('button')) {
+        expect(button.getAttribute('data-trn-shape')).toBe('row');
+        for (const cls of [
+          'w-full',
+          'justify-center',
+          'rounded-none',
+          'px-4',
+          'py-4',
+          'text-base',
+        ]) {
+          expect(button.classList).toContain(cls);
+        }
+        expect(button.classList).not.toContain('px-2.5');
+        expect(button.classList).not.toContain('rounded-lg');
+        expect(button.classList).not.toContain('justify-start');
+        expect(button.classList).not.toContain('text-sm');
+      }
+    });
+
+    it('maps primary to semibold secondary solid, others to secondary solid and danger to ghost', async () => {
+      const { getByRole } = await render(RowContextHostComponent);
+
+      const save = getByRole('button', { name: 'Save' });
+      expect(save.getAttribute('data-trn-presentation')).toBe('solid');
+      expect(save.classList).toContain('font-semibold');
+      expect(save.classList).toContain(
+        'bg-[color:var(--trinity-neutral-fill-surface)]',
+      );
+      expect(save.classList).not.toContain('bg-primary');
+
+      const skip = getByRole('button', { name: 'Skip' });
+      expect(skip.getAttribute('data-trn-presentation')).toBe('solid');
+      expect(skip.classList).not.toContain('font-semibold');
+      expect(skip.classList).not.toContain('underline-offset-4');
+
+      const remove = getByRole('button', { name: 'Delete' });
+      expect(remove.getAttribute('data-trn-variant')).toBe('danger');
+      expect(remove.getAttribute('data-trn-presentation')).toBe('ghost');
+      expect(remove.classList).toContain('text-danger');
+      expect((remove as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    it('leaves the button alone when the context is false', async () => {
+      const { getByRole } = await render(OffContextHostComponent);
+
+      const save = getByRole('button', { name: 'Save' });
+      expect(save.getAttribute('data-trn-shape')).toBe('label');
+      expect(save.classList).not.toContain('py-4');
+    });
   });
 });
