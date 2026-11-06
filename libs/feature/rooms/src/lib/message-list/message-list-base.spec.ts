@@ -406,18 +406,28 @@ describe('MessageListBase host hooks', () => {
     expect(host.stageFiles).toHaveBeenCalledExactlyOnceWith([file]);
   });
 
-  it('leaves a file drop alone when there is no composer to take it', () => {
+  // Nothing can take the file, but the tab must not navigate away to open it either.
+  it('keeps a file drop with no composer from leaving the app, offering nothing', () => {
     const fixture = TestBed.createComponent(TestMessageListComponent);
     fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const drop = fixture.debugElement.injector.get(TrnFileDropDirective);
+    const dropped: (readonly File[])[] = [];
+    drop.filesDropped.subscribe((files) => dropped.push(files));
+    const enter = new Event('dragenter', { bubbles: true, cancelable: true });
+    Object.defineProperty(enter, 'dataTransfer', {
+      value: { types: ['Files'], files: [], dropEffect: 'none' },
+    });
+    host.dispatchEvent(enter);
+    expect(drop.active()).toBe(false);
 
-    const event = dropFiles(fixture.nativeElement as HTMLElement, [
+    const event = dropFiles(host, [
       new File(['x'], 'a.png', { type: 'image/png' }),
     ]);
 
-    expect(event.defaultPrevented).toBe(false);
-    expect(
-      fixture.debugElement.injector.get(TrnFileDropDirective).active(),
-    ).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(drop.active()).toBe(false);
+    expect(dropped).toEqual([]);
   });
 
   it('resets per-conversation state when resetKey changes, keeping roomId', () => {

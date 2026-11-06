@@ -28,8 +28,9 @@ import {
 })
 export class TrnFileDropDirective {
   /**
-   * Whether the host can take files now; set by the host. While false a file drag is not ours:
-   * no overlay, and nothing is prevented, so the browser keeps its own handling.
+   * Whether the host can take files now; set by the host. While false a file drag shows no
+   * overlay and a drop stages nothing, but both are still prevented: the browser's own handling
+   * would open the file in place of the app.
    */
   accepts: () => boolean = () => true;
 
@@ -42,7 +43,7 @@ export class TrnFileDropDirective {
   readonly active: Signal<boolean> = computed(() => this.depth() > 0);
 
   protected onDragEnter(event: DragEvent): void {
-    if (!this.carriesFiles(event)) {
+    if (!this.carriesFiles(event) || !this.accepts()) {
       return;
     }
     this.depth.update((current) => current + 1);
@@ -72,7 +73,7 @@ export class TrnFileDropDirective {
     }
     event.preventDefault(); // or the browser navigates to the dropped file
     const files = Array.from(event.dataTransfer?.files ?? []);
-    if (files.length) {
+    if (files.length && this.accepts()) {
       this.filesDropped.emit(files);
     }
   }
@@ -83,8 +84,6 @@ export class TrnFileDropDirective {
    * swallow the browser's own default.
    */
   private carriesFiles(event: DragEvent): boolean {
-    return (
-      this.accepts() && (event.dataTransfer?.types.includes('Files') ?? false)
-    );
+    return event.dataTransfer?.types.includes('Files') ?? false;
   }
 }

@@ -378,7 +378,8 @@ export abstract class MessageListBase {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: the emitter drops subscribers when its host directive is destroyed with the component.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
-    // With no composer to stage into, a drop is not ours: no overlay, and the browser keeps it.
+    // With no composer to stage into, a file drag offers nothing (no overlay, no staging); the
+    // directive still prevents it, so the tab does not navigate away to open the file.
     this.fileDrop.accepts = () => this.composerTarget() !== null;
 
     // The sheet is a CDK overlay outside the router outlet, so it outlives this list.
