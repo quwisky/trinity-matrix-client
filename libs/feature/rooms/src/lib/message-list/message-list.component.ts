@@ -211,6 +211,9 @@ export class MessageListComponent extends MessageListBase {
 
   /** Row ids in timeline order (the windowing key). */
   private readonly ids = computed(() => this.rows().map((r) => r.id));
+  private readonly idIndex = computed(
+    () => new Map(this.ids().map((id, index) => [id, index])),
+  );
 
   /** Prefix sums of row heights; recomputed when rows change or a height updates. */
   private readonly prefix = computed(() => {
@@ -1062,7 +1065,7 @@ export class MessageListComponent extends MessageListBase {
     }
     const atBottom = untracked(() => this.atBottomSig());
     const prefixSnapshot = this.prefix(); // pre-update offsets
-    const idList = this.ids();
+    const idIndex = this.idIndex();
     const st = el.scrollTop;
     const changes: HeightChange[] = [];
     let changed = false;
@@ -1085,8 +1088,8 @@ export class MessageListComponent extends MessageListBase {
       if (prior !== undefined) grown += newH - prior;
       resized.push(entry.target);
       changed = true;
-      const idx = idList.indexOf(mid);
-      if (idx >= 0) {
+      const idx = idIndex.get(mid);
+      if (idx !== undefined) {
         // `prior` is the pre-update height (the estimate for a first measurement).
         changes.push({
           index: idx,
