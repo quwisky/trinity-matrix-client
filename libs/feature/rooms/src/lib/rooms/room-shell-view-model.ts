@@ -606,7 +606,7 @@ function sameRecord<T>(
   const keys = Object.keys(a);
   return (
     keys.length === Object.keys(b).length &&
-    keys.every((key) => key in b && same(a[key], b[key]))
+    keys.every((key) => Object.hasOwn(b, key) && same(a[key], b[key]))
   );
 }
 
