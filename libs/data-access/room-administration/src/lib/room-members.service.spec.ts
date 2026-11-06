@@ -44,14 +44,37 @@ function knockingMember(
   };
 }
 
+interface Creator {
+  readonly sender: string;
+  readonly version?: string;
+  readonly additional?: readonly string[];
+}
+
+function createEvent(
+  sender: string,
+  version = '10',
+  additional?: readonly string[],
+) {
+  return {
+    getSender: () => sender,
+    getContent: () => ({
+      room_version: version,
+      ...(additional ? { additional_creators: additional } : {}),
+    }),
+    getTs: () => 1,
+  };
+}
+
 function room(
   roomId: string,
   members: ReturnType<typeof member>[],
-  creator: string | null = null,
+  creatorArg: Creator | string | null = null,
   banned: ReturnType<typeof bannedMember>[] = [],
   invited: ReturnType<typeof member>[] = [],
   knocking: ReturnType<typeof knockingMember>[] = [],
 ) {
+  const creatorSpec =
+    typeof creatorArg === 'string' ? { sender: creatorArg } : creatorArg;
   return {
     roomId,
     getMyMembership: () => 'join',
@@ -65,7 +88,20 @@ function room(
             ? knocking
             : [],
     ),
-    getCreator: () => creator,
+    getCreator: () => creatorSpec?.sender ?? null,
+    getLiveTimeline: () => ({
+      getState: () => ({
+        getStateEvents: (type: string) =>
+          type === 'm.room.create' && creatorSpec
+            ? createEvent(
+                creatorSpec.sender,
+                creatorSpec.version,
+                creatorSpec.additional,
+              )
+            : null,
+        getMember: () => null,
+      }),
+    }),
     loadMembersIfNeeded: vi.fn(() => Promise.resolve(true)),
   };
 }
@@ -209,6 +245,30 @@ describe('RoomMembersService', () => {
         powerLevel: 50,
         isCreator: false,
       },
+    ]);
+  });
+
+  it('marks room version 12 additional creators as creators', () => {
+    const source = room(
+      '!room:hs',
+      [
+        member('@ada:hs', 'Ada', Infinity),
+        member('@bob:hs', 'Bob', Infinity),
+        member('@zoe:hs', 'Zoe', 100),
+      ],
+      { sender: '@ada:hs', version: '12', additional: ['@bob:hs'] },
+    );
+    const { service } = setup(client([source]));
+
+    expect(
+      service.membersOf('!room:hs').map(({ userId, isCreator }) => ({
+        userId,
+        isCreator,
+      })),
+    ).toEqual([
+      { userId: '@ada:hs', isCreator: true },
+      { userId: '@bob:hs', isCreator: true },
+      { userId: '@zoe:hs', isCreator: false },
     ]);
   });
 

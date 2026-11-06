@@ -22,7 +22,8 @@ import {
   coalesce,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { initialOf } from '@trinity/util/matrix';
+import { initialOf, liveRoomState } from '@trinity/util/matrix';
+import { roomAdvancedInfo } from './room-advanced-info';
 import { Observable, of, switchMap } from 'rxjs';
 import type { RoomAdministrationView } from './room-administration-health.models';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
@@ -365,9 +366,13 @@ export class RoomMembersService {
     if (cached?.fingerprint === fingerprint) {
       return cached.members;
     }
-    const creatorId = room.getCreator();
+    const creators = new Set(
+      roomAdvancedInfo(room.roomId, liveRoomState(room)).createdBy.map(
+        ({ userId }) => userId,
+      ),
+    );
     const members = joined
-      .map((member) => this.toSummary(member, creatorId))
+      .map((member) => this.toSummary(member, creators))
       .sort((a, b) =>
         this.collator.compare(a.roomDisplayName, b.roomDisplayName),
       );
@@ -538,7 +543,7 @@ export class RoomMembersService {
 
   private toSummary(
     member: RoomMember,
-    creatorId: string | null,
+    creators: ReadonlySet<string>,
   ): MemberSummary {
     const roomDisplayName = member.name || member.userId;
     return {
@@ -547,7 +552,7 @@ export class RoomMembersService {
       roomInitial: initialOf(roomDisplayName),
       roomAvatarMxc: member.getMxcAvatarUrl() ?? null,
       powerLevel: member.powerLevel,
-      isCreator: !!creatorId && member.userId === creatorId,
+      isCreator: creators.has(member.userId),
     };
   }
 }
