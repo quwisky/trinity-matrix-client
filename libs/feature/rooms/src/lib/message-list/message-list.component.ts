@@ -983,9 +983,10 @@ export class MessageListComponent extends MessageListBase {
    * Record the first rendered `.msg` reaching into the viewport and its offset from the top, so
    * scroll can be restored to it after older history prepends (see the anchoring effect).
    */
-  private capturePrependAnchor(el: HTMLElement): void {
+  private capturePrependAnchor(el: HTMLElement, retry = true): void {
     this.prependAnchorId = '';
     const top = el.getBoundingClientRect().top;
+    const bottom = top + el.clientHeight;
     const leading = this.leadingRowId();
     // A fling's placeholders stand where their rows are: they anchor as well as the rows.
     for (const m of Array.from(
@@ -995,12 +996,29 @@ export class MessageListComponent extends MessageListBase {
         m.getAttribute('data-mid') ?? m.getAttribute('data-placeholder-mid');
       if (leading !== null && id === leading) continue;
       const rect = m.getBoundingClientRect();
-      if (rect.bottom > top) {
+      if (rect.bottom > top && rect.top < bottom) {
         this.prependAnchorId = id ?? '';
         this.prependAnchorOffset = rect.top - top;
         return;
       }
     }
+    // A long programmatic jump (Home, a screen reader) scrolls before the window renders the rows
+    // of the new position: anchor what is on screen once it has.
+    if (!retry) return;
+    const generation = this.prependAnchorGeneration;
+    afterNextRender(
+      () => {
+        if (
+          !this.destroyRef.destroyed &&
+          this.pendingPrepend &&
+          this.prependAnchorId === '' &&
+          generation === this.prependAnchorGeneration
+        ) {
+          this.capturePrependAnchor(el, false);
+        }
+      },
+      { injector: this.injector },
+    );
   }
 
   /**

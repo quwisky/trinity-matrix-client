@@ -1360,6 +1360,54 @@ describe('MessageListComponent', () => {
       expect(replyTop()).toBe(before);
     });
 
+    // A programmatic jump to the top (Home, a screen reader) fires its scroll event before the
+    // window re-renders, so the rendered rows still sit where the reader was, far below.
+    it('anchors history on a row on screen after a long jump to the top', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(30),
+        canLoadOlder: true,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 3700, prepended: 0, stale: 3000 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      const rowTop = (i: number) =>
+        40 + i * EST + view.prepended + view.stale - view.st;
+      scroll.querySelectorAll('[data-mid]').forEach((row, i) => {
+        (row as HTMLElement).getBoundingClientRect = () =>
+          rect(rowTop(i), rowTop(i) + EST);
+      });
+      cmp.onScroll(); // the jump's scroll event, at the top: asks for history
+      view.stale = 0; // the window renders the rows of the new position
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const before = rowTop(0);
+
+      view.prepended = 110;
+      view.sh += 110;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(rowTop(0)).toBe(before);
+    });
+
     async function afterHistoryPage(below = 0) {
       const { fixture, container } = await renderList({
         messages: many(30),
