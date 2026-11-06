@@ -18,12 +18,14 @@ function setup(
 ) {
   const ids = signal(accountIds);
   const active = signal<string | null>('@a:hs');
+  const restoring = signal<ReadonlySet<string>>(new Set());
   const switchActiveAccount = vi.fn(switched);
   TestBed.configureTestingModule({
     providers: [
       AccountSwitchLauncherAdapter,
       MockProvider(AccountRuntimeService, {
         activeAccountId: active.asReadonly(),
+        restoringAccountIds: restoring.asReadonly(),
         switchActiveAccount,
       }),
       MockProvider(MatrixClientService, { accountIds: ids.asReadonly() }),
@@ -33,6 +35,7 @@ function setup(
     launcher: TestBed.inject(AccountSwitchLauncherAdapter),
     ids,
     active,
+    restoring,
     switchActiveAccount,
   };
 }
@@ -48,6 +51,20 @@ describe('AccountSwitchLauncherAdapter', () => {
       true,
     );
     expect(test.switchActiveAccount).toHaveBeenCalledWith('@c:hs');
+  });
+
+  it('skips an account still restoring in the background until it settles', async () => {
+    const test = setup(['@a:hs', '@b:hs']);
+    test.restoring.set(new Set(['@b:hs']));
+
+    expect(test.launcher.hasOtherAccount()).toBe(false);
+    await expect(firstValueFrom(test.launcher.switchToOther())).resolves.toBe(
+      false,
+    );
+    expect(test.switchActiveAccount).not.toHaveBeenCalled();
+
+    test.restoring.set(new Set());
+    expect(test.launcher.hasOtherAccount()).toBe(true);
   });
 
   it('reports false when no other account is signed in', async () => {

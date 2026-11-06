@@ -13,6 +13,14 @@
   @if (locked()) {
     <span class="account-pick__active">Always included</span>
   }
+  @if (restoring()) {
+    <span
+      class="account-pick__restoring"
+      data-testid="account-pick-restoring"
+      aria-hidden="true"
+      >Loading…</span
+    >
+  }
   @if (unverified()) {
     <span
       trnBadge

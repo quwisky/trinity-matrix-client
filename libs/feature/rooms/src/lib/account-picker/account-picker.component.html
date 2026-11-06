@@ -11,6 +11,7 @@
       [account]="account"
       [locked]="isLocked(account.userId)"
       [unverified]="account.trust === 'unverified'"
+      [restoring]="!!account.restoring"
     />
     @if (isShown(account.userId)) {
       <trn-icon name="check" size="md" variant="accent" class="ms-auto" />
@@ -40,6 +41,8 @@
           [attr.data-testid]="'show-account-' + account.userId"
           [attr.data-trust]="account.trust"
           (click)="toggle(account.userId)"
+          [trnActionAllowed]="!account.restoring"
+          [trnActionDisabledReason]="account.restoring ? 'Loading…' : null"
         >
           <ng-container
             [ngTemplateOutlet]="pickContent"
@@ -67,6 +70,8 @@
             [attr.data-testid]="'show-account-' + account.userId"
             [attr.data-trust]="account.trust"
             (click)="toggle(account.userId)"
+            [trnActionAllowed]="!account.restoring"
+            [trnActionDisabledReason]="account.restoring ? 'Loading…' : null"
           >
             <ng-container
               [ngTemplateOutlet]="pickContent"

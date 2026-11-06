@@ -7,7 +7,9 @@ export type AccountRestoreFailure =
   /** A keyed crypto store whose key is missing; only a new-device sign-in helps. */
   | 'crypto-store-key-lost'
   /** The OS keychain cannot be reached right now; retry once it is unlocked. */
-  | 'secure-storage-unavailable';
+  | 'secure-storage-unavailable'
+  /** A defect in a background restore; a retry may still bring the Account back. */
+  | 'unexpected';
 
 export type AccountRuntimeOperation =
   | 'restoring-accounts'

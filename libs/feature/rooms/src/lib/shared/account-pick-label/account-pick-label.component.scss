@@ -39,6 +39,13 @@
     color: var(--trinity-text-muted);
   }
 
+  .account-pick__restoring {
+    flex: 0 0 auto;
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    color: var(--trinity-text-muted);
+  }
+
   // Its own line under the handle, as wide as its text, so it never squeezes the id.
   .account-pick__trust {
     align-self: flex-start;

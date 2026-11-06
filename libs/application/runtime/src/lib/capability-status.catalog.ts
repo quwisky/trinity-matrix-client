@@ -161,6 +161,7 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
       'account-restore-crypto-failure',
       'account-restore-crypto-store-key-lost',
       'account-restore-secure-storage-unavailable',
+      'account-restore-unexpected',
     ],
   }),
   'identity:presence': projectionReasons('presence', [

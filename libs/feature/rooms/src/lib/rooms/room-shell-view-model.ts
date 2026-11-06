@@ -1,5 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import {
   RoomActionPermissionsService,
   RoomMembersService,
@@ -58,6 +59,7 @@ export class RoomShellViewModel {
   private readonly unreadAgg = inject(UnreadAggregatorService);
   private readonly railUnreadPreference = inject(RailUnreadChatsPreference);
   private readonly matrix = inject(MatrixClientService);
+  private readonly accountRuntime = inject(AccountRuntimeService);
   private readonly identities = inject(AccountIdentitiesService);
   private readonly accountTrust = inject(TrustAccountStatusService);
   private readonly inboxPreferences = inject(MentionInboxPreferences);
@@ -466,7 +468,11 @@ export class RoomShellViewModel {
     const unread = this.unreadAgg.unreadByAccount();
     const profiles = this.identities.identities();
     const trust = this.accountTrust.summaries();
-    return this.matrix.accountIds().map((userId) => {
+    const restoring = this.accountRuntime.restoringAccountIds();
+    const live = this.matrix.accountIds();
+    // An account still restoring in the background is listed before its client is live.
+    const pending = [...restoring].filter((userId) => !live.includes(userId));
+    return [...live, ...pending].map((userId) => {
       const profile = profiles.get(userId);
       return {
         userId,
@@ -474,11 +480,19 @@ export class RoomShellViewModel {
         avatarMxc: profile?.avatarMxc ?? null,
         unread: unread.get(userId) ?? 0,
         trust: trust.get(userId) ?? 'unknown',
+        restoring: restoring.has(userId),
       };
     });
   });
 
   readonly activeAccountId = this.matrix.activeUserId;
+  /**
+   * Adding or removing an account waits while inactive accounts restore: the start's background
+   * run, or a retry of a failed one.
+   */
+  readonly accountsRestoring = computed(() =>
+    this.accountRuntime.restoringInBackground(),
+  );
 
   /**
    * Space pills for the rail from the same selected generation as the Room lists.

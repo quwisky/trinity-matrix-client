@@ -8,7 +8,7 @@ import {
 } from '@angular/core';
 import { TitleBarState } from '@trinity/application/workspace';
 import { AvatarComponent, TrnBadge } from '@trinity/components/generic-content';
-import { TrnButton } from '@trinity/components/controls';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { type IdentityProfile } from '@trinity/data-access/identity';
@@ -36,7 +36,12 @@ export interface AccountSummary extends IdentityProfile {
   unread: number;
   /** Whether this account's device here is verified; absent until Trust has read it. */
   trust?: AccountTrustSummary;
+  /** Still restoring in the background after the start, so it cannot be switched to yet. */
+  restoring?: boolean;
 }
+
+/** Why an account row or account action waits while a background restore runs. */
+const RESTORING_REASON = 'Loading…';
 
 /** The navigation shell's bottom user panel: the signed-in user plus account switcher. */
 const PRESENCE_NAMES = {
@@ -50,6 +55,7 @@ const PRESENCE_NAMES = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     AccountPickLabelComponent,
+    TrnActionAvailability,
     TrnButton,
     TrnTooltip,
     TrnBadge,
@@ -95,6 +101,9 @@ export class SidebarUserPanelComponent {
   readonly activeUserId = input<string | null>(null);
   /** User ids of accounts the server signed out that need re-authentication. */
   readonly reauthAccounts = input<readonly string[]>([]);
+  /** While other accounts restore in the background, adding or removing one is refused. */
+  readonly accountsRestoring = input(false);
+  readonly restoringReason = RESTORING_REASON;
   /** The accounts the room list currently draws from. Drives the picker's ticks; defaults to empty so the panel renders standalone. */
   readonly shownAccountIds = input<ReadonlySet<string>>(new Set());
 

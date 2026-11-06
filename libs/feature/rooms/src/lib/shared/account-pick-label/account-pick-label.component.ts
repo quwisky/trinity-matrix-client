@@ -25,5 +25,7 @@ export class AccountPickLabelComponent {
   readonly locked = input(false);
   /** This account's device here is unverified, so the option says so. */
   readonly unverified = input(false);
+  /** Still restoring in the background; the row's own description announces it. */
+  readonly restoring = input(false);
   readonly initial = computed(() => initialOf(this.account().displayName));
 }

@@ -168,6 +168,12 @@
   }
 
   // Its own line under the handle, as wide as its text, so it never squeezes the id.
+  .account-row__restoring {
+    font-size: var(--trinity-type-metadata-size);
+    line-height: var(--trinity-type-metadata-line-height);
+    color: var(--trinity-text-muted);
+  }
+
   .account-row__trust {
     align-self: flex-start;
     margin-top: var(--trinity-space-1);

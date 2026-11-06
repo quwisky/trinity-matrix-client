@@ -1,10 +1,22 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
 import {
+  DestroyRef,
+  ErrorHandler,
+  Injectable,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  EMPTY,
   Observable,
+  Subject,
   catchError,
+  concat,
   defer,
   finalize,
   from,
+  ignoreElements,
   map,
   mergeMap,
   of,
@@ -69,8 +81,18 @@ export class AccountRuntimeService {
   private readonly runtimeState = signal<AccountRuntimeState>({
     phase: 'idle',
   });
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly errors = inject(ErrorHandler);
+  private readonly lateInactiveOutcomes = new Subject<AccountRestoreOutcome>();
   private establishment: InFlightAccountEstablishment | null = null;
   private restoredOnce = false;
+  private readonly backgroundRestoring = signal(false);
+  private readonly pendingRestores = signal<ReadonlySet<string>>(new Set());
+  /**
+   * Each inactive Account's latest outcome since a start whose Active Account restored, kept
+   * past a switch so a failed one stays retryable; one leaving never affects the others.
+   */
+  private readonly inactiveOutcomes = new Map<string, AccountRestoreOutcome>();
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -89,6 +111,17 @@ export class AccountRuntimeService {
   readonly newDevices: Observable<NewDeviceEstablishment> =
     this.adapter.newDevices;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
+  /**
+   * The inactive Accounts still restoring after a start, in its background run or a retry;
+   * each leaves as it settles.
+   */
+  readonly restoringAccountIds = computed<ReadonlySet<string>>(
+    () =>
+      new Set([...this.pendingRestores(), ...this.inactiveRestore.retrying()]),
+  );
+  /** Each inactive Account a start restored after it settled. Hot; never replays. */
+  readonly inactiveRestoreOutcomes: Observable<AccountRestoreOutcome> =
+    this.lateInactiveOutcomes.asObservable();
 
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
@@ -117,27 +150,47 @@ export class AccountRuntimeService {
         switchMap(() => this.adapter.readSavedAccounts()),
         switchMap((snapshot) => {
           if (snapshot.kind === 'corrupt-local-state') {
-            return of(emptyAccountRestoreResult('local-state-unavailable'));
+            return of({
+              result: emptyAccountRestoreResult('local-state-unavailable'),
+              background: null,
+            });
           }
           activeAccountId = snapshot.activeAccountId;
           totalAccounts = snapshot.accountIds.length;
           this.publishProgress(activeAccountId, totalAccounts, outcomes);
-          return this.restoreSnapshot(snapshot, outcomes).pipe(
-            // Still restoring, so no sign-in can start until the sweep has read its list.
-            switchMap((result) =>
-              !sweepsNativeTokens || result.kind === 'local-state-unavailable'
-                ? of(result)
-                : this.adapter.sweepNativeTokens().pipe(
-                    catchError(() => of(void 0)),
-                    map(() => result),
-                  ),
-            ),
-          );
+          return this.restoreActive(snapshot, outcomes);
         }),
-        tap((result) => {
+        // Without a background run, still restoring, so no sign-in can start until the sweep
+        // has read its list.
+        switchMap((restored) =>
+          restored.background ||
+          !sweepsNativeTokens ||
+          restored.result.kind === 'local-state-unavailable'
+            ? of(restored)
+            : this.adapter.sweepNativeTokens().pipe(
+                catchError(() => of(void 0)),
+                map(() => restored),
+              ),
+        ),
+        tap(({ result, background }) => {
           termination = 'settled';
+          this.inactiveOutcomes.clear();
+          if (
+            result.kind === 'restored' ||
+            result.kind === 'restored-with-inactive-failures'
+          ) {
+            for (const account of result.accounts) {
+              if (account.role === 'inactive') {
+                this.inactiveOutcomes.set(account.accountId, account);
+              }
+            }
+          }
           this.runtimeState.set({ phase: 'settled', result });
+          if (background) {
+            this.restoreInBackground(background, sweepsNativeTokens);
+          }
         }),
+        map(({ result }) => result),
         catchError((error: unknown) => {
           termination = 'failed';
           return throwError(() => error);
@@ -167,22 +220,9 @@ export class AccountRuntimeService {
           operation: conflict,
         });
       }
-      const state = this.runtimeState();
-      if (state.phase !== 'settled') {
-        return of({ kind: 'unavailable' } as const);
-      }
-      const result = state.result;
-      if (
-        result.kind !== 'restored-with-inactive-failures' &&
-        result.kind !== 'restored'
-      ) {
-        return of({ kind: 'unavailable' } as const);
-      }
-      const previous = result.accounts.find(
-        (account) => account.accountId === accountId,
-      );
+      const previous = this.inactiveOutcomes.get(accountId);
       return this.inactiveRestore.run(previous, (outcome) =>
-        this.publishInactiveRetry(outcome),
+        this.publishInactiveOutcome(outcome),
       );
     });
   }
@@ -265,7 +305,7 @@ export class AccountRuntimeService {
       this.switchWorkflow.run(
         accountId,
         this.activeAccountId,
-        this.blockingSwitchOperation(),
+        this.blockingSwitchOperation(accountId),
         coordination.prepare,
         coordination.onCommitStarted ?? (() => undefined),
         (state) => this.runtimeState.set(state),
@@ -274,21 +314,26 @@ export class AccountRuntimeService {
   }
 
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
-    return defer(() =>
-      this.lifecycleWorkflow.signOut(
-        accountId,
-        this.blockingLifecycleOperation(),
-      ),
-    );
+    return defer(() => {
+      const blocking = this.blockingLifecycleOperation();
+      if (this.currentOperation() === null) this.forgetStarted(accountId);
+      return this.lifecycleWorkflow.signOut(accountId, blocking);
+    });
   }
 
   /** Remove an account its homeserver deleted, serialized with the other lifecycle commands. */
   removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
-    return defer(() =>
-      this.lifecycleWorkflow.removeDeleted(
-        accountId,
-        this.blockingLifecycleOperation(),
-      ),
+    return defer(() => {
+      const blocking = this.blockingLifecycleOperation();
+      if (this.currentOperation() === null) this.forgetStarted(accountId);
+      return this.lifecycleWorkflow.removeDeleted(accountId, blocking);
+    });
+  }
+
+  /** Whether inactive Accounts are still restoring after the start, or being retried. */
+  restoringInBackground(): boolean {
+    return (
+      this.backgroundRestoring() || this.inactiveRestore.retrying().size > 0
     );
   }
 
@@ -303,11 +348,13 @@ export class AccountRuntimeService {
     );
   }
 
-  private blockingSwitchOperation(): Exclude<
-    AccountRuntimeOperation,
-    'switching-account'
-  > | null {
-    const operation = this.currentOperation();
+  private blockingSwitchOperation(
+    accountId: string,
+  ): Exclude<AccountRuntimeOperation, 'switching-account'> | null {
+    // Only the target's own restore holds a switch back; a settled Account switches at once.
+    const operation = this.restoringAccountIds().has(accountId)
+      ? this.currentOperation()
+      : this.currentOperation(false);
     return operation === 'switching-account' ? null : operation;
   }
 
@@ -330,7 +377,7 @@ export class AccountRuntimeService {
   private currentOperation(
     includeInactiveRestore = true,
   ): AccountRuntimeOperation | null {
-    if (includeInactiveRestore && this.inactiveRestore.inProgress)
+    if (includeInactiveRestore && this.restoringInBackground())
       return 'restoring-accounts';
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
@@ -340,7 +387,17 @@ export class AccountRuntimeService {
     return this.lifecycleWorkflow.operation;
   }
 
-  private publishInactiveRetry(outcome: AccountRestoreOutcome): void {
+  /**
+   * An Account a sign-out or removal starts on is never retried again, even when that command
+   * then fails: a later start restores it if it stays.
+   */
+  private forgetStarted(accountId: string): void {
+    this.inactiveOutcomes.delete(accountId);
+  }
+
+  /** Kept for a retry, and merged into the start's result while the runtime state shows it. */
+  private publishInactiveOutcome(outcome: AccountRestoreOutcome): void {
+    this.inactiveOutcomes.set(outcome.accountId, outcome);
     const state = this.runtimeState();
     if (state.phase !== 'settled') return;
     const result = state.result;
@@ -350,64 +407,144 @@ export class AccountRuntimeService {
     ) {
       return;
     }
-    const accounts = result.accounts.map((account) =>
-      account.accountId === outcome.accountId ? outcome : account,
+    const known = result.accounts.some(
+      (account) => account.accountId === outcome.accountId,
     );
+    const accounts = known
+      ? result.accounts.map((account) =>
+          account.accountId === outcome.accountId ? outcome : account,
+        )
+      : [...result.accounts, outcome];
     this.runtimeState.set({
       phase: 'settled',
       result: accountRestoreResultFor(result.activeAccountId, accounts),
     });
   }
 
-  private restoreSnapshot(
+  /**
+   * Settles once the Active Account is ready, naming the inactive Accounts left for the
+   * background. When it is not ready, the start is blocked anyway, so the inactive Accounts
+   * restore inside it and the recovery commands are not refused by a background run.
+   */
+  private restoreActive(
     snapshot: Extract<SavedAccountsSnapshot, { kind: 'available' }>,
     outcomes: Map<string, AccountRestoreOutcome>,
-  ): Observable<AccountRestoreResult> {
+  ): Observable<{
+    readonly result: AccountRestoreResult;
+    readonly background: readonly string[] | null;
+  }> {
     if (snapshot.accountIds.length === 0) {
-      return of(emptyAccountRestoreResult('no-accounts'));
+      return of({
+        result: emptyAccountRestoreResult('no-accounts'),
+        background: null,
+      });
     }
+    const activeAccountId = snapshot.activeAccountId;
     if (
-      !snapshot.activeAccountId ||
-      !snapshot.accountIds.includes(snapshot.activeAccountId) ||
+      !activeAccountId ||
+      !snapshot.accountIds.includes(activeAccountId) ||
       new Set(snapshot.accountIds).size !== snapshot.accountIds.length
     ) {
-      return of(emptyAccountRestoreResult('local-state-unavailable'));
+      return of({
+        result: emptyAccountRestoreResult('local-state-unavailable'),
+        background: null,
+      });
     }
-
-    const activeAccountId = snapshot.activeAccountId;
     const orderedAccountIds = [
       activeAccountId,
       ...snapshot.accountIds.filter(
         (accountId) => accountId !== activeAccountId,
       ),
     ];
-
-    return from(orderedAccountIds).pipe(
-      mergeMap(
-        (accountId) =>
-          this.restoreOne(
-            accountId,
-            accountId === activeAccountId ? 'active' : 'inactive',
-          ).pipe(
-            tap((outcome) => {
-              outcomes.set(accountId, outcome);
-              this.publishProgress(
-                activeAccountId,
-                orderedAccountIds.length,
-                outcomes,
-              );
-            }),
-          ),
-        this.policy.concurrency,
+    const record = (outcome: AccountRestoreOutcome): void => {
+      outcomes.set(outcome.accountId, outcome);
+      this.publishProgress(activeAccountId, orderedAccountIds.length, outcomes);
+    };
+    // Alone, so the Active Account is first in the crypto setup queue.
+    return this.restoreOne(activeAccountId, 'active').pipe(
+      tap(record),
+      switchMap((active) =>
+        active.kind === 'ready'
+          ? of({
+              result: accountRestoreResultFor(activeAccountId, [active]),
+              background: orderedAccountIds.slice(1),
+            })
+          : from(orderedAccountIds.slice(1)).pipe(
+              mergeMap(
+                (accountId) =>
+                  this.restoreOne(accountId, 'inactive').pipe(tap(record)),
+                this.policy.concurrency,
+              ),
+              toArray(),
+              map(() => ({
+                result: accountRestoreResultFor(
+                  activeAccountId,
+                  orderedAccountIds.map((accountId) =>
+                    outcomes.get(accountId)!,
+                  ),
+                ),
+                background: null,
+              })),
+            ),
       ),
-      toArray(),
-      map(() => {
-        const orderedOutcomes = orderedAccountIds.map((accountId) =>
-          outcomes.get(accountId)!,
-        );
-        return accountRestoreResultFor(activeAccountId, orderedOutcomes);
-      }),
     );
+  }
+
+  /**
+   * After the start settles: the inactive Accounts, then the native token sweep. Sign-in and the
+   * lifecycle commands wait for both, so the sweep reads a list no sign-in changed; a switch
+   * waits only for its own target.
+   */
+  private restoreInBackground(
+    accountIds: readonly string[],
+    sweepsNativeTokens: boolean,
+  ): void {
+    if (accountIds.length === 0 && !sweepsNativeTokens) return;
+    this.backgroundRestoring.set(true);
+    this.pendingRestores.set(new Set(accountIds));
+    concat(
+      from(accountIds).pipe(
+        mergeMap(
+          (accountId) =>
+            this.restoreOne(accountId, 'inactive').pipe(
+              catchError((error: unknown) => {
+                this.errors.handleError(error);
+                // An outcome all the same, so health reports it and a retry can reach it.
+                return of({
+                  kind: 'failed' as const,
+                  failure: 'unexpected' as const,
+                  accountId,
+                  role: 'inactive' as const,
+                });
+              }),
+              tap((outcome) => {
+                this.publishInactiveOutcome(outcome);
+                this.pendingRestores.update((pending) => {
+                  const next = new Set(pending);
+                  next.delete(accountId);
+                  return next;
+                });
+                this.lateInactiveOutcomes.next(outcome);
+              }),
+            ),
+          this.policy.concurrency,
+        ),
+        ignoreElements(),
+      ),
+      sweepsNativeTokens
+        ? defer(() => this.adapter.sweepNativeTokens()).pipe(
+            catchError(() => EMPTY),
+          )
+        : EMPTY,
+    )
+      .pipe(
+        finalize(() => {
+          this.pendingRestores.set(new Set());
+          this.backgroundRestoring.set(false);
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
   }
 
   private restoreOne(

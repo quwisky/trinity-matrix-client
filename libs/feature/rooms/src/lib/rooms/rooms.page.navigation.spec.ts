@@ -1083,6 +1083,7 @@ describe('RoomsPage account switcher summary', () => {
         avatarMxc: meAvatar,
         unread: 4,
         trust: 'unknown',
+        restoring: false,
       },
       {
         userId: '@alt:hs',
@@ -1090,6 +1091,7 @@ describe('RoomsPage account switcher summary', () => {
         avatarMxc: null,
         unread: 0,
         trust: 'unknown',
+        restoring: false,
       },
     ]);
   });

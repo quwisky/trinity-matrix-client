@@ -15,10 +15,18 @@ import type { AccountSwitchLauncher } from '@trinity/platform-native';
 export class AccountSwitchLauncherAdapter implements AccountSwitchLauncher {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly matrix = inject(MatrixClientService);
-  /** The first signed-in account besides the active one, in the switcher's order. */
+  /**
+   * The first signed-in account besides the active one, in the switcher's order, skipping one
+   * still restoring in the background: the switch would refuse it.
+   */
   private readonly otherAccountId = computed(() => {
     const active = this.accounts.activeAccountId();
-    return this.matrix.accountIds().find((id) => id !== active) ?? null;
+    const restoring = this.accounts.restoringAccountIds();
+    return (
+      this.matrix
+        .accountIds()
+        .find((id) => id !== active && !restoring.has(id)) ?? null
+    );
   });
 
   readonly hasOtherAccount = computed(() => this.otherAccountId() !== null);

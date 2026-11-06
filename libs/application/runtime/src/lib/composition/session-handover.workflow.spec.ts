@@ -8,6 +8,7 @@ import {
 import {
   AccountRuntimeService,
   type AccountLifecycleState,
+  type AccountRuntimeState,
 } from '@trinity/data-access/accounts';
 import {
   AppRestartService,
@@ -48,12 +49,15 @@ function setup(
     readonly closeFails?: boolean;
     readonly unsent?: () => readonly PendingTextMessage[];
     readonly lifecycleBusy?: boolean;
+    readonly restoringAccounts?: boolean;
     readonly reloadFails?: boolean;
     readonly restartFails?: boolean;
   } = {},
 ) {
   const steps: string[] = [];
   const lifecycleBusy = signal(options.lifecycleBusy ?? false);
+  const restoringAccounts = signal(options.restoringAccounts ?? false);
+  const runtimeState = signal<AccountRuntimeState>({ phase: 'idle' });
   const lifecycle = signal<AccountLifecycleState>({ phase: 'idle' });
   const requests = new Subject<void>();
   const matrix = {
@@ -110,6 +114,8 @@ function setup(
       MockProvider(AccountRuntimeService, {
         lifecycleBusy: lifecycleBusy.asReadonly(),
         lifecycle: lifecycle.asReadonly(),
+        restoringInBackground: () => restoringAccounts(),
+        state: runtimeState.asReadonly(),
       }),
     ],
   });
@@ -123,6 +129,8 @@ function setup(
     writeBack,
     lifetime,
     lifecycleBusy,
+    restoringAccounts,
+    runtimeState,
     lifecycle,
     handleError,
   };
@@ -367,6 +375,45 @@ describe('SessionHandoverWorkflow', () => {
     expect(handleError).toHaveBeenCalledOnce();
     // The handover still ends: the lifetime keeps answering requests.
     expect(lifetime.closed).toBe(false);
+    lifetime.unsubscribe();
+  });
+
+  it('waits for the accounts still restoring in the background, then hands over', async () => {
+    const { steps, requests, restoringAccounts, lifetime } = setup({
+      restoringAccounts: true,
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(steps).toEqual([]);
+
+    restoringAccounts.set(false);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(steps).toEqual(HANDED_OVER);
+    lifetime.unsubscribe();
+  });
+
+  it('waits for the Active Account restore of a start, then hands over', async () => {
+    const { steps, requests, runtimeState, lifetime } = setup();
+    runtimeState.set({
+      phase: 'restoring',
+      activeAccountId: '@me:hs',
+      totalAccounts: 1,
+      outcomes: [],
+    });
+
+    requests.next();
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(steps).toEqual([]);
+
+    runtimeState.set({
+      phase: 'settled',
+      result: { kind: 'no-accounts', accounts: [] },
+    });
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(steps).toEqual(HANDED_OVER);
     lifetime.unsubscribe();
   });
 
