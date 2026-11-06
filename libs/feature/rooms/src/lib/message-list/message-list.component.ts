@@ -400,8 +400,9 @@ export class MessageListComponent extends MessageListBase {
         ) {
           this.prevScrollHeight = el.scrollHeight;
           this.prevScrollTop = el.scrollTop;
-          this.capturePrependAnchor(el);
+          // A new session before the capture, so a capture retried after the render still belongs to it.
           this.prependAnchorGeneration++;
+          this.capturePrependAnchor(el);
           this.expectedProgrammaticScrollTop = null;
           // Its scroll event must not move the anchor by this again.
           this.scrollTop.set(el.scrollTop);
@@ -411,19 +412,18 @@ export class MessageListComponent extends MessageListBase {
         this.lastId = msgs[msgs.length - 1]?.id ?? this.lastId;
         const prevHeight = this.prevScrollHeight;
         const prevTop = this.prevScrollTop;
-        const anchorId = this.prependAnchorId;
-        const anchorOffset = this.prependAnchorOffset;
         const anchorGeneration = this.prependAnchorGeneration;
         this.prependAnchorActive = true;
         // Correct as soon as the strip/prepend renders, before another scroll event can
-        // capture its displaced geometry as the reader's intended position.
+        // capture its displaced geometry as the reader's intended position. The anchor is read
+        // then, so a capture retried after that render is the one restored.
         untracked(() =>
           afterNextRender(
             () => {
               this.restorePrependAnchor(
                 el,
-                anchorId,
-                anchorOffset,
+                this.prependAnchorId,
+                this.prependAnchorOffset,
                 prevHeight,
                 prevTop,
                 anchorGeneration,
@@ -1010,7 +1010,6 @@ export class MessageListComponent extends MessageListBase {
       () => {
         if (
           !this.destroyRef.destroyed &&
-          this.pendingPrepend &&
           this.prependAnchorId === '' &&
           generation === this.prependAnchorGeneration
         ) {
