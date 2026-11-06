@@ -642,13 +642,6 @@ test.describe('Space settings', () => {
     // cannot tell apart. Read the CURRENT power levels and merge, rather than PUTting a
     // bare `users` map: this event also carries `events`, `state_default` and friends,
     // and replacing it wholesale would silently drop them.
-    const ownerId = (
-      await request
-        .get(`${hs}/_matrix/client/v3/account/whoami`, {
-          headers: { Authorization: `Bearer ${ownerToken}` },
-        })
-        .then((r) => r.json())
-    ).user_id as string;
     const currentPowers = await request
       .get(
         `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(spaceId)}/state/m.room.power_levels/`,
@@ -661,7 +654,9 @@ test.describe('Space settings', () => {
         headers: { Authorization: `Bearer ${ownerToken}` },
         data: {
           ...currentPowers,
-          users: { ...currentPowers.users, [ownerId]: 100, [otherId]: 100 },
+          // The creator keeps their own level: listed at 100 before room version 12,
+          // unlisted from version 12, where creators may not appear in `users`.
+          users: { ...currentPowers.users, [otherId]: 100 },
         },
       },
     );

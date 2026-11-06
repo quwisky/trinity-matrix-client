@@ -44,7 +44,8 @@ test.describe('Room upgrade', () => {
       hs,
       { accessToken: adminToken },
       roomName,
-      { invite: [memberId] },
+      // Below every homeserver's newest version, so there is one to upgrade to.
+      { invite: [memberId], roomVersion: '10' },
     );
     const joined = await request.post(`${room(roomId)}/join`, {
       headers: { Authorization: `Bearer ${memberToken}` },
