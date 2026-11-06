@@ -242,17 +242,9 @@ describe('SpaceChildrenService', () => {
 
     describe('for a room version 12 child, whose ID names no server', () => {
       const CHILD = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
-      function childRoom(joined: string[], parentVia?: string[]) {
+      function childRoom(joined: string[]) {
         return {
           getJoinedMembers: () => joined.map((userId) => ({ userId })),
-          getLiveTimeline: () => ({
-            getState: () => ({
-              getStateEvents: (type: string) =>
-                type === 'm.space.parent' && parentVia
-                  ? [{ getContent: () => ({ via: parentVia }) }]
-                  : [],
-            }),
-          }),
         };
       }
 
@@ -275,18 +267,6 @@ describe('SpaceChildrenService', () => {
           'far.example',
           'hs.example',
         ]);
-      });
-
-      it('falls back to the via of its own m.space.parent link', async () => {
-        const { svc, sendStateEvent } = setup({
-          rooms: { [CHILD]: childRoom([], ['parent.example']) },
-        });
-
-        await firstValueFrom(
-          svc.addExistingRoom('@me:hs.example', '!s:hs', CHILD),
-        );
-
-        expect(sentContent(sendStateEvent)['via']).toEqual(['parent.example']);
       });
 
       it('falls back to our own server when nothing else names one', async () => {

@@ -17,11 +17,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import {
-  liveRoomState,
-  normalizeViaServers,
-  roomVia,
-} from '@trinity/util/matrix';
+import { liveRoomState, roomVia } from '@trinity/util/matrix';
 import {
   compareOrder,
   isValidOrder,
@@ -471,35 +467,22 @@ function sameLinks(
 /**
  * Servers to route a join through, preferring the child room's own over ours: a `via`
  * naming only our homeserver is useless for a room we do not host. A room version 12
- * child ID names no server, so its joined members' servers, then the `via` of its own
- * `m.space.parent` links, stand in before ours.
+ * child ID names no server, so its joined members' servers stand in before ours.
  */
 function viaFor(client: MatrixClient, childId: string): string[] {
   const fromId = roomVia(childId);
   if (fromId.length > 0) {
     return fromId;
   }
-  const child = client.getRoom(childId);
   const fromMembers = roomVia(
     childId,
-    child?.getJoinedMembers().map(({ userId }) => userId) ?? [],
+    client
+      .getRoom(childId)
+      ?.getJoinedMembers()
+      .map(({ userId }) => userId) ?? [],
   );
   if (fromMembers.length > 0) {
     return fromMembers;
-  }
-  const parentLinks = child
-    ? (liveRoomState(child)?.getStateEvents(EventType.SpaceParent) ?? [])
-    : [];
-  const fromParents = normalizeViaServers(
-    parentLinks.flatMap((link) => {
-      const via: unknown = link.getContent()['via'];
-      return Array.isArray(via)
-        ? via.filter((server): server is string => typeof server === 'string')
-        : [];
-    }),
-  );
-  if (fromParents.length > 0) {
-    return [...fromParents];
   }
   const userId = client.getUserId() ?? '';
   return userId.includes(':') ? [userId.split(':').slice(1).join(':')] : [];

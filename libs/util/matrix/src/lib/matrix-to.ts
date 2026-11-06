@@ -65,7 +65,7 @@ export function matrixToPermalink(target: MatrixLinkTarget): string {
 /**
  * Routing servers for a join by room ID: the ID's origin server when it names one. A room
  * version 12 ID names none, so its joined members' servers are used instead, the most
- * populous first and at most three, as Element does. Empty for aliases.
+ * populous first and at most three. Empty for aliases.
  */
 export function roomVia(
   roomIdOrAlias: string,
