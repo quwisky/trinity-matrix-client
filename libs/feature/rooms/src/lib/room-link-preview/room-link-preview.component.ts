@@ -77,10 +77,10 @@ export class RoomLinkPreviewComponent implements OnInit {
   private readonly roomLinks = inject(RoomLinkService);
   private readonly invites = inject(InvitesService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   /** Cards are the sheet look; a desktop dialog keeps its plain tiles. */
   protected readonly sheet = this.dialogRef.presentation === 'sheet';
-  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly loading = signal(true);
   readonly preview = signal<RoomLinkPreview | null>(null);

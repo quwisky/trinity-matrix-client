@@ -50,10 +50,10 @@ import {
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly ref = inject(TrnDialogRef, { optional: true });
+  private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
 
   /** Cards are the sheet look; a desktop dialog keeps its plain list. */
   protected readonly sheet = this.ref?.presentation === 'sheet';
-  private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
 
   readonly eventId = input.required<string>();
 

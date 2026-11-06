@@ -62,10 +62,6 @@ let nextId = 0;
 })
 export class MemberManageTabComponent {
   private readonly toast = inject(TrnToastService);
-
-  /** Cards are the sheet look; a desktop dialog keeps its plain rows. */
-  protected readonly sheet =
-    inject(TrnDialogRef, { optional: true })?.presentation === 'sheet';
   private readonly identity = inject(IdentityService);
   private readonly moderation = inject(RoomModerationService);
   private readonly permissionsService = inject(RoomActionPermissionsService);
@@ -77,6 +73,10 @@ export class MemberManageTabComponent {
 
   /** Names the section headings for `aria-labelledby`. */
   protected readonly id = `trn-member-manage-${nextId++}`;
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain rows. */
+  protected readonly sheet =
+    inject(TrnDialogRef, { optional: true })?.presentation === 'sheet';
 
   readonly member = input.required<MemberSummary>();
   /** The room the member is being viewed in (scopes the moderation actions). */

@@ -227,6 +227,17 @@ describe('MemberManageTabComponent', () => {
     const ban = container.querySelector('[data-testid="member-info-ban"]');
     expect(ban?.getAttribute('data-trn-variant')).toBe('danger');
     expect(ban?.getAttribute('data-trn-presentation')).not.toBe('ghost');
+    const kick = container.querySelector('[data-testid="member-info-kick"]');
+    expect(kick?.getAttribute('data-trn-variant')).toBe('danger');
+    expect(kick?.getAttribute('data-trn-presentation')).toBe('ghost');
+    for (const id of ['ignore', 'report']) {
+      expect(
+        container
+          .querySelector(`[data-testid="member-info-${id}"]`)
+          ?.getAttribute('data-trn-variant'),
+        id,
+      ).toBe('secondary');
+    }
   });
 
   it('keeps kick/ban actions discoverable but unavailable without permission', async () => {

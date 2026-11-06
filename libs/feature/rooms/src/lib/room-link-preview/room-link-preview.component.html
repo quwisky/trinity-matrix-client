@@ -126,15 +126,17 @@
 
   @if (preview()) {
     <div trnDialogActions>
-      <button
-        trnBtn
-        type="button"
-        variant="secondary"
-        presentation="link"
-        (click)="close()"
-      >
-        Close
-      </button>
+      @if (!sheet) {
+        <button
+          trnBtn
+          type="button"
+          variant="secondary"
+          presentation="link"
+          (click)="close()"
+        >
+          Close
+        </button>
+      }
       @if (primaryAction() !== 'none') {
         <button
           trnBtn
