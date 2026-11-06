@@ -2,6 +2,7 @@
   title="Accounts in view"
   description="Choose which accounts appear in the room list, rail and spaces."
   size="sm"
+  cancelText="Done"
   (closed)="close()"
   data-testid="account-picker"
 >
@@ -42,6 +43,7 @@
   <div trnDialogActions>
     <button
       trnBtn
+      trnDialogDismiss
       type="button"
       data-testid="account-picker-done"
       [attr.data-autofocus]="firstFocusableAccountId() ? null : ''"

@@ -3,6 +3,7 @@
   [description]="total() + ' total'"
   size="xl"
   bodyClass="flex flex-col"
+  cancelText="Close"
   data-testid="reactions-dialog"
 >
   <div
@@ -60,7 +61,7 @@
             <h3>
               {{ section.key }} <span>{{ section.reactors.length }}</span>
             </h3>
-            <ul class="reactors" data-testid="reactors-list">
+            <ng-template #reactorRows>
               @for (reactor of section.reactors; track reactor.userId) {
                 <li class="reactor">
                   <trn-avatar
@@ -72,7 +73,20 @@
                   <span class="reactor__name">{{ reactor.name }}</span>
                 </li>
               }
-            </ul>
+            </ng-template>
+            @if (sheet) {
+              <ul
+                trnInsetGroup
+                class="reactors reactors--card"
+                data-testid="reactors-list"
+              >
+                <ng-container *ngTemplateOutlet="reactorRows" />
+              </ul>
+            } @else {
+              <ul class="reactors" data-testid="reactors-list">
+                <ng-container *ngTemplateOutlet="reactorRows" />
+              </ul>
+            }
           </section>
         }
       </div>

@@ -26,6 +26,7 @@ import {
 } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -83,6 +84,7 @@ export type DeleteAccountStep =
     TrnButton,
     TrnCheckboxComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnInput,
     TrnLabel,

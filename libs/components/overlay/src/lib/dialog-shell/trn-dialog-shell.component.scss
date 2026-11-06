@@ -52,9 +52,14 @@
     background: var(--trinity-surface-overlay-footer);
   }
 
-  // The sheet frame pads the bottom safe area; the band reaches into it, keeping its colour.
+  // A sheet's footer is no band: the actions card stacks above the Cancel block. It still
+  // reaches into the bottom safe area the sheet frame pads.
   :host([data-presentation='sheet']) .dialog-shell__footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-4);
     margin-bottom: calc(-1 * env(safe-area-inset-bottom));
     padding-bottom: calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
+    background: none;
   }
 }

@@ -5,6 +5,7 @@ export {
   TrnButtonImports,
   TrnIconButton,
 } from './lib/button/trn-button';
+export { TRN_BUTTON_ROW_CONTEXT } from './lib/button/trn-button-row-context';
 export type {
   TrnButtonPresentation,
   TrnButtonShape,

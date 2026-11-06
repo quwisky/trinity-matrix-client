@@ -24,6 +24,7 @@ import {
 import { TrnButton, TrnInput, TrnLabel } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -76,6 +77,7 @@ export type AddEmailStep =
     ReauthPasswordStepComponent,
     TrnButton,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnInput,
     TrnLabel,

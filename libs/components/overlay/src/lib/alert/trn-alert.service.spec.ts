@@ -312,6 +312,46 @@ describe('TrnAlertService', () => {
       vi.restoreAllMocks();
     });
 
+    function phone(): void {
+      vi.spyOn(window, 'matchMedia').mockImplementation(
+        (query: string) =>
+          ({
+            matches: query === BELOW_MD_QUERY,
+            media: query,
+            addEventListener: () => undefined,
+            removeEventListener: () => undefined,
+          }) as unknown as MediaQueryList,
+      );
+    }
+
+    it('focuses the Cancel block of a sheet confirm, never its possibly destructive action', async () => {
+      phone();
+      TestBed.inject(TrnAlertService)
+        .confirm$({
+          header: 'Delete room?',
+          confirmText: 'Delete',
+          variant: 'danger',
+        })
+        .subscribe();
+      render();
+      await TestBed.inject(ApplicationRef).whenStable();
+
+      expect(document.activeElement?.getAttribute('data-testid')).toBe(
+        'alert-cancel',
+      );
+    });
+
+    it('leaves a sheet prompt on the default first tabbable, its field', () => {
+      phone();
+      // jsdom reports nothing tabbable, so the opening config is what can be checked here.
+      const open = vi.spyOn(TestBed.inject(Dialog), 'open');
+      TestBed.inject(TrnAlertService)
+        .prompt$({ header: 'Reason', confirmText: 'Report' })
+        .subscribe();
+
+      expect(open.mock.calls[0][1]?.autoFocus).toBeUndefined();
+    });
+
     it('opens a prompt as a full-width bottom sheet', () => {
       vi.spyOn(window, 'matchMedia').mockImplementation(
         (query: string) =>

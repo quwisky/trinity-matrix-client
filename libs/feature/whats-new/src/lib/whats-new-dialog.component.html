@@ -2,6 +2,7 @@
   title="What's new in Trinity"
   size="md"
   closeLabel="Close What's new"
+  cancelText="Close"
   (closed)="close()"
   data-testid="whats-new-dialog"
 >
@@ -43,6 +44,7 @@
     }
     <button
       trnBtn
+      trnDialogDismiss
       type="button"
       (click)="close()"
       data-testid="whats-new-close"

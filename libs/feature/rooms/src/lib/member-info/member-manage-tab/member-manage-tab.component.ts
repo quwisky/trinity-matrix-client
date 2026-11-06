@@ -12,7 +12,15 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  TrnAlertService,
+  TrnDialogRef,
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   ASSIGNABLE_MEMBER_ROLES,
   ContentReportingService,
@@ -41,7 +49,11 @@ let nextId = 0;
   selector: 'trn-member-manage-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     TrnButton,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
     TrnActionAvailability,
     TrnTooltip,
     MemberRolePickerComponent,
@@ -61,6 +73,10 @@ export class MemberManageTabComponent {
 
   /** Names the section headings for `aria-labelledby`. */
   protected readonly id = `trn-member-manage-${nextId++}`;
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain rows. */
+  protected readonly sheet =
+    inject(TrnDialogRef, { optional: true })?.presentation === 'sheet';
 
   readonly member = input.required<MemberSummary>();
   /** The room the member is being viewed in (scopes the moderation actions). */

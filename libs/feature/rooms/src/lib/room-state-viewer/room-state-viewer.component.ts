@@ -10,6 +10,7 @@ import { FormField, form } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnToastService,
@@ -38,6 +39,7 @@ export interface RoomStateGroup {
     TrnButton,
     TrnInput,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
   ],
   templateUrl: './room-state-viewer.component.html',

@@ -40,6 +40,7 @@ async function build(
     accept?: ReturnType<typeof vi.fn>;
     accountId?: string;
     resolveAvatar?: ReturnType<typeof vi.fn>;
+    presentation?: 'dialog' | 'sheet';
   } = {},
 ) {
   const close = vi.fn();
@@ -59,7 +60,10 @@ async function build(
       ...(options.accountId ? { accountId: options.accountId } : {}),
     },
     providers: [
-      MockProvider(TrnDialogRef, { close }),
+      MockProvider(TrnDialogRef, {
+        close,
+        presentation: options.presentation ?? 'dialog',
+      }),
       { provide: RoomLinkService, useValue: { preview: load, join, knock } },
       { provide: InvitesService, useValue: { acceptInvite: accept } },
       ...(options.resolveAvatar
@@ -88,6 +92,43 @@ describe('RoomLinkPreviewComponent', () => {
   });
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('sets the room facts in a card in a sheet', async () => {
+    const { container } = await build({ presentation: 'sheet' });
+
+    expect(container.querySelectorAll('[trnInsetGroup] > div').length).toBe(3);
+  });
+
+  it('leaves dismissing to the shell block, labelled Close, in a sheet', async () => {
+    await build({ presentation: 'sheet' });
+
+    const closes = within(screen.getByTestId('dialog-footer')).getAllByRole(
+      'button',
+      { name: 'Close' },
+    );
+    expect(closes).toHaveLength(1);
+    expect(closes[0].getAttribute('data-testid')).toBe('dialog-close');
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
+  });
+
+  it('keeps its own Close in a dialog', async () => {
+    await build();
+
+    expect(
+      within(screen.getByTestId('dialog-footer')).getByRole('button', {
+        name: 'Close',
+      }),
+    ).toBeTruthy();
+  });
+
+  it('keeps the fact tiles in a dialog', async () => {
+    const { container } = await build();
+
+    expect(container.querySelector('[trnInsetGroup]')).toBeNull();
+    expect(
+      container.querySelectorAll('dl.room-preview__facts > div').length,
+    ).toBe(3);
+  });
 
   it('loads as the invited account when one is named', async () => {
     const { load } = await build({ accountId: '@work:hs' });

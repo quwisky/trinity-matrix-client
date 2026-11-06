@@ -18,6 +18,7 @@ import {
 } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnToastService,
@@ -115,6 +116,7 @@ function list(items: readonly string[]): string {
     TrnButton,
     TrnCheckboxComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnSelectComponent,
   ],

@@ -79,6 +79,23 @@ describe('ReactionsDialogComponent', () => {
     );
   });
 
+  it('sets the reactors in a card in a sheet', async () => {
+    const { container } = await build('sheet');
+
+    const card = container.querySelector('[trnInsetGroup]');
+    expect(card?.querySelectorAll('.reactor').length).toBe(2);
+  });
+
+  it('keeps the plain reactor list in a dialog', async () => {
+    const { container } = await build('dialog');
+
+    expect(container.querySelector('[trnInsetGroup]')).toBeNull();
+    expect(
+      container.querySelectorAll('ul.reactors:not(.reactors--card) .reactor')
+        .length,
+    ).toBe(2);
+  });
+
   it('switches sections when another key is picked', async () => {
     const { fixture, container } = await build();
 

@@ -164,7 +164,7 @@ describe('TrnSettingsLayoutComponent', () => {
   );
 
   it('frames a sheet opened by the dialog service', async () => {
-    const { container, getAllByRole } = await renderLayout(
+    const { container, getAllByRole, queryAllByRole } = await renderLayout(
       {
         title: 'System status',
         sections,
@@ -179,7 +179,12 @@ describe('TrnSettingsLayoutComponent', () => {
         .querySelector('trn-dialog-shell [data-testid="dialog-surface"]')
         ?.getAttribute('data-trn-layout'),
     ).toBe('sheet');
-    expect(getAllByRole('button', { name: 'Close settings' })).toHaveLength(1);
+    // A sheet closes from the shell's block, labelled Close since nothing is cancelled.
+    expect(queryAllByRole('button', { name: 'Close settings' })).toHaveLength(
+      0,
+    );
+    expect(queryAllByRole('button', { name: 'Cancel' })).toHaveLength(0);
+    expect(getAllByRole('button', { name: 'Close' })).toHaveLength(1);
   });
 
   it('puts Back and the section heading on one row under a framed header', async () => {

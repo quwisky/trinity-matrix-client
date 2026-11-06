@@ -16,6 +16,7 @@ import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnToastService,
@@ -57,6 +58,7 @@ export interface DirectoryJoin {
     AvatarComponent,
     EmptyStateComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
   ],
 })

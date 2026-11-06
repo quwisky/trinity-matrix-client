@@ -6,7 +6,11 @@ import {
 } from '@trinity/data-access/room-administration';
 import { signal } from '@angular/core';
 import { render, screen, waitFor, within } from '@trinity/testing';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnDialogRef,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   IgnoredUsersService,
   IdentityService,
@@ -48,6 +52,7 @@ async function build(
     unignore?: Mock;
     reportsOffered?: boolean;
     inputs?: Record<string, unknown>;
+    presentation?: 'dialog' | 'sheet';
   } = {},
 ) {
   // The tab announces a landed moderation write; the shell closes the card on it.
@@ -80,6 +85,9 @@ async function build(
     inputs: { member: m, roomId: '!r:hs', ...opts.inputs },
     on: { finished: () => close(null) },
     providers: [
+      MockProvider(TrnDialogRef, {
+        presentation: opts.presentation ?? 'dialog',
+      }),
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(IdentityService, {
         activeUserId: signal<string | null>(
@@ -187,6 +195,64 @@ describe('MemberManageTabComponent', () => {
     expect(
       container.querySelector('[data-testid="member-info-ban"]'),
     ).not.toBeNull();
+  });
+
+  it('draws no empty moderation card in a sheet when only the role picker shows', async () => {
+    const { container } = await build(member(), {
+      canSetPower: true,
+      myPower: 50,
+      inputs: { hideUnavailableModeration: true },
+      presentation: 'sheet',
+    });
+
+    const moderation = container.querySelector(
+      'section:has(trn-member-role-picker)',
+    );
+    expect(moderation).not.toBeNull();
+    expect(moderation?.querySelector('[trnInsetGroup]')).toBeNull();
+  });
+
+  it('sets Block, Report and the moderation actions in cards in a sheet, kick and ban as danger rows', async () => {
+    const { container } = await build(member(), {
+      canKick: true,
+      canBan: true,
+      reportsOffered: true,
+      presentation: 'sheet',
+    });
+    for (const id of ['ignore', 'report', 'kick', 'ban']) {
+      const row = container.querySelector(`[data-testid="member-info-${id}"]`);
+      expect(row?.hasAttribute('trnInsetRow'), id).toBe(true);
+      expect(row?.closest('[trnInsetGroup]'), id).not.toBeNull();
+    }
+    for (const id of ['kick', 'ban']) {
+      const row = container.querySelector(`[data-testid="member-info-${id}"]`);
+      expect(row?.getAttribute('data-trn-variant'), id).toBe('danger');
+      expect(row?.getAttribute('data-trn-presentation'), id).toBe('ghost');
+    }
+  });
+
+  it('keeps the plain rows in a dialog, ban as a solid danger button', async () => {
+    const { container } = await build(member(), {
+      canKick: true,
+      canBan: true,
+      reportsOffered: true,
+    });
+    expect(container.querySelector('[trnInsetGroup]')).toBeNull();
+    expect(container.querySelector('[trnInsetRow]')).toBeNull();
+    const ban = container.querySelector('[data-testid="member-info-ban"]');
+    expect(ban?.getAttribute('data-trn-variant')).toBe('danger');
+    expect(ban?.getAttribute('data-trn-presentation')).not.toBe('ghost');
+    const kick = container.querySelector('[data-testid="member-info-kick"]');
+    expect(kick?.getAttribute('data-trn-variant')).toBe('danger');
+    expect(kick?.getAttribute('data-trn-presentation')).toBe('ghost');
+    for (const id of ['ignore', 'report']) {
+      expect(
+        container
+          .querySelector(`[data-testid="member-info-${id}"]`)
+          ?.getAttribute('data-trn-variant'),
+        id,
+      ).toBe('secondary');
+    }
   });
 
   it('keeps kick/ban actions discoverable but unavailable without permission', async () => {

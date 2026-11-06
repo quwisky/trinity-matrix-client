@@ -9,6 +9,7 @@ import { copyText } from '../shared/copy-text';
 import {
   TrnDialogRef,
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogShellComponent,
   TrnToastService,
 } from '@trinity/components/overlay';
@@ -17,11 +18,17 @@ import {
 @Component({
   selector: 'trn-message-source',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnDialogActions, TrnDialogShellComponent],
+  imports: [
+    TrnButton,
+    TrnDialogActions,
+    TrnDialogDismiss,
+    TrnDialogShellComponent,
+  ],
   template: `
     <trn-dialog-shell
       title="Message source"
       size="xl"
+      cancelText="Close"
       (closed)="close()"
       data-testid="message-source"
     >
@@ -42,6 +49,7 @@ import {
         </button>
         <button
           trnBtn
+          trnDialogDismiss
           variant="secondary"
           presentation="link"
           size="sm"

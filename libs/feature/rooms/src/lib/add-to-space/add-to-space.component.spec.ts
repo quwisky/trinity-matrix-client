@@ -34,7 +34,7 @@ async function build(
     spaces?: ReturnType<typeof space>[];
     existing?: string[];
   } = {},
-  over: { addExistingRoom?: Mock } = {},
+  over: { addExistingRoom?: Mock; presentation?: 'sheet' } = {},
 ) {
   const addExistingRoom = over.addExistingRoom ?? vi.fn(() => of(undefined));
   const close = vi.fn();
@@ -82,7 +82,7 @@ async function build(
         observe: () => states.asObservable(),
         link: (_target, childId) => addExistingRoom('@me:hs', '!s:hs', childId),
       }),
-      MockProvider(TrnDialogRef, { close }),
+      MockProvider(TrnDialogRef, { close, presentation: over.presentation }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
@@ -111,6 +111,17 @@ describe('AddToSpaceComponent', () => {
         'add-to-space-add',
       ),
     ).toBeTruthy();
+  });
+
+  it('shows one Cancel in a sheet, the shell Cancel block, which closes', async () => {
+    const { close } = await build({}, { presentation: 'sheet' });
+
+    const cancels = screen.getAllByRole('button', { name: 'Cancel' });
+    expect(cancels).toHaveLength(1);
+    expect(cancels[0].getAttribute('data-testid')).toBe('dialog-close');
+    expect(screen.getByTestId('add-to-space-cancel').hidden).toBe(true);
+    cancels[0].click();
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it('offers the rooms the user is in', async () => {

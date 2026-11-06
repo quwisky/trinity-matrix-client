@@ -2,6 +2,7 @@
   [title]="copy.sentTitle"
   size="md"
   [closable]="!busy()"
+  [cancelText]="pending() ? 'Cancel' : 'Close'"
   (closed)="close()"
 >
   @if (pending(); as sent) {
@@ -32,6 +33,7 @@
       <div trnDialogActions>
         <button
           trnBtn
+          trnDialogDismiss
           type="button"
           presentation="outline"
           (click)="close()"

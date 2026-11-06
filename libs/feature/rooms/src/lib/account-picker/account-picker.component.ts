@@ -9,6 +9,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
   TrnLockedSelectionDirective,
@@ -40,6 +41,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
     TrnIconComponent,
     TrnLockedSelectionDirective,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
   ],
 })

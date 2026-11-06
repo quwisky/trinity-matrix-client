@@ -20,6 +20,7 @@ import { TrnButton, TrnInput, TrnLabel } from '@trinity/components/controls';
 import {
   TrnAlertService,
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -45,6 +46,7 @@ export type IdentityServerClosed =
     FormRoot,
     TrnButton,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnInput,
     TrnLabel,

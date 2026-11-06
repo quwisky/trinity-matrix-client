@@ -3,6 +3,7 @@ import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import { TrnActionAvailability, TrnButton, TrnIconButton } from './trn-button';
+import { TRN_BUTTON_ROW_CONTEXT } from './trn-button-row-context';
 import {
   type TrnButtonPresentation,
   type TrnButtonShape,
@@ -87,6 +88,16 @@ const INLINE_CLASSES = [
   'has-data-[icon=inline-end]:pe-0',
   'has-data-[icon=inline-start]:ps-0',
 ];
+
+// The row variants and the selectors Tailwind emits for them (`_` becomes a space).
+const FIRST_VISIBLE = ':nth-child(1 of :not([hidden]))';
+const LAST_VISIBLE = ':nth-last-child(1 of :not([hidden]))';
+const LATER_VISIBLE = ':not(:nth-child(1 of :not([hidden])))';
+const FIRST_VISIBLE_ROUNDED = '[&:nth-child(1_of_:not([hidden]))]:rounded-t-xl';
+const LAST_VISIBLE_ROUNDED =
+  '[&:nth-last-child(1_of_:not([hidden]))]:rounded-b-xl';
+const LATER_VISIBLE_DIVIDER =
+  '[&:not(:nth-child(1_of_:not([hidden])))]:border-t-[color:var(--trinity-border-sheet-divider)]';
 
 describe('TrnButton', () => {
   it('keeps a host layout class that Helm also emits, after another write to the class list', async () => {
@@ -251,5 +262,119 @@ describe('TrnButton', () => {
       document.querySelector('[data-testid="action-unavailable-feedback"]')
         ?.textContent,
     ).toBe('Only room admins can do this.');
+  });
+
+  describe('in a row context', () => {
+    @Component({
+      imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(true) }],
+      template: `
+        <button trnBtn data-testid="primary">Save</button>
+        <button trnBtn variant="secondary" presentation="link">Skip</button>
+        <button trnBtn variant="danger" disabled>Delete</button>
+      `,
+    })
+    class RowContextHostComponent {}
+
+    @Component({
+      imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(true) }],
+      template: `
+        <button trnBtn hidden>Cancel</button>
+        <button trnBtn data-testid="first">Create</button>
+        <button trnBtn data-testid="last">Save draft</button>
+        <button trnBtn hidden>Close</button>
+      `,
+    })
+    class HiddenEdgeRowsHostComponent {}
+
+    @Component({
+      imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(false) }],
+      template: `<button trnBtn>Save</button>`,
+    })
+    class OffContextHostComponent {}
+
+    it('turns every button into a full-width centred row that overrides the recipe geometry', async () => {
+      const { container } = await render(RowContextHostComponent);
+
+      for (const button of container.querySelectorAll('button')) {
+        expect(button.getAttribute('data-trn-shape')).toBe('row');
+        for (const cls of [
+          'w-full',
+          'justify-center',
+          'rounded-none',
+          'p-4',
+          'text-base',
+          'text-center',
+          'wrap-anywhere',
+          'relative',
+          'focus-visible:z-1',
+          FIRST_VISIBLE_ROUNDED,
+          LAST_VISIBLE_ROUNDED,
+          // The divider out-ranks the recipe's own `border-transparent`.
+          LATER_VISIBLE_DIVIDER,
+        ]) {
+          expect(button.classList).toContain(cls);
+        }
+        expect(button.classList).toContain('border-transparent');
+        expect(button.classList).not.toContain('px-2.5');
+        expect(button.classList).not.toContain('rounded-lg');
+        expect(button.classList).not.toContain('justify-start');
+        expect(button.classList).not.toContain('text-sm');
+      }
+    });
+
+    it('maps primary to semibold secondary solid, others to secondary solid and danger to ghost', async () => {
+      const { getByRole } = await render(RowContextHostComponent);
+
+      const save = getByRole('button', { name: 'Save' });
+      expect(save.getAttribute('data-trn-presentation')).toBe('solid');
+      // The global disabled-primary treatment keys on this; a row is never a primary fill.
+      expect(save.getAttribute('data-trn-variant')).toBe('secondary');
+      expect(save.classList).toContain('font-semibold');
+      expect(save.classList).toContain(
+        'bg-[color:var(--trinity-neutral-fill-surface)]',
+      );
+      expect(save.classList).not.toContain('bg-primary');
+
+      const skip = getByRole('button', { name: 'Skip' });
+      expect(skip.getAttribute('data-trn-presentation')).toBe('solid');
+      expect(skip.classList).not.toContain('font-semibold');
+      expect(skip.classList).not.toContain('underline-offset-4');
+
+      const remove = getByRole('button', { name: 'Delete' });
+      expect(remove.getAttribute('data-trn-variant')).toBe('danger');
+      expect(remove.getAttribute('data-trn-presentation')).toBe('ghost');
+      expect(remove.classList).toContain('text-danger');
+      expect((remove as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    // A sheet hides a consumer's own dismiss button, which must not take the card's edges.
+    it('rounds and divides only the visible rows when a hidden row comes first', async () => {
+      const { getByTestId } = await render(HiddenEdgeRowsHostComponent);
+
+      const first = getByTestId('first');
+      expect(first.classList).toContain(FIRST_VISIBLE_ROUNDED);
+      expect(first.matches(FIRST_VISIBLE)).toBe(true);
+      expect(first.matches(LATER_VISIBLE)).toBe(false);
+    });
+
+    it('rounds the last visible row when a hidden row comes last', async () => {
+      const { getByTestId } = await render(HiddenEdgeRowsHostComponent);
+
+      const last = getByTestId('last');
+      expect(last.classList).toContain(LAST_VISIBLE_ROUNDED);
+      expect(last.matches(LAST_VISIBLE)).toBe(true);
+      expect(last.matches(LATER_VISIBLE)).toBe(true);
+    });
+
+    it('leaves the button alone when the context is false', async () => {
+      const { getByRole } = await render(OffContextHostComponent);
+
+      const save = getByRole('button', { name: 'Save' });
+      expect(save.getAttribute('data-trn-shape')).toBe('label');
+      expect(save.classList).not.toContain('p-4');
+    });
   });
 });

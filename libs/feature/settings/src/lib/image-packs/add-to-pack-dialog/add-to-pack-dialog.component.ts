@@ -27,6 +27,7 @@ import {
 } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -159,6 +160,7 @@ export function addFailure(
     FormRoot,
     TrnButton,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     TrnInput,
     TrnLabel,

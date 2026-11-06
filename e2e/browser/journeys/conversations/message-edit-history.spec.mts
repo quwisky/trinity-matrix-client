@@ -563,21 +563,23 @@ test.describe('Edit history', () => {
     await expect(dialog).toBeHidden();
     await expect(row.getByTestId('msg-edited')).toBeFocused();
 
-    // Below the md breakpoint the shell turns the card into a bottom sheet, and the
-    // close control remains in the fixed header.
+    // Below the md breakpoint the shell turns the card into a bottom sheet, which closes
+    // from a Cancel block in its fixed footer instead of an X in the header.
     await page.setViewportSize({ width: 767, height: viewport!.height });
     await row.getByTestId('msg-edited').click();
     await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
     await expect
       .poll(async () => (await dialog.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(766);
-    await expect(
-      dialog.locator('header').getByTestId('dialog-close'),
-    ).toBeVisible();
+    await expect(header.getByTestId('dialog-close')).toHaveCount(0);
+    const closeBlock = dialog
+      .getByTestId('dialog-footer')
+      .getByRole('button', { name: 'Close', exact: true });
+    await expect(closeBlock).toHaveAttribute('data-testid', 'dialog-close');
     await expect
       .poll(() => dialog.evaluate((el) => el.scrollWidth <= el.clientWidth))
       .toBe(true);
-    await header.getByTestId('dialog-close').click();
+    await closeBlock.click();
     await expect(dialog).toBeHidden();
     await page.setViewportSize(viewport!);
   });
@@ -607,7 +609,9 @@ test.describe('Edit history', () => {
       expect(box).not.toBeNull();
       expect(box!.width).toBeGreaterThanOrEqual((viewport?.width ?? 0) - 1);
       await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
-      const close = dialog.locator('header').getByTestId('dialog-close');
+      const close = dialog
+        .getByTestId('dialog-footer')
+        .getByTestId('dialog-close');
       await expect(close).toBeVisible();
       const closeBox = await close.boundingBox();
       expect(closeBox?.width ?? 0).toBeGreaterThanOrEqual(44);

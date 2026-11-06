@@ -18,6 +18,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -48,6 +49,7 @@ export interface PublishEmailClosed {
   imports: [
     TrnButton,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
     VerifyLinkStepComponent,
   ],

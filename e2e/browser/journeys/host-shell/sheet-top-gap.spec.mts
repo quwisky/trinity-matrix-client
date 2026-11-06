@@ -4,14 +4,14 @@ import { login, homeserverSession } from '../../../support/app.mts';
 import { DESIGN_VIEWPORTS } from '../../support/design-viewports.mts';
 
 // A phone sheet stops below the status bar, so its top holds only the handle and one
-// title-and-close row before the first content, as a native iOS sheet does.
+// centred title row before the first content, as a native iOS sheet does. It closes from
+// the Cancel block at its foot, not an X in that row.
 const session = homeserverSession();
 
 interface SheetTop {
   readonly sheetTop: number;
-  readonly closeTop: number;
-  readonly closeBottom: number;
-  readonly closeHeight: number;
+  readonly titleTop: number;
+  readonly titleBottom: number;
   readonly contentTop: number;
   /** How far the shell body scrolls on its own, past the panes that should scroll instead. */
   readonly bodyOverflow: number;
@@ -31,8 +31,12 @@ async function sheetTop(
     Promise.all(element.getAnimations().map((a) => a.finished)),
   );
   await expect(dialog.getByTestId('sheet-handle')).toBeVisible();
-  const [sheet, close, first] = await Promise.all(
-    [surface, dialog.getByRole('button', { name: closeName }), content].map(
+  await expect(dialog.getByRole('button', { name: closeName })).toHaveCount(0);
+  await expect(
+    dialog.getByRole('button', { name: 'Close', exact: true }),
+  ).toBeInViewport();
+  const [sheet, title, first] = await Promise.all(
+    [surface, dialog.locator('.dialog-shell__header'), content].map(
       async (locator) => (await locator.boundingBox())!,
     ),
   );
@@ -51,9 +55,8 @@ async function sheetTop(
   return {
     ...fit,
     sheetTop: Math.round(sheet.y),
-    closeTop: Math.round(close.y - sheet.y),
-    closeBottom: Math.round(close.y + close.height - sheet.y),
-    closeHeight: Math.round(close.height),
+    titleTop: Math.round(title.y - sheet.y),
+    titleBottom: Math.round(title.y + title.height - sheet.y),
     contentTop: Math.round(first.y - sheet.y),
   };
 }
@@ -67,18 +70,16 @@ function expectFits(top: SheetTop): void {
 function expectCompactTop(top: SheetTop): void {
   // Below the 47 px status bar, which the sheet then must not pad for again.
   expect(top.sheetTop).toBeGreaterThanOrEqual(47);
-  expect(top.closeHeight).toBeGreaterThanOrEqual(44);
-  expect(top.closeTop).toBeLessThanOrEqual(24);
-  expect(top.contentTop - top.closeBottom).toBeLessThanOrEqual(24);
+  expect(top.titleTop).toBeLessThanOrEqual(24);
+  expect(top.contentTop - top.titleBottom).toBeLessThanOrEqual(24);
   expect(top.contentTop).toBeLessThanOrEqual(84);
   expectFits(top);
 }
 
-/** At 250% the header grows, but the close stays on screen and the content starts below it. */
+/** At 250% the header grows, but the content still starts below it. */
 function expectLargeTextTop(top: SheetTop): void {
   expect(top.sheetTop).toBeGreaterThanOrEqual(47);
-  expect(top.closeHeight).toBeGreaterThanOrEqual(44);
-  expect(top.contentTop).toBeGreaterThanOrEqual(top.closeBottom);
+  expect(top.contentTop).toBeGreaterThanOrEqual(top.titleBottom);
   expectFits(top);
 }
 
@@ -147,7 +148,7 @@ test.describe('Sheet top', () => {
       const at = large ? ' at 250% text' : '';
       const check = large ? expectLargeTextTop : expectCompactTop;
 
-      test(`System status starts its first row under the handle and close row${at}`, async ({
+      test(`System status starts its first row under the handle and title row${at}`, async ({
         page,
       }, testInfo) => {
         const dialog = await openStatus(page, large);
@@ -164,7 +165,7 @@ test.describe('Sheet top', () => {
         check(top);
       });
 
-      test(`Settings starts its search under the handle and close row${at}`, async ({
+      test(`Settings starts its search under the handle and title row${at}`, async ({
         page,
       }, testInfo) => {
         const dialog = await openSettings(page, large);

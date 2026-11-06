@@ -9,6 +9,7 @@ import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { FormField, form, maxLength, required } from '@angular/forms/signals';
 import { TrnButton, TrnInput } from '@trinity/components/controls';
 import type { TrnAlertVariant } from './trn-alert.service';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import {
   TrnDialogActions,
   TrnDialogShellComponent,
@@ -54,7 +55,10 @@ export type AlertDialogResult = boolean | string | null;
     <trn-dialog-shell
       [title]="data.header"
       [description]="data.message"
-      [closable]="false"
+      [closable]="sheet"
+      [cancelText]="data.cancelText"
+      closeTestId="alert-cancel"
+      (closed)="onCancel()"
       data-testid="alert-surface"
     >
       @if (data.kind === 'prompt') {
@@ -80,15 +84,18 @@ export type AlertDialogResult = boolean | string | null;
         }
       }
       <div trnDialogActions>
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="link"
-          (click)="onCancel()"
-          data-testid="alert-cancel"
-        >
-          {{ data.cancelText }}
-        </button>
+        <!-- A sheet cancels from the shell's own Cancel block. -->
+        @if (!sheet) {
+          <button
+            trnBtn
+            variant="secondary"
+            presentation="link"
+            (click)="onCancel()"
+            data-testid="alert-cancel"
+          >
+            {{ data.cancelText }}
+          </button>
+        }
         @if (data.alternativeText) {
           <button
             trnBtn
@@ -118,6 +125,8 @@ export class TrnAlertDialogComponent {
   private readonly dialogData = inject<AlertDialogData>(DIALOG_DATA);
   private readonly promptModel = signal({ value: this.dialogData.value ?? '' });
   protected readonly data = this.dialogData;
+  protected readonly sheet =
+    inject(TrnDialogRef, { optional: true })?.presentation === 'sheet';
   protected readonly promptForm = form(this.promptModel, (path) => {
     maxLength(path.value, () => this.data.maxLength, {
       message: `${this.data.inputLabel ?? 'This value'} must be ${this.data.maxLength} characters or fewer.`,

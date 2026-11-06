@@ -85,6 +85,14 @@
     padding: 6px 2px;
   }
 
+  .reactors--card .reactor {
+    padding-inline: var(--trinity-space-4);
+
+    & + .reactor {
+      border-top: 1px solid var(--trinity-border-sheet-divider);
+    }
+  }
+
   .reactor__name {
     min-width: 0;
     overflow: hidden;

@@ -1,6 +1,7 @@
 <trn-dialog-shell
   [title]="mode() === 'spaces' ? 'Explore spaces' : 'Explore rooms'"
   size="lg"
+  cancelText="Close"
   (closed)="close()"
   data-testid="room-directory"
 >
@@ -147,6 +148,7 @@
   <div trnDialogActions>
     <button
       trnBtn
+      trnDialogDismiss
       type="button"
       variant="secondary"
       presentation="link"

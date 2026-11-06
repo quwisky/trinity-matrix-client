@@ -10,6 +10,7 @@ import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -41,6 +42,7 @@ const MAX_OPTIONS = 8;
     TrnLabel,
     TrnIconComponent,
     TrnDialogActions,
+    TrnDialogDismiss,
     TrnDialogShellComponent,
   ],
   templateUrl: './create-poll-dialog.component.html',

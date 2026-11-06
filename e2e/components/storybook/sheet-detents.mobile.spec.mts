@@ -172,8 +172,6 @@ test('the handle is a stateful button whose target stops above the header', asyn
     await at(titleBox.x + titleBox.width / 2, titleBox.y + titleBox.height / 2),
   ).not.toBe('toggle');
   expect(await at(titleBox.x + 4, top + 30)).not.toBe('toggle');
-  const close = await centre(sheet.getByRole('button', { name: 'Close' }));
-  expect(await at(close.x, close.y)).toBe('Close');
 
   await toggle.focus();
   await page.keyboard.press('Enter');
@@ -210,6 +208,9 @@ test('content shorter than half height shows at its own height with no full heig
 
   const from = await centre(sheet.getByTestId('sheet-handle'));
   await cdpSwipe(page, from, { x: from.x, y: from.y - 300 });
+  // The drag's inline height overshoots the cap, so the snap holds at the cap for a few
+  // frames before it visibly moves; wait for the snap to hand the height back first.
+  await expect.poll(() => sheet.evaluate((el) => el.style.height)).toBe('');
   expect(await settledHeight(sheet)).toBeCloseTo(height, -1);
 });
 

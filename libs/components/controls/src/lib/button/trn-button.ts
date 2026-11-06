@@ -9,7 +9,8 @@ import {
 } from '@angular/core';
 import { DOCUMENT } from '@angular/common';
 import { HlmButton, provideBrnButtonConfig } from '@trinity/helm/button';
-import { classes } from '@trinity/helm/utils';
+import { classes, hlm } from '@trinity/helm/utils';
+import { TRN_BUTTON_ROW_CONTEXT } from './trn-button-row-context';
 import {
   trnButtonRecipe,
   type TrnButtonPresentation,
@@ -31,9 +32,9 @@ import {
   providers: [provideBrnButtonConfig({ variant: null, size: null })],
   host: {
     '[attr.data-trn-icon-button]': "iconButton() ? '' : null",
-    '[attr.data-trn-presentation]': 'presentation()',
-    '[attr.data-trn-variant]': 'variant()',
-    '[attr.data-trn-shape]': 'shape()',
+    '[attr.data-trn-presentation]': 'resolvedPresentation()',
+    '[attr.data-trn-variant]': 'resolvedVariant()',
+    '[attr.data-trn-shape]': 'resolvedShape()',
     '[attr.aria-busy]': 'loading() ? "true" : null',
     '[attr.data-loading]': 'loading() ? "" : null',
   },
@@ -46,8 +47,30 @@ import {
   ],
 })
 export class TrnButton {
+  private readonly rowContext = inject(TRN_BUTTON_ROW_CONTEXT, {
+    optional: true,
+  });
+  private readonly inRow = computed(() => this.rowContext?.() ?? false);
+
   /** Icon shape opts into Trinity's shared icon-button interaction contract. */
-  protected readonly iconButton = computed(() => this.shape() === 'icon');
+  protected readonly iconButton = computed(
+    () => this.resolvedShape() === 'icon',
+  );
+  /** A row of an inset card is neutral solid, or ghost danger, whatever the caller asked. */
+  protected readonly resolvedVariant = computed<TrnButtonVariant>(() =>
+    !this.inRow() || this.variant() === 'danger' ? this.variant() : 'secondary',
+  );
+  protected readonly resolvedPresentation = computed<TrnButtonPresentation>(
+    () =>
+      !this.inRow()
+        ? this.presentation()
+        : this.variant() === 'danger'
+          ? 'ghost'
+          : 'solid',
+  );
+  protected readonly resolvedShape = computed<TrnButtonShape>(() =>
+    this.inRow() ? 'row' : this.shape(),
+  );
 
   readonly variant = input<TrnButtonVariant>('primary');
   readonly size = input<TrnButtonSize>('md');
@@ -56,13 +79,22 @@ export class TrnButton {
   readonly loading = input(false, { transform: booleanAttribute });
 
   constructor() {
+    // One source, so the row geometry out-merges the recipe's padding and radius.
     classes(() =>
-      trnButtonRecipe({
-        presentation: this.presentation(),
-        shape: this.shape(),
-        size: this.size(),
-        variant: this.variant(),
-      }),
+      hlm(
+        trnButtonRecipe({
+          presentation: this.resolvedPresentation(),
+          shape: this.resolvedShape(),
+          size: this.size(),
+          variant: this.resolvedVariant(),
+        }),
+        // The inset-row treatment: the focused row rises over its neighbours, and every row but
+        // the first draws the divider, which out-ranks the recipe's `border-transparent`. Edges
+        // count visible rows only, since a sheet hides a footer's own dismiss button.
+        this.inRow() &&
+          'relative w-full justify-center rounded-none p-4 text-center text-base wrap-anywhere focus-visible:z-1 [&:not(:nth-child(1_of_:not([hidden])))]:border-t-[color:var(--trinity-border-sheet-divider)] [&:nth-child(1_of_:not([hidden]))]:rounded-t-xl [&:nth-last-child(1_of_:not([hidden]))]:rounded-b-xl',
+        this.inRow() && this.variant() === 'primary' && 'font-semibold',
+      ),
     );
   }
 }
