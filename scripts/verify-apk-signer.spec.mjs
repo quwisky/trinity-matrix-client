@@ -79,6 +79,9 @@ describe('verify-apk-signer', () => {
     expect(() => checkSigner(v2v3(PINNED, 2), PINNED)).toThrow(
       /exactly one signer/,
     );
+    expect(() => checkSigner(`${REAL_V2}${v2v3(OTHER)}`, PINNED)).toThrow(
+      'found 2 distinct',
+    );
     expect(() =>
       checkSigner(
         `${REAL_V2}V2 Signer #2: certificate SHA-256 digest: ${PINNED}\n`,

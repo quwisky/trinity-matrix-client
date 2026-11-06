@@ -39,7 +39,7 @@ export function checkSigner(apksignerOutput, pinned) {
     lines.some(({ label }) => /#(?!1\b)\d+/.test(label))
   ) {
     throw new Error(
-      `expected exactly one signer, found ${count ?? distinct.length}: ${distinct.join(', ')}`,
+      `expected exactly one signer, found ${distinct.length} distinct${count === undefined ? '' : ` (apksigner reports ${count})`}: ${distinct.join(', ')}`,
     );
   }
   if (distinct[0] !== expected) {

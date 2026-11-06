@@ -747,17 +747,22 @@ describe('release Android signing', () => {
         }
       }
     }
-    expect(secretsStep().env).toEqual(
-      Object.fromEntries(
+    expect(secretsStep().env).toEqual({
+      ...Object.fromEntries(
         ANDROID_SECRETS.map((name) => [name, `\${{ secrets.${name} }}`]),
       ),
-    );
+      SIGNED_APK: '${{ steps.align.outputs.apk }}',
+    });
     const { run } = secretsStep();
     for (const leak of [
       /GITHUB_ENV/,
       /GITHUB_OUTPUT/,
       /set -x/,
-      /echo "\$ANDROID_/,
+      /echo\s+"?\$\{?ANDROID_/,
+      /\bprintenv\b/,
+      /(^|[;&|]\s*)env\s*($|[;&|])/m,
+      // Only the decode and apksigner run next to the secrets.
+      /\bnode\b/,
     ])
       expect(run).not.toMatch(leak);
   });
@@ -803,7 +808,7 @@ describe('release Android signing', () => {
     expect(run).toContain('umask 077');
     expect(run).toContain('base64 -d > "$RUNNER_TEMP/release.jks"');
     expect(run.replace(/\\\n\s*/g, '')).toMatch(
-      /apksigner sign --ks "\$RUNNER_TEMP\/release\.jks" --ks-key-alias "\$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD --out "\$RUNNER_TEMP\/release-android\/Trinity-\$version\.apk" "\$RUNNER_TEMP\/unsigned\.apk"/,
+      /apksigner sign --v4-signing-enabled false --ks "\$RUNNER_TEMP\/release\.jks" --ks-key-alias "\$ANDROID_KEY_ALIAS" --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD --out "\$SIGNED_APK" "\$RUNNER_TEMP\/unsigned\.apk"/,
     );
   });
 
@@ -821,6 +826,16 @@ describe('release Android signing', () => {
     expect(j.if).toBe(
       "${{ !cancelled() && needs.android-apk.result == 'success' }}",
     );
+    expect(j.steps.map((s) => s.uses?.split('@')[0] ?? s.name)).toEqual([
+      'actions/checkout',
+      'actions/setup-node',
+      'actions/download-artifact',
+      'Check and align the unsigned APK',
+      'Sign the release APK',
+      'Delete the keystore',
+      'Check the signer',
+      'actions/upload-artifact',
+    ]);
     for (const step of j.steps) {
       expect(step.uses ?? '', step.name).not.toMatch(
         /^\.\/|^actions\/setup-java@|^pnpm\//,
@@ -833,8 +848,8 @@ describe('release Android signing', () => {
       'persist-credentials': false,
       'sparse-checkout-cone-mode': false,
       'sparse-checkout': [
-        '.nvmrc',
-        'package.json',
+        '/.nvmrc',
+        '/package.json',
         'android/release-signing-cert.sha256',
         'scripts/android-version.mjs',
         'scripts/verify-apk-signer.mjs',
@@ -853,31 +868,56 @@ describe('release Android signing', () => {
       uses(signJob(), 'actions/download-artifact@').uses,
     );
     expect(download.with).toEqual({
-      name: 'android-apk-unsigned',
+      'artifact-ids': '${{ needs.android-apk.outputs.artifact-id }}',
       path: '${{ runner.temp }}/android-apk-unsigned',
     });
     const prepare = steps.find((s) =>
       s.run?.includes('zipalign" -c -P 16 -v 4'),
     );
+    expect(prepare.id).toBe('align');
+    expect(prepare.env).toEqual({
+      APK_SHA256: '${{ needs.android-apk.outputs.sha256 }}',
+    });
+    expect(prepare.run).toContain('sha256sum -c');
     expect(prepare.run).toContain('"$RUNNER_TEMP/unsigned.apk"');
+    expect(prepare.run).toContain(
+      'echo "apk=$RUNNER_TEMP/release-android/Trinity-$version.apk" >> "$GITHUB_OUTPUT"',
+    );
     expect(JSON.stringify(prepare)).not.toContain('secrets.');
+
+    // The one-APK check runs first and refuses anything else.
+    const temp = mkdtempSync(join(tmpdir(), 'android-apk-'));
+    try {
+      mkdirSync(join(temp, 'android-apk-unsigned'));
+      for (const apk of ['a.apk', 'b.apk'])
+        writeFileSync(join(temp, 'android-apk-unsigned', apk), 'x');
+      const result = spawnSync('bash', ['-e', '-c', prepare.run], {
+        env: { PATH: process.env.PATH, RUNNER_TEMP: temp },
+        encoding: 'utf8',
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toContain('must hold exactly one APK');
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
     expect(steps.indexOf(download)).toBeLessThan(steps.indexOf(prepare));
     expect(steps.indexOf(prepare)).toBeLessThan(steps.indexOf(secretsStep()));
   });
 
   it('sign-android uploads trinity-android', () => {
     const steps = job().steps;
-    const verify = steps.find((s) =>
-      s.run?.includes('node scripts/verify-apk-signer.mjs'),
-    );
-    expect(JSON.stringify(verify)).not.toContain('secrets.');
+    const verify = steps.find((s) => s.name === 'Check the signer');
+    expect(verify.run).toBe('node scripts/verify-apk-signer.mjs "$SIGNED_APK"');
+    expect(verify.env).toEqual({
+      SIGNED_APK: '${{ steps.align.outputs.apk }}',
+    });
     const upload = uses(job(), 'actions/upload-artifact@');
     expect(steps.indexOf(verify)).toBeGreaterThan(steps.indexOf(secretsStep()));
     expect(steps.indexOf(verify)).toBeLessThan(steps.indexOf(upload));
     expect(upload.uses).toBe(uses(signJob(), 'actions/upload-artifact@').uses);
     expect(upload.with).toMatchObject({
       name: 'trinity-android',
-      path: '${{ runner.temp }}/release-android/Trinity-*.apk',
+      path: '${{ steps.align.outputs.apk }}',
       'if-no-files-found': 'error',
     });
     expect(
@@ -928,6 +968,17 @@ describe('release Android signing', () => {
       GITHUB_TOKEN: '${{ github.token }}',
     });
     const upload = uses(j, 'actions/upload-artifact@');
+    const hash = j.steps.find((s) => s.id === 'hash');
+    expect(hash.run).toContain(
+      'sha256sum android/app/build/outputs/apk/release/app-release-unsigned.apk',
+    );
+    expect(j.steps.indexOf(hash)).toBeLessThan(j.steps.indexOf(upload));
+    expect(upload.id).toBe('upload');
+    // sign-android downloads exactly this upload and checks exactly this hash.
+    expect(j.outputs).toEqual({
+      'artifact-id': '${{ steps.upload.outputs.artifact-id }}',
+      sha256: '${{ steps.hash.outputs.sha256 }}',
+    });
     // Outside draft-release's trinity-* pattern: an unsigned APK is not a release asset.
     expect(upload.with).toMatchObject({
       name: 'android-apk-unsigned',
