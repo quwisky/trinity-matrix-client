@@ -6,6 +6,8 @@ import {
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DraftStoreService } from '@trinity/platform-native';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 
 describe('MessageComposerComponent — the field, edit mode and drafts', () => {
   beforeEach(() => stubObjectUrls());
@@ -193,6 +195,21 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
   });
 
   describe('draft persistence', () => {
+    it('reads the Conversation draft itself when asked to, so its host does not', async () => {
+      const compose = new ConversationComposeStub();
+      compose.setDraft('from the runtime');
+      const { fixture } = await renderComposer(
+        { roomId: '!a:hs', conversationDraft: true },
+        [{ provide: ConversationRuntime, useValue: { compose } }],
+      );
+      const cmp = fixture.componentInstance;
+      expect(cmp.text()).toBe('from the runtime');
+
+      compose.setDraft('restored after rejection');
+      fixture.detectChanges();
+      expect(cmp.text()).toBe('restored after rejection');
+    });
+
     it('mirrors a Conversation-owned draft and restores it after a rejected send', async () => {
       const { fixture, container } = await renderComposer({
         roomId: '!a:hs',
