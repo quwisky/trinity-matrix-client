@@ -211,7 +211,7 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
-  /** Root of the open thread once a page came back with nothing new, so no further page is offered. */
+  /** Root of the open thread once a page came back with nothing new and the same token, so no further page is offered. */
   private exhaustedThreadRootId: string | null = null;
   /** The exact Account client {@link attachThreadRoot} inherited — see {@link summariesClient}. */
   private threadClient: MatrixClient | null = null;
@@ -505,32 +505,40 @@ export class ThreadsService {
     ) {
       return of(void 0);
     }
-    // Sampled before the request: the SDK adds the page's events (and re-enters
-    // refreshThread through the timeline events) before the promise resolves.
-    let loadedBefore = 0;
     return defer(() => {
       const client = this.threadClient;
-      if (!client || this.thread !== thread) return of(void 0);
+      // A second call made before the first subscribed would send the same page again.
+      if (!client || this.thread !== thread || this._loadingOlderThread()) {
+        return of(void 0);
+      }
       this._loadingOlderThread.set(true);
-      loadedBefore = thread.events.length;
+      // Sampled before the request: the SDK adds the page's events (and re-enters
+      // refreshThread through the timeline events) before the promise resolves.
+      const loadedBefore = thread.events.length;
+      const tokenBefore = timeline.getPaginationToken(Direction.Backward);
       return from(
         client.paginateEventTimeline(timeline, {
           backwards: true,
           limit: THREAD_SCROLLBACK,
         }),
+      ).pipe(
+        tap(() => {
+          // A page that brought no events and left the token in place (hidden replies the
+          // count still includes) must not leave the button offering the same page again. A
+          // page that only moved the token is not the end: a page overlapping replies the
+          // room's own history already added keeps the old token, so the next one repeats it.
+          if (
+            thread.events.length === loadedBefore &&
+            timeline.getPaginationToken(Direction.Backward) === tokenBefore
+          ) {
+            this.exhaustedThreadRootId = thread.id;
+          }
+          this.refreshThread();
+        }),
+        finalize(() => this._loadingOlderThread.set(false)),
+        map(() => void 0),
       );
-    }).pipe(
-      tap(() => {
-        // A page that brought no events at all (hidden replies the count still includes)
-        // must not leave the button offering the same empty page again.
-        if (thread.events.length === loadedBefore) {
-          this.exhaustedThreadRootId = thread.id;
-        }
-        this.refreshThread();
-      }),
-      finalize(() => this._loadingOlderThread.set(false)),
-      map(() => void 0),
-    );
+    });
   }
 
   // --- In-thread composing --------------------------------------------------

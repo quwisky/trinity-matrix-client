@@ -1961,6 +1961,73 @@ describe('ThreadsService', () => {
       expect(svc.canPaginateThread()).toBe(false);
     });
 
+    // While the room pages back to the root, its pages add the replies to the thread too. The
+    // thread's page then overlaps them, so the SDK keeps the old token and the next request
+    // fetches the same page: nothing new, but the token moves on.
+    it('keeps offering older replies when a repeated page adds nothing but moves the token', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const newest = fakeEvent({
+        id: '$r9',
+        sender: '@b:hs',
+        body: 'nine',
+        ts: 9000,
+      });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root, newest],
+        length: 9,
+        paginationToken: 't126',
+      });
+      const { svc, client } = setup([thread]);
+      const pages = [
+        () =>
+          thread.events.splice(
+            1,
+            0,
+            fakeEvent({ id: '$r8', sender: '@b:hs', body: '8', ts: 8000 }),
+          ),
+        () => (thread.liveTimeline._token = 't96'),
+      ];
+      stubPaginate(client, () => {
+        pages.shift()?.();
+        return Promise.resolve(true);
+      });
+      svc.attachThreadRoot('$root');
+
+      await firstValueFrom(svc.paginateOpenThread());
+      await firstValueFrom(svc.paginateOpenThread());
+
+      expect(svc.canPaginateThread()).toBe(true);
+    });
+
+    it('sends one request when a second page is asked for before the first is sent', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const { svc, client } = setup([
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [root],
+          length: 3,
+          paginationToken: 'tok',
+        }),
+      ]);
+      let finish: (v: boolean) => void = () => undefined;
+      const paginate = vi.fn(
+        () => new Promise<boolean>((resolve) => (finish = resolve)),
+      );
+      stubPaginate(client, paginate);
+      svc.attachThreadRoot('$root');
+
+      const first = svc.paginateOpenThread();
+      const second = svc.paginateOpenThread();
+      const done = Promise.all([firstValueFrom(first), firstValueFrom(second)]);
+      finish(true);
+      await done;
+
+      expect(paginate).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps offering older replies after a real page, even though events re-enter the refresh mid-page', async () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const newest = fakeEvent({

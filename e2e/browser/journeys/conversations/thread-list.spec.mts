@@ -265,7 +265,12 @@ test.describe('Thread list', () => {
     matrixResources,
   }) => {
     test.slow();
-    const { seed, mention } = await seedThread(request, matrixResources, 70, 8);
+    const { seed, mention } = await seedThread(
+      request,
+      matrixResources,
+      REPLIES,
+      8,
+    );
     await watchEntrances(page);
     await signIn(page, seed);
     await openInbox(page);
