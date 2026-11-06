@@ -22,7 +22,8 @@ export function allowedSpaceIdsOf(allow: unknown): string[] {
 export function invalidAllowedSpaceId(
   allowedSpaceIds: readonly string[],
 ): string | undefined {
-  return allowedSpaceIds.find((value) => !/^![^:\s]+:.+$/.test(value));
+  // Room version 12 IDs carry no server name: `!` and an opaque hash.
+  return allowedSpaceIds.find((value) => !/^![^:\s]+(?::\S+)?$/.test(value));
 }
 
 /**

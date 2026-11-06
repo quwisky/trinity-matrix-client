@@ -351,6 +351,25 @@ describe('RoomSettingsService', () => {
     );
   });
 
+  it('setJoinRule allows a room version 12 Space ID without a server name', async () => {
+    const { svc, sendStateEvent } = setup();
+    const spaceId = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Restricted, [spaceId]),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'restricted',
+        allow: [{ type: 'm.room_membership', room_id: spaceId }],
+      },
+      '',
+    );
+  });
+
   it('setJoinRule rejects an invalid allowed Space ID before writing', async () => {
     const { svc, sendStateEvent } = setup();
 
