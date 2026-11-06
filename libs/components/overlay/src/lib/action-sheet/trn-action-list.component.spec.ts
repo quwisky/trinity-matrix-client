@@ -316,6 +316,21 @@ describe('TrnActionListComponent', () => {
       expect(screen.getByTestId('row-archive')).toBeDisabled();
     });
 
+    it('centres and bolds the Cancel row, with no icon column', () => {
+      media.narrow = true;
+      surfaces.openActions(data());
+      tick();
+
+      const cancel = screen.getByTestId('row-cancel');
+      expect(cancel.classList).toContain('justify-center!');
+      expect(cancel.classList).toContain('text-center!');
+      expect(cancel.classList).toContain('font-semibold');
+      expect(cancel.querySelector('trn-icon, .size-6')).toBeNull();
+      const leave = screen.getByTestId('row-leave');
+      expect(leave.classList).not.toContain('justify-center!');
+      expect(leave.classList).not.toContain('font-semibold');
+    });
+
     it('marks a row that opens another sheet with a chevron', () => {
       media.narrow = true;
       surfaces.openActions({
