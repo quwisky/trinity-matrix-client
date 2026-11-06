@@ -176,7 +176,7 @@ describe('DiagnosticsGroupComponent', () => {
     const control = detailedLogSwitch(fixture);
 
     expect(row.textContent).toContain('Detailed logging');
-    expect(row.textContent).toContain('turns off when Trinity restarts');
+    expect(row.textContent).toContain('until you close or reload Trinity');
     expect(control.checked()).toBe(false);
 
     control.checkedChange.emit(true);

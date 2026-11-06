@@ -8,6 +8,7 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
+import { addAccountViaUi } from '../../support/multi-account-journey.mts';
 import {
   closeSettings,
   openSettingsSection,
@@ -18,8 +19,8 @@ import {
   sendComposerLines,
 } from '../../../support/message-composer.mts';
 
-// Covers Report a bug: with Detailed logging turned on for the session, matrix-js-sdk debug
-// output is captured into IndexedDB and survives a reload; the stored entries never hold a credential; the preview and the saved
+// Covers Report a bug: with Detailed logging turned on for the session before the user signs
+// in, matrix-js-sdk debug output is captured into IndexedDB and survives a reload; the stored entries never hold a credential; the preview and the saved
 // trinity-<date>.log are the same redacted text, and neither contains the app's access token,
 // its device ID, a room ID, the user ID, the server name, a room name or topic, the user's
 // display name, an email address or a message body received, sent, encrypted or decrypted.
@@ -127,6 +128,8 @@ test.describe('Report a bug', () => {
     const runId = `${testResourceId('run')}bug`;
     const user = `bugreport-${runId}`;
     const pass = `${user}-pass`;
+    const helper = `bugreport-helper-${runId}`;
+    const helperPass = `${helper}-pass`;
     const roomName = `Bug report ${runId}`;
     const body = `diagnostic-secret-body-${runId}`;
     const sealedRoomName = `Bug report sealed ${runId}`;
@@ -136,6 +139,7 @@ test.describe('Report a bug', () => {
     const email = `wren.${runId}@mail.example.net`;
 
     await registerUser(request, user, pass);
+    await registerUser(request, helper, helperPass);
     const rest = await passwordLogin(request, hs, user, pass);
     const headers = { Authorization: `Bearer ${rest.accessToken}` };
     // Set before the rooms exist, so every membership event carries the display name.
@@ -204,14 +208,23 @@ test.describe('Report a bug', () => {
       }),
     );
 
-    await login(page, { available: true, hs, user, pass } as HomeserverSession);
-    // Debug lines carry the requests, so the credential checks below need them recorded.
+    // Debug lines carry the requests, so the credential checks below need the user's own
+    // sign-in and first sync recorded with Detailed logging on. Settings needs an account,
+    // so a helper account signs in first and the user is added in the same app session.
     // Detailed logging lasts one session; the reload below turns it off again.
+    await login(page, {
+      available: true,
+      hs,
+      user: helper,
+      pass: helperPass,
+    } as HomeserverSession);
     await openSettingsSection(page, 'advanced');
     const detailed = page.getByRole('switch', { name: 'Detailed logging' });
     await detailed.click();
     await expect(detailed).toBeChecked();
     await closeSettings(page);
+    await addAccountViaUi(page, hs, user, pass);
+    await expect(page.locator('.userbar__handle')).toContainText(`@${user}:`);
     // Receive: a message another device sent.
     await openNamedRoom(page, roomName);
     await expect(page.locator('.msg__text', { hasText: body })).toBeVisible({
@@ -236,6 +249,7 @@ test.describe('Report a bug', () => {
       })),
       { label: 'REST access token', value: rest.accessToken },
       { label: 'password', value: pass },
+      { label: 'helper password', value: helperPass },
     ];
     // Names reach the log whenever the app or the SDK prints them; the export must replace
     // them. Logged through the captured console, so the store holds them as any log would.
@@ -244,8 +258,13 @@ test.describe('Report a bug', () => {
       `[bug-report-e2e] in ${roomName} (${roomTopic}), also ${sealedRoomName}, as ${displayName} <${email}>`,
     );
     await storeMarker(page, `[bug-report-e2e] first session done ${runId}`);
+    const firstSession = await storedMessages(page);
+    expect(
+      firstSession.some((message) => message.includes('/v3/login')),
+      'the sign-in request is in the log',
+    ).toBe(true);
     expectNoSecret(
-      (await storedMessages(page)).join('\n'),
+      firstSession.join('\n'),
       credentials,
       'stored log (first session)',
     );
@@ -265,12 +284,16 @@ test.describe('Report a bug', () => {
       'stored log (both sessions)',
     );
 
-    const [appToken] = [...appTokens];
-    const { device_id: deviceId } = (await (
-      await request.get(`${hs}/_matrix/client/v3/account/whoami`, {
-        headers: { Authorization: `Bearer ${appToken}` },
-      })
-    ).json()) as { device_id?: unknown };
+    // The app's own device for the user, not the helper's.
+    let deviceId: unknown;
+    for (const appToken of appTokens) {
+      const whoami = (await (
+        await request.get(`${hs}/_matrix/client/v3/account/whoami`, {
+          headers: { Authorization: `Bearer ${appToken}` },
+        })
+      ).json()) as { user_id?: unknown; device_id?: unknown };
+      if (whoami.user_id === rest.userId) deviceId = whoami.device_id;
+    }
     expect(typeof deviceId, 'whoami returns a device ID').toBe('string');
     expect((deviceId as string).length).toBeGreaterThan(0);
     const serverName = rest.userId.slice(rest.userId.indexOf(':') + 1);
@@ -280,6 +303,7 @@ test.describe('Report a bug', () => {
       { label: 'room ID', value: roomId },
       { label: 'encrypted room ID', value: sealedRoomId },
       { label: 'user ID', value: rest.userId },
+      { label: 'helper user ID', value: `@${helper}:${serverName}` },
       { label: 'server name', value: serverName },
       { label: 'received message body', value: body },
       { label: 'encrypted message body', value: sealedBody },
@@ -323,7 +347,7 @@ test.describe('Report a bug', () => {
     const previewText = (await preview.textContent()) ?? '';
 
     for (const expected of [
-      '# Accounts signed in: 1',
+      '# Accounts signed in: 2',
       '@me:server1',
       'FetchHttpApi',
       'email1@example.invalid',
