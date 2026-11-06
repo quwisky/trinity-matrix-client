@@ -487,13 +487,56 @@ export class TimelineService {
   /** Whether the open room counts as encrypted: its state, or else its crypto store. */
   private encryption = new RoomEncryptionFlags();
 
-  // Cross-signing / device trust changed, so a shield may flip: force a full re-resolve,
-  // bypassing the per-event skip a benign refresh uses.
-  private readonly onTrust = (): void => {
-    if (this.room) {
-      void this.resolveShields(this.room, undefined, true);
+  /**
+   * Senders whose shields a trust change may have flipped, `'all'` after a key change, or null
+   * when nothing waits. Kept while the room is hidden and checked once it is shown.
+   */
+  private trustPending: Set<string> | 'all' | null = null;
+  /** The forced pass in flight, so a newer pass covers what it had left, and its token. */
+  private trustActive: Set<string> | 'all' | null = null;
+  private trustPass = 0;
+
+  private readonly trustCoalescer = coalesce(() => this.flushTrust());
+
+  // Cross-signing / device trust changed, so a shield may flip: force a re-resolve of the named
+  // senders' events (all of them without names), bypassing the per-event skip a refresh uses.
+  private noteTrust(userIds?: readonly string[]): void {
+    if (!this.room) return;
+    if (!userIds?.length || this.trustPending === 'all') {
+      this.trustPending = 'all';
+    } else {
+      this.trustPending ??= new Set();
+      userIds.forEach((id) => (this.trustPending as Set<string>).add(id));
     }
-  };
+    this.trustCoalescer.schedule();
+  }
+
+  private readonly onDevicesUpdated = (userIds?: string[]): void =>
+    this.noteTrust(userIds);
+  private readonly onUserTrust = (userId?: string): void =>
+    this.noteTrust(userId ? [userId] : undefined);
+  private readonly onKeysChanged = (): void => this.noteTrust();
+
+  private flushTrust(): void {
+    const room = this.room;
+    if (!room || !this.visible || !this.trustPending) return;
+    let senders = this.trustPending;
+    this.trustPending = null;
+    // A pass this one supersedes may be mid-way: take over its senders too.
+    const active = this.trustActive;
+    if (active === 'all' || senders === 'all') {
+      senders = 'all';
+    } else if (active) {
+      senders = new Set([...senders, ...active]);
+    }
+    this.trustActive = senders;
+    const pass = ++this.trustPass;
+    void this.resolveShields(room, undefined, true, senders, pass).finally(
+      () => {
+        if (pass === this.trustPass) this.trustActive = null;
+      },
+    );
+  }
 
   /** Start projecting a room on one fixed Account client; attaches live + decryption listeners. */
   open(roomId: string, accountClient?: MatrixClient): void {
@@ -526,9 +569,9 @@ export class TimelineService {
     client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
     client.on(MatrixEventEvent.Replaced, this.onReplaced);
     client.on(RoomMemberEvent.Typing, this.onTyping);
-    client.on(CryptoEvent.UserTrustStatusChanged, this.onTrust);
-    client.on(CryptoEvent.DevicesUpdated, this.onTrust);
-    client.on(CryptoEvent.KeysChanged, this.onTrust);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onUserTrust);
+    client.on(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+    client.on(CryptoEvent.KeysChanged, this.onKeysChanged);
     // Members sync lazily, so the room knows only the senders seen so far; mentions, typing
     // names and sender profiles need everyone. They arrive as RoomState.members events,
     // which `onMember` re-projects.
@@ -588,6 +631,7 @@ export class TimelineService {
     // so showing it again re-projects only what changed meanwhile.
     this.refresh();
     this.refreshTyping();
+    if (visible && this.trustPending) this.trustCoalescer.schedule();
   }
 
   /** Deterministic diagnostics for the bounded Conversation Runtime retention policy. */
@@ -632,9 +676,9 @@ export class TimelineService {
       client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
       client.off(MatrixEventEvent.Replaced, this.onReplaced);
       client.off(RoomMemberEvent.Typing, this.onTyping);
-      client.off(CryptoEvent.UserTrustStatusChanged, this.onTrust);
-      client.off(CryptoEvent.DevicesUpdated, this.onTrust);
-      client.off(CryptoEvent.KeysChanged, this.onTrust);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onUserTrust);
+      client.off(CryptoEvent.DevicesUpdated, this.onDevicesUpdated);
+      client.off(CryptoEvent.KeysChanged, this.onKeysChanged);
     }
     this.connectedClient = null;
     this.room = null;
@@ -649,6 +693,10 @@ export class TimelineService {
     this.projectedTimeline = null;
     this.projectedEncryption = '';
     this.shieldsChecked = false;
+    this.trustCoalescer.cancel();
+    this.trustPending = null;
+    this.trustActive = null;
+    this.trustPass++;
     this.encryption = new RoomEncryptionFlags();
     this._messages.set([]);
     this._typingNames.set([]);
@@ -1264,6 +1312,8 @@ export class TimelineService {
     room: Room,
     events: readonly MatrixEvent[] = room.getLiveTimeline().getEvents(),
     force = false,
+    senders: ReadonlySet<string> | 'all' = 'all',
+    pass = 0,
   ): Promise<void> {
     const crypto = this.connectedClient?.getCrypto?.() ?? null;
     if (!crypto) {
@@ -1276,7 +1326,12 @@ export class TimelineService {
       }
     });
     const encrypted = events
-      .filter((e) => isDisplayableMessage(e) && !isThreadReply(e))
+      .filter(
+        (e) =>
+          isDisplayableMessage(e) &&
+          !isThreadReply(e) &&
+          (senders === 'all' || senders.has(e.getSender() ?? '')),
+      )
       .flatMap(shieldsToCheck);
     const fresh = !this.shieldsChecked;
     this.shieldsChecked = true;
@@ -1286,7 +1341,8 @@ export class TimelineService {
       resolvedShields,
       {
         force: force || fresh,
-        isStale: () => this.roomId !== room.roomId,
+        isStale: () =>
+          this.roomId !== room.roomId || (pass > 0 && pass !== this.trustPass),
       },
     );
     if (changed && this.roomId === room.roomId) {

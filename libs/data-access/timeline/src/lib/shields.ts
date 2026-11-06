@@ -188,6 +188,9 @@ export function unencryptedShieldFor(
   return (event, subject) => unencryptedShield(markFor(event, subject));
 }
 
+/** How many `getEncryptionInfoForEvent` probes run at once. */
+export const SHIELD_PROBES_IN_FLIGHT = 8;
+
 /** The slice of the crypto API the shield resolver needs. */
 export interface ShieldCrypto {
   getEncryptionInfoForEvent(
@@ -210,37 +213,49 @@ export async function resolveShieldsInto(
   opts: { force: boolean; isStale: () => boolean },
 ): Promise<boolean> {
   let changed = false;
-  for (const event of events) {
-    if (!opts.force && shields.has(event) && !event.isDecryptionFailure()) {
-      continue;
+  let stopped = false;
+  const todo = events.filter(
+    (event) => opts.force || !shields.has(event) || event.isDecryptionFailure(),
+  );
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (!stopped && next < todo.length) {
+      const event = todo[next++];
+      let shield: MessageShield | null = null;
+      try {
+        shield = toShield(await crypto.getEncryptionInfoForEvent(event));
+      } catch {
+        // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
+        // shield, visually identical to a fully authenticated message. A transient crypto/store
+        // error must not silently upgrade an unverified message's appearance; show the cautious
+        // indicator instead. (Still caught, so a probe failure can never break the timeline.)
+        shield = {
+          level: 'grey',
+          reason: shieldReasonText(null),
+          explanation: shieldExplanationText(null),
+        };
+      }
+      if (stopped || opts.isStale()) {
+        stopped = true; // switched rooms/threads, or a newer pass took over
+        return;
+      }
+      // A trusted (null) result is kept once the event is decrypted, so a pending edit can be
+      // told from a checked one (see shownSubject). Before decryption it stays absent and is
+      // asked again.
+      const record = shields.has(event)
+        ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
+        : shield !== null || event.getClearContent() !== null;
+      if (record) {
+        shields.set(event, shield);
+        changed = true;
+      }
     }
-    let shield: MessageShield | null = null;
-    try {
-      shield = toShield(await crypto.getEncryptionInfoForEvent(event));
-    } catch {
-      // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
-      // shield, visually identical to a fully authenticated message. A transient crypto/store
-      // error must not silently upgrade an unverified message's appearance; show the cautious
-      // indicator instead. (Still caught, so a probe failure can never break the timeline.)
-      shield = {
-        level: 'grey',
-        reason: shieldReasonText(null),
-        explanation: shieldExplanationText(null),
-      };
-    }
-    if (opts.isStale()) {
-      return changed; // switched rooms/threads mid-resolve
-    }
-    // A trusted (null) result is kept once the event is decrypted, so a pending edit can be
-    // told from a checked one (see shownSubject). Before decryption it stays absent and is
-    // asked again.
-    const record = shields.has(event)
-      ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
-      : shield !== null || event.getClearContent() !== null;
-    if (record) {
-      shields.set(event, shield);
-      changed = true;
-    }
-  }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(SHIELD_PROBES_IN_FLIGHT, todo.length) },
+      worker,
+    ),
+  );
   return changed;
 }

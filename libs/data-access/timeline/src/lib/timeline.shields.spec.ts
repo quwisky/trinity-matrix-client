@@ -71,6 +71,7 @@ describe('per-message authenticity shields', () => {
               },
       }),
       getMember: () => ({ name: 'A', getMxcAvatarUrl: () => null }),
+      getMembers: () => [],
       relations: { getChildEventsForEvent: () => undefined },
       on: (event: string, handler: (...a: unknown[]) => void) => {
         handlers.set(`room:${event}`, handler);
@@ -402,5 +403,68 @@ describe('per-message authenticity shields', () => {
     await vi.waitFor(() =>
       expect(getInfo.mock.calls.length).toBeGreaterThan(afterOpen),
     );
+  });
+
+  describe('trust-change re-checks', () => {
+    const info = {
+      shieldColour: EventShieldColour.GREY,
+      shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+    };
+
+    async function openTwoSenders() {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const events = [
+        fakeEvent({ id: '$a', sender: '@a:hs', body: 'a', encrypted: true }),
+        fakeEvent({ id: '$b', sender: '@b:hs', body: 'b', encrypted: true }),
+      ];
+      const opened = openWithEvents(getInfo, events, false);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(opened.svc.messages()[1].shield?.level).toBe('grey'),
+      );
+      getInfo.mockClear();
+      return { ...opened, getInfo };
+    }
+
+    function sendersProbed(getInfo: Mock): string[] {
+      return getInfo.mock.calls.map(([e]) => e.getSender()).sort();
+    }
+
+    it('runs one pass for a burst of trust events', async () => {
+      const { handlers, getInfo } = await openTwoSenders();
+      for (let i = 0; i < 5; i++) {
+        handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      }
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 10));
+      expect(getInfo).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-checks only the senders named by the event', async () => {
+      const { handlers, getInfo } = await openTwoSenders();
+      handlers.get('client:userTrustStatusChanged')?.('@b:hs');
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 10));
+      expect(sendersProbed(getInfo)).toEqual(['@b:hs']);
+    });
+
+    it('re-checks everyone on KeysChanged', async () => {
+      const { handlers, getInfo } = await openTwoSenders();
+      handlers.get('client:crossSigning.keysChanged')?.();
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+    });
+
+    it('waits for a hidden room to be shown before checking', async () => {
+      const { svc, handlers, getInfo } = await openTwoSenders();
+      svc.setVisible(false);
+      getInfo.mockClear();
+      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      handlers.get('client:crypto.devicesUpdated')?.(['@b:hs']);
+      await new Promise((r) => setTimeout(r, 10));
+      expect(getInfo).not.toHaveBeenCalled();
+      svc.setVisible(true);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+      expect(sendersProbed(getInfo)).toEqual(['@a:hs', '@b:hs']);
+    });
   });
 });

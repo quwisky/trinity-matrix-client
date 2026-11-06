@@ -289,6 +289,96 @@ describe('resolveShieldsInto', () => {
     expect(changed).toBe(false);
     expect(shields.size).toBe(0);
   });
+
+  it('probes in parallel but never more than 8 at once', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight--;
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const events = Array.from({ length: 30 }, (_, i) => event(`$${i}`));
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+
+    await resolveShieldsInto(crypto as never, events, shields, NOT_STALE);
+
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(30);
+    expect(peak).toBe(8);
+    expect(shields.size).toBe(30);
+  });
+
+  it('fails closed for each failing probe in a parallel batch', async () => {
+    const bad = event('$bad');
+    const good = event('$good');
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async (e: MatrixEvent) => {
+        if (e === bad) throw new Error('boom');
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await resolveShieldsInto(crypto as never, [bad, good], shields, NOT_STALE);
+    expect(shields.get(bad)).toMatchObject({ level: 'grey' });
+    expect(shields.get(good)).toMatchObject({ level: 'red' });
+  });
+
+  it('stops probing once stale instead of draining the queue', async () => {
+    let stale = false;
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => {
+        await Promise.resolve();
+        stale = true;
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const events = Array.from({ length: 40 }, (_, i) => event(`$${i}`));
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await resolveShieldsInto(crypto as never, events, shields, {
+      force: false,
+      isStale: () => stale,
+    });
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(8);
+    expect(shields.size).toBe(0);
+  });
+
+  it('lets an older pass finish after a newer one without overwriting it', async () => {
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const a = event('$a');
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let token = 1;
+    const older = resolveShieldsInto(
+      {
+        getEncryptionInfoForEvent: async () => {
+          await gate;
+          return { shieldColour: EventShieldColour.GREY, shieldReason: null };
+        },
+      } as never,
+      [a],
+      shields,
+      { force: true, isStale: () => token !== 1 },
+    );
+    token = 2;
+    await resolveShieldsInto(
+      {
+        getEncryptionInfoForEvent: async () => ({
+          shieldColour: EventShieldColour.RED,
+          shieldReason: null,
+        }),
+      } as never,
+      [a],
+      shields,
+      { force: true, isStale: () => token !== 2 },
+    );
+    release();
+    await older;
+    expect(shields.get(a)).toMatchObject({ level: 'red' });
+  });
 });
 
 /** A message-or-state event as the unencrypted-shield lookup reads it. */
