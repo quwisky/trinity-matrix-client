@@ -54,11 +54,12 @@ test('an account still restoring in the background is disabled in the switcher u
 }) => {
   const hs = session.hs as string;
   const runId = `${testResourceId('run')}bg`;
-  const userA = `bg-a-${runId}`;
-  const userB = `bg-b-${runId}`;
+  // A restores slowly; C is settled while A is still restoring; B is the active account.
+  const [userA, userB, userC] = ['a', 'b', 'c'].map((n) => `bg-${n}-${runId}`);
   const roomB = `Room B ${runId}`;
-  await registerUser(request, userA, `${userA}-pass`);
-  await registerUser(request, userB, `${userB}-pass`);
+  for (const user of [userA, userB, userC]) {
+    await registerUser(request, user, `${user}-pass`);
+  }
   const b = await apiLogin(request, hs, userB, `${userB}-pass`);
   await createRoom(request, hs, b, roomB);
 
@@ -68,44 +69,50 @@ test('an account still restoring in the background is disabled in the switcher u
     user: userA,
     pass: `${userA}-pass`,
   });
+  await addAccountViaUi(page, hs, userC, `${userC}-pass`);
   await addAccountViaUi(page, hs, userB, `${userB}-pass`);
-  await expect(page.locator('.userbar__handle')).toContainText(`@${userB}:`);
+  const handle = page.locator('.userbar__handle');
+  await expect(handle).toContainText(`@${userB}:`);
 
-  await delayAccount(page, request, hs, userA, 8_000);
+  await delayAccount(page, request, hs, userA, 20_000);
   await page.reload();
   // The active account opens without waiting for the delayed one.
   await expect(page.locator('.channel', { hasText: roomB })).toBeVisible({
-    timeout: 6_000,
+    timeout: 8_000,
   });
 
+  const row = (user: string) =>
+    page.getByTestId('account-row').filter({ hasText: `@${user}:` });
   await page.getByTestId('user-menu-trigger').click();
-  const rowA = page
-    .getByTestId('account-row')
-    .filter({ hasText: `@${userA}:` });
-  const rowB = page
-    .getByTestId('account-row')
-    .filter({ hasText: `@${userB}:` });
-  await expect(rowA).toHaveAttribute('aria-disabled', 'true');
-  await expect(rowA.getByTestId('account-row-restoring')).toHaveText(
+  await expect(row(userA)).toHaveAttribute('aria-disabled', 'true');
+  await expect(row(userA).getByTestId('account-row-restoring')).toHaveText(
     'Loading…',
   );
-  await expect(rowB).not.toHaveAttribute('aria-disabled', 'true');
-  await expect(page.getByTestId('add-account')).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  );
-  await expect(page.getByTestId('logout')).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  );
+  await expect(row(userB)).not.toHaveAttribute('aria-disabled', 'true');
+  for (const testId of ['add-account', 'logout']) {
+    await expect(page.getByTestId(testId)).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+  }
 
-  await page.unroute('**/_matrix/client/**');
-  await expect(rowA).not.toHaveAttribute('aria-disabled', 'true', {
-    timeout: 45_000,
+  // A settled account switches at once while A is still restoring.
+  await expect(row(userC)).toBeVisible();
+  await expect(row(userC)).not.toHaveAttribute('aria-disabled', 'true');
+  await row(userC).click();
+  await expect(handle).toContainText(`@${userC}:`);
+
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
+  await page.getByTestId('user-menu-trigger').click();
+  await expect(row(userA)).toBeVisible();
+  await expect(row(userA)).not.toHaveAttribute('aria-disabled', 'true', {
+    timeout: 60_000,
   });
-  await expect(rowA.getByTestId('account-row-restoring')).toHaveCount(0);
+  await expect(row(userA).getByTestId('account-row-restoring')).toHaveCount(0);
   await expect(page.getByTestId('logout')).not.toHaveAttribute(
     'aria-disabled',
     'true',
   );
+  await row(userA).click();
+  await expect(handle).toContainText(`@${userA}:`);
 });

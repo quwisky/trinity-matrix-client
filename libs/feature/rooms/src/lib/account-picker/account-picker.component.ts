@@ -18,7 +18,7 @@ import {
   TrnInsetRow,
   TrnLockedSelectionDirective,
 } from '@trinity/components/overlay';
-import { TrnButton } from '@trinity/components/controls';
+import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { SelectedRoomLibraryService } from '@trinity/data-access/room-library';
 import { AccountPickLabelComponent } from '../shared/account-pick-label/account-pick-label.component';
@@ -42,6 +42,7 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   imports: [
     AccountPickLabelComponent,
     NgTemplateOutlet,
+    TrnActionAvailability,
     TrnButton,
     TrnIconComponent,
     TrnLockedSelectionDirective,

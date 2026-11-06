@@ -181,6 +181,25 @@ describe('AccountPickerComponent', () => {
 
   // The service refuses to drop the active account, so a row that looked tickable but did
   // nothing would drift out of sync with the state behind it.
+  it('holds back an account still restoring in the background, with its reason', async () => {
+    const { container } = await renderPicker('@alice:hs', [
+      ACCOUNTS[0],
+      ACCOUNTS[1],
+      { ...ACCOUNTS[2], restoring: true },
+    ]);
+
+    const carol = row(container, '@carol:hs');
+    expect(carol.getAttribute('aria-disabled')).toBe('true');
+    expect(carol.getAttribute('aria-description')).toBe('Loading…');
+    expect(
+      carol.querySelector('[data-testid="account-pick-restoring"]')
+        ?.textContent,
+    ).toContain('Loading…');
+    carol.click();
+    expect(toggle).not.toHaveBeenCalled();
+    expect(row(container, '@bob:hs').getAttribute('aria-disabled')).toBeNull();
+  });
+
   it('never toggles the active account', async () => {
     const { container } = await renderPicker();
 

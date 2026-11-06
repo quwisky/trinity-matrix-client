@@ -114,6 +114,7 @@
             <span
               class="account-row__restoring"
               data-testid="account-row-restoring"
+              aria-hidden="true"
               >{{ restoringReason }}</span
             >
           }
@@ -237,6 +238,8 @@
           [disabled]="isActive"
           [lockedSelection]="isActive"
           (triggered)="toggleAccountShown.emit(account.userId)"
+          [trnActionAllowed]="!account.restoring"
+          [trnActionDisabledReason]="account.restoring ? restoringReason : null"
           [attr.data-testid]="'show-account-' + account.userId"
           [attr.data-trust]="account.trust"
         >
@@ -247,6 +250,7 @@
             [account]="account"
             [locked]="isActive"
             [unverified]="account.trust === 'unverified'"
+            [restoring]="!!account.restoring"
           />
         </button>
       }

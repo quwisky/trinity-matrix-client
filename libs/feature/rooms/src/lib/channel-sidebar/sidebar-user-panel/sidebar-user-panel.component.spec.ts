@@ -184,10 +184,12 @@ describe('SidebarUserPanelComponent', () => {
       const carol = row('@carol:hs');
       expect(carol.getAttribute('aria-disabled')).toBe('true');
       expect(carol.getAttribute('aria-description')).toBe('Loading…');
-      expect(
-        carol.querySelector('[data-testid="account-row-restoring"]')
-          ?.textContent,
-      ).toContain('Loading…');
+      const reason = carol.querySelector(
+        '[data-testid="account-row-restoring"]',
+      );
+      expect(reason?.textContent).toContain('Loading…');
+      // aria-description already carries it; the visible line is not read a second time.
+      expect(reason?.getAttribute('aria-hidden')).toBe('true');
       carol.click();
       expect(switched).not.toHaveBeenCalled();
 
@@ -223,6 +225,33 @@ describe('SidebarUserPanelComponent', () => {
       }
       carol.click();
       expect(switched).toHaveBeenCalledWith('@carol:hs');
+    });
+
+    it('holds back a restoring account in "Accounts in view" too', async () => {
+      const { fixture } = await openRestoring();
+      const toggled = vi.fn();
+      fixture.componentInstance.toggleAccountShown.subscribe(toggled);
+      document
+        .querySelector<HTMLElement>('[data-testid="show-accounts"]')!
+        .click();
+      fixture.detectChanges();
+
+      const carol = document.querySelector<HTMLElement>(
+        '[data-testid="show-account-@carol:hs"]',
+      )!;
+      expect(carol.getAttribute('aria-disabled')).toBe('true');
+      expect(carol.getAttribute('aria-description')).toBe('Loading…');
+      expect(
+        carol.querySelector('[data-testid="account-pick-restoring"]')
+          ?.textContent,
+      ).toContain('Loading…');
+      carol.click();
+      expect(toggled).not.toHaveBeenCalled();
+      expect(
+        document
+          .querySelector('[data-testid="show-account-@bob:hs"]')
+          ?.getAttribute('aria-disabled'),
+      ).toBeNull();
     });
 
     it('holds back adding and removing an account with the same reason', async () => {
