@@ -543,6 +543,33 @@ describe('ThreadViewComponent hosts the message list', () => {
     expect(commands.editingId()).toBeNull();
   });
 
+  it('shows no drop overlay over the replies while a reply is being edited', async () => {
+    const { fixture, container } = await build([
+      { ...msg('$1', '@me:hs', 'mine'), isOwn: true },
+    ]);
+    const list = listOf(fixture);
+    const enter = () => {
+      const event = new Event('dragenter', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'dataTransfer', {
+        value: { types: ['Files'], files: [], dropEffect: 'none' },
+      });
+      container.querySelector('trn-message-list')!.dispatchEvent(event);
+      fixture.detectChanges();
+    };
+    enter();
+    // The control: a drag over the replies does raise it.
+    expect(container.querySelector('trn-drop-overlay')).not.toBeNull();
+    container
+      .querySelector('trn-message-list')!
+      .dispatchEvent(new Event('dragleave'));
+
+    list.startEdit(list.rows()[0]);
+    fixture.detectChanges();
+    enter();
+
+    expect(container.querySelector('trn-drop-overlay')).toBeNull();
+  });
+
   it('stages files dropped on the replies into the thread composer', async () => {
     const { fixture, container } = await build(three);
     const stage = vi.spyOn(composerOf(fixture), 'stageFiles');

@@ -56,6 +56,8 @@ export class TrnFileDropDirective {
     // Without this the drop event never arrives: the default action is "reject the drag".
     event.preventDefault();
     if (event.dataTransfer) {
+      // 'copy' even where nothing can take the file: the drop must reach `onDrop` to be
+      // prevented. 'none' was left out because nothing verified the browser then keeps the tab.
       event.dataTransfer.dropEffect = 'copy';
     }
   }

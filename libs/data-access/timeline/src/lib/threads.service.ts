@@ -858,20 +858,24 @@ export class ThreadsService {
   ): MatrixEvent[] {
     // The thread timeline is not reliably ordered: sync events that arrive while a page is
     // landing sit before it, and the root lands mid-stream once the start is reached. So the
-    // root leads, and replies follow by send time; the sort is stable, so replies sent in the
-    // same millisecond keep the timeline's order. A reply delivered twice shows once.
+    // root leads, and confirmed replies follow by server time; the sort is stable, so replies
+    // sent in the same millisecond keep the timeline's order. Our own unconfirmed sends come
+    // last in timeline order: they carry the device clock, which can run behind the server's.
+    // A reply delivered twice shows once.
     const seen = new Set<string | undefined>([rootEventId]);
     const replies = (thread?.events ?? []).filter((event) => {
       if (!isDisplayableMessage(event) || seen.has(event.getId())) return false;
       seen.add(event.getId());
       return true;
     });
-    replies.sort((a, b) => a.getTs() - b.getTs());
+    const confirmed = replies.filter((event) => !event.status);
+    confirmed.sort((a, b) => a.getTs() - b.getTs());
+    const unconfirmed = replies.filter((event) => event.status);
     const root =
       thread?.rootEvent ??
       thread?.events.find((event) => event.getId() === rootEventId) ??
       room.findEventById(rootEventId);
-    return root ? [root, ...replies] : replies;
+    return [...(root ? [root] : []), ...confirmed, ...unconfirmed];
   }
 
   /**
@@ -938,7 +942,12 @@ export class ThreadsService {
     if (this.attention && !untracked(this.attention.attentive)) {
       return;
     }
-    const latest = [...(thread.events ?? [])].reverse().find((e) => !e.status);
+    // The ordered thread, not the raw timeline, whose last event need not be the newest.
+    const room = this.threadRoom;
+    const ordered = room
+      ? this.orderedThreadEvents(room, rootEventId, thread)
+      : (thread.events ?? []);
+    const latest = [...ordered].reverse().find((e) => !e.status);
     const target = latest ?? thread.rootEvent ?? null;
     const id = target?.getId() ?? null;
     if (!target || !id || id === this.lastReadEventId) {

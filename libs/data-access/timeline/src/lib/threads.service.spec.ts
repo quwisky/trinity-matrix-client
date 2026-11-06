@@ -1718,6 +1718,61 @@ describe('ThreadsService', () => {
     ]);
   });
 
+  // A local echo carries the device clock until its server copy lands; a clock running behind
+  // would sort the send above newer replies, then drop it to the bottom when it is confirmed.
+  it('keeps a send last while it is pending, and there once the server confirms it', () => {
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root',
+      ts: 100,
+    });
+    const older = fakeEvent({
+      id: '$r1',
+      sender: '@b:hs',
+      body: 'one',
+      ts: 2000,
+    });
+    const newer = fakeEvent({
+      id: '$r2',
+      sender: '@b:hs',
+      body: 'two',
+      ts: 3000,
+    });
+    const echo = fakeEvent({
+      id: '$echo',
+      sender: '@me:hs',
+      body: 'mine',
+      ts: 1000,
+      status: 'sending',
+    });
+    const thread = fakeThread({
+      id: '$root',
+      rootEvent: root,
+      events: [root, older, newer, echo],
+    });
+    const { svc } = setup([thread]);
+    svc.attachThreadRoot('$root');
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$r1',
+      '$r2',
+      '$echo',
+    ]);
+
+    // The server copy: confirmed, with the server's (newest) time.
+    echo.status = null;
+    echo.getTs = () => 4000;
+    thread.emit(ThreadEvent.NewReply);
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$r1',
+      '$r2',
+      '$echo',
+    ]);
+  });
+
   it('keeps the timeline order of replies sent in the same millisecond', () => {
     const root = fakeEvent({
       id: '$root',
@@ -2252,6 +2307,41 @@ describe('ThreadsService', () => {
         messageId: '$r1',
         threadRootId: '$root',
       });
+    });
+
+    it('marks read the latest reply by time, not the last one the timeline holds', () => {
+      const root = fakeEvent({
+        id: '$root',
+        sender: '@a:hs',
+        body: 'root',
+        ts: 1,
+      });
+      const latest = fakeEvent({
+        id: '$r2',
+        sender: '@b:hs',
+        body: 'two',
+        ts: 3000,
+      });
+      const earlier = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'one',
+        ts: 2000,
+      });
+      const { svc, acknowledge } = setup([
+        // Out of order, as a page landing behind sync events leaves it.
+        fakeThread({
+          id: '$root',
+          rootEvent: root,
+          events: [latest, root, earlier],
+        }),
+      ]);
+
+      svc.attachThreadRoot('$root');
+
+      expect(acknowledge).toHaveBeenLastCalledWith(
+        expect.objectContaining({ messageId: '$r2' }),
+      );
     });
 
     it('holds the thread receipt while App lock covers the app and sends it after unlock', () => {

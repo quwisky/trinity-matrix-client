@@ -410,8 +410,6 @@ describe('RoomsPage header actions and search field', () => {
       .componentInstance;
   }
 
-  // As a page over the room (below md) the room's list is inert, so its typing region is
-  // silent and the thread's own row must announce; beside the room it would say it twice.
   it('routes a matrix.to link clicked in a thread like one in the room', () => {
     renderHeader(0);
     const click = {
@@ -426,6 +424,8 @@ describe('RoomsPage header actions and search field', () => {
     ).toHaveBeenCalledExactlyOnceWith(click);
   });
 
+  // As a page over the room (below md) the room's list is inert, so its typing region is
+  // silent and the thread's own row must announce; beside the room it would say it twice.
   it('has the thread announce typing only while it is a page over the room', () => {
     renderHeader(0);
     expect(openThread().announceTyping()).toBe(false);
