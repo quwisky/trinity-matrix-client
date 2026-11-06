@@ -32,6 +32,20 @@ class DismissHostComponent {}
 })
 class AutofocusDismissHostComponent {}
 
+@Component({
+  imports: [TrnDialogDismiss],
+  template: `<button
+    trnDialogDismiss
+    [attr.data-autofocus]="focusHere ? '' : null"
+    data-testid="dismiss"
+  >
+    Done
+  </button>`,
+})
+class BoundAutofocusHostComponent {
+  readonly focusHere = true;
+}
+
 function withRef(presentation: TrnDialogPresentation) {
   return [
     {
@@ -89,5 +103,13 @@ describe('TrnDialogDismiss', () => {
     expect(
       screen.getByTestId('dialog-close').hasAttribute('data-autofocus'),
     ).toBe(false);
+  });
+
+  it('leaves a bound autofocus mark alone in a dialog', async () => {
+    await render(BoundAutofocusHostComponent, { providers: withRef('dialog') });
+
+    expect(screen.getByTestId('dismiss').hasAttribute('data-autofocus')).toBe(
+      true,
+    );
   });
 });

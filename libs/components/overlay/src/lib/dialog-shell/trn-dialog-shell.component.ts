@@ -47,8 +47,9 @@ import type {
 })
 export class TrnDialogActions {
   protected readonly sheet = inject(TRN_BUTTON_ROW_CONTEXT);
+  /** A card left with no visible row, its dismiss hidden for the Cancel block, takes no slot. */
   protected readonly sheetClasses =
-    'isolate flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)]';
+    'isolate flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)] [&:not(:has(>:not([hidden])))]:hidden';
 }
 
 /**
@@ -105,7 +106,7 @@ export class TrnDialogShellComponent {
 
   /** A sheet trades the X for a Cancel block under its actions. */
   protected readonly sheetCancelShown = computed(
-    () => this.framed() && this.closable() && this.sheetCancel(),
+    () => this.framed() && this.closable(),
   );
 
   readonly title = input.required<string>();
@@ -116,8 +117,6 @@ export class TrnDialogShellComponent {
   readonly closeTestId = input('dialog-close');
   /** The sheet Cancel block's visible text. */
   readonly cancelText = input('Cancel');
-  /** False for a sheet that closes on selection and needs no Cancel block. */
-  readonly sheetCancel = input(true);
   /** Keep the `h2` for screen readers, which still name the dialog by it, but hide it. */
   readonly titleHidden = input(false);
   readonly size = input<TrnOverlaySurfaceSize>('md');

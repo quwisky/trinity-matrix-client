@@ -40,10 +40,16 @@ class ActionsHostComponent {}
 class DisabledDangerHostComponent {}
 
 @Component({
-  imports: [TrnDialogShellComponent],
-  template: `<trn-dialog-shell title="Pick" [sheetCancel]="false" />`,
+  imports: [TrnDialogShellComponent, TrnDialogActions, TrnButton],
+  template: `
+    <trn-dialog-shell title="Message source" cancelText="Close">
+      <div trnDialogActions data-testid="actions">
+        <button trnBtn hidden>Close</button>
+      </div>
+    </trn-dialog-shell>
+  `,
 })
-class NoSheetCancelHostComponent {}
+class OnlyHiddenActionHostComponent {}
 
 @Component({
   imports: [TrnDialogShellComponent],
@@ -108,6 +114,9 @@ function refFor(
     providers: [provideTrnIcons(), { provide: TrnDialogRef, useValue: ref }],
   };
 }
+
+/** Tailwind's `display: none` for a card with no visible row. */
+const EMPTY_CARD_HIDDEN = '[&:not(:has(>:not([hidden])))]:hidden';
 
 const surface = () => screen.getByTestId('dialog-surface');
 const shell = () => document.querySelector('trn-dialog-shell')!;
@@ -280,13 +289,17 @@ describe('TrnDialogShellComponent', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
-  it('no Cancel when sheetCancel is false', async () => {
-    await render(NoSheetCancelHostComponent, {
+  it('collapses an actions card whose only row a sheet hides', async () => {
+    await render(OnlyHiddenActionHostComponent, {
       providers: refFor('sheet').providers,
     });
 
-    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    const actions = screen.getByTestId('actions');
+    expect(actions.classList).toContain(EMPTY_CARD_HIDDEN);
+    expect(actions.matches(':not(:has(> :not([hidden])))')).toBe(true);
+    expect(
+      screen.getByTestId('actions').matches(':has(> :not([hidden]))'),
+    ).toBe(false);
   });
 
   it('footer rows in a sheet', async () => {
