@@ -193,6 +193,22 @@ export class SessionStorageService {
     return defer(() => from(this.readRegistry().then((r) => r.accounts)));
   }
 
+  /**
+   * Whether the registry holds an account. Reads only the registry, never migrating the
+   * legacy slot, so it can run beside the account restore.
+   */
+  hasAccounts(): Observable<boolean> {
+    return defer(() =>
+      from(
+        Preferences.get({ key: ACCOUNTS_KEY }).then(
+          ({ value }) =>
+            !!value &&
+            (JSON.parse(value) as AccountRegistry).accounts.length > 0,
+        ),
+      ),
+    );
+  }
+
   /** Read the Account inventory and Active Account pointer in one consistent snapshot. */
   snapshot(): Observable<AccountRegistrySnapshot> {
     return defer(() =>
