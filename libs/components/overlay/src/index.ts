@@ -35,6 +35,11 @@ export {
   type ActionSheetReaction,
   type TrnActionSheetButtonVariant,
 } from './lib/action-sheet/trn-action-list.component';
+export {
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
+} from './lib/inset-group/trn-inset-group';
 export { TrnActionSheetRef } from './lib/action-sheet/trn-action-sheet-ref';
 export {
   TrnToastService,
