@@ -27,6 +27,12 @@ import {
   },
 })
 export class TrnFileDropDirective {
+  /**
+   * Whether the host can take files now; set by the host. While false a file drag is not ours:
+   * no overlay, and nothing is prevented, so the browser keeps its own handling.
+   */
+  accepts: () => boolean = () => true;
+
   /** Files were dropped on the host. Never empty. */
   readonly filesDropped = output<readonly File[]>();
 
@@ -77,6 +83,8 @@ export class TrnFileDropDirective {
    * swallow the browser's own default.
    */
   private carriesFiles(event: DragEvent): boolean {
-    return event.dataTransfer?.types.includes('Files') ?? false;
+    return (
+      this.accepts() && (event.dataTransfer?.types.includes('Files') ?? false)
+    );
   }
 }

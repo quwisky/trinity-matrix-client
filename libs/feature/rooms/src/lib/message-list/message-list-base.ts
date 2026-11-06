@@ -73,6 +73,12 @@ import {
   type UndecryptableFix,
 } from '../shared/undecryptable-fix.service';
 
+/** A composer the host renders outside the list, which takes the list's quotes and dropped files. */
+export type ComposerHost = Pick<
+  MessageComposerComponent,
+  'insertQuote' | 'stageFiles'
+>;
+
 /** How {@link MessageListBase.jumpTo} reaches a row already in the DOM. */
 export interface JumpOptions {
   /** Scroll after the next render: the caller has just grown the row. */
@@ -201,8 +207,11 @@ export abstract class MessageListBase {
   readonly roomId = input<string | null>(null);
   /** A second reset trigger for a host that switches conversations within one room (a thread's root). */
   readonly resetKey = input<string | null>(null);
-  /** Where a quote goes when the host owns the composer; null quotes into the list's own. */
-  readonly quoteInto = input<((text: string) => void) | null>(null);
+  /**
+   * The composer quotes and dropped files go to when the host renders it outside the list (the
+   * thread panel); null uses the list's own.
+   */
+  readonly composerHost = input<ComposerHost | null>(null);
   readonly accountId = input<string | null>(null);
   /** Room members, forwarded to the composer's @-mention autocomplete. */
   readonly members = input<readonly MentionMember[]>([]);
@@ -299,12 +308,17 @@ export abstract class MessageListBase {
   /** The composer rendered by each concrete list: quotes and dropped files go straight into it. */
   private readonly composer = viewChild(MessageComposerComponent);
 
+  /** Where quotes and dropped files go: the host's composer, else the list's own, else none. */
+  private readonly composerTarget = computed<ComposerHost | null>(
+    () => this.composerHost() ?? this.composer() ?? null,
+  );
+
   /**
    * Stage files dropped on the conversation. Goes through the composer because the attachments
    * service is provided BY the composer, so it does not exist at this level.
    */
   protected onFilesDropped(files: readonly File[]): void {
-    this.composer()?.stageFiles(files);
+    this.composerTarget()?.stageFiles(files);
   }
 
   /** Row grouping and its caches; declared after the inputs it reads. */
@@ -364,6 +378,8 @@ export abstract class MessageListBase {
     // A host directive's outputs are not template-bound, so the subscription IS the wiring.
     // No teardown: the emitter drops subscribers when its host directive is destroyed with the component.
     this.fileDrop.filesDropped.subscribe((files) => this.onFilesDropped(files));
+    // With no composer to stage into, a drop is not ours: no overlay, and the browser keeps it.
+    this.fileDrop.accepts = () => this.composerTarget() !== null;
 
     // The sheet is a CDK overlay outside the router outlet, so it outlives this list.
     // `resetOnRoomChange` is not enough: settings, logout and deep links destroy the timeline
@@ -520,10 +536,7 @@ export abstract class MessageListBase {
    */
   startQuote(row: MessageRow): void {
     this.cancelEdit();
-    const text = quoteBlock(row.body);
-    const into = this.quoteInto();
-    if (into) into(text);
-    else this.composer()?.insertQuote(text);
+    this.composerTarget()?.insertQuote(quoteBlock(row.body));
   }
 
   /** Edit the most recent editable message of the current user (Up-arrow shortcut). */
@@ -720,8 +733,9 @@ export abstract class MessageListBase {
   /**
    * A long press on a row (phone or tablet): offer its actions as a bottom sheet.
    *
-   * The sheet is held by {@link MessageActionSheetService}, scoped to this list, so the thread's
-   * list and the room's each close only their own. Dispatch goes through `onRowAction`, like the hover toolbar.
+   * The sheet is held by {@link MessageActionSheetService}, a root singleton keyed by owner token:
+   * this list opens it as its owner, so the thread's list and the room's each close only the sheet
+   * they opened. Dispatch goes through `onRowAction`, like the hover toolbar.
    */
   onRowLongPress(row: MessageRow, context?: MessageLongPressContext): void {
     this.messageSheet.open(

@@ -856,15 +856,22 @@ export class ThreadsService {
     rootEventId: string,
     thread: Thread | null = this.thread ?? room.getThread(rootEventId),
   ): MatrixEvent[] {
-    const replies = (thread?.events ?? []).filter(isDisplayableMessage);
-    const seen = new Set(replies.map((e) => e.getId()));
-    const ordered: MatrixEvent[] = [];
-    const root = thread?.rootEvent ?? room.findEventById(rootEventId);
-    if (root && !seen.has(root.getId())) {
-      ordered.push(root);
-    }
-    ordered.push(...replies);
-    return ordered;
+    // The thread timeline is not reliably ordered: sync events that arrive while a page is
+    // landing sit before it, and the root lands mid-stream once the start is reached. So the
+    // root leads, and replies follow by send time; the sort is stable, so replies sent in the
+    // same millisecond keep the timeline's order. A reply delivered twice shows once.
+    const seen = new Set<string | undefined>([rootEventId]);
+    const replies = (thread?.events ?? []).filter((event) => {
+      if (!isDisplayableMessage(event) || seen.has(event.getId())) return false;
+      seen.add(event.getId());
+      return true;
+    });
+    replies.sort((a, b) => a.getTs() - b.getTs());
+    const root =
+      thread?.rootEvent ??
+      thread?.events.find((event) => event.getId() === rootEventId) ??
+      room.findEventById(rootEventId);
+    return root ? [root, ...replies] : replies;
   }
 
   /**

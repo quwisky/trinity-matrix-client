@@ -543,6 +543,34 @@ describe('ThreadViewComponent hosts the message list', () => {
     expect(commands.editingId()).toBeNull();
   });
 
+  it('stages files dropped on the replies into the thread composer', async () => {
+    const { fixture, container } = await build(three);
+    const stage = vi.spyOn(composerOf(fixture), 'stageFiles');
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types: ['Files'], files: [file], dropEffect: 'none' },
+    });
+
+    container.querySelector('trn-message-list')!.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(stage).toHaveBeenCalledExactlyOnceWith([file]);
+  });
+
+  it('passes on a matrix.to link clicked in a reply', async () => {
+    const { fixture } = await build(three);
+    const links: unknown[] = [];
+    fixture.componentInstance.matrixLink.subscribe((click) =>
+      links.push(click),
+    );
+    const click = { target: { kind: 'invalid' as const } };
+
+    listOf(fixture).matrixLink.emit(click);
+
+    expect(links).toEqual([click]);
+  });
+
   it('editing a thread reply leaves the room composer alone', async () => {
     const { fixture, roomCompose, roomMessages } = await build([
       { ...msg('$1', '@me:hs', 'mine'), isOwn: true },

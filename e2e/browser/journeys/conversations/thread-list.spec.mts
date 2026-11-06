@@ -18,6 +18,7 @@ import {
 // Not covered here: day dividers. Synapse honours `ts` for appservices only, so a seeded
 // thread cannot span two days; the unit tests cover them.
 const REPLIES = 120;
+const ROOM_AFTER_THREAD = 150;
 
 async function seedThread(
   request: Parameters<typeof seedInbox>[0],
@@ -114,6 +115,39 @@ const entrances = (page: Page, text: string): Promise<number> =>
     return total;
   }, text);
 
+/** A request for a page of this thread's replies. */
+const threadPage =
+  (rootId: string) =>
+  (url: URL | string): boolean => {
+    const href = String(url);
+    return (
+      href.includes('/relations/') && href.includes(encodeURIComponent(rootId))
+    );
+  };
+
+/** The rendered rows in DOM order: 'root', a reply's number, or '?' for anything else. */
+const rowOrder = (thread: Locator): Promise<string[]> =>
+  thread.locator('.msg[data-mid]').evaluateAll((rows) =>
+    rows.map((row) => {
+      const text = row.textContent ?? '';
+      if (text.includes('the thread root')) return 'root';
+      if (text.includes('old reply')) return '8';
+      return /Reply (\d+)/.exec(text)?.[1] ?? '?';
+    }),
+  );
+
+/** The root leads, and every reply after it is in ascending order. */
+async function expectInOrder(thread: Locator): Promise<void> {
+  await expect
+    .poll(async () => {
+      const order = await rowOrder(thread);
+      const replies = order.slice(1).map(Number);
+      const ascending = replies.every((n, i) => i === 0 || n > replies[i - 1]);
+      return order[0] === 'root' && ascending ? 'in order' : order.join(',');
+    })
+    .toBe('in order');
+}
+
 const reply = (thread: Locator, text: string): Locator =>
   thread.locator('.msg[data-mid]', { hasText: new RegExp(`${text}$`) });
 
@@ -131,6 +165,9 @@ test.describe('Thread list', () => {
       matrixResources,
       REPLIES,
     );
+    // Room history after the thread, deeper than the room's own backfill: otherwise that
+    // backfill loads the replies into the thread too, and its pages bring nothing older.
+    for (let i = 0; i < ROOM_AFTER_THREAD; i++) await seed.post(`Room ${i}`);
     const thread = await openThread(page, seed, rootId);
     const scroll = thread.locator('.scroll');
     await expect(reply(thread, `Reply ${REPLIES - 1}`)).toBeVisible({
@@ -145,11 +182,11 @@ test.describe('Thread list', () => {
     // Hold the page request at the browser, so the offset is read before and after it lands.
     let release!: () => void;
     const held = new Promise<void>((resolve) => (release = resolve));
-    await page.route(/\/(relations|messages)\b/, async (route) => {
+    await page.route(threadPage(rootId), async (route) => {
       await held;
       await route.continue().catch(() => undefined);
     });
-    const paged = page.waitForRequest(/\/(relations|messages)\b/);
+    const paged = page.waitForRequest((r) => threadPage(rootId)(r.url()));
     // Wheel up as a reader does, until the list asks for the next page.
     await scroll.hover();
     let asked = false;
@@ -181,11 +218,20 @@ test.describe('Thread list', () => {
         );
       }, anchorId);
     const before = await offset();
-    const landed = page.waitForResponse(/\/(relations|messages)\b/);
+    const oldest = async (): Promise<number> =>
+      Math.min(...(await rowOrder(thread)).map(Number).filter(Number.isFinite));
+    const oldestBefore = await oldest();
+    const landed = page.waitForResponse((r) => threadPage(rootId)(r.url()));
     release();
     await landed;
     await page.waitForTimeout(500);
     expect(Math.abs((await offset()) - before)).toBeLessThanOrEqual(2);
+    // The page brought older replies, above the ones read.
+    await expect.poll(oldest).toBeLessThan(oldestBefore);
+
+    // At the top, the root leads and the replies run in order.
+    await scroll.evaluate((el) => (el.scrollTop = 0));
+    await expectInOrder(thread);
   });
 
   test('a new reply at the bottom stays pinned and slides in once', async ({
@@ -237,6 +283,7 @@ test.describe('Thread list', () => {
     await expect(target).toBeInViewport({ timeout: 60_000 });
     await expect(target).toHaveClass(/msg--flash/);
     expect(await entrances(page, mention)).toBe(0);
+    await expectInOrder(thread);
   });
 
   test('reloading the thread URL lands in the thread', async ({
@@ -288,14 +335,20 @@ test.describe('Thread list', () => {
     matrixResources,
   }) => {
     const { seed, rootId } = await seedThread(request, matrixResources, 2);
+    // Listening from before the open, so a page the list's initial fill asks for is seen too.
+    // Only a page from a `from` token is the list paging: the SDK's own first fetch has none.
+    const paging: string[] = [];
+    page.on('request', (r) => {
+      if (
+        threadPage(rootId)(r.url()) &&
+        new URL(r.url()).searchParams.has('from')
+      )
+        paging.push(r.url());
+    });
     const thread = await openThread(page, seed, rootId);
     await expect(reply(thread, 'Reply 1')).toBeVisible({ timeout: 30_000 });
     await expect(thread).toContainText('the thread root');
 
-    const paging: string[] = [];
-    page.on('request', (r) => {
-      if (/\/(relations|messages)\b/.test(r.url())) paging.push(r.url());
-    });
     await thread.locator('.scroll').evaluate((el) => (el.scrollTop = 0));
     await page.waitForTimeout(1_500);
     expect(paging).toEqual([]);

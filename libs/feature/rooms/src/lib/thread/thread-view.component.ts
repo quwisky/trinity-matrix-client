@@ -10,7 +10,6 @@ import {
   output,
   signal,
   untracked,
-  viewChild,
 } from '@angular/core';
 import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
 import { ThreadCommands } from './thread-commands';
@@ -38,6 +37,7 @@ import {
 } from '../message-composer/message-composer.component';
 import { MessageListComponent } from '../message-list/message-list.component';
 import { MESSAGE_LIST_COMMANDS } from '../message-list/message-list-commands';
+import type { MatrixLinkClick } from '../matrix-link/matrix-link.directive';
 import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /**
@@ -98,6 +98,8 @@ export class ThreadViewComponent implements OnDestroy {
   readonly loading = input(false);
   /** The user closed the thread. There is nothing to pick here, so no `selected`. */
   readonly dismissed = output<void>();
+  /** A `matrix.to` permalink or mention clicked in a reply, for the page to route in-app. */
+  readonly matrixLink = output<MatrixLinkClick>();
 
   /**
    * What the thread composer keys its draft by. Shared with a session handover's unsent
@@ -139,13 +141,6 @@ export class ThreadViewComponent implements OnDestroy {
       loading ? null : this.conversations.threads.forRoot(rootEventId),
     );
   });
-
-  /** The thread's own composer, so a quote lands in it rather than the room's. */
-  private readonly composer = viewChild(MessageComposerComponent);
-
-  /** Hands the list's quote action to this panel's composer. */
-  protected readonly quoteIntoComposer = (text: string): void =>
-    this.composer()?.insertQuote(text);
 
   /** The thread's messages, root first, then replies. */
   readonly messages = computed(() => this.openedThread()?.messages() ?? []);

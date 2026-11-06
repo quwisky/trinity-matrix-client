@@ -365,11 +365,10 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
   // Polled: the page lands as the panel renders.
   await expect.poll(() => rounded(panel)).toEqual(main);
   await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
-  // The room's list, first in the page; a thread panel brings its own list.
-  await expect(page.locator('trn-message-list').first()).toHaveAttribute(
-    'inert',
-    '',
-  );
+  // The room's list: a thread panel brings its own, which must stay live.
+  await expect(
+    page.locator('trn-message-list:not(trn-thread-view trn-message-list)'),
+  ).toHaveAttribute('inert', '');
   await expect(page.getByTestId('members-backdrop')).toBeHidden();
   // The way out leads the header as a Back button, as on the room page itself: first on
   // screen and first in reading and focus order.

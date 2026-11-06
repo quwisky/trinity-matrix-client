@@ -1672,6 +1672,73 @@ describe('ThreadsService', () => {
     });
   });
 
+  // The SDK's thread timeline can hold its events out of order when sync events arrive
+  // while a fetch is still landing (and the root mid-stream once the start is reached).
+  it('orders the thread as root first, then replies by time, whatever order the timeline holds', () => {
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root',
+      ts: 100,
+    });
+    const reply = (n: number) =>
+      fakeEvent({
+        id: `$r${n}`,
+        sender: '@b:hs',
+        body: `Reply ${n}`,
+        ts: 1000 + n,
+      });
+    const events = [reply(63), reply(64)];
+    const thread = fakeThread({
+      id: '$root',
+      rootEvent: root,
+      events,
+      length: 66,
+    });
+    const { svc } = setup([thread]);
+    svc.attachThreadRoot('$root');
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$r63',
+      '$r64',
+    ]);
+
+    // A page landed behind the sync events: root and older replies after the newer ones,
+    // and one reply the sync and the page both delivered.
+    events.push(root, reply(0), reply(1), reply(64), reply(65));
+    thread.emit(ThreadEvent.NewReply);
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$r0',
+      '$r1',
+      '$r63',
+      '$r64',
+      '$r65',
+    ]);
+  });
+
+  it('keeps the timeline order of replies sent in the same millisecond', () => {
+    const root = fakeEvent({
+      id: '$root',
+      sender: '@a:hs',
+      body: 'root',
+      ts: 1,
+    });
+    const b = fakeEvent({ id: '$b', sender: '@b:hs', body: 'b', ts: 5 });
+    const a = fakeEvent({ id: '$a', sender: '@b:hs', body: 'a', ts: 5 });
+    const { svc } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events: [root, b, a] }),
+    ]);
+    svc.attachThreadRoot('$root');
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$b',
+      '$a',
+    ]);
+  });
+
   describe('history pagination', () => {
     it('exposes the oldest raw thread event as the backfill marker, a hidden one included', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });

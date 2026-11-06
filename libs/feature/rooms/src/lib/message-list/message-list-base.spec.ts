@@ -363,12 +363,25 @@ describe('MessageListBase system runs', () => {
 });
 
 describe('MessageListBase host hooks', () => {
-  it('hands a quote to quoteInto instead of its own composer, ending the edit', () => {
+  /** A host composer standing in for the list's own (the thread panel's). */
+  function hostComposer() {
+    return { insertQuote: vi.fn(), stageFiles: vi.fn() };
+  }
+
+  /** A real file drag on the list's host element; jsdom has no DragEvent or DataTransfer. */
+  function dropFiles(host: HTMLElement, files: File[]): Event {
+    const event = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { types: ['Files'], files, dropEffect: 'none' },
+    });
+    host.dispatchEvent(event);
+    return event;
+  }
+
+  it('hands a quote to the host composer instead of its own, ending the edit', () => {
     const fixture = TestBed.createComponent(TestMessageListComponent);
-    const quoted: string[] = [];
-    fixture.componentRef.setInput('quoteInto', (text: string) =>
-      quoted.push(text),
-    );
+    const host = hostComposer();
+    fixture.componentRef.setInput('composerHost', host);
     fixture.componentRef.setInput('messages', [msg('$a')]);
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
@@ -376,8 +389,35 @@ describe('MessageListBase host hooks', () => {
 
     cmp.startQuote({ ...msg('$a'), showHeader: true });
 
-    expect(quoted).toEqual(['> body $a\n\n']);
+    expect(host.insertQuote).toHaveBeenCalledExactlyOnceWith('> body $a\n\n');
     expect(cmp.editingId()).toBeNull();
+  });
+
+  it('stages files dropped on the list into the host composer', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    const host = hostComposer();
+    fixture.componentRef.setInput('composerHost', host);
+    fixture.detectChanges();
+    const file = new File(['x'], 'a.png', { type: 'image/png' });
+
+    const event = dropFiles(fixture.nativeElement as HTMLElement, [file]);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(host.stageFiles).toHaveBeenCalledExactlyOnceWith([file]);
+  });
+
+  it('leaves a file drop alone when there is no composer to take it', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.detectChanges();
+
+    const event = dropFiles(fixture.nativeElement as HTMLElement, [
+      new File(['x'], 'a.png', { type: 'image/png' }),
+    ]);
+
+    expect(event.defaultPrevented).toBe(false);
+    expect(
+      fixture.debugElement.injector.get(TrnFileDropDirective).active(),
+    ).toBe(false);
   });
 
   it('resets per-conversation state when resetKey changes, keeping roomId', () => {

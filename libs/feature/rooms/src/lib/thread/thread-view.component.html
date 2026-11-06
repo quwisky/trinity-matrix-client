@@ -35,7 +35,7 @@
       [pinnedIds]="[]"
       [firstUnreadId]="null"
       [threadSummaries]="{}"
-      [quoteInto]="quoteIntoComposer"
+      [composerHost]="threadComposer"
       [jumpToId]="jumpToId()"
       [jumpToNonce]="jumpToNonce()"
       [introShown]="!messages().length"
@@ -46,6 +46,7 @@
       (deleteMessage)="onDelete($event)"
       (pollVote)="onPollVote($event)"
       (pollEnd)="onPollEnd($event)"
+      (matrixLink)="matrixLink.emit($event)"
     >
       @if (!messages().length) {
         <trn-empty-state
@@ -62,6 +63,7 @@
       [announce]="announceTyping()"
     />
     <trn-message-composer
+      #threadComposer
       [accountId]="accountId()"
       placeholder="Reply…"
       [roomId]="draftKey()"
