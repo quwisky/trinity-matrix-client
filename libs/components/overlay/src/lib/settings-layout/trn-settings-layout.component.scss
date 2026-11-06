@@ -348,6 +348,8 @@
   :host(:not([data-presentation='fullscreen']))
     .settings-layout[data-compact='true']
     .settings-layout__nav {
+    // The same inline inset as the shell's footer, so the cards line up with its Close block.
+    padding-inline: var(--settings-layout-gutter);
     border-inline-end: 0;
   }
 

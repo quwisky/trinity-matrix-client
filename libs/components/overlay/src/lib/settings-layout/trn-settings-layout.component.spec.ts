@@ -534,6 +534,19 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(row?.querySelector('trn-icon[name="chevron-right"]')).toBeTruthy();
   });
 
+  it('insets a framed compact directory like the shell footer', () => {
+    // jsdom applies no component styles, so this reads the rule from the scss text.
+    const css = readFileSync(
+      join(import.meta.dirname, 'trn-settings-layout.component.scss'),
+      'utf8',
+    );
+    const block =
+      /\.settings-layout\[data-compact='true'\]\s*\.settings-layout__nav\s*\{([^}]*border-inline-end: 0[^}]*)\}/u.exec(
+        css,
+      )?.[1] ?? '';
+    expect(block).toContain('padding-inline: var(--settings-layout-gutter)');
+  });
+
   it('names each compact card by its group label', async () => {
     const { container } = await renderLayout({
       title: 'Preferences',
