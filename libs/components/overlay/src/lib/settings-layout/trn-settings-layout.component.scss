@@ -279,6 +279,14 @@
     margin-inline-start: 0;
   }
 
+  // Phones read the group label as a plain heading over its card, not a small-caps rule.
+  .settings-layout[data-compact='true'] .settings-layout__group-label {
+    font-size: var(--trinity-type-control-size);
+    line-height: var(--trinity-type-control-line-height);
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
   .settings-layout[data-compact='true'] .settings-layout__column {
     padding-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
   }

@@ -81,54 +81,92 @@
             </div>
           }
           <ng-content select="[settings-directory-header]" />
-          @for (section of sections(); track section.id; let index = $index) {
-            @if (isGroupStart(index)) {
-              <p class="settings-layout__group-label">{{ section.group }}</p>
-            }
-            <button
-              type="button"
-              class="settings-layout__nav-item"
-              [class.is-active]="selectedSection() === section.id"
-              [attr.aria-current]="
-                selectedSection() === section.id ? 'page' : null
-              "
-              [attr.data-testid]="sectionTestId(section)"
-              [attr.data-trn-settings-section]="section.id"
-              (click)="selectSection(section.id)"
-            >
-              <trn-icon
-                [name]="section.icon"
-                size="md"
-                [variant]="
-                  selectedSection() === section.id ? 'accent' : 'muted'
-                "
-              />
-              <span class="settings-layout__nav-label">{{
-                section.label
-              }}</span>
-              @if (compact()) {
-                <trn-icon name="chevron-right" size="md" variant="muted" />
+          @if (compact()) {
+            @for (group of navGroups(); track $index) {
+              @if (group.label) {
+                <p class="settings-layout__group-label">{{ group.label }}</p>
               }
-            </button>
-            @if (selectedSection() === section.id && !compact() && hasParts()) {
-              <ul class="settings-layout__parts">
-                @for (part of parts(); track part.id) {
-                  <li>
-                    <button
-                      type="button"
-                      class="settings-layout__part"
-                      [class.is-current]="currentPart() === part.id"
-                      [attr.aria-current]="
-                        currentPart() === part.id ? 'location' : null
-                      "
-                      [attr.data-testid]="'settings-part-' + part.id"
-                      (click)="goToPart(part.id)"
-                    >
-                      {{ part.label }}
-                    </button>
-                  </li>
+              <div trnInsetGroup data-testid="settings-nav-group">
+                @for (section of group.sections; track section.id) {
+                  @if (!$first) {
+                    <trn-inset-divider inset="icon" />
+                  }
+                  <button
+                    trnBtn
+                    trnInsetRow
+                    type="button"
+                    variant="secondary"
+                    shape="row"
+                    [attr.data-testid]="sectionTestId(section)"
+                    [attr.data-trn-settings-section]="section.id"
+                    (click)="selectSection(section.id)"
+                  >
+                    <trn-icon [name]="section.icon" size="xl" />
+                    <span class="min-w-0 flex-1 text-start wrap-anywhere">{{
+                      section.label
+                    }}</span>
+                    <trn-icon
+                      name="chevron-right"
+                      size="lg"
+                      variant="muted"
+                      class="rtl:-scale-x-100"
+                    />
+                  </button>
                 }
-              </ul>
+              </div>
+            }
+          } @else {
+            @for (section of sections(); track section.id; let index = $index) {
+              @if (isGroupStart(index)) {
+                <p class="settings-layout__group-label">{{ section.group }}</p>
+              }
+              <button
+                type="button"
+                class="settings-layout__nav-item"
+                [class.is-active]="selectedSection() === section.id"
+                [attr.aria-current]="
+                  selectedSection() === section.id ? 'page' : null
+                "
+                [attr.data-testid]="sectionTestId(section)"
+                [attr.data-trn-settings-section]="section.id"
+                (click)="selectSection(section.id)"
+              >
+                <trn-icon
+                  [name]="section.icon"
+                  size="md"
+                  [variant]="
+                    selectedSection() === section.id ? 'accent' : 'muted'
+                  "
+                />
+                <span class="settings-layout__nav-label">{{
+                  section.label
+                }}</span>
+                @if (compact()) {
+                  <trn-icon name="chevron-right" size="md" variant="muted" />
+                }
+              </button>
+              @if (
+                selectedSection() === section.id && !compact() && hasParts()
+              ) {
+                <ul class="settings-layout__parts">
+                  @for (part of parts(); track part.id) {
+                    <li>
+                      <button
+                        type="button"
+                        class="settings-layout__part"
+                        [class.is-current]="currentPart() === part.id"
+                        [attr.aria-current]="
+                          currentPart() === part.id ? 'location' : null
+                        "
+                        [attr.data-testid]="'settings-part-' + part.id"
+                        (click)="goToPart(part.id)"
+                      >
+                        {{ part.label }}
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
             }
           }
           <div class="settings-layout__nav-footer">

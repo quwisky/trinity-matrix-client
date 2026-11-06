@@ -14,7 +14,8 @@ const search = (page: Page) =>
 const status = (page: Page) =>
   page.locator('trn-settings-directory-search').getByRole('status');
 
-const navItems = (page: Page) => page.locator('[data-testid^="settings-nav-"]');
+const navItems = (page: Page) =>
+  page.locator('button[data-testid^="settings-nav-"]');
 
 test.describe('Settings directory search', () => {
   configureSettingsSuite();

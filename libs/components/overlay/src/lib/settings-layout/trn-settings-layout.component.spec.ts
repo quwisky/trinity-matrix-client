@@ -507,6 +507,64 @@ describe('TrnSettingsLayoutComponent', () => {
     });
   });
 
+  it('compact directory sets each group in a card', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections: [
+        ...sections,
+        { id: 'more2', label: 'More two', icon: 'code', group: 'More' },
+      ],
+      compact: true,
+    });
+    const cards = container.querySelectorAll(
+      '[data-testid="settings-nav-group"]',
+    );
+    expect(cards).toHaveLength(2);
+    expect(cards[0].previousElementSibling).toHaveClass(
+      'settings-layout__group-label',
+    );
+    expect(cards[0].previousElementSibling?.textContent).toBe('Basics');
+    expect(
+      cards[1].querySelectorAll('[data-trn-settings-section]'),
+    ).toHaveLength(2);
+    expect(cards[1].querySelectorAll('trn-inset-divider')).toHaveLength(1);
+    expect(cards[1].querySelector('trn-inset-divider')).toHaveClass('ms-14');
+    const row = cards[0].querySelector('[data-testid="settings-tab-general"]');
+    expect(row?.getAttribute('data-trn-settings-section')).toBe('general');
+    expect(row?.querySelector('trn-icon[name="chevron-right"]')).toBeTruthy();
+  });
+
+  it('wide directory is unchanged', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      selectedSection: 'general',
+    });
+    expect(
+      container.querySelector('[data-testid="settings-nav-group"]'),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll('.settings-layout__nav-item'),
+    ).toHaveLength(2);
+    expect(
+      container.querySelector('.settings-layout__nav-item.is-active'),
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('group label is sentence case in compact', () => {
+    const css = readFileSync(
+      join(import.meta.dirname, 'trn-settings-layout.component.scss'),
+      'utf8',
+    );
+    const block =
+      /\[data-compact='true'\]\s*\.settings-layout__group-label\s*\{([^}]*)\}/u.exec(
+        css,
+      )?.[1] ?? '';
+    expect(block).toContain('text-transform: none');
+    expect(block).toContain('letter-spacing: normal');
+    expect(block).toContain('var(--trinity-type-control-size)');
+  });
+
   it('publishes the domain-neutral section contract', () => {
     expectTypeOf<TrnSettingsLayoutSection>().toEqualTypeOf<{
       readonly id: string;
