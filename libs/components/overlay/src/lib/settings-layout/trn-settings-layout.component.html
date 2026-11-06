@@ -84,9 +84,21 @@
           @if (compact()) {
             @for (group of navGroups(); track $index) {
               @if (group.label) {
-                <p class="settings-layout__group-label">{{ group.label }}</p>
+                <p
+                  class="settings-layout__group-label"
+                  [id]="testId() + '-group-' + $index"
+                >
+                  {{ group.label }}
+                </p>
               }
-              <div trnInsetGroup data-testid="settings-directory-group">
+              <div
+                trnInsetGroup
+                role="group"
+                data-testid="settings-directory-group"
+                [attr.aria-labelledby]="
+                  group.label ? testId() + '-group-' + $index : null
+                "
+              >
                 @for (section of group.sections; track section.id) {
                   @if (!$first) {
                     <trn-inset-divider inset="icon" />
@@ -141,13 +153,8 @@
                 <span class="settings-layout__nav-label">{{
                   section.label
                 }}</span>
-                @if (compact()) {
-                  <trn-icon name="chevron-right" size="md" variant="muted" />
-                }
               </button>
-              @if (
-                selectedSection() === section.id && !compact() && hasParts()
-              ) {
+              @if (selectedSection() === section.id && hasParts()) {
                 <ul class="settings-layout__parts">
                   @for (part of parts(); track part.id) {
                     <li>

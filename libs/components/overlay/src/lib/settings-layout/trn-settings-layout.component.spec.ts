@@ -523,7 +523,7 @@ describe('TrnSettingsLayoutComponent', () => {
     expect(cards[0].previousElementSibling).toHaveClass(
       'settings-layout__group-label',
     );
-    expect(cards[0].previousElementSibling?.textContent).toBe('Basics');
+    expect(cards[0].previousElementSibling?.textContent?.trim()).toBe('Basics');
     expect(
       cards[1].querySelectorAll('[data-trn-settings-section]'),
     ).toHaveLength(2);
@@ -532,6 +532,27 @@ describe('TrnSettingsLayoutComponent', () => {
     const row = cards[0].querySelector('[data-testid="settings-tab-general"]');
     expect(row?.getAttribute('data-trn-settings-section')).toBe('general');
     expect(row?.querySelector('trn-icon[name="chevron-right"]')).toBeTruthy();
+  });
+
+  it('names each compact card by its group label', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      compact: true,
+    });
+    const cards = container.querySelectorAll<HTMLElement>(
+      '[data-testid="settings-directory-group"]',
+    );
+    expect(cards).toHaveLength(2);
+    cards.forEach((card) => {
+      expect(card).toHaveAttribute('role', 'group');
+      const label = card.previousElementSibling as HTMLElement;
+      expect(label.id).not.toBe('');
+      expect(card.getAttribute('aria-labelledby')).toBe(label.id);
+    });
+    expect(cards[0].getAttribute('aria-labelledby')).not.toBe(
+      cards[1].getAttribute('aria-labelledby'),
+    );
   });
 
   it('wide directory is unchanged', async () => {
