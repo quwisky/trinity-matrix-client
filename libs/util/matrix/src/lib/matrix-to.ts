@@ -29,7 +29,8 @@ export function isMatrixLinkHref(href: string): boolean {
  * The sigil-prefixed ids are percent-encoded, matching what {@link parseMatrixLink} decodes.
  *
  * A room-*ID* link needs a `?via=<server>` hint for a recipient not already in the room;
- * when `via` is omitted, the room ID's origin server is used. Alias links need no hint.
+ * when `via` is omitted, the room ID's origin server is used (see {@link roomVia} for a
+ * room version 12 ID, which has none). Alias links need no hint.
  */
 export function messagePermalink(
   roomIdOrAlias: string,
@@ -40,7 +41,7 @@ export function messagePermalink(
     kind: 'room',
     roomIdOrAlias,
     eventId,
-    via: via ?? defaultVia(roomIdOrAlias),
+    via: via ?? roomVia(roomIdOrAlias),
   });
 }
 
@@ -61,15 +62,36 @@ export function matrixToPermalink(target: MatrixLinkTarget): string {
   return `${base}?${query}`;
 }
 
-/** The origin server of a room ID (`!id:server` -> `server`); empty for aliases. */
-function defaultVia(roomIdOrAlias: string): string[] {
+/**
+ * Routing servers for a join by room ID: the ID's origin server when it names one. A room
+ * version 12 ID names none, so its joined members' servers are used instead, the most
+ * populous first and at most three, as Element does. Empty for aliases.
+ */
+export function roomVia(
+  roomIdOrAlias: string,
+  joinedUserIds: readonly string[] = [],
+): string[] {
   if (!roomIdOrAlias.startsWith('!')) {
     return [];
   }
   const colon = roomIdOrAlias.indexOf(':');
-  return colon !== -1 && colon < roomIdOrAlias.length - 1
-    ? [roomIdOrAlias.slice(colon + 1)]
-    : [];
+  if (colon !== -1) {
+    return colon < roomIdOrAlias.length - 1
+      ? [roomIdOrAlias.slice(colon + 1)]
+      : [];
+  }
+  const counts = new Map<string, number>();
+  for (const userId of joinedUserIds) {
+    const server = userId.slice(userId.indexOf(':') + 1);
+    if (userId.includes(':') && isValidServerName(server)) {
+      counts.set(server, (counts.get(server) ?? 0) + 1);
+    }
+  }
+  // Sort is stable, so equally populous servers keep the order they were first seen in.
+  return [...counts]
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, MAX_VIA_SERVERS)
+    .map(([server]) => server);
 }
 
 /** RFC-style Matrix server name: DNS name / IP literal, with an optional valid port. */

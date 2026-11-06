@@ -7,6 +7,7 @@ import {
   normalizeViaServers,
   parseMatrixLink,
   parseMatrixToLink,
+  roomVia,
 } from './matrix-to';
 
 describe('isValidServerName', () => {
@@ -73,6 +74,47 @@ describe('messagePermalink', () => {
       eventId: '$evt',
       via: ['hs'],
     });
+  });
+});
+
+describe('roomVia', () => {
+  const V12 = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+
+  it('routes a room ID with a server name through that server (room version 10)', () => {
+    expect(roomVia('!room:hs', ['@a:other.org'])).toEqual(['hs']);
+  });
+
+  it('routes a room version 12 ID through its members, most populous server first, at most three', () => {
+    expect(
+      roomVia(V12, [
+        '@a:small.org',
+        '@b:big.org',
+        '@c:big.org',
+        '@d:mid.org',
+        '@e:mid.org',
+        '@f:big.org',
+        '@g:tiny.org',
+        '@bad:not a server',
+      ]),
+    ).toEqual(['big.org', 'mid.org', 'small.org']);
+  });
+
+  it('keeps first-seen order between equally populous servers, ports included', () => {
+    expect(roomVia(V12, ['@a:b.org:8448', '@c:a.org'])).toEqual([
+      'b.org:8448',
+      'a.org',
+    ]);
+  });
+
+  it('has no routing servers for a room version 12 ID without members, or an alias', () => {
+    expect(roomVia(V12, [])).toEqual([]);
+    expect(roomVia('#general:hs', ['@a:hs'])).toEqual([]);
+  });
+
+  it('gives a room version 12 permalink its member servers as via', () => {
+    expect(messagePermalink(V12, '$evt', roomVia(V12, ['@a:hs']))).toBe(
+      `https://matrix.to/#/${V12}/%24evt?via=hs`,
+    );
   });
 });
 

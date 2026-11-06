@@ -29,7 +29,10 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
       openAndWait$: vi.fn(() => of('🎉')),
       openActions: vi.fn(),
     },
-    timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
+    timeline: {
+      rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
+      roomVia: vi.fn(() => ['hs']),
+    },
     forward: { forward$: vi.fn(() => of(undefined)) },
     report: { report$: vi.fn(() => of(undefined)) },
     reactions: { open$: vi.fn(() => of(undefined)) },
@@ -71,6 +74,7 @@ describe('dispatchSharedRowAction', () => {
     const info = { mimetype: 'image/webp', w: 256, h: 240, size: 1234 };
     const ctx = setup({
       timeline: {
+        roomVia: vi.fn(() => []),
         rawEvent: vi.fn(() => ({
           type: 'm.sticker',
           content: { url: 'mxc://hs/fox', body: 'Fox', info },
@@ -97,6 +101,7 @@ describe('dispatchSharedRowAction', () => {
   it('suggests a non-empty name for a sticker without a body', () => {
     const ctx = setup({
       timeline: {
+        roomVia: vi.fn(() => []),
         rawEvent: vi.fn(() => ({
           type: 'm.sticker',
           content: { url: 'mxc://hs/fox' },
@@ -197,6 +202,21 @@ describe('dispatchSharedRowAction', () => {
     expect(writeText).toHaveBeenNthCalledWith(
       2,
       'https://matrix.to/#/!r%3Ahs/%24e?via=hs',
+    );
+  });
+
+  it('routes a copied room version 12 link through the servers of its members', () => {
+    const writeText = vi.fn(() => Promise.resolve());
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const roomId = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+    const roomVia = vi.fn(() => ['big.org', 'small.org']);
+    const ctx = setup({ roomId, timeline: { rawEvent: () => null, roomVia } });
+
+    dispatchSharedRowAction({ type: 'copy-link' }, row, ctx);
+
+    expect(roomVia).toHaveBeenCalledWith(roomId);
+    expect(writeText).toHaveBeenCalledWith(
+      `https://matrix.to/#/${roomId}/%24e?via=big.org&via=small.org`,
     );
   });
 

@@ -38,7 +38,10 @@ export interface SharedRowActionContext {
     TrnSurfaceService,
     'open' | 'openAndWait$' | 'openActions'
   >;
-  readonly timeline: Pick<ConversationRuntime['timeline'], 'rawEvent'>;
+  readonly timeline: Pick<
+    ConversationRuntime['timeline'],
+    'rawEvent' | 'roomVia'
+  >;
   readonly forward: Pick<ForwardService, 'forward$'>;
   readonly mediaSave: Pick<MediaSaveService, 'save'>;
   readonly report: Pick<ReportService, 'report$'>;
@@ -283,7 +286,9 @@ export function dispatchSharedRowAction(
       void navigator.clipboard?.writeText(row.body);
       return true;
     case 'copy-link':
-      void navigator.clipboard?.writeText(messagePermalink(ctx.roomId, row.id));
+      void navigator.clipboard?.writeText(
+        messagePermalink(ctx.roomId, row.id, ctx.timeline.roomVia(ctx.roomId)),
+      );
       return true;
     case 'save-media':
       if (row.media) ctx.mediaSave.save(row.media);

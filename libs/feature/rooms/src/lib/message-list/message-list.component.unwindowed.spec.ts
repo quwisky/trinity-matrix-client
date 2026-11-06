@@ -113,7 +113,10 @@ describe('MessageListComponent with windowing off', () => {
       useValue: {
         compose,
         messages: new ConversationMessagesStub(compose),
-        timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
+        timeline: {
+          rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
+          roomVia: vi.fn(() => ['hs']),
+        },
       },
     });
     TestBed.configureTestingModule({

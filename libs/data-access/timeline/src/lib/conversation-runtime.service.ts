@@ -1,3 +1,4 @@
+import { roomVia } from '@trinity/util/matrix';
 import {
   DestroyRef,
   ErrorHandler,
@@ -571,6 +572,8 @@ export class ConversationRuntime {
         focused()?.timeline.setTyping(typing, owner),
       rawEvent: (roomId, eventId) =>
         focused()?.timeline.rawEvent(roomId, eventId) ?? null,
+      roomVia: (roomId) =>
+        focused()?.timeline.roomVia(roomId) ?? roomVia(roomId),
       reactionDetails: (eventId) =>
         focused()?.timeline.reactionDetails(eventId) ?? [],
     };

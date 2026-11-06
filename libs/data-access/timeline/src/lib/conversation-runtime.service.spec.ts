@@ -83,6 +83,7 @@ function timeline(
     loadEvent: () => of(true),
     setTyping: vi.fn(),
     rawEvent: () => null,
+    roomVia: () => [],
     reactionDetails: () => [],
     loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
     retryLoad: vi.fn(),
