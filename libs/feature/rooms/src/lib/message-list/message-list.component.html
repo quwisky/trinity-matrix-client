@@ -76,7 +76,7 @@
         ></div>
       } @else {
         <trn-message-row
-          [class.msg-enter]="enteringKeys().has(row.key)"
+          [entering]="enteringKeys().has(row.key)"
           [row]="row"
           [threadSummary]="threadSummaries()[row.id] ?? null"
           [threadContinues]="threadContinuationIds().has(row.id)"

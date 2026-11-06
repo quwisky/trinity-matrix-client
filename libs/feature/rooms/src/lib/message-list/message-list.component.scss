@@ -41,21 +41,6 @@
     }
   }
 
-  // A row that arrived live slides in. On the host: `.msg` owns `translate` (swipe) and
-  // `animation` (jump flash). The host is `display: contents` (no box to move) except meanwhile.
-  .msg-enter {
-    display: block;
-    animation: msg-enter var(--trinity-duration-base)
-      var(--trinity-ease-decelerate) both;
-  }
-
-  @keyframes msg-enter {
-    from {
-      opacity: 0;
-      translate: 0 var(--trinity-space-3);
-    }
-  }
-
   // A row flying past in a fling ("Blank rows while scrolling fast"): blank, at the row's height.
   .row-placeholder {
     flex: 0 0 auto;

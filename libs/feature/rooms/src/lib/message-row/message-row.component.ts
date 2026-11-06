@@ -174,6 +174,7 @@ let nextBodyId = 0;
   ],
   templateUrl: './message-row.component.html',
   styleUrl: './message-row.component.scss',
+  host: { '[class.msg-enter]': 'entering()' },
 })
 export class MessageRowComponent {
   /** Timestamps go through the app-wide format preference, never a DatePipe. */
@@ -597,6 +598,8 @@ export class MessageRowComponent {
    * jump-to-quoted-message. The host pairs it with `row` to run the effect.
    */
   readonly action = output<MessageRowAction>();
+  /** The row just arrived live and slides in (decided by the list). */
+  readonly entering = input(false);
   /** Whether this system-run row is expanded (owned by the list). */
   readonly runExpanded = input(false);
   /** Ask the list to expand or collapse this system-run row. */
