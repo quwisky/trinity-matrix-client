@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -633,5 +633,68 @@ describe('RoomShellViewModel rail unread chats', () => {
     expect(vm.railUnreadChats().entries.map((e) => e.accountBadge?.id)).toEqual(
       ['@ben:hs', undefined],
     );
+  });
+});
+
+describe('RoomShellViewModel rail badges', () => {
+  const team = spaceSummary({ id: '!s:hs', childRoomIds: ['!c:hs'] });
+  const view = (rooms: RoomSummary[]): SelectedRoomLibraryView => ({
+    accountIds: new Set(['@me:hs']),
+    mode: 'active',
+    rooms,
+    spaces: [team],
+    spaceChildRoomIdsByAccount: new Map([['@me:hs', new Set(['!c:hs'])]]),
+    invitations: [],
+  });
+  const child = (over: Partial<RoomSummary> = {}) =>
+    roomSummary({ id: '!c:hs', accountId: '@me:hs', unreadCount: 2, ...over });
+  const other = (over: Partial<RoomSummary> = {}) =>
+    roomSummary({ id: '!o:hs', accountId: '@me:hs', ...over });
+
+  /** Counts how often a rail computed hands its consumers a new value. */
+  function watch(vm: RoomShellViewModel) {
+    const seen = { railUnread: 0 };
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        vm.railUnread();
+        seen.railUnread += 1;
+      }),
+    );
+    TestBed.tick();
+    return seen;
+  }
+
+  it('keeps every badge object when only an unrelated room’s name changes', () => {
+    const { vm, selectedView } = build({
+      selectedView: view([child(), other()]),
+    });
+    const seen = watch(vm);
+    const before = [vm.spaceUnread(), vm.spaceMentions(), vm.railUnread()];
+
+    selectedView.set(view([child(), other({ name: 'renamed' })]));
+    TestBed.tick();
+
+    expect([vm.spaceUnread(), vm.spaceMentions(), vm.railUnread()]).toEqual(
+      before,
+    );
+    expect(vm.spaceUnread()).toBe(before[0]);
+    expect(vm.spaceMentions()).toBe(before[1]);
+    expect(vm.railUnread()).toBe(before[2]);
+    expect(seen.railUnread).toBe(1);
+  });
+
+  it('emits a new badge object when a relevant count changes', () => {
+    const { vm, selectedView } = build({ selectedView: view([child()]) });
+    const before = vm.railUnread();
+
+    selectedView.set(view([child({ unreadCount: 3, highlightCount: 1 })]));
+
+    expect(vm.spaceUnread()).toEqual({ '!s:hs': 3 });
+    expect(vm.spaceMentions()).toEqual({ '!s:hs': 1 });
+    expect(vm.railUnread()).not.toBe(before);
+    expect(vm.railUnread().perSpace['!s:hs']).toEqual({
+      unread: 3,
+      mentions: 1,
+    });
   });
 });
