@@ -444,6 +444,37 @@ describe('PushHandoffService', () => {
     ]);
   });
 
+  it('rewrites the rooms once after the crypto store answers for many unanswered rooms', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const client = fakeClient(
+      '@me:hs',
+      Array.from({ length: 5 }, (_, i) => ({
+        roomId: `!r${i}:hs`,
+        name: `Room ${i}`,
+        membership: 'join',
+      })),
+    );
+    client.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () =>
+        new Promise<boolean>((resolve) => resolvers.push(resolve)),
+    });
+    const getRooms = vi.spyOn(client, 'getRooms');
+    const h = setup({ clients: [client] });
+    await start(h);
+    const initial = getRooms.mock.calls.length;
+
+    for (const resolve of resolvers) {
+      resolve(false);
+      await flush();
+    }
+
+    expect(getRooms.mock.calls.length - initial).toBe(1);
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(
+      '@me:hs',
+      expect.arrayContaining([expect.objectContaining({ encrypted: false })]),
+    );
+  });
+
   it('rewrites a room stored as unencrypted once its state turns encryption on', async () => {
     const h = setup();
     await start(h);

@@ -756,14 +756,17 @@ export class RoomLibraryService {
         )
         .sort(compareRoomSummaries),
     );
-    for (const room of joined) {
-      if (room.hasEncryptionStateEvent() || encryption.answered(room.roomId)) {
-        continue;
-      }
+    const unanswered = joined
+      .filter(
+        (room) =>
+          !room.hasEncryptionStateEvent() && !encryption.answered(room.roomId),
+      )
+      .map((room) => room.roomId);
+    if (unanswered.length > 0) {
       // Any answer can change the row: the lock, or a preview held back until now.
-      void encryption.refresh(crypto, room.roomId).then(() => {
+      void encryption.refreshAll(crypto, unanswered).then(() => {
         if (
-          encryption.answered(room.roomId) &&
+          unanswered.some((id) => encryption.answered(id)) &&
           this.encryption === encryption
         ) {
           this.projection.schedule();

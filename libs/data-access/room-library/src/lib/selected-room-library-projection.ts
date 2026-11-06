@@ -125,16 +125,18 @@ export class SelectedAccountSourceRegistry {
   }
 
   /**
-   * Ask an Account's crypto store about one joined room whose state lacks the encryption
-   * event, once per room; its answer, whichever it is, invalidates the room rows.
+   * Ask an Account's crypto store about its joined rooms whose state lacks the encryption
+   * event, once per room; the batch's answers invalidate the room rows once.
    */
-  learnEncryption(accountId: string, roomId: string): void {
+  learnEncryption(accountId: string, roomIds: readonly string[]): void {
     const source = this.sources.get(accountId);
-    if (!source || source.encryption.answered(roomId)) return;
+    if (!source) return;
     const { client, encryption } = source;
-    void encryption.refresh(client.getCrypto?.(), roomId).then(() => {
+    const unanswered = roomIds.filter((id) => !encryption.answered(id));
+    if (unanswered.length === 0) return;
+    void encryption.refreshAll(client.getCrypto?.(), unanswered).then(() => {
       if (
-        encryption.answered(roomId) &&
+        unanswered.some((id) => encryption.answered(id)) &&
         this.sources.get(accountId)?.encryption === encryption
       ) {
         this.invalidate(ROOM_DOMAINS);
@@ -174,17 +176,16 @@ export class SelectedAccountSourceRegistry {
 export function projectSelectedRooms(
   sources: readonly AccountSource[],
   activeAccountId: string | null,
-  learnEncryption?: (accountId: string, roomId: string) => void,
+  learnEncryption?: (accountId: string, roomIds: readonly string[]) => void,
 ): readonly RoomSummary[] {
   const byRoomId = new Map<string, RoomSummary>();
 
   for (const { accountId, client, encryption } of sources) {
     const { userByRoom } = directMapOf(client);
+    const stateless: string[] = [];
     for (const room of client.getRooms()) {
       if (room.isSpaceRoom() || room.getMyMembership() !== 'join') continue;
-      if (!room.hasEncryptionStateEvent()) {
-        learnEncryption?.(accountId, room.roomId);
-      }
+      if (!room.hasEncryptionStateEvent()) stateless.push(room.roomId);
 
       const summary = buildRoomSummary(
         room,
@@ -217,6 +218,7 @@ export function projectSelectedRooms(
         lowPriority: existing.lowPriority || summary.lowPriority,
       });
     }
+    if (stateless.length > 0) learnEncryption?.(accountId, stateless);
   }
 
   return [...byRoomId.values()].sort(compareRoomSummaries);

@@ -106,6 +106,47 @@ describe('RoomEncryptionFlags', () => {
   });
 });
 
+describe('RoomEncryptionFlags.refreshAll', () => {
+  it('resolves once every room has answered', async () => {
+    const flags = new RoomEncryptionFlags();
+    const resolvers = new Map<string, (encrypted: boolean) => void>();
+    const crypto = {
+      isEncryptionEnabledInRoom: (id: string) =>
+        new Promise<boolean>((resolve) => resolvers.set(id, resolve)),
+    };
+    let done = false;
+    const all = flags.refreshAll(crypto, ['!a:hs', '!b:hs']).then(() => {
+      done = true;
+    });
+
+    resolvers.get('!a:hs')?.(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(done).toBe(false);
+
+    resolvers.get('!b:hs')?.(false);
+    await all;
+    expect(flags.answered('!a:hs')).toBe(true);
+    expect(flags.answered('!b:hs')).toBe(true);
+  });
+
+  it('settles the other rooms when one probe rejects', async () => {
+    const flags = new RoomEncryptionFlags();
+    const crypto = {
+      isEncryptionEnabledInRoom: async (id: string) => {
+        if (id === '!bad:hs') throw new Error('store failed');
+        return true;
+      },
+    };
+
+    await expect(
+      flags.refreshAll(crypto, ['!bad:hs', '!ok:hs']),
+    ).resolves.toBeUndefined();
+    expect(flags.answered('!ok:hs')).toBe(true);
+    expect(flags.answered('!bad:hs')).toBe(false);
+  });
+});
+
 describe('isRoomEncrypted', () => {
   const answers = (encrypted: boolean) => ({
     isEncryptionEnabledInRoom: vi.fn().mockResolvedValue(encrypted),

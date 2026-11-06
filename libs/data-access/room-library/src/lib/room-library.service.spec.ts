@@ -1250,15 +1250,15 @@ describe('RoomLibraryService', () => {
     svc.runProjection().subscribe();
     const room = (id: string) => svc.rooms().find((r) => r.id === id);
 
+    // Unanswered: no previews yet; the rebuild waits for every answer.
     expect(room('!c:hs')?.lastMessage).toBe('');
+    expect(room('!p:hs')?.lastMessage).toBe('');
+
+    answer(true);
     await vi.waitFor(() =>
       expect(room('!p:hs')?.lastMessage).toBe('hello all'),
     );
     expect(room('!p:hs')?.encrypted).toBe(false);
-    // Unanswered still: no preview yet.
-    expect(room('!c:hs')?.lastMessage).toBe('');
-
-    answer(true);
     await vi.waitFor(() => expect(room('!c:hs')?.encrypted).toBe(true));
     expect(room('!c:hs')?.lastMessage).toBe('hello');
     expect(room('!c:hs')?.lastMessageMark).toBe('unencrypted');
@@ -1267,6 +1267,35 @@ describe('RoomLibraryService', () => {
     expect(
       isEncryptionEnabledInRoom.mock.calls.map(([id]) => id).sort(),
     ).toEqual(['!c:hs', '!p:hs']);
+  });
+
+  it('rebuilds once after the crypto store answers for many unanswered rooms', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const rooms = Array.from({ length: 5 }, (_, i) =>
+      fakeRoom({ roomId: `!r${i}:hs`, name: `room ${i}`, activity: i }),
+    );
+    const getRooms = vi.fn(() => rooms);
+    const { svc } = provideRooms({
+      baseUrl: 'https://hs.example',
+      getRooms,
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: () =>
+          new Promise<boolean>((resolve) => resolvers.push(resolve)),
+      }),
+      on: () => {},
+    });
+    svc.runProjection().subscribe();
+    const initial = getRooms.mock.calls.length;
+
+    // Answers land one at a time, each after the previous rebuild could have run.
+    for (const resolve of resolvers) {
+      resolve(true);
+      await new Promise((r) => setTimeout(r));
+    }
+    await new Promise((r) => setTimeout(r));
+
+    expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
+    expect(getRooms.mock.calls.length - initial).toBe(1);
   });
 
   it('flags a message that arrived in clear as unencrypted when there is no crypto store', () => {

@@ -98,6 +98,17 @@ export class RoomEncryptionFlags {
       this.pending.delete(roomId);
     }
   }
+
+  /**
+   * {@link refresh} every room, resolving once all have settled so a caller re-projects once
+   * for the batch. A failing read leaves its room unanswered and never blocks the rest.
+   */
+  async refreshAll(
+    crypto: RoomEncryptionProbe | null | undefined,
+    roomIds: Iterable<string>,
+  ): Promise<void> {
+    await Promise.all([...roomIds].map((id) => this.refresh(crypto, id)));
+  }
 }
 
 /**
