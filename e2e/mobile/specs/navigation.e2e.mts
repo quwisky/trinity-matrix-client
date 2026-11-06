@@ -83,6 +83,17 @@ const clickButton = async (name: string): Promise<void> => {
   await button.click();
 };
 
+const settingsSheet = '//*[@role="dialog"][@aria-label="Settings"]';
+const verifySheet =
+  '//*[@role="dialog"][.//h2[normalize-space()="Verify device"]]';
+
+/** Click the dismissal of one dialog, where a stacked sheet's own may sit under another. */
+const clickIn = async (dialog: string, testId: string): Promise<void> => {
+  const button = $(`${dialog}//button[@data-testid="${testId}"]`);
+  await expect(button).toBeDisplayed({ wait: 20_000 });
+  await button.click();
+};
+
 describe('mobile navigation', () => {
   beforeEach(resetApp);
 
@@ -434,7 +445,8 @@ describe('mobile navigation', () => {
     await expect($('[data-testid="settings-nav-profile"]')).toBeFocused({
       wait: 10_000,
     });
-    await clickButton('Close settings');
+    // A phone sheet closes from its Close block, which carries the X's test id.
+    await clickIn(settingsSheet, 'close-settings');
     await expect($(settingsDialog)).not.toBeDisplayed({ wait: 10_000 });
     await waitForRooms();
     await expect($('trn-rooms')).toBeDisplayed({ wait: 20_000 });
@@ -483,15 +495,14 @@ describe('mobile navigation', () => {
       $('//*[self::h1 or self::h2][normalize-space()="Security"]'),
     ).toBeDisplayed({ wait: 20_000 });
     await tap('[data-testid="security-verify"]');
-    const verify = $(
-      '//*[@role="dialog"][.//h2[normalize-space()="Verify device"]]',
-    );
+    const verify = $(verifySheet);
     await expect(verify).toBeDisplayed({ wait: 20_000 });
     // A dialog over the Settings sheet, not a route.
     await expect($(settingsDialog)).toExist();
     expect(await pathname()).not.toMatch(/^\/(settings|encryption)/u);
 
-    await clickButton('Close');
+    // Its own dismissal, not the Settings sheet's Close block underneath it.
+    await clickIn(verifySheet, 'dialog-close');
     await expect(verify).not.toBeDisplayed({ wait: 10_000 });
     await expect($(settingsDialog)).toBeDisplayed();
     // The stacked dialog restores focus to the control that opened it, also on iOS,
