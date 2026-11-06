@@ -66,7 +66,7 @@
         </p>
       }
 
-      <dl trnInsetGroup class="room-preview__facts">
+      <ng-template #facts>
         <div>
           <dt><trn-icon name="users" /> Members</dt>
           <dd>
@@ -87,7 +87,16 @@
           <dt><trn-icon name="door-open" /> Access</dt>
           <dd>{{ joinRuleLabel() }}</dd>
         </div>
-      </dl>
+      </ng-template>
+      @if (sheet) {
+        <dl trnInsetGroup class="room-preview__facts room-preview__facts--card">
+          <ng-container *ngTemplateOutlet="facts" />
+        </dl>
+      } @else {
+        <dl class="room-preview__facts">
+          <ng-container *ngTemplateOutlet="facts" />
+        </dl>
+      }
 
       @if (success(); as message) {
         <p

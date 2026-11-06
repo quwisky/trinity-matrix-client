@@ -12,8 +12,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   TrnAlertService,
+  TrnDialogRef,
   TrnInsetDividerComponent,
   TrnInsetGroup,
   TrnInsetRow,
@@ -47,6 +49,7 @@ let nextId = 0;
   selector: 'trn-member-manage-tab',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     TrnButton,
     TrnInsetDividerComponent,
     TrnInsetGroup,
@@ -59,6 +62,10 @@ let nextId = 0;
 })
 export class MemberManageTabComponent {
   private readonly toast = inject(TrnToastService);
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain rows. */
+  protected readonly sheet =
+    inject(TrnDialogRef, { optional: true })?.presentation === 'sheet';
   private readonly identity = inject(IdentityService);
   private readonly moderation = inject(RoomModerationService);
   private readonly permissionsService = inject(RoomActionPermissionsService);

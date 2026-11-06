@@ -4,6 +4,7 @@ import {
   type RoomLinkPreview,
   type RoomLinkPreviewFailure,
 } from '@trinity/data-access/discovery';
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -59,6 +60,7 @@ export interface RoomLinkPreviewResult {
     TrnDialogActions,
     TrnDialogShellComponent,
     TrnInsetGroup,
+    NgTemplateOutlet,
   ],
   templateUrl: './room-link-preview.component.html',
   styleUrl: './room-link-preview.component.scss',
@@ -75,6 +77,9 @@ export class RoomLinkPreviewComponent implements OnInit {
   private readonly roomLinks = inject(RoomLinkService);
   private readonly invites = inject(InvitesService);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain tiles. */
+  protected readonly sheet = this.dialogRef.presentation === 'sheet';
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
   readonly loading = signal(true);

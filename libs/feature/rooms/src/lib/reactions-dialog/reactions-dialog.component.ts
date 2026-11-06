@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -43,11 +44,15 @@ import {
     TrnButton,
     TrnDialogShellComponent,
     TrnInsetGroup,
+    NgTemplateOutlet,
   ],
 })
 export class ReactionsDialogComponent implements OnInit {
   private readonly timeline = inject(ConversationRuntime).timeline;
   private readonly ref = inject(TrnDialogRef, { optional: true });
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain list. */
+  protected readonly sheet = this.ref?.presentation === 'sheet';
   private readonly phone = mediaQuerySignal(BELOW_MD_QUERY, inject(DestroyRef));
 
   readonly eventId = input.required<string>();

@@ -6,37 +6,7 @@
     >
       Safety
     </h3>
-    <div trnInsetGroup>
-      <button
-        trnBtn
-        trnInsetRow
-        variant="secondary"
-        presentation="solid"
-        shape="row"
-        (click)="toggleIgnore()"
-        [trnActionAllowed]="blockUnavailableReason() === null"
-        [trnActionDisabledReason]="blockUnavailableReason()"
-        data-testid="member-info-ignore"
-      >
-        {{ ignored() ? 'Unblock' : 'Block' }}
-      </button>
-      @if (canReport()) {
-        <trn-inset-divider inset="edge" />
-        <button
-          trnBtn
-          trnInsetRow
-          variant="secondary"
-          presentation="solid"
-          shape="row"
-          [attr.aria-label]="'Report ' + member().roomDisplayName"
-          (click)="report()"
-          data-testid="member-info-report"
-        >
-          Report
-        </button>
-      }
-    </div>
-    <div>
+    <ng-template #blockNotices>
       <!-- Always present, so screen readers hear a confirmation as it arrives. -->
       <p
         class="m-0 text-13 text-muted-foreground not-empty:mt-2"
@@ -58,7 +28,69 @@
           {{ blockNotice()?.text }}
         </p>
       }
-    </div>
+    </ng-template>
+    @if (sheet) {
+      <div trnInsetGroup>
+        <button
+          trnBtn
+          trnInsetRow
+          variant="secondary"
+          presentation="solid"
+          shape="row"
+          (click)="toggleIgnore()"
+          [trnActionAllowed]="blockUnavailableReason() === null"
+          [trnActionDisabledReason]="blockUnavailableReason()"
+          data-testid="member-info-ignore"
+        >
+          {{ ignored() ? 'Unblock' : 'Block' }}
+        </button>
+        @if (canReport()) {
+          <trn-inset-divider inset="edge" />
+          <button
+            trnBtn
+            trnInsetRow
+            variant="secondary"
+            presentation="solid"
+            shape="row"
+            [attr.aria-label]="'Report ' + member().roomDisplayName"
+            (click)="report()"
+            data-testid="member-info-report"
+          >
+            Report
+          </button>
+        }
+      </div>
+      <div>
+        <ng-container *ngTemplateOutlet="blockNotices" />
+      </div>
+    } @else {
+      <div class="flex flex-col">
+        <button
+          trnBtn
+          variant="secondary"
+          shape="row"
+          (click)="toggleIgnore()"
+          [trnActionAllowed]="blockUnavailableReason() === null"
+          [trnActionDisabledReason]="blockUnavailableReason()"
+          data-testid="member-info-ignore"
+        >
+          {{ ignored() ? 'Unblock' : 'Block' }}
+        </button>
+        <ng-container *ngTemplateOutlet="blockNotices" />
+      </div>
+      @if (canReport()) {
+        <button
+          trnBtn
+          variant="secondary"
+          shape="row"
+          [attr.aria-label]="'Report ' + member().roomDisplayName"
+          (click)="report()"
+          data-testid="member-info-report"
+        >
+          Report
+        </button>
+      }
+    }
   </section>
 }
 @if (showModeration()) {
@@ -81,11 +113,55 @@
         (choose)="setRole($event)"
       />
     }
-    <div trnInsetGroup>
+    @if (sheet) {
+      <div trnInsetGroup>
+        @if (showModerationAction(permissions().kick)) {
+          <button
+            trnBtn
+            trnInsetRow
+            variant="danger"
+            presentation="ghost"
+            shape="row"
+            (click)="kick()"
+            [trnActionAllowed]="permissions().kick.available"
+            [trnActionDisabledReason]="permissions().kick.reason"
+            [trnTooltip]="
+              permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
+            "
+            data-testid="member-info-kick"
+          >
+            Remove from {{ noun().toLowerCase() }}
+          </button>
+        }
+        @if (
+          showModerationAction(permissions().kick) &&
+          showModerationAction(permissions().ban)
+        ) {
+          <trn-inset-divider inset="edge" />
+        }
+        @if (showModerationAction(permissions().ban)) {
+          <button
+            trnBtn
+            trnInsetRow
+            variant="danger"
+            presentation="ghost"
+            shape="row"
+            (click)="ban()"
+            [trnActionAllowed]="permissions().ban.available"
+            [trnActionDisabledReason]="permissions().ban.reason"
+            [trnTooltip]="
+              permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
+            "
+            data-testid="member-info-ban"
+          >
+            Ban from {{ noun().toLowerCase() }}
+          </button>
+        }
+      </div>
+    } @else {
       @if (showModerationAction(permissions().kick)) {
         <button
           trnBtn
-          trnInsetRow
           variant="danger"
           presentation="ghost"
           shape="row"
@@ -100,18 +176,10 @@
           Remove from {{ noun().toLowerCase() }}
         </button>
       }
-      @if (
-        showModerationAction(permissions().kick) &&
-        showModerationAction(permissions().ban)
-      ) {
-        <trn-inset-divider inset="edge" />
-      }
       @if (showModerationAction(permissions().ban)) {
         <button
           trnBtn
-          trnInsetRow
           variant="danger"
-          presentation="ghost"
           shape="row"
           (click)="ban()"
           [trnActionAllowed]="permissions().ban.available"
@@ -124,6 +192,6 @@
           Ban from {{ noun().toLowerCase() }}
         </button>
       }
-    </div>
+    }
   </section>
 }

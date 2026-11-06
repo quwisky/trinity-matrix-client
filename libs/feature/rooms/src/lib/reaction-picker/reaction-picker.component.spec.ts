@@ -27,8 +27,9 @@ describe('ReactionPickerComponent', () => {
       providers: [
         {
           provide: TrnDialogRef,
-          useValue: Object.assign(
-            new TrnDialogRef({ closed: new Subject(), close }, presentation),
+          useValue: new TrnDialogRef(
+            { closed: new Subject(), close },
+            presentation,
           ),
         },
         MockProvider(RecentEmojiService, {
