@@ -88,7 +88,7 @@ const SMALL_LIST_ROWS = 80;
 /** How long after the last scroll event a row under the pointer gets its hover work. */
 const SCROLL_IDLE_MS = 150;
 
-/** How long a new row keeps `msg-enter`: the 200 ms entrance plus margin. */
+/** How long a new row keeps `msg-enter`: the `--trinity-duration-base` entrance plus margin. */
 export const ENTER_CLEAR_MS = 260;
 
 /** How long a marked row may take to mount (the pin moving the window to it) before its mark is dropped. */
