@@ -365,7 +365,11 @@ async function expectPage(page: Page, panel: Locator): Promise<void> {
   // Polled: the page lands as the panel renders.
   await expect.poll(() => rounded(panel)).toEqual(main);
   await expect(page.locator('trn-room-header')).toHaveAttribute('inert', '');
-  await expect(page.locator('trn-message-list')).toHaveAttribute('inert', '');
+  // The room's list, first in the page; a thread panel brings its own list.
+  await expect(page.locator('trn-message-list').first()).toHaveAttribute(
+    'inert',
+    '',
+  );
   await expect(page.getByTestId('members-backdrop')).toBeHidden();
   // The way out leads the header as a Back button, as on the room page itself: first on
   // screen and first in reading and focus order.
@@ -1092,7 +1096,8 @@ for (const viewport of [
       // composer's inset, reaches the bottom edge of the page in the chat colour.
       const edges = await thread.evaluate((root) => {
         const footer = root.querySelector('.thread__footer')!;
-        const scroller = root.querySelector('.thread')!;
+        // Where the chat colour sits: the footer must match what the replies are drawn on.
+        const scroller = root.querySelector('trn-message-list')!;
         return {
           viewportBottom: window.innerHeight,
           rootBottom: Math.round(root.getBoundingClientRect().bottom),

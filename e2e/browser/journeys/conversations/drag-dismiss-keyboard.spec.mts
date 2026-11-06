@@ -97,7 +97,7 @@ test.describe('Dragging the timeline with the keyboard up', () => {
     const field = thread.getByTestId('composer-input');
     await field.click();
     await expect(field).toBeFocused();
-    const box = (await thread.locator('.thread').boundingBox())!;
+    const box = (await thread.locator('.scroll').boundingBox())!;
     const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 - 60 };
     await cdpSwipe(page, from, { x: from.x, y: from.y + 120 });
     await expect(field).not.toBeFocused();

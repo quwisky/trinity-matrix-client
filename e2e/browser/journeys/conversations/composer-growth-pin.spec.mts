@@ -172,7 +172,7 @@ test.describe('Composer growth at the bottom of a room', () => {
       `Reply ${ROWS - 1} `,
       { timeout: 30_000 },
     );
-    const scroller = thread.locator('.thread');
+    const scroller = thread.locator('.scroll');
     const gap = (): Promise<number> =>
       scroller.evaluate(
         (el) => el.scrollHeight - el.scrollTop - el.clientHeight,
