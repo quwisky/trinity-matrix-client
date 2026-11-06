@@ -49,6 +49,10 @@ async function setup(options: SetupOptions = {}) {
       of(options.saved ?? ({ kind: 'completed' } as const))
     );
   });
+  const detailedLog = signal(false);
+  const setDetailedLog = vi.fn((detailed: boolean) =>
+    detailedLog.set(detailed),
+  );
   const available = signal(options.available ?? 'persistent');
   const settingKnown = signal(options.settingKnown ?? true);
   const rendered = await render(DiagnosticsGroupComponent, {
@@ -56,7 +60,9 @@ async function setup(options: SetupOptions = {}) {
       MockProvider(DiagnosticLogService, {
         clear,
         setKeepLog,
+        setDetailedLog,
         keepLog: keepLog.asReadonly(),
+        detailedLog: detailedLog.asReadonly(),
         available: available.asReadonly(),
         settingKnown: settingKnown.asReadonly(),
       }),
@@ -74,6 +80,7 @@ async function setup(options: SetupOptions = {}) {
     show,
     clear,
     setKeepLog,
+    setDetailedLog,
   };
 }
 
@@ -117,6 +124,13 @@ async function setupWithService(
   return { ...rendered, show };
 }
 
+function detailedLogSwitch(
+  fixture: ComponentFixture<DiagnosticsGroupComponent>,
+): TrnSwitchComponent {
+  return fixture.debugElement.queryAll(By.directive(TrnSwitchComponent))[1]
+    .componentInstance as TrnSwitchComponent;
+}
+
 function keepLogSwitch(
   fixture: ComponentFixture<DiagnosticsGroupComponent>,
 ): TrnSwitchComponent {
@@ -156,9 +170,26 @@ describe('DiagnosticsGroupComponent', () => {
     expect(control.checked()).toBe(false);
   });
 
-  it('hides Clear diagnostic logs while the log is off, and keeps Report a bug', async () => {
+  it('offers Detailed logging, off by default, while the log is on', async () => {
+    const { fixture, setDetailedLog } = await setup();
+    const row = screen.getByTestId('advanced-detailed-diagnostic-log');
+    const control = detailedLogSwitch(fixture);
+
+    expect(row.textContent).toContain('Detailed logging');
+    expect(row.textContent).toContain('until you close or reload Trinity');
+    expect(control.checked()).toBe(false);
+
+    control.checkedChange.emit(true);
+    fixture.detectChanges();
+
+    expect(setDetailedLog).toHaveBeenCalledWith(true);
+    expect(control.checked()).toBe(true);
+  });
+
+  it('hides Clear diagnostic logs and Detailed logging while the log is off, and keeps Report a bug', async () => {
     await setup({ keepLog: false });
 
+    expect(screen.queryByTestId('advanced-detailed-diagnostic-log')).toBeNull();
     expect(screen.queryByTestId('advanced-clear-diagnostic-logs')).toBeNull();
     expect(screen.getByTestId('advanced-report-bug')).toBeTruthy();
   });

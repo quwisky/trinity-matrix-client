@@ -21,8 +21,8 @@ import {
 import { ReportBugDialogComponent } from '../report-bug/report-bug-dialog.component';
 
 /**
- * Settings › Advanced › Diagnostics: Keep a diagnostic log, Report a bug and Clear
- * diagnostic logs. The sign-in screen, System status and the desktop title bar open the same
+ * Settings › Advanced › Diagnostics: Keep a diagnostic log, Detailed logging, Report a bug
+ * and Clear diagnostic logs. The sign-in screen, System status and the desktop title bar open the same
  * dialog through `BUG_REPORT_LAUNCHER`; here it opens directly.
  */
 @Component({
@@ -43,6 +43,7 @@ export class DiagnosticsGroupComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly keepLog = this.log.keepLog;
+  readonly detailedLog = this.log.detailedLog;
   readonly clearing = signal(false);
 
   /**
@@ -102,6 +103,11 @@ export class DiagnosticsGroupComponent {
           }
         },
       });
+  }
+
+  /** Applies at once, for this session only. */
+  setDetailedLog(detailed: boolean): void {
+    this.log.setDetailedLog(detailed);
   }
 
   clear(): void {

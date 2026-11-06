@@ -107,6 +107,7 @@ export class DiagnosticLogService {
     KEEP_DIAGNOSTIC_LOG_PREFERENCE.defaultValue,
   );
   private readonly _settingKnown = signal(false);
+  private readonly _detailedLog = signal(false);
   private readonly recorder = new DiagnosticLogRecorder({
     openStore: () => this.openStore(),
     removeStore: inject(DIAGNOSTIC_LOG_STORE_REMOVER),
@@ -134,6 +135,11 @@ export class DiagnosticLogService {
    * one never is.
    */
   readonly settingKnown = this._settingKnown.asReadonly();
+  /**
+   * Settings › Advanced › Detailed logging: the log also keeps the SDK's debug lines. Never
+   * saved, so every app start is back at info and a forgotten switch stops costing anything.
+   */
+  readonly detailedLog = this._detailedLog.asReadonly();
 
   /** Install capture and read the setting. Idempotent; undone when the root injector is destroyed. */
   start(): void {
@@ -297,6 +303,11 @@ export class DiagnosticLogService {
     );
   }
 
+  /** Turn detailed logging on or off for the rest of this session. */
+  setDetailedLog(detailed: boolean): void {
+    this.applyDetailed(detailed);
+  }
+
   /**
    * Stop recording for the rest of this session and delete the stored log, without saving
    * the setting: for a factory reset, which wipes the setting itself and must not find a
@@ -306,8 +317,10 @@ export class DiagnosticLogService {
    */
   discard(): Observable<void> {
     return defer(() => {
-      // First, as when the log is turned off: no SDK logger may stay at debug level.
+      // First, as when the log is turned off: the SDK stops feeding the log at once.
       this.sdkCapture?.setEnabled(false);
+      // The reset returns "Detailed logging" to its default, off.
+      this.applyDetailed(false);
       this.early = null;
       this._keepLog.set(false);
       this._settingKnown.set(true);
@@ -350,10 +363,15 @@ export class DiagnosticLogService {
       });
   }
 
+  private applyDetailed(detailed: boolean): void {
+    this._detailedLog.set(detailed);
+    this.sdkCapture?.setDetailed(detailed);
+  }
+
   /** The setting is known: release what was held, or drop it and delete the stored log. */
   private applySetting(keep: boolean): Promise<void> {
     if (!keep) {
-      // First, before anything else: no SDK logger may stay at debug level.
+      // First, before anything else: the SDK stops feeding the log.
       this.sdkCapture?.setEnabled(false);
     }
     const early = this.early ?? [];

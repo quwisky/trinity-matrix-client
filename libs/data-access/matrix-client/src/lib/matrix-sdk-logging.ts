@@ -22,8 +22,8 @@ export interface MatrixSdkLogRecord {
 }
 
 /**
- * Receives every SDK log call at debug and above, whatever the console level. It must not
- * throw; a throw is swallowed so the SDK carries on.
+ * Receives every SDK log call at info and above, or debug and above while detailed logging is
+ * on, whatever the console level. It must not throw; a throw is swallowed so the SDK carries on.
  */
 export interface MatrixSdkLogSink {
   write(record: MatrixSdkLogRecord): void;
@@ -62,6 +62,7 @@ const SINK_AWARE = Symbol('matrixSdkSinkAware');
 
 let sdkLogLevel: MatrixSdkLogLevel = 'debug';
 let sdkSink: MatrixSdkLogSink | null = null;
+let detailedLogging = false;
 const governed = new WeakSet<SdkLoglevelLogger>();
 
 /**
@@ -72,8 +73,9 @@ const governed = new WeakSet<SdkLoglevelLogger>();
  * already exists, including the module-level children created on import, and to every
  * child the SDK creates afterwards. Call it at startup, before any client is created.
  *
- * With a `sink`, every logger is built at debug so the sink receives debug lines, and each
- * call is printed only at `level` and above. Without one, levels below `level` are not built.
+ * With a `sink`, every logger is built down to info (debug with detailed logging on) so the
+ * sink receives those lines, and each call is printed only at `level` and above. Without one,
+ * levels below `level` are not built.
  */
 export function configureMatrixSdkLogging(
   level: MatrixSdkLogLevel,
@@ -86,6 +88,15 @@ export function configureMatrixSdkLogging(
       govern(logger as SdkLoglevelLogger);
     }
   }
+}
+
+/**
+ * Whether the sink receives debug lines, applied at once to every SDK logger. It only matters
+ * while a sink is attached; the console level stays as configured.
+ */
+export function setMatrixSdkDetailedLogging(detailed: boolean): void {
+  detailedLogging = detailed;
+  configureMatrixSdkLogging(sdkLogLevel, sdkSink);
 }
 
 /** The level last set by {@link configureMatrixSdkLogging}; `debug` until then. */
@@ -112,7 +123,11 @@ function govern(logger: SdkLoglevelLogger): void {
   logger.methodFactory = sinkAware(logger.methodFactory);
   // `persist: false` keeps the level out of localStorage, as the SDK does.
   // setLevel rebuilds the methods through the (wrapped) factory, so wrap first.
-  logger.setLevel(sdkSink ? 'debug' : sdkLogLevel, false);
+  const level =
+    sdkSink && METHOD_RANK[sinkLevel()] < METHOD_RANK[sdkLogLevel]
+      ? sinkLevel()
+      : sdkLogLevel;
+  logger.setLevel(level, false);
   if (governed.has(logger)) {
     return;
   }
@@ -123,6 +138,10 @@ function govern(logger: SdkLoglevelLogger): void {
     govern(child);
     return child;
   };
+}
+
+function sinkLevel(): MatrixSdkLogMethod {
+  return detailedLogging ? 'debug' : 'info';
 }
 
 /** Wrap a factory so each built method writes to the sink and prints only at the console level. */
@@ -136,7 +155,7 @@ function sinkAware(factory: MethodFactory): MethodFactory {
     const logger = String(loggerName);
     return function (this: unknown, ...args: unknown[]): void {
       const sink = sdkSink;
-      if (sink) {
+      if (sink && METHOD_RANK[method] >= METHOD_RANK[sinkLevel()]) {
         try {
           sink.write({ method, logger, args });
         } catch {

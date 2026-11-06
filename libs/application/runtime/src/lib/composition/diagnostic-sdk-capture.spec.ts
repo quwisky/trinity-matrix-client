@@ -3,6 +3,7 @@ import {
   MATRIX_SDK_LOG_SINK,
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
+  setMatrixSdkDetailedLogging,
   type MatrixSdkLogSink,
 } from '@trinity/data-access/matrix-client';
 import { describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ vi.mock('@trinity/data-access/matrix-client', async (importOriginal) => ({
     typeof import('@trinity/data-access/matrix-client')
   >()),
   configureMatrixSdkLogging: vi.fn(),
+  setMatrixSdkDetailedLogging: vi.fn(),
 }));
 
 describe('matrixSdkCapture', () => {
@@ -34,5 +36,12 @@ describe('matrixSdkCapture', () => {
       matrixSdkLogLevel(),
       sink,
     );
+  });
+
+  it('passes detailed logging to the SDK', () => {
+    const capture = TestBed.runInInjectionContext(matrixSdkCapture);
+
+    capture.setDetailed(true);
+    expect(setMatrixSdkDetailedLogging).toHaveBeenLastCalledWith(true);
   });
 });
