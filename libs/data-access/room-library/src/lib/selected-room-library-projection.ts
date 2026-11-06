@@ -1,10 +1,12 @@
 import {
   ClientEvent,
+  EventType,
   MatrixEventEvent,
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
   type MatrixEvent,
+  type RoomMember,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
@@ -16,6 +18,8 @@ import {
   directMapOf,
   initialOf,
   isJoinedSpace,
+  reuseUnchanged,
+  sameRooms,
   spaceChildIdsOf,
 } from './room-projection';
 import { type RoomSummary } from './room-library.service';
@@ -33,7 +37,7 @@ interface AccountSource {
   readonly encryption?: RoomEncryptionFlags;
 }
 
-type Listener = (event?: MatrixEvent) => void;
+type Listener = (event?: MatrixEvent, ...rest: never[]) => void;
 
 interface RegisteredListener {
   readonly event: string;
@@ -64,7 +68,6 @@ const EVENTS: readonly (readonly [
   [RoomEvent.Tags, ROOM_DOMAINS],
   [RoomEvent.AccountData, ROOM_DOMAINS],
   [MatrixEventEvent.Replaced, ROOM_DOMAINS],
-  [RoomStateEvent.Members, ROOM_DOMAINS],
 ];
 
 /**
@@ -156,6 +159,14 @@ export class SelectedAccountSourceRegistry {
 
   private attach(accountId: string, client: MatrixClient): HeldAccountSource {
     const eventSource = client as unknown as EventSource;
+    let peers: { from: unknown; ids: ReadonlySet<string> } | undefined;
+    const isDmPeer = (userId: string): boolean => {
+      const from = client.getAccountData?.(EventType.Direct);
+      if (!peers || peers.from !== from) {
+        peers = { from, ids: new Set(directMapOf(client).userByRoom.values()) };
+      }
+      return peers.ids.has(userId);
+    };
     const listeners: RegisteredListener[] = [
       ...EVENTS.map(([event, domains]) => ({
         event,
@@ -166,6 +177,17 @@ export class SelectedAccountSourceRegistry {
         handler: () => {
           this.invalidate(ALL_DOMAINS);
           this.flush();
+        },
+      },
+      {
+        // Only a DM peer's profile is on a row (its avatar); a sync carries every other change.
+        event: RoomStateEvent.Members,
+        handler: (
+          _event?: MatrixEvent,
+          _state?: unknown,
+          member?: RoomMember,
+        ) => {
+          if (member && isDmPeer(member.userId)) this.invalidate(ROOM_DOMAINS);
         },
       },
       {
@@ -194,11 +216,15 @@ export class SelectedAccountSourceRegistry {
   }
 }
 
-/** Project and merge selected Accounts' joined, non-Space Rooms. */
+/**
+ * Project and merge selected Accounts' joined, non-Space Rooms. A row that describes its room as
+ * `previous` did is that same object, and an unchanged list is `previous` itself.
+ */
 export function projectSelectedRooms(
   sources: readonly AccountSource[],
   activeAccountId: string | null,
   learnEncryption?: (accountId: string, roomIds: readonly string[]) => void,
+  previous: readonly RoomSummary[] = [],
 ): readonly RoomSummary[] {
   const byRoomId = new Map<string, RoomSummary>();
 
@@ -243,7 +269,11 @@ export function projectSelectedRooms(
     if (stateless.length > 0) learnEncryption?.(accountId, stateless);
   }
 
-  return [...byRoomId.values()].sort(compareRoomSummaries);
+  const previousById = new Map(previous.map((room) => [room.id, room]));
+  const rooms = [...byRoomId.values()]
+    .map((room) => reuseUnchanged(previousById.get(room.id), room))
+    .sort(compareRoomSummaries);
+  return sameRooms(previous, rooms) ? previous : rooms;
 }
 
 export interface SelectedSpacesProjection {
@@ -257,7 +287,7 @@ export function projectSelectedSpaces(
   activeAccountId: string | null,
 ): SelectedSpacesProjection {
   const bySpaceId = new Map<string, SpaceSummary>();
-  const childrenBySpace = new Map<string, string[]>();
+  const childrenBySpace = new Map<string, Set<string>>();
   const childRoomIdsByAccount = new Map<string, Set<string>>();
 
   for (const { accountId, client } of sources) {
@@ -265,10 +295,11 @@ export function projectSelectedSpaces(
     for (const room of client.getRooms()) {
       if (!isJoinedSpace(room)) continue;
 
-      const mergedChildren = childrenBySpace.get(room.roomId) ?? [];
+      const mergedChildren =
+        childrenBySpace.get(room.roomId) ?? new Set<string>();
       for (const childId of spaceChildIdsOf(client, room)) {
         accountChildIds.add(childId);
-        if (!mergedChildren.includes(childId)) mergedChildren.push(childId);
+        mergedChildren.add(childId);
       }
       childrenBySpace.set(room.roomId, mergedChildren);
 
@@ -298,7 +329,7 @@ export function projectSelectedSpaces(
   const spaces = [...bySpaceId.values()]
     .map((space) => ({
       ...space,
-      childRoomIds: childrenBySpace.get(space.id) ?? [],
+      childRoomIds: [...(childrenBySpace.get(space.id) ?? [])],
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return { spaces, childRoomIdsByAccount };
