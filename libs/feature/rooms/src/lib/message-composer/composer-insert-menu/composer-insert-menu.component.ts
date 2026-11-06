@@ -263,6 +263,7 @@ export class ComposerInsertMenuComponent {
         action.run();
       },
     }));
+    buttons.push({ text: 'Cancel', role: 'cancel' });
     const ref = this.actionSheet.openActions(
       { header: 'Add to message', buttons },
       {

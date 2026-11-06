@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,6 +13,9 @@ import {
   TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
   TrnLockedSelectionDirective,
 } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
@@ -37,18 +41,25 @@ import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sideb
   styleUrl: './account-picker.component.scss',
   imports: [
     AccountPickLabelComponent,
+    NgTemplateOutlet,
     TrnButton,
     TrnIconComponent,
     TrnLockedSelectionDirective,
     TrnDialogActions,
     TrnDialogDismiss,
     TrnDialogShellComponent,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
   ],
 })
 export class AccountPickerComponent {
   private readonly selected = inject(SelectedRoomLibraryService);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
+
+  /** Cards are the sheet look; a desktop dialog keeps its plain rows. */
+  protected readonly sheet = this.dialogRef.presentation === 'sheet';
 
   readonly accounts = input<AccountSummary[]>([]);
 

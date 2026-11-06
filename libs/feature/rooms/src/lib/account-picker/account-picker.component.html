@@ -6,18 +6,34 @@
   (closed)="close()"
   data-testid="account-picker"
 >
-  <ul class="picker__list" role="group" aria-label="Accounts in view">
-    @for (account of accounts(); track account.userId) {
-      @let locked = isLocked(account.userId);
-      <li>
+  <ng-template #pickContent let-account>
+    <trn-account-pick-label
+      [account]="account"
+      [locked]="isLocked(account.userId)"
+      [unverified]="account.trust === 'unverified'"
+    />
+    @if (isShown(account.userId)) {
+      <trn-icon name="check" size="md" variant="accent" class="ms-auto" />
+    }
+  </ng-template>
+  @if (sheet) {
+    <div trnInsetGroup role="group" aria-label="Accounts in view">
+      @for (account of accounts(); track account.userId) {
+        @let locked = isLocked(account.userId);
+        @if (!$first) {
+          <trn-inset-divider inset="edge" />
+        }
         <button
+          trnBtn
+          trnInsetRow
           type="button"
-          class="account-pick"
+          shape="row"
+          variant="secondary"
+          presentation="solid"
           role="checkbox"
           [attr.aria-checked]="isShown(account.userId)"
           [disabled]="locked"
           [trnLockedSelection]="locked"
-          [attr.data-disabled]="locked ? '' : null"
           [attr.data-autofocus]="
             account.userId === firstFocusableAccountId() ? '' : null
           "
@@ -25,20 +41,42 @@
           [attr.data-trust]="account.trust"
           (click)="toggle(account.userId)"
         >
-          <span class="account-pick__indicator" aria-hidden="true">
-            @if (isShown(account.userId)) {
-              <trn-icon name="check" size="sm" />
-            }
-          </span>
-          <trn-account-pick-label
-            [account]="account"
-            [locked]="locked"
-            [unverified]="account.trust === 'unverified'"
+          <ng-container
+            [ngTemplateOutlet]="pickContent"
+            [ngTemplateOutletContext]="{ $implicit: account }"
           />
         </button>
-      </li>
-    }
-  </ul>
+      }
+    </div>
+  } @else {
+    <ul class="picker__list" role="group" aria-label="Accounts in view">
+      @for (account of accounts(); track account.userId) {
+        @let locked = isLocked(account.userId);
+        <li>
+          <button
+            type="button"
+            class="account-pick"
+            role="checkbox"
+            [attr.aria-checked]="isShown(account.userId)"
+            [disabled]="locked"
+            [trnLockedSelection]="locked"
+            [attr.data-disabled]="locked ? '' : null"
+            [attr.data-autofocus]="
+              account.userId === firstFocusableAccountId() ? '' : null
+            "
+            [attr.data-testid]="'show-account-' + account.userId"
+            [attr.data-trust]="account.trust"
+            (click)="toggle(account.userId)"
+          >
+            <ng-container
+              [ngTemplateOutlet]="pickContent"
+              [ngTemplateOutletContext]="{ $implicit: account }"
+            />
+          </button>
+        </li>
+      }
+    </ul>
+  }
 
   <div trnDialogActions>
     <button

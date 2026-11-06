@@ -248,6 +248,33 @@ describe('ComposerInsertMenuComponent', () => {
     });
   });
 
+  it('ends the action sheet with Cancel, which dismisses and restores focus to +', async () => {
+    platform.mobile = true;
+    const { fixture, container } = await render(ComposerInsertMenuComponent, {
+      inputs: { contextKey: '!room:example.org', hasMenu: true },
+    });
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-testid=composer-insert]',
+    )!;
+    trigger.focus();
+    trigger.click();
+    await fixture.whenStable();
+
+    const cancel = [
+      ...document.querySelectorAll<HTMLButtonElement>('trn-action-list button'),
+    ]
+      .filter((b) => b.textContent?.trim() === 'Cancel')
+      .at(-1);
+    expect(cancel).toBeTruthy();
+    cancel?.click();
+    await fixture.whenStable();
+    await Promise.resolve();
+
+    expect(sheetItems()).toHaveLength(0);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it.each([
     ['contextKey', '!second:example.org'],
     ['hasMenu', false],

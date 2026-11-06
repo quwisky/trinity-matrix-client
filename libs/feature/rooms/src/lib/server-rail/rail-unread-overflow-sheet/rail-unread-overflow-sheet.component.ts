@@ -10,6 +10,9 @@ import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogRef,
   TrnDialogShellComponent,
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
 } from '@trinity/components/overlay';
 import { type ExactRoomSelection } from '../../shared/exact-selection';
 import {
@@ -30,7 +33,14 @@ export type RailOverflowChoice =
 @Component({
   selector: 'trn-rail-unread-overflow-sheet',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnDialogShellComponent, RailUnreadOverflowRowComponent],
+  imports: [
+    TrnButton,
+    TrnDialogShellComponent,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
+    RailUnreadOverflowRowComponent,
+  ],
   templateUrl: './rail-unread-overflow-sheet.component.html',
 })
 export class RailUnreadOverflowSheetComponent {

@@ -595,7 +595,7 @@ test.describe('Multiple accounts', () => {
         `[data-testid^="show-account-@${userB}:"]`,
       );
       await expect(activeRow).toHaveAttribute('aria-checked', 'true');
-      await expect(activeRow).toHaveAttribute('data-disabled', '');
+      await expect(activeRow).toHaveAttribute('data-disabled');
       await expect(activeRow).toHaveCSS('opacity', '1');
       await expect(activeRow.locator('trn-avatar')).toBeVisible();
       await expect(activeRow).toContainText(`@${userB}:`);
@@ -608,7 +608,7 @@ test.describe('Multiple accounts', () => {
           return rect.top + rect.height / 2;
         };
         return Math.abs(
-          middle('trn-avatar') - middle('.account-pick__indicator'),
+          middle('trn-avatar') - middle('trn-icon[name="check"]'),
         );
       });
       expect(centreOffset).toBeLessThan(12);
