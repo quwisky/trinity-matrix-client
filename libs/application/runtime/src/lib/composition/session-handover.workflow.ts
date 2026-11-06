@@ -67,17 +67,20 @@ export class SessionHandoverWorkflow {
   }
 
   /**
-   * Emits once no sign-out, Account removal or installation reset is running in this tab, so a
-   * handover never cuts into one. At once when none is. Completes without emitting, so this
-   * request goes unanswered and the other tab offers "Try again", when one is still running
-   * after the requester's own timeout, or when the erase it waited for succeeded: that erase
-   * restarts the app itself, and this tab must not stop, write or reload on top of it.
+   * Emits once no sign-out, Account removal, installation reset or background Account restore
+   * is running in this tab, so a handover never cuts into one. At once when none is. Completes
+   * without emitting, so this request goes unanswered and the other tab offers "Try again", when
+   * one is still running after the requester's own timeout, or when the erase it waited for
+   * succeeded: that erase restarts the app itself, and this tab must not stop, write or reload on
+   * top of it.
    */
   private afterDestructiveWork(): Observable<void> {
+    const busy = () =>
+      this.accounts.lifecycleBusy() || this.accounts.restoringInBackground();
     return defer(() => {
-      if (!this.accounts.lifecycleBusy()) return of(undefined);
+      if (!busy()) return of(undefined);
       return timer(DRAIN_POLL_MS, DRAIN_POLL_MS).pipe(
-        filter(() => !this.accounts.lifecycleBusy()),
+        filter(() => !busy()),
         take(1),
         timeout({ first: SESSION_HANDOVER_TIMEOUT_MS, with: () => EMPTY }),
         filter(() => !this.erasedInstallation()),

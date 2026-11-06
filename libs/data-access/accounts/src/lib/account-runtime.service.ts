@@ -308,6 +308,11 @@ export class AccountRuntimeService {
     );
   }
 
+  /** Whether inactive Accounts are still restoring after the start, or being retried. */
+  restoringInBackground(): boolean {
+    return this.backgroundRestoring || this.inactiveRestore.inProgress;
+  }
+
   /** The operation that would make an account deletion wait, or null when it may start. */
   deletionBlocker(): AccountRuntimeOperation | null {
     return this.currentOperation();
@@ -346,10 +351,7 @@ export class AccountRuntimeService {
   private currentOperation(
     includeInactiveRestore = true,
   ): AccountRuntimeOperation | null {
-    if (
-      includeInactiveRestore &&
-      (this.backgroundRestoring || this.inactiveRestore.inProgress)
-    )
+    if (includeInactiveRestore && this.restoringInBackground())
       return 'restoring-accounts';
     const phase = this.runtimeState().phase;
     if (phase === 'restoring') return 'restoring-accounts';
