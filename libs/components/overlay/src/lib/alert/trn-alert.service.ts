@@ -167,9 +167,10 @@ export class TrnAlertService {
     data: AlertDialogData,
     opts: ConfirmOptions,
   ): DialogConfig<AlertDialogData, DialogRef<R, TrnAlertDialogComponent>> {
+    const sheet = prefersSheet();
     const { pane, createRef } = dialogPresentation(
       this.overlay,
-      prefersSheet() ? 'bottom' : 'center',
+      sheet ? 'bottom' : 'center',
       null,
     );
     return {
@@ -179,6 +180,10 @@ export class TrnAlertService {
       closeOnNavigation: opts.closeOnNavigation ?? true,
       // The pressed control, not only what held focus: a WebKit tap never focuses it.
       restoreFocus: this.opener.restoreTarget(),
+      // A sheet's first footer action may be destructive; a prompt keeps its field first.
+      ...(sheet && data.kind === 'confirm'
+        ? { autoFocus: '[data-testid="alert-cancel"]' }
+        : {}),
       ...pane,
       // The dialog shell reads the presentation from the ref it injects.
       providers: (cdkRef) => [
