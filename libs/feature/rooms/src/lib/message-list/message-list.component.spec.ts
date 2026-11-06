@@ -25,6 +25,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 function msg(
   id: string,
@@ -60,6 +61,9 @@ describe('MessageListComponent', () => {
         compose,
         messages: new ConversationMessagesStub(compose),
       },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     // Suppress the anchoring effect's async scroll writes (they'd assign
     // el.scrollTop, fighting the geometry these tests define); windowing is driven by

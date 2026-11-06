@@ -62,6 +62,7 @@ import {
   type ComposerSubmit,
   type MentionMember,
 } from '../message-composer/message-composer.component';
+import { MESSAGE_LIST_COMMANDS } from './message-list-commands';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import { dismissKeyboardOnDrag } from './drag-dismiss-keyboard';
 import { observeScrollerHeight } from './scroller-height-anchor';
@@ -238,20 +239,14 @@ export abstract class MessageListBase {
   readonly pollEnd = output<string>();
 
   protected readonly compose = inject(ConversationRuntime).compose;
-  protected readonly messageCommands = inject(ConversationRuntime).messages;
+  protected readonly commands = inject(MESSAGE_LIST_COMMANDS);
   private readonly timeline = inject(ConversationRuntime).timeline;
-  readonly editingId = computed(() => {
-    const intent = this.compose.intent();
-    return intent.kind === 'edit' ? intent.eventId : null;
-  });
+  readonly editingId = this.commands.editingId;
   readonly editingDraft = computed(
     () => this.messages().find((m) => m.id === this.editingId())?.body ?? '',
   );
 
-  readonly replyingToId = computed(() => {
-    const intent = this.compose.intent();
-    return intent.kind === 'reply' ? intent.eventId : null;
-  });
+  readonly replyingToId = this.commands.replyingToId;
   readonly replyingToName = computed(
     () =>
       this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
@@ -487,19 +482,19 @@ export abstract class MessageListBase {
   }
 
   startEdit(row: MessageRow): void {
-    this.messageCommands.beginEdit(row.id, row.body);
+    this.commands.beginEdit(row.id, row.body);
   }
 
   startReply(row: MessageRow): void {
-    this.messageCommands.beginReply(row.id);
+    this.commands.beginReply(row.id);
   }
 
   cancelEdit(): void {
-    if (this.compose.intent().kind === 'edit') this.compose.cancelIntent();
+    this.commands.cancelEdit();
   }
 
   cancelReply(): void {
-    if (this.compose.intent().kind === 'reply') this.compose.cancelIntent();
+    this.commands.cancelReply();
   }
 
   /**
@@ -518,7 +513,7 @@ export abstract class MessageListBase {
     const msgs = this.messages();
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (isEditableMessage(msgs[i])) {
-        this.messageCommands.beginEdit(msgs[i].id, msgs[i].body);
+        this.commands.beginEdit(msgs[i].id, msgs[i].body);
         return;
       }
     }
@@ -796,7 +791,7 @@ export abstract class MessageListBase {
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {
-    if (this.compose.sending()) return;
+    if (this.commands.sending()) return;
     this.send.emit({ body: text, mentions });
   }
 }

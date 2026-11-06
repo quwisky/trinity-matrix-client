@@ -34,6 +34,7 @@ import {
 } from '../testing/intersection-observer.stub';
 import { MessageListComponent } from './message-list.component';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 function message(id: string, media: PresentedMediaReference | null = null) {
   return {
@@ -84,6 +85,9 @@ describe('MessageListComponent and the images of its rows', () => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
       useValue: { compose, messages: new ConversationMessagesStub(compose) },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
   });
 

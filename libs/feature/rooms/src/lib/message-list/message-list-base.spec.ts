@@ -13,6 +13,7 @@ import {
   ConversationComposeStub,
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 let compose: ConversationComposeStub;
 
@@ -20,6 +21,9 @@ beforeEach(() => {
   compose = new ConversationComposeStub();
   TestBed.overrideProvider(ConversationRuntime, {
     useValue: { compose, messages: new ConversationMessagesStub(compose) },
+  });
+  TestBed.configureTestingModule({
+    providers: [provideRoomMessageListCommands()],
   });
 });
 

@@ -24,6 +24,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 type ListOptions = NonNullable<
   Parameters<typeof render<MessageListComponent>>[1]
@@ -114,6 +115,9 @@ describe('MessageListComponent with windowing off', () => {
         messages: new ConversationMessagesStub(compose),
         timeline: { rawEvent: vi.fn(() => ({ type: 'm.room.message' })) },
       },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
   });
 

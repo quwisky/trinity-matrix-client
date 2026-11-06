@@ -25,6 +25,7 @@ import {
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
 import { MessageListComponent } from './message-list.component';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 function msg(id: string, ts: number): MessageView {
   return {
@@ -67,6 +68,9 @@ describe('MessageListComponent — jump targets start expanded', () => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
       useValue: { compose, messages: new ConversationMessagesStub(compose) },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     // As in message-list.component.spec.ts: no real frames, no scroll writes.
     vi.stubGlobal('requestAnimationFrame', () => 0);

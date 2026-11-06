@@ -14,6 +14,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 const motion = vi.hoisted(() => ({ reduced: false }));
 vi.mock('@trinity/util/ui', async (importActual) => ({
@@ -60,6 +61,9 @@ describe('message list — new messages slide in', () => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
       useValue: { compose, messages: new ConversationMessagesStub(compose) },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     vi.stubGlobal('requestAnimationFrame', () => 0);
     (ResizeObserver as unknown as { instances: unknown[] }).instances.length =

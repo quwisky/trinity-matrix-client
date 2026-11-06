@@ -15,6 +15,8 @@ import {
   ConversationMessagesStub,
 } from '../testing/conversation-timeline.stub';
 import { messageView } from '../testing/message-view.fixture';
+import { provideRoomMessageListCommands } from './message-list-commands';
+import { provideTestMessageListCommands } from './message-list-commands.testing';
 
 /**
  * The mobile long press opens its sheet HERE, on the list, rather than on the row that was
@@ -74,6 +76,7 @@ function build() {
           messages: new ConversationMessagesStub(compose),
         },
       },
+      provideRoomMessageListCommands(),
     ],
   });
   const fixture = TestBed.createComponent(TestListComponent);
@@ -285,6 +288,7 @@ describe('MessageListBase — the mobile action sheet', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: TrnSurfaceService, useValue: { openActions: open } },
+        provideTestMessageListCommands(),
       ],
     });
     const fixture = TestBed.createComponent(TestListComponent);
@@ -331,6 +335,7 @@ describe('MessageListBase — the mobile action sheet', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: TrnSurfaceService, useValue: { openActions: open } },
+        provideTestMessageListCommands(),
       ],
     });
     const fixture = TestBed.createComponent(TestListComponent);

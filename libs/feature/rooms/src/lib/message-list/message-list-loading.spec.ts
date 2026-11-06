@@ -8,6 +8,7 @@ import type {
   TimelineLoadState,
 } from '@trinity/data-access/timeline';
 import { MessageComposerComponent } from '../message-composer/message-composer.component';
+import { provideTestMessageListCommands } from './message-list-commands.testing';
 
 /**
  * The "Loading older messages…" strip, and when it is allowed to appear.
@@ -36,6 +37,7 @@ describe('message list — loading older', () => {
 
   async function create() {
     const result = await render(MessageListComponent, {
+      providers: [provideTestMessageListCommands()],
       inputs: { messages: [], loadingOlder: false },
     });
     TestBed.tick();
@@ -171,6 +173,7 @@ describe('message list — conversation load state', () => {
     messages: MessageView[] = [],
   ) {
     const result = await render(MessageListComponent, {
+      providers: [provideTestMessageListCommands()],
       inputs: { messages, loadState },
     });
     TestBed.tick();

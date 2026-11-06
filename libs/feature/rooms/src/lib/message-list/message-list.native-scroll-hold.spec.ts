@@ -13,6 +13,7 @@ import {
 import { messageView } from '../testing/message-view.fixture';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { MessageListComponent } from './message-list.component';
+import { provideRoomMessageListCommands } from './message-list-commands';
 
 const IPHONE =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
@@ -47,6 +48,9 @@ describe('message list on iOS: older history under a finger', () => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {
       useValue: { compose, messages: new ConversationMessagesStub(compose) },
+    });
+    TestBed.configureTestingModule({
+      providers: [provideRoomMessageListCommands()],
     });
     (ResizeObserver as unknown as { instances: unknown[] }).instances.length =
       0;
