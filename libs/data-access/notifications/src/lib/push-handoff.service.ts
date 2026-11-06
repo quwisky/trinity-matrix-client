@@ -374,16 +374,11 @@ export class PushHandoffService {
     const direct = directRoomIds(binding.client);
     const { encryption } = binding;
     const changed: PushHandoffRoom[] = [];
+    const unanswered: string[] = [];
     for (const room of binding.client.getRooms()) {
       if (room.getMyMembership() !== 'join') continue;
       const answered = encryption.answered(room.roomId);
-      if (!answered) {
-        void encryption
-          .refresh(binding.client.getCrypto(), room.roomId)
-          .then(() => {
-            if (encryption.answered(room.roomId)) this.writeRooms(userId);
-          });
-      }
+      if (!answered) unanswered.push(room.roomId);
       const entry = {
         roomId: room.roomId,
         name: room.name,
@@ -396,6 +391,18 @@ export class PushHandoffService {
       if (binding.written.get(entry.roomId) === key) continue;
       binding.written.set(entry.roomId, key);
       changed.push(entry);
+    }
+    if (unanswered.length > 0) {
+      const rewrite = () => {
+        if (this.bindings.get(userId)?.encryption === encryption) {
+          this.writeRooms(userId);
+        }
+      };
+      void encryption
+        .refreshAll(binding.client.getCrypto(), unanswered, rewrite)
+        .then((answered) => {
+          if (answered > 0) rewrite();
+        });
     }
     if (changed.length === 0) return;
     void this.schedule(() => this.bridge.setRooms(userId, changed)).catch(

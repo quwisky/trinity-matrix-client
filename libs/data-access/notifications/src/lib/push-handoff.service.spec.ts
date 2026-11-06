@@ -444,6 +444,93 @@ describe('PushHandoffService', () => {
     ]);
   });
 
+  it('rewrites the rooms once after the crypto store answers for many unanswered rooms', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const client = fakeClient(
+      '@me:hs',
+      Array.from({ length: 5 }, (_, i) => ({
+        roomId: `!r${i}:hs`,
+        name: `Room ${i}`,
+        membership: 'join',
+      })),
+    );
+    client.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () =>
+        new Promise<boolean>((resolve) => resolvers.push(resolve)),
+    });
+    const getRooms = vi.spyOn(client, 'getRooms');
+    const h = setup({ clients: [client] });
+    await start(h);
+    const initial = getRooms.mock.calls.length;
+
+    for (const resolve of resolvers) {
+      resolve(false);
+      await flush();
+    }
+
+    expect(getRooms.mock.calls.length - initial).toBe(1);
+    expect(h.bridge.setRooms).toHaveBeenLastCalledWith(
+      '@me:hs',
+      Array.from({ length: 5 }, (_, i) => ({
+        roomId: `!r${i}:hs`,
+        name: `Room ${i}`,
+        direct: false,
+        encrypted: false,
+      })),
+    );
+  });
+
+  it('rewrites no rooms when the account went away before the answers landed', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const client = fakeClient('@me:hs', [
+      { roomId: '!a:hs', name: 'Team', membership: 'join' },
+    ]);
+    client.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () =>
+        new Promise<boolean>((resolve) => resolvers.push(resolve)),
+    });
+    const getRooms = vi.spyOn(client, 'getRooms');
+    const h = setup({ clients: [client] });
+    await start(h);
+    h.accountIds.set([]);
+    TestBed.tick();
+    await flush();
+    const before = getRooms.mock.calls.length;
+
+    resolvers.forEach((resolve) => resolve(false));
+    await flush();
+
+    expect(getRooms.mock.calls.length).toBe(before);
+  });
+
+  it('ignores a straggler answer from a replaced binding of the same account', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const room = { roomId: '!a:hs', name: 'Team', membership: 'join' };
+    const first = fakeClient('@me:hs', [room]);
+    first.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () =>
+        new Promise<boolean>((resolve) => resolvers.push(resolve)),
+    });
+    const replacement = fakeClient('@me:hs', [room]);
+    replacement.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () => new Promise<boolean>(() => undefined),
+    });
+    const getRooms = vi.spyOn(replacement, 'getRooms');
+    const h = setup({ clients: [first] });
+    await start(h);
+
+    h.clients.set('@me:hs', replacement);
+    h.accountIds.set(['@me:hs']);
+    TestBed.tick();
+    await flush();
+    const before = getRooms.mock.calls.length;
+
+    resolvers.forEach((resolve) => resolve(false));
+    await flush();
+
+    expect(getRooms.mock.calls.length).toBe(before);
+  });
+
   it('rewrites a room stored as unencrypted once its state turns encryption on', async () => {
     const h = setup();
     await start(h);

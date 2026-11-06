@@ -388,6 +388,76 @@ describe('SelectedRoomLibraryService', () => {
     expect(lock('!a:hs')).toBe(false);
   });
 
+  it('re-projects once after the crypto store answers for many unanswered rooms', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const client = Object.assign(
+      fakeClient(
+        '@a:hs',
+        Array.from({ length: 5 }, (_, i) => fakeRoom(`!r${i}:hs`)),
+      ),
+      {
+        getCrypto: () => ({
+          isEncryptionEnabledInRoom: () =>
+            new Promise<boolean>((resolve) => resolvers.push(resolve)),
+        }),
+      },
+    );
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', client],
+        ['@b:hs', fakeClient('@b:hs', [fakeRoom('!b:hs')])],
+      ]),
+    });
+    TestBed.tick();
+    await new Promise((r) => setTimeout(r));
+    const initial = client.getRooms.mock.calls.length;
+
+    for (const resolve of resolvers) {
+      resolve(true);
+      await new Promise((r) => setTimeout(r));
+    }
+    await new Promise((r) => setTimeout(r));
+
+    expect(
+      harness.service
+        .view()
+        .rooms.filter((r) => r.id.startsWith('!r'))
+        .every((r) => r.encrypted),
+    ).toBe(true);
+    expect(client.getRooms.mock.calls.length - initial).toBe(1);
+  });
+
+  it('schedules no re-projection when the Account client was replaced before its answers landed', async () => {
+    const landed: ((encrypted: boolean) => void)[] = [];
+    const first = Object.assign(fakeClient('@a:hs', [fakeRoom('!a:hs')]), {
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: () =>
+          new Promise<boolean>((resolve) => landed.push(resolve)),
+      }),
+    });
+    const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
+    const harness = setup({
+      selected: new Set(['@a:hs', '@b:hs']),
+      live: ['@a:hs', '@b:hs'],
+      clients: new Map([
+        ['@a:hs', first],
+        ['@b:hs', b],
+      ]),
+    });
+    const replacement = fakeClient('@a:hs', [fakeRoom('!a2:hs')]);
+    harness.clients.set('@a:hs', replacement);
+    b.emit('Room');
+    await new Promise((r) => setTimeout(r));
+    const before = replacement.getRooms.mock.calls.length;
+
+    landed.forEach((resolve) => resolve(true));
+    await new Promise((r) => setTimeout(r));
+
+    expect(replacement.getRooms.mock.calls.length).toBe(before);
+  });
+
   it("previews each Account's rooms by its own crypto store's answer", async () => {
     const store = (encrypted: readonly string[]) => ({
       getCrypto: () => ({

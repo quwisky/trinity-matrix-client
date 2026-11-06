@@ -98,6 +98,39 @@ export class RoomEncryptionFlags {
       this.pending.delete(roomId);
     }
   }
+
+  /**
+   * {@link refresh} every room so a caller re-projects once for the batch. Resolves with how
+   * many rooms answered when every probe has settled or `capMs` has passed, whichever comes
+   * first, so a hung probe cannot hold back the others. A probe that answers after the cap
+   * calls `onLate`. A failing read leaves its room unanswered and blocks nothing.
+   */
+  async refreshAll(
+    crypto: RoomEncryptionProbe | null | undefined,
+    roomIds: Iterable<string>,
+    onLate?: () => void,
+    capMs = 1500,
+  ): Promise<number> {
+    const ids = [...roomIds];
+    let capped = false;
+    const settled = Promise.all(
+      ids.map((id) =>
+        this.refresh(crypto, id).then(() => {
+          if (capped && this.stored.has(id)) onLate?.();
+        }),
+      ),
+    );
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cap = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        capped = true;
+        resolve();
+      }, capMs);
+    });
+    await Promise.race([settled, cap]);
+    clearTimeout(timer);
+    return ids.filter((id) => this.stored.has(id)).length;
+  }
 }
 
 /**
