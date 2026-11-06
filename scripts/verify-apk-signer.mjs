@@ -6,13 +6,20 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const DIGEST = /^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]+)$/gm;
+// "Signer #1 certificate …", "V2 Signer: certificate …", "Signer (minSdkVersion=24, …) certificate …".
+const DIGEST =
+  /^((?!Source Stamp)[^\n]*\bSigner\b[^\n]*?):? certificate SHA-256 digest: ([0-9a-fA-F]+)$/gm;
+const SIGNERS = /^Number of signers: (\d+)$/m;
 
-/** Lowercase hex SHA-256 of each signer certificate in `apksigner --print-certs` output. */
+const signerLines = (apksignerOutput) =>
+  [...apksignerOutput.matchAll(DIGEST)].map(([, label, hex]) => ({
+    label,
+    digest: hex.toLowerCase(),
+  }));
+
+/** Lowercase hex SHA-256 of each signer certificate line in `apksigner --print-certs` output. */
 export function signerDigests(apksignerOutput) {
-  return [...apksignerOutput.matchAll(DIGEST)].map(([, hex]) =>
-    hex.toLowerCase(),
-  );
+  return signerLines(apksignerOutput).map(({ digest }) => digest);
 }
 
 export function checkSigner(apksignerOutput, pinned) {
@@ -22,15 +29,22 @@ export function checkSigner(apksignerOutput, pinned) {
       'set the release certificate digest in android/release-signing-cert.sha256',
     );
   }
-  const digests = signerDigests(apksignerOutput);
-  if (digests.length !== 1) {
+  const lines = signerLines(apksignerOutput);
+  const count = SIGNERS.exec(apksignerOutput)?.[1];
+  // v2 and v3 print the same key once each; a second signer shows as a count or "#2".
+  const distinct = [...new Set(lines.map(({ digest }) => digest))];
+  if (
+    distinct.length !== 1 ||
+    (count !== undefined && count !== '1') ||
+    lines.some(({ label }) => /#(?!1\b)\d+/.test(label))
+  ) {
     throw new Error(
-      `expected exactly one signer, found ${digests.length}: ${digests.join(', ')}`,
+      `expected exactly one signer, found ${count ?? distinct.length}: ${distinct.join(', ')}`,
     );
   }
-  if (digests[0] !== expected) {
+  if (distinct[0] !== expected) {
     throw new Error(
-      `APK signed by ${digests[0]}, not the release certificate ${expected}`,
+      `APK signed by ${distinct[0]}, not the release certificate ${expected}`,
     );
   }
 }
