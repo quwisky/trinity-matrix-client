@@ -376,6 +376,10 @@ export const SHARED_MOCKS: Provider[] = [
       const activeAccountId = signal(matrix.activeUserId());
       return {
         activeAccountId: activeAccountId.asReadonly(),
+        restoringAccountIds: signal<ReadonlySet<string>>(
+          new Set(),
+        ).asReadonly(),
+        restoringInBackground: () => false,
         switchActiveAccount: vi.fn(
           (accountId: string, coordination: AccountSwitchCoordination) =>
             coordination.prepare().pipe(

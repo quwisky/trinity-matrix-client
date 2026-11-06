@@ -94,6 +94,8 @@
         class="account-row"
         trnDropdownMenuItem
         (triggered)="switchAccount.emit(account.userId)"
+        [trnActionAllowed]="!account.restoring"
+        [trnActionDisabledReason]="account.restoring ? restoringReason : null"
         data-testid="account-row"
         [attr.data-trust]="account.trust"
         [attr.aria-current]="account.userId === activeUserId()"
@@ -108,6 +110,13 @@
         <div class="account-row__id">
           <span class="account-row__name">{{ account.displayName }}</span>
           <span class="account-row__handle">{{ account.userId }}</span>
+          @if (account.restoring) {
+            <span
+              class="account-row__restoring"
+              data-testid="account-row-restoring"
+              >{{ restoringReason }}</span
+            >
+          }
           @if (account.trust === 'unverified') {
             <span
               trnBadge
@@ -187,6 +196,9 @@
       class="menu-action"
       trnDropdownMenuItem
       (triggered)="addAccount.emit()"
+      [trnActionAllowed]="!accountsRestoring()"
+      [trnActionDisabledReason]="accountsRestoring() ? restoringReason : null"
+      [trnTooltip]="accountsRestoring() ? restoringReason : null"
       data-testid="add-account"
     >
       <trn-icon name="user-plus" />
@@ -198,6 +210,9 @@
       trnDropdownMenuItem
       variant="danger"
       (triggered)="logout.emit(activeUserId() ?? '')"
+      [trnActionAllowed]="!accountsRestoring()"
+      [trnActionDisabledReason]="accountsRestoring() ? restoringReason : null"
+      [trnTooltip]="accountsRestoring() ? restoringReason : null"
       data-testid="logout"
     >
       <trn-icon name="log-out" />

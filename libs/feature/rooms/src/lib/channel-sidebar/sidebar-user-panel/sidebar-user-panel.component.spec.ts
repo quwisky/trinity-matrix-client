@@ -149,6 +149,102 @@ describe('SidebarUserPanelComponent', () => {
     { userId: '@carol:hs', displayName: 'Carol', avatarMxc: null, unread: 0 },
   ];
 
+  describe('while other accounts restore in the background', () => {
+    async function openRestoring() {
+      const rendered = await render(SidebarUserPanelComponent, {
+        inputs: {
+          user: USER,
+          accounts: [
+            ACCOUNTS[0],
+            ACCOUNTS[1],
+            { ...ACCOUNTS[2], restoring: true },
+          ],
+          activeUserId: '@alice:hs',
+          accountsRestoring: true,
+        },
+      });
+      const switched = vi.fn();
+      rendered.fixture.componentInstance.switchAccount.subscribe(switched);
+      rendered.container
+        .querySelector<HTMLElement>('.userbar__trigger')!
+        .click();
+      rendered.fixture.detectChanges();
+      const row = (userId: string) =>
+        [
+          ...document.querySelectorAll<HTMLElement>(
+            '[data-testid="account-row"]',
+          ),
+        ].find((candidate) => candidate.textContent?.includes(userId))!;
+      return { ...rendered, switched, row };
+    }
+
+    it('shows a restoring account as disabled with its reason, and does not switch to it', async () => {
+      const { switched, row } = await openRestoring();
+
+      const carol = row('@carol:hs');
+      expect(carol.getAttribute('aria-disabled')).toBe('true');
+      expect(carol.getAttribute('aria-description')).toBe('Loading…');
+      expect(
+        carol.querySelector('[data-testid="account-row-restoring"]')
+          ?.textContent,
+      ).toContain('Loading…');
+      carol.click();
+      expect(switched).not.toHaveBeenCalled();
+
+      // A settled account and the active one are unaffected.
+      for (const userId of ['@alice:hs', '@bob:hs']) {
+        expect(row(userId).getAttribute('aria-disabled')).toBeNull();
+        expect(
+          row(userId).querySelector('[data-testid="account-row-restoring"]'),
+        ).toBeNull();
+      }
+      row('@bob:hs').click();
+      expect(switched).toHaveBeenCalledWith('@bob:hs');
+    });
+
+    it('re-enables the account once its restore settles', async () => {
+      const { fixture, switched, row } = await openRestoring();
+
+      fixture.componentRef.setInput('accounts', ACCOUNTS);
+      fixture.componentRef.setInput('accountsRestoring', false);
+      fixture.detectChanges();
+
+      const carol = row('@carol:hs');
+      expect(carol.getAttribute('aria-disabled')).toBeNull();
+      expect(
+        carol.querySelector('[data-testid="account-row-restoring"]'),
+      ).toBeNull();
+      for (const testId of ['add-account', 'logout']) {
+        expect(
+          document
+            .querySelector(`[data-testid="${testId}"]`)!
+            .getAttribute('aria-disabled'),
+        ).toBeNull();
+      }
+      carol.click();
+      expect(switched).toHaveBeenCalledWith('@carol:hs');
+    });
+
+    it('holds back adding and removing an account with the same reason', async () => {
+      const { fixture } = await openRestoring();
+      const removed = vi.fn();
+      const added = vi.fn();
+      fixture.componentInstance.logout.subscribe(removed);
+      fixture.componentInstance.addAccount.subscribe(added);
+
+      for (const testId of ['add-account', 'logout']) {
+        const item = document.querySelector<HTMLElement>(
+          `[data-testid="${testId}"]`,
+        )!;
+        expect(item.getAttribute('aria-disabled')).toBe('true');
+        expect(item.getAttribute('aria-description')).toBe('Loading…');
+        item.click();
+      }
+      expect(removed).not.toHaveBeenCalled();
+      expect(added).not.toHaveBeenCalled();
+    });
+  });
+
   it('renders readable initials in account and signed-out rows', async () => {
     const { fixture, container } = await render(SidebarUserPanelComponent, {
       inputs: {

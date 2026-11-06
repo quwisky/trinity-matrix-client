@@ -162,6 +162,7 @@ function buildPage({
       perSpace: {},
     }),
     reauthAccounts: signal([]),
+    accountsRestoring: signal(false),
     sidebarTitle: signal('Home'),
     spaceSortMode: signal('recent'),
     spaceSortOverridden: signal(false),

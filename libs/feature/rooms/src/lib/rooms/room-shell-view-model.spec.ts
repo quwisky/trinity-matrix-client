@@ -37,6 +37,7 @@ import { AccountBadgesService } from '../shared/account-badges.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { roomSummary, spaceSummary } from '../testing/room-summary.fixture';
 
 /**
@@ -77,6 +78,7 @@ function build(
   const profiles = signal<ReadonlyMap<string, AccountIdentity>>(new Map());
   const activeUserId = signal<string | null>('@me:hs');
   const accountIds = signal<readonly string[]>(['@me:hs']);
+  const restoringAccountIds = signal<ReadonlySet<string>>(new Set());
   const prepared = signal(true);
   const syncState = signal<SyncState | null>(null);
   const trustSummaries = signal<ReadonlyMap<string, AccountTrustSummary>>(
@@ -194,6 +196,9 @@ function build(
       MockProvider(TrustAccountStatusService, {
         summaries: trustSummaries.asReadonly(),
       }),
+      MockProvider(AccountRuntimeService, {
+        restoringAccountIds: restoringAccountIds.asReadonly(),
+      }),
     ],
   });
 
@@ -207,6 +212,7 @@ function build(
     profiles,
     activeUserId,
     accountIds,
+    restoringAccountIds,
     prepared,
     syncState,
     trustSummaries,
@@ -502,6 +508,28 @@ describe('RoomShellViewModel account profile', () => {
       'unverified',
     ]);
   });
+});
+
+it('lists an account still restoring in the background as restoring until it settles', () => {
+  const { vm, accountIds, restoringAccountIds } = build();
+  restoringAccountIds.set(new Set(['@late:hs']));
+
+  expect(
+    vm.accounts().map(({ userId, restoring }) => [userId, restoring]),
+  ).toEqual([
+    ['@me:hs', false],
+    ['@late:hs', true],
+  ]);
+
+  accountIds.set(['@me:hs', '@late:hs']);
+  restoringAccountIds.set(new Set());
+
+  expect(
+    vm.accounts().map(({ userId, restoring }) => [userId, restoring]),
+  ).toEqual([
+    ['@me:hs', false],
+    ['@late:hs', false],
+  ]);
 });
 
 describe('RoomShellViewModel members', () => {
