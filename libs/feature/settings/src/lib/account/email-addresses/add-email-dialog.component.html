@@ -2,6 +2,7 @@
   [title]="title()"
   size="md"
   [closable]="step().kind !== 'working'"
+  [cancelText]="step().kind === 'stopped' ? 'Close' : 'Cancel'"
   (closed)="close()"
 >
   @switch (step().kind) {
@@ -43,6 +44,7 @@
         <div trnDialogActions>
           <button
             trnBtn
+            trnDialogDismiss
             type="button"
             presentation="outline"
             (click)="close()"
@@ -121,6 +123,7 @@
         <div trnDialogActions>
           <button
             trnBtn
+            trnDialogDismiss
             type="button"
             presentation="outline"
             (click)="close()"

@@ -1,6 +1,7 @@
 <trn-dialog-shell
   [title]="copy.termsTitle(host())"
   size="md"
+  [cancelText]="copy.termsDecline"
   (closed)="close()"
 >
   <div id="identity-terms-body">
@@ -24,6 +25,7 @@
   <div trnDialogActions>
     <button
       trnBtn
+      trnDialogDismiss
       type="button"
       presentation="outline"
       data-autofocus

@@ -10,6 +10,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -22,7 +23,13 @@ import { ExternalBrowserService } from '@trinity/platform-native';
   selector: 'trn-whats-new-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './whats-new-dialog.component.html',
-  imports: [DatePipe, TrnButton, TrnDialogActions, TrnDialogShellComponent],
+  imports: [
+    DatePipe,
+    TrnButton,
+    TrnDialogActions,
+    TrnDialogDismiss,
+    TrnDialogShellComponent,
+  ],
 })
 export class WhatsNewDialogComponent {
   private readonly browser = inject(ExternalBrowserService);

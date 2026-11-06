@@ -7,6 +7,7 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogActions,
+  TrnDialogDismiss,
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
@@ -18,7 +19,12 @@ import { EMAIL_ADDRESSES_COPY } from './email-addresses.copy';
   selector: 'trn-identity-terms-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './identity-terms-dialog.component.html',
-  imports: [TrnButton, TrnDialogActions, TrnDialogShellComponent],
+  imports: [
+    TrnButton,
+    TrnDialogActions,
+    TrnDialogDismiss,
+    TrnDialogShellComponent,
+  ],
 })
 export class IdentityTermsDialogComponent {
   private readonly ref = inject(TrnDialogRef, { optional: true });
