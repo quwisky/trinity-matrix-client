@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Observable, finalize, map, of, shareReplay } from 'rxjs';
 import {
   ACCOUNT_RESTORE_POLICY,
@@ -19,10 +19,10 @@ export class InactiveAccountRestoreWorkflow {
     string,
     Observable<InactiveAccountRestoreRetryOutcome>
   >();
+  private readonly retryingIds = signal<ReadonlySet<string>>(new Set());
 
-  get inProgress(): boolean {
-    return this.attempts.size > 0;
-  }
+  /** The Accounts a retry is restoring right now, kept beside the attempts. */
+  readonly retrying = this.retryingIds.asReadonly();
 
   run(
     previous: AccountRestoreOutcome | undefined,
@@ -52,11 +52,13 @@ export class InactiveAccountRestoreWorkflow {
       finalize(() => {
         if (this.attempts.get(accountId) === attempt) {
           this.attempts.delete(accountId);
+          this.retryingIds.set(new Set(this.attempts.keys()));
         }
       }),
       shareReplay({ bufferSize: 1, refCount: true }),
     );
     this.attempts.set(accountId, attempt);
+    this.retryingIds.set(new Set(this.attempts.keys()));
     return attempt;
   }
 }

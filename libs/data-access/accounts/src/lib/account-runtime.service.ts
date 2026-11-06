@@ -88,6 +88,8 @@ export class AccountRuntimeService {
   private restoredOnce = false;
   private readonly backgroundRestoring = signal(false);
   private readonly pendingRestores = signal<ReadonlySet<string>>(new Set());
+  /** The last start's result, kept past a switch so a failed inactive Account stays retryable. */
+  private startResult: AccountRestoreResult | null = null;
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -106,8 +108,14 @@ export class AccountRuntimeService {
   readonly newDevices: Observable<NewDeviceEstablishment> =
     this.adapter.newDevices;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
-  /** The inactive Accounts a start is still restoring in the background; each leaves as it settles. */
-  readonly restoringAccountIds = this.pendingRestores.asReadonly();
+  /**
+   * The inactive Accounts still restoring after a start, in its background run or a retry;
+   * each leaves as it settles.
+   */
+  readonly restoringAccountIds = computed<ReadonlySet<string>>(
+    () =>
+      new Set([...this.pendingRestores(), ...this.inactiveRestore.retrying()]),
+  );
   /** Each inactive Account a start restored after it settled. Hot; never replays. */
   readonly inactiveRestoreOutcomes: Observable<AccountRestoreOutcome> =
     this.lateInactiveOutcomes.asObservable();
@@ -163,6 +171,7 @@ export class AccountRuntimeService {
         ),
         tap(({ result, background }) => {
           termination = 'settled';
+          this.startResult = result;
           this.runtimeState.set({ phase: 'settled', result });
           if (background) {
             this.restoreInBackground(background, sweepsNativeTokens);
@@ -198,14 +207,11 @@ export class AccountRuntimeService {
           operation: conflict,
         });
       }
-      const state = this.runtimeState();
-      if (state.phase !== 'settled') {
-        return of({ kind: 'unavailable' } as const);
-      }
-      const result = state.result;
+      const result = this.startResult;
       if (
-        result.kind !== 'restored-with-inactive-failures' &&
-        result.kind !== 'restored'
+        !result ||
+        (result.kind !== 'restored-with-inactive-failures' &&
+          result.kind !== 'restored')
       ) {
         return of({ kind: 'unavailable' } as const);
       }
@@ -305,27 +311,27 @@ export class AccountRuntimeService {
   }
 
   signOutAccount(accountId: string): Observable<AccountSignOutOutcome> {
-    return defer(() =>
-      this.lifecycleWorkflow.signOut(
-        accountId,
-        this.blockingLifecycleOperation(),
-      ),
-    );
+    return defer(() => {
+      const blocking = this.blockingLifecycleOperation();
+      if (!blocking) this.forgetStarted(accountId);
+      return this.lifecycleWorkflow.signOut(accountId, blocking);
+    });
   }
 
   /** Remove an account its homeserver deleted, serialized with the other lifecycle commands. */
   removeDeletedAccount(accountId: string): Observable<AccountSignOutOutcome> {
-    return defer(() =>
-      this.lifecycleWorkflow.removeDeleted(
-        accountId,
-        this.blockingLifecycleOperation(),
-      ),
-    );
+    return defer(() => {
+      const blocking = this.blockingLifecycleOperation();
+      if (!blocking) this.forgetStarted(accountId);
+      return this.lifecycleWorkflow.removeDeleted(accountId, blocking);
+    });
   }
 
   /** Whether inactive Accounts are still restoring after the start, or being retried. */
   restoringInBackground(): boolean {
-    return this.backgroundRestoring() || this.inactiveRestore.inProgress;
+    return (
+      this.backgroundRestoring() || this.inactiveRestore.retrying().size > 0
+    );
   }
 
   /** The operation that would make an account deletion wait, or null when it may start. */
@@ -342,13 +348,10 @@ export class AccountRuntimeService {
   private blockingSwitchOperation(
     accountId: string,
   ): Exclude<AccountRuntimeOperation, 'switching-account'> | null {
-    // An Account the background run has settled is as switchable as after a full start.
-    const operation =
-      this.backgroundRestoring() &&
-      !this.inactiveRestore.inProgress &&
-      !this.pendingRestores().has(accountId)
-        ? this.currentOperation(false)
-        : this.currentOperation();
+    // Only the target's own restore holds a switch back; a settled Account switches at once.
+    const operation = this.restoringAccountIds().has(accountId)
+      ? this.currentOperation()
+      : this.currentOperation(false);
     return operation === 'switching-account' ? null : operation;
   }
 
@@ -381,14 +384,32 @@ export class AccountRuntimeService {
     return this.lifecycleWorkflow.operation;
   }
 
+  /**
+   * An Account a sign-out or removal starts on leaves the start's result, so a retry never
+   * restores it again, even when that command then fails: a later start restores it if it stays.
+   */
+  private forgetStarted(accountId: string): void {
+    const result = this.startResult;
+    if (!result || !('activeAccountId' in result)) return;
+    this.startResult =
+      accountId === result.activeAccountId
+        ? null
+        : accountRestoreResultFor(
+            result.activeAccountId,
+            result.accounts.filter(
+              (account) => account.accountId !== accountId,
+            ),
+          );
+  }
+
+  /** Into the start's result whatever the phase, and into the runtime state while it shows it. */
   private publishInactiveOutcome(outcome: AccountRestoreOutcome): void {
-    const state = this.runtimeState();
-    if (state.phase !== 'settled') return;
-    const result = state.result;
+    const result = this.startResult;
     if (
-      result.kind !== 'restored-with-inactive-failures' &&
-      result.kind !== 'restored' &&
-      result.kind !== 'active-account-unavailable'
+      !result ||
+      (result.kind !== 'restored-with-inactive-failures' &&
+        result.kind !== 'restored' &&
+        result.kind !== 'active-account-unavailable')
     ) {
       return;
     }
@@ -400,10 +421,13 @@ export class AccountRuntimeService {
           account.accountId === outcome.accountId ? outcome : account,
         )
       : [...result.accounts, outcome];
-    this.runtimeState.set({
-      phase: 'settled',
-      result: accountRestoreResultFor(result.activeAccountId, accounts),
-    });
+    this.startResult = accountRestoreResultFor(
+      result.activeAccountId,
+      accounts,
+    );
+    if (this.runtimeState().phase === 'settled') {
+      this.runtimeState.set({ phase: 'settled', result: this.startResult });
+    }
   }
 
   /**

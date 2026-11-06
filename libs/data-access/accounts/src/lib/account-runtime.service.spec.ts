@@ -682,6 +682,122 @@ describe('AccountRuntimeService', () => {
     retry.unsubscribe();
   });
 
+  describe('retrying a failed inactive Account', () => {
+    function retrySetup(slow?: Subject<AdapterAccountRestoreOutcome>) {
+      const retry = new Subject<AdapterAccountRestoreOutcome>();
+      let failedAttempt = 0;
+      const test = testAdapter(
+        {
+          kind: 'available',
+          activeAccountId: '@active:hs',
+          accountIds: slow
+            ? ['@active:hs', '@failed:hs', '@other:hs', '@slow:hs']
+            : ['@active:hs', '@failed:hs', '@other:hs'],
+        },
+        (accountId) => {
+          if (accountId === '@slow:hs' && slow) return slow;
+          if (accountId !== '@failed:hs') return of({ kind: 'ready' });
+          return failedAttempt++ === 0
+            ? of({ kind: 'failed', failure: 'transient-network' })
+            : retry;
+        },
+      );
+      return { test, retry, runtime: setup(test) };
+    }
+
+    it('publishes a retry that outlives the background run, and its end', async () => {
+      const slow = new Subject<AdapterAccountRestoreOutcome>();
+      const { retry, runtime } = retrySetup(slow);
+      const restoring = computed(() => runtime.restoringInBackground());
+      const ids = computed(() => [...runtime.restoringAccountIds()].sort());
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      expect(ids()).toEqual(['@slow:hs']);
+
+      runtime.retryInactiveAccount('@failed:hs').subscribe();
+      expect(ids()).toEqual(['@failed:hs', '@slow:hs']);
+      slow.next({ kind: 'ready' });
+      slow.complete();
+      expect(restoring()).toBe(true);
+      expect(ids()).toEqual(['@failed:hs']);
+
+      retry.next({ kind: 'ready' });
+      retry.complete();
+      expect(restoring()).toBe(false);
+      expect(ids()).toEqual([]);
+    });
+
+    it('publishes a retry started after the background run', async () => {
+      const { runtime } = retrySetup();
+      const restoring = computed(() => runtime.restoringInBackground());
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      expect(restoring()).toBe(false);
+
+      runtime.retryInactiveAccount('@failed:hs').subscribe();
+
+      expect(restoring()).toBe(true);
+    });
+
+    it('does not hold back a switch to another Account, only to the one retrying', async () => {
+      const { runtime } = retrySetup();
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      runtime.retryInactiveAccount('@failed:hs').subscribe();
+
+      await expect(
+        firstValueFrom(runtime.switchActiveAccount('@failed:hs')),
+      ).resolves.toMatchObject({
+        kind: 'transition-in-progress',
+        operation: 'restoring-accounts',
+      });
+      await expect(
+        firstValueFrom(runtime.switchActiveAccount('@other:hs')),
+      ).resolves.toEqual({ kind: 'ready', accountId: '@other:hs' });
+    });
+
+    it('retries after a switch replaced the start in the runtime state', async () => {
+      const { test, retry, runtime } = retrySetup();
+      await firstValueFrom(runtime.restoreSavedAccounts());
+      await firstValueFrom(runtime.switchActiveAccount('@other:hs'));
+      expect(runtime.state().phase).toBe('switch-settled');
+
+      const outcome = firstValueFrom(
+        runtime.retryInactiveAccount('@failed:hs'),
+      );
+      retry.next({ kind: 'ready' });
+      retry.complete();
+
+      await expect(outcome).resolves.toMatchObject({
+        kind: 'ready',
+        accountId: '@failed:hs',
+      });
+      expect(test.restoreAccount).toHaveBeenCalledTimes(4);
+    });
+
+    it.each([
+      [
+        'signed out',
+        (runtime: AccountRuntimeService) =>
+          runtime.signOutAccount('@failed:hs'),
+      ],
+      [
+        'removed',
+        (runtime: AccountRuntimeService) =>
+          runtime.removeDeletedAccount('@failed:hs'),
+      ],
+    ] as const)(
+      'never restores an Account %s since the start again',
+      async (_name, remove) => {
+        const { test, runtime } = retrySetup();
+        await firstValueFrom(runtime.restoreSavedAccounts());
+        await firstValueFrom(remove(runtime));
+
+        await expect(
+          firstValueFrom(runtime.retryInactiveAccount('@failed:hs')),
+        ).resolves.toEqual({ kind: 'unavailable' });
+        expect(test.restoreAccount).toHaveBeenCalledTimes(3);
+      },
+    );
+  });
+
   describe('switching while inactive Accounts restore in the background', () => {
     function backgroundSetup(settledOutcome: AdapterAccountRestoreOutcome) {
       const pending = new Subject<AdapterAccountRestoreOutcome>();
