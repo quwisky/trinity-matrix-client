@@ -178,7 +178,7 @@
     "@types/node": "^26.6.6",
     "@types/omggif": "^1.0.5",
     "@vitest/coverage-v8": "5.0.5",
-    "@wdio/appium-service": "10.1.0",
+    "@wdio/appium-service": "10.1.1",
     "@wdio/cli": "10.1.0",
     "@wdio/globals": "10.1.0",
     "@wdio/junit-reporter": "10.1.0",
