@@ -2001,7 +2001,57 @@ describe('ThreadsService', () => {
       expect(svc.canPaginateThread()).toBe(true);
     });
 
-    it('sends one request when a second page is asked for before the first is sent', async () => {
+    it('stops offering older replies when empty pages lead back to a token already paged from', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root],
+        length: 3,
+        paginationToken: 'a',
+      });
+      const { svc, client } = setup([thread]);
+      // A server whose empty pages cycle a → b → a.
+      stubPaginate(client, () => {
+        thread.liveTimeline._token =
+          thread.liveTimeline._token === 'a' ? 'b' : 'a';
+        return Promise.resolve(true);
+      });
+      svc.attachThreadRoot('$root');
+
+      await firstValueFrom(svc.paginateOpenThread());
+      expect(svc.canPaginateThread()).toBe(true);
+      await firstValueFrom(svc.paginateOpenThread());
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    // A root with many reactions: their pages hold no replies, but each moves the token on.
+    it('keeps offering older replies through many empty pages, up to a cap', async () => {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const thread = fakeThread({
+        id: '$root',
+        rootEvent: root,
+        events: [root],
+        length: 3,
+        paginationToken: 't0',
+      });
+      const { svc, client } = setup([thread]);
+      let page = 0;
+      stubPaginate(client, () => {
+        thread.liveTimeline._token = `t${++page}`;
+        return Promise.resolve(true);
+      });
+      svc.attachThreadRoot('$root');
+
+      for (let i = 0; i < 19; i++) {
+        await firstValueFrom(svc.paginateOpenThread());
+      }
+      expect(svc.canPaginateThread()).toBe(true);
+      await firstValueFrom(svc.paginateOpenThread());
+      expect(svc.canPaginateThread()).toBe(false);
+    });
+
+    it('runs one page when a second is asked for before the first starts', async () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
       const { svc, client } = setup([
         fakeThread({
