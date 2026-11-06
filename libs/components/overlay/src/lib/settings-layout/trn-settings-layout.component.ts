@@ -60,9 +60,12 @@ export interface TrnSettingsLayoutSection {
     },
   ],
   templateUrl: './trn-settings-layout.component.html',
-  // The section slide sits in a sheet of its own to keep each under the style budget.
+  // The compact, framed (dialog and sheet) and section-slide rules sit in sheets of their own to
+  // keep each under the style budget; the order is the cascade order.
   styleUrls: [
     './trn-settings-layout.component.scss',
+    './trn-settings-layout.compact.scss',
+    './trn-settings-layout.framed.scss',
     './trn-settings-layout.slide.scss',
   ],
   host: {

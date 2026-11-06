@@ -84,8 +84,9 @@
           @if (compact()) {
             @for (group of navGroups(); track $index) {
               @if (group.label) {
+                <!-- Phones read the label as a plain heading over its card, not a small-caps rule. -->
                 <p
-                  class="settings-layout__group-label"
+                  class="settings-layout__group-label text-[length:var(--trinity-type-control-size)] leading-[var(--trinity-type-control-line-height)] tracking-normal normal-case"
                   [id]="testId() + '-group-' + $index"
                 >
                   {{ group.label }}

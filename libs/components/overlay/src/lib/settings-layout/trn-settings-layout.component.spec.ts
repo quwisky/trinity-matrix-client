@@ -539,14 +539,12 @@ describe('TrnSettingsLayoutComponent', () => {
   it('insets a framed compact directory like the shell footer', () => {
     // jsdom applies no component styles, so this reads the rule from the scss text.
     const css = readFileSync(
-      join(import.meta.dirname, 'trn-settings-layout.component.scss'),
+      join(import.meta.dirname, 'trn-settings-layout.framed.scss'),
       'utf8',
     );
-    const block =
-      /\.settings-layout\[data-compact='true'\]\s*\.settings-layout__nav\s*\{([^}]*border-inline-end: 0[^}]*)\}/u.exec(
-        css,
-      )?.[1] ?? '';
-    expect(block).toContain('padding-inline: var(--settings-layout-gutter)');
+    expect(css).toMatch(
+      /\[data-compact='true'\]\s*\{\s*:is\(\.settings-layout__nav, \.settings-layout__column\)\s*\{[^}]*padding-inline: var\(--settings-layout-gutter\)/u,
+    );
   });
 
   it('names each compact card by its group label', async () => {
@@ -587,19 +585,16 @@ describe('TrnSettingsLayoutComponent', () => {
     ).toHaveAttribute('aria-current', 'page');
   });
 
-  it('group label is sentence case in compact', () => {
-    // jsdom applies no component styles, so this reads the rule from the scss text.
-    const css = readFileSync(
-      join(import.meta.dirname, 'trn-settings-layout.component.scss'),
-      'utf8',
-    );
-    const block =
-      /\[data-compact='true'\]\s*\.settings-layout__group-label\s*\{([^}]*)\}/u.exec(
-        css,
-      )?.[1] ?? '';
-    expect(block).toContain('text-transform: none');
-    expect(block).toContain('letter-spacing: normal');
-    expect(block).toContain('var(--trinity-type-control-size)');
+  it('group label is sentence case in compact', async () => {
+    // jsdom applies no component styles; the utilities override the uppercase base rule.
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      compact: true,
+    });
+    const label = container.querySelector('.settings-layout__group-label');
+    expect(label).toHaveClass('normal-case', 'tracking-normal');
+    expect(label?.className).toContain('var(--trinity-type-control-size)');
   });
 
   it('publishes the domain-neutral section contract', () => {
