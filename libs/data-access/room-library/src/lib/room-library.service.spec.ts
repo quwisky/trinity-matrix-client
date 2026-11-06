@@ -1345,6 +1345,7 @@ describe('RoomLibraryService', () => {
   });
 
   it('schedules no rebuild when the active account switched before the answers landed', async () => {
+    vi.useFakeTimers();
     const landed: ((encrypted: boolean) => void)[] = [];
     const getRoomsA = vi.fn(() => [fakeRoom({ roomId: '!a:hs', name: 'A' })]);
     const clientA = {
@@ -1377,7 +1378,7 @@ describe('RoomLibraryService', () => {
     const before = getRoomsB.mock.calls.length;
 
     landed.forEach((resolve) => resolve(true));
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(100);
 
     expect(getRoomsB.mock.calls.length).toBe(before);
   });

@@ -438,6 +438,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('schedules no re-projection when the Account client was replaced before its answers landed', async () => {
+    vi.useFakeTimers();
     const landed: ((encrypted: boolean) => void)[] = [];
     const first = Object.assign(fakeClient('@a:hs', [fakeRoom('!a:hs')]), {
       getCrypto: () => ({
@@ -457,11 +458,11 @@ describe('SelectedRoomLibraryService', () => {
     const replacement = fakeClient('@a:hs', [fakeRoom('!a2:hs')]);
     harness.clients.set('@a:hs', replacement);
     b.emit('Room');
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(100);
     const before = replacement.getRooms.mock.calls.length;
 
     landed.forEach((resolve) => resolve(true));
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(100);
 
     expect(replacement.getRooms.mock.calls.length).toBe(before);
   });
@@ -755,50 +756,42 @@ describe('SelectedRoomLibraryService', () => {
 
     it('re-projects once for events spread over several tasks, and at once on Sync', async () => {
       vi.useFakeTimers();
-      try {
-        const { a } = mixed([fakeRoom('!a:hs')]);
+      const { a } = mixed([fakeRoom('!a:hs')]);
 
-        a.emit(RoomEvent.Receipt);
-        await vi.advanceTimersByTimeAsync(40);
-        a.emit(RoomEvent.Receipt);
-        await vi.advanceTimersByTimeAsync(40);
-        expect(a.getRooms).not.toHaveBeenCalled();
-        await vi.advanceTimersByTimeAsync(20);
-        expect(a.getRooms).toHaveBeenCalledTimes(1);
+      a.emit(RoomEvent.Receipt);
+      await vi.advanceTimersByTimeAsync(40);
+      a.emit(RoomEvent.Receipt);
+      await vi.advanceTimersByTimeAsync(40);
+      expect(a.getRooms).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(a.getRooms).toHaveBeenCalledTimes(1);
 
-        a.getRooms.mockClear();
-        a.emit(RoomEvent.Receipt);
-        a.emit(ClientEvent.Sync);
-        expect(a.getRooms).toHaveBeenCalled(); // Sync re-projects every domain at once
-        a.getRooms.mockClear();
-        await vi.advanceTimersByTimeAsync(200);
-        expect(a.getRooms).not.toHaveBeenCalled();
-      } finally {
-        vi.useRealTimers();
-      }
+      a.getRooms.mockClear();
+      a.emit(RoomEvent.Receipt);
+      a.emit(ClientEvent.Sync);
+      expect(a.getRooms).toHaveBeenCalled(); // Sync re-projects every domain at once
+      a.getRooms.mockClear();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(a.getRooms).not.toHaveBeenCalled();
     });
 
     it('re-projects for an unread decrypted event but not for read history', async () => {
       vi.useFakeTimers();
-      try {
-        const { a } = mixed([
-          fakeRoom('!a:hs', { message: 'latest', read: ['$old', '$message'] }),
-        ]);
-        const decrypted = (id: string) => ({
-          getId: () => id,
-          getRoomId: () => '!a:hs',
-        });
+      const { a } = mixed([
+        fakeRoom('!a:hs', { message: 'latest', read: ['$old', '$message'] }),
+      ]);
+      const decrypted = (id: string) => ({
+        getId: () => id,
+        getRoomId: () => '!a:hs',
+      });
 
-        a.emit(MatrixEventEvent.Decrypted, decrypted('$old'));
-        await vi.advanceTimersByTimeAsync(200);
-        expect(a.getRooms).not.toHaveBeenCalled();
+      a.emit(MatrixEventEvent.Decrypted, decrypted('$old'));
+      await vi.advanceTimersByTimeAsync(200);
+      expect(a.getRooms).not.toHaveBeenCalled();
 
-        a.emit(MatrixEventEvent.Decrypted, decrypted('$unread'));
-        await vi.advanceTimersByTimeAsync(200);
-        expect(a.getRooms).toHaveBeenCalledTimes(1);
-      } finally {
-        vi.useRealTimers();
-      }
+      a.emit(MatrixEventEvent.Decrypted, decrypted('$unread'));
+      await vi.advanceTimersByTimeAsync(200);
+      expect(a.getRooms).toHaveBeenCalledTimes(1);
     });
   });
 
