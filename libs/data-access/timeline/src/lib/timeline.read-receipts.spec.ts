@@ -89,7 +89,7 @@ it('reports deterministic retained resources and returns them to zero on release
   expect(svc.resources()).toEqual({ listenerCount: 0, retainedBytes: 0 });
 });
 
-it('bounds the application projection retained by a blurred conversation', () => {
+it('shows only the newest events of a blurred conversation', () => {
   const events = Array.from({ length: 150 }, (_, index) =>
     fakeEvent({
       id: `$${index}`,
@@ -102,7 +102,6 @@ it('bounds the application projection retained by a blurred conversation', () =>
   svc.setVisible(false);
 
   expect(svc.messages()).toHaveLength(100);
-  expect(svc.resources().retainedBytes).toBeLessThanOrEqual(11_200);
 
   svc.setVisible(true);
 

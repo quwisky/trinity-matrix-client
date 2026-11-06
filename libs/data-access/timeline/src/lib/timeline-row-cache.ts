@@ -18,6 +18,8 @@ export interface ProjectedRow {
   readonly subjectId: string;
   /** Members the row renders: sender, quoted sender, named reactors, readers, a line's target. */
   readonly members: readonly string[];
+  /** The event a message replies to. */
+  readonly replyTo?: string;
 }
 
 interface CachedRow extends ProjectedRow {
@@ -183,14 +185,27 @@ export class TimelineRowCache {
   }
 
   /**
-   * Drop the rows of events this pass did not visit. Says whether any row went, and how
-   * many this pass re-checked: either can change which members the rows render.
+   * Drop the rows of events this pass did not visit. A pass over only some of the loaded
+   * events `keepsUnvisited`: it keeps each row it skipped unless what it noted would have
+   * re-checked that row. Says whether any row went, and how many this pass re-checked:
+   * either can change which members the rows render.
    */
-  endPass(): { readonly pruned: boolean; readonly rechecked: number } {
-    const pruned = this.visited !== this.rows.size;
-    if (pruned) {
+  endPass(keepsUnvisited = false): {
+    readonly pruned: boolean;
+    readonly rechecked: number;
+  } {
+    let pruned = false;
+    if (this.visited !== this.rows.size) {
       for (const [eventId, row] of this.rows) {
-        if (row.pass !== this.pass) this.rows.delete(eventId);
+        if (
+          row.pass === this.pass ||
+          (keepsUnvisited &&
+            !this.mustRecheck(eventId, row.replyTo, row.shield, row))
+        ) {
+          continue;
+        }
+        this.rows.delete(eventId);
+        pruned = true;
       }
     }
     return { pruned, rechecked: this.stored };

@@ -242,6 +242,7 @@ describe('ConversationPinsController', () => {
       const { controller, setPinned, room, client } = setup();
       setPinned(malformed);
 
+      controller.release();
       expect(() => controller.attach(KEY, client as never)).not.toThrow();
 
       expect(controller.eventIds()).toEqual([]);
@@ -250,9 +251,23 @@ describe('ConversationPinsController', () => {
     },
   );
 
+  it('does nothing when attached again to the same Conversation', () => {
+    const { controller, room, client } = setup();
+    const read = vi.spyOn(
+      controller as unknown as { readRoomState: () => void },
+      'readRoomState',
+    );
+
+    controller.attach(KEY, client as never);
+
+    expect(read).not.toHaveBeenCalled();
+    expect(room.listenerCount(RoomStateEvent.Events)).toBe(1);
+  });
+
   it('keeps only string ids from a mixed pinned list', () => {
     const { controller, setPinned, client } = setup();
     setPinned(['$one', 4, null, { a: 1 }, '$two']);
+    controller.release();
     controller.attach(KEY, client as never);
 
     expect(controller.eventIds()).toEqual(['$one', '$two']);
@@ -267,6 +282,7 @@ describe('ConversationPinsController', () => {
       throw new Error('unreadable');
     });
 
+    controller.release();
     expect(() => controller.attach(KEY, client as never)).toThrow('unreadable');
 
     expect(room.listenerCount(RoomStateEvent.Events)).toBe(0);
@@ -285,6 +301,7 @@ describe('ConversationPinsController', () => {
       throw Object.assign(new Error('Not found'), { httpStatus: 404 });
     });
     setPinned(Array.from({ length: 250 }, (_, i) => `$p${i}`));
+    controller.release();
     controller.attach(KEY, client as never);
 
     expect(controller.eventIds()).toHaveLength(100);
@@ -300,6 +317,7 @@ describe('ConversationPinsController', () => {
     it('unpins from a 130-pin room without dropping the other 129', async () => {
       const { controller, setPinned, client, sendStateEvent } = setup();
       setPinned(ids(130));
+      controller.release();
       controller.attach(KEY, client as never);
 
       await firstValueFrom(controller.unpin('$p120'));
@@ -312,6 +330,7 @@ describe('ConversationPinsController', () => {
     it('keeps non-string entries when unpinning', async () => {
       const { controller, setPinned, client, sendStateEvent } = setup();
       setPinned(['$a', 5, '$b', null]);
+      controller.release();
       controller.attach(KEY, client as never);
 
       await firstValueFrom(controller.unpin('$a'));
@@ -322,6 +341,7 @@ describe('ConversationPinsController', () => {
     it('appends a pin to a 100-pin room and then shows it', async () => {
       const { controller, setPinned, client, room, sendStateEvent } = setup();
       setPinned(ids(100));
+      controller.release();
       controller.attach(KEY, client as never);
 
       await firstValueFrom(controller.pin('$new'));
@@ -338,6 +358,7 @@ describe('ConversationPinsController', () => {
     it('shows the newest 100 pins and still knows the older ones', () => {
       const { controller, setPinned, client } = setup();
       setPinned(ids(130));
+      controller.release();
       controller.attach(KEY, client as never);
 
       expect(controller.eventIds()).toEqual(ids(130).slice(30));

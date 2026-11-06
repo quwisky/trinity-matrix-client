@@ -88,7 +88,6 @@ const SCROLLBACK = 30;
 const RETAINED_EVENT_BYTES = 64;
 const RETAINED_SENDER_BYTES = 16;
 const RETAINED_EVENT_LIMIT = 100;
-const RETAINED_SENDER_LIMIT = 200;
 
 /**
  * Outcome of a "jump to date" attempt. A union rather than `string | null`: the outcomes
@@ -584,9 +583,8 @@ export class TimelineService {
     if (!visible) {
       this.stopTypingOnConnectedClient();
     }
-    // Blur compacts the application-owned view cache while keeping SDK listeners warm;
-    // focus immediately rebuilds the complete loaded projection from the SDK store.
-    this.rows.markAll();
+    // A hidden room shows only its newest events but keeps every row until it is released,
+    // so showing it again re-projects only what changed meanwhile.
     this.refresh();
     this.refreshTyping();
   }
@@ -1096,12 +1094,9 @@ export class TimelineService {
         readersFrom(client, room, events, newestMessageIndex),
       );
     }
-    const { pruned, rechecked } = this.rows.endPass();
+    const { pruned, rechecked } = this.rows.endPass(!this.visible);
     if (pruned || rechecked > 0) {
-      const relevant = this.rows.renderedMembers();
-      this.relevantSenders = this.visible
-        ? relevant
-        : new Set([...relevant].slice(0, RETAINED_SENDER_LIMIT));
+      this.relevantSenders = this.rows.renderedMembers();
     }
     this._oldestEventId.set(events[0]?.getId() ?? null);
     // Null when there is no marker, the marker isn't loaded, or nothing followed it.
@@ -1160,6 +1155,7 @@ export class TimelineService {
         shield,
         subjectId,
         members: [...members],
+        replyTo: e.replyEventId,
       },
       !unchanged,
     );
