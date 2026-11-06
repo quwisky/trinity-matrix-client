@@ -7,6 +7,11 @@ import {
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import {
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
+} from '../inset-group/trn-inset-group';
 import type {
   ActionSheetButton,
   ActionSheetData,
@@ -20,7 +25,13 @@ import type {
 @Component({
   selector: 'trn-action-groups',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton, TrnIconComponent],
+  imports: [
+    TrnButton,
+    TrnIconComponent,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
+  ],
   templateUrl: './trn-action-groups.component.html',
   host: {
     class: 'flex min-h-0 flex-1 flex-col',

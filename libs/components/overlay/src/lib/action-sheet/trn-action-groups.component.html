@@ -46,29 +46,20 @@
     @if (!$first) {
       <div class="h-4" role="separator"></div>
     }
-    <div
-      class="isolate mx-2.5 flex flex-col rounded-[var(--trinity-radius-xl)] bg-[color:var(--trinity-neutral-fill-surface)]"
-      data-testid="action-sheet-group"
-    >
+    <div trnInsetGroup class="mx-2.5" data-testid="action-sheet-group">
       @for (button of group.rows; track $index) {
         @if (!$first) {
-          <!-- Inset to the label: the row's px-4, the 1.5rem icon and gap-4. Decorative, so
-               it may vanish under forced colours; the cards' gaps still separate the groups. -->
-          <div
-            class="h-px shrink-0 bg-[color:var(--trinity-border-sheet-divider)]"
-            [class.ms-14]="group.icons"
-            [class.ms-4]="!group.icons"
+          <trn-inset-divider
+            [inset]="group.icons ? 'icon' : 'edge'"
             data-testid="action-sheet-divider"
-          ></div>
+          />
         }
-        <!-- Height from padding: the touch-target rule fixes min-height at 44px. The focused
-             row rises over its neighbours, which would otherwise cover its ring. -->
         <button
           trnBtn
+          trnInsetRow
           shape="row"
           [variant]="button.variant === 'danger' ? 'danger' : 'secondary'"
           [presentation]="button.variant === 'danger' ? 'ghost' : 'solid'"
-          class="relative gap-4 rounded-none px-4 py-4 text-base first:rounded-t-[var(--trinity-radius-xl)] last:rounded-b-[var(--trinity-radius-xl)] focus-visible:z-[1]"
           [disabled]="button.disabled"
           [attr.data-trn-variant]="button.variant ?? 'neutral'"
           [attr.data-testid]="button.testId"
