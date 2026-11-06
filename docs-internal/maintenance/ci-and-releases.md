@@ -477,7 +477,7 @@ Never force-push.
 ### Release credentials
 
 Every release credential lives in an environment: the release App key in `release-app`,
-the macOS signing and notarization secrets in `release`, the tap deploy key in `homebrew`,
+the macOS signing and notarization secrets in `release`, the Android upload key in `release-android`, the tap deploy key in `homebrew`,
 the iOS upload secrets in `release-mobile` and the Renovate App key in `renovate`. An environment admits a job by its ref, so the
 rules on those refs decide who can reach the credentials:
 
@@ -495,8 +495,8 @@ rules on those refs decide who can reach the credentials:
   as before. GitHub reads `CODEOWNERS` from the pull request's base branch, so each
   `release/X.Y.x` branch carries its own copy; `Release stable` refuses a prerelease
   without one.
-- `release`, `release-mobile` and `homebrew` require the maintainer's approval for each deployment, so every
-  signed macOS build and every tap update waits for it. `release-app` runs on every push
+- `release`, `release-android`, `release-mobile` and `homebrew` require the maintainer's approval for each deployment, so every
+  signed macOS build, every signed Android APK and every tap update waits for it. `release-app` runs on every push
   to `main` and `release/**` and `renovate` runs daily, so neither has reviewers; the
   approval rules on those branches guard them instead.
 
@@ -819,7 +819,7 @@ The `release-notes` job reads the draft release body with the release App token 
 `package`, `desktop-shell` and `package-web` as `TRINITY_CURRENT_RELEASE_NOTES`, because their
 read-only token cannot see a draft. They build with `TRINITY_RELEASE_NOTES=required`, so a
 notes failure fails the build. A dispatch therefore re-packages an existing release, draft or
-published, only: for a tag without one, `release-notes` fails and the builds are skipped. Android builds run locally after publishing, and so do iOS builds unless uploaded with [TestFlight upload](#testflight-upload): set
+published, only: for a tag without one, `release-notes` fails and the builds are skipped. The Android APK is built and signed by `android-apk` and `sign-android` (see [Android signing](#android-signing)); the Android AAB and iOS builds run locally after publishing, and so do iOS builds unless uploaded with [TestFlight upload](#testflight-upload): set
 `TRINITY_RELEASE_NOTES=required` and `GITHUB_TOKEN=$(gh auth token)`.
 
 After verification, the package matrix builds the desktop shell with publishing
@@ -828,12 +828,13 @@ disabled and without any signing secret, and packages the Linux and Windows inst
 job packages, signs and notarizes it for macOS without waiting for the matrix. The jobs
 upload these artifacts for 30 days:
 
-| Host    | Current artifacts                                                             | Distribution boundary                                                                                                                                                    |
-| ------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Linux   | AppImage and `.deb`                                                           | The workflow packages them; it does not publish them to a download service.                                                                                              |
-| macOS   | `.dmg` and `.zip` from `sign-mac`, using the `macos-26` runner's default arch | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
-| Windows | NSIS `.exe`                                                                   | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
-| Web     | `Trinity-Web-<version>.zip` from the `package-web` job                        | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
+| Host    | Current artifacts                                                                   | Distribution boundary                                                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Linux   | AppImage and `.deb`                                                                 | The workflow packages them; it does not publish them to a download service.                                                                                              |
+| macOS   | `.dmg` and `.zip` from `sign-mac`, using the `macos-26` runner's default arch       | Signing and notarization depend on configured credentials. Verify the archive architecture before merging the release PR; `publish` only checks that assets are present. |
+| Windows | NSIS `.exe`                                                                         | The workflow packages the installer; distribution remains a maintainer action.                                                                                           |
+| Android | `Trinity-<versionName>.apk` from the `sign-android` job, signed with the upload key | `publish` requires it. Without a signed APK the release stays a draft. See [Android signing](#android-signing).                                                          |
+| Web     | `Trinity-Web-<version>.zip` from the `package-web` job                              | Publishing the release runs `container.yml`, which pushes the image built from this zip to GHCR.                                                                         |
 
 The `draft-release` job creates or updates a **draft** GitHub release, and the `publish`
 job then publishes it when every expected asset is attached (see
@@ -895,8 +896,56 @@ Apple-ID form above. Use the detailed [desktop signing and notarization
 instructions](../../apps/docs-developers/src/content/docs/platforms/electron.md) when preparing those credentials; do not
 put their values in issues, logs, or documentation.
 
-Android and iOS retain independent `1.0` / build-code values and are not part
-of the current release version gate. Their build and distribution requirements
+### Android signing {#android-signing}
+
+Two jobs make the Android APK. `android-apk` has no environment and no secrets: it builds
+the unsigned APK through Nx and Gradle and uploads it as `android-apk-unsigned`, with its
+artifact id and SHA-256 as job outputs. `sign-android` runs in the `release-android`
+environment, with no workspace install, Nx, Gradle or pnpm. It sparse-checks out a few
+files, downloads that artifact by id and checks the SHA-256, checks that it holds exactly
+one APK and that it is zip-aligned (aligning it if not), and reads the version, all before
+it sees a secret. One step then decodes the keystore into `$RUNNER_TEMP` and runs
+`apksigner sign` with `--v4-signing-enabled false`; an `always()` step deletes the keystore.
+`scripts/verify-apk-signer.mjs` then compares the signer's certificate with the SHA-256 in
+`android/release-signing-cert.sha256`, and the job uploads `trinity-android` as
+`Trinity-<versionName>.apk`. `draft-release` needs `sign-android` and `publish` requires the
+APK, so a release stays a draft without a signed one. Each release needs two approvals:
+`release` (macOS) and `release-android`.
+
+The environment holds four secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. A missing one fails `sign-android`. The
+`TRINITY_ANDROID_*` variables that Gradle reads are for local builds only; the workflow never
+sets them.
+
+`android/release-signing-cert.sha256` holds the lowercase hex SHA-256 of the upload
+certificate, without colons. It starts as `UNSET`, so the check fails and releases stay
+drafts until the maintainer commits the real digest.
+
+The `versionCode` is `((major*100+minor)*100+patch)*100 + N`, where N is the `-next.N`
+counter, or 99 for a stable release. Minor and patch must each be at most 99 and N from 1 to
+98 (`scripts/android-version.mjs` refuses anything else), so every release has a higher code
+than the one before.
+
+> [!WARNING]
+> The upload key cannot be replaced. If it is lost, no new APK can update existing installs:
+> users must uninstall Trinity and lose its local data. Keep an offline backup of the
+> keystore and its passwords.
+
+One-time setup:
+
+1. Generate the key (a PKCS12 keystore, `-storetype PKCS12`, is fine):
+   `keytool -genkeypair -v -keystore trinity-release.jks -alias trinity -keyalg RSA -keysize 4096 -validity 10000`
+2. Create the `release-android` environment with required reviewers before the first release
+   that uses it. Otherwise GitHub creates it unprotected on first use.
+3. Add the four secrets to that environment. On macOS,
+   `base64 -i trinity-release.jks` gives `ANDROID_KEYSTORE_BASE64`.
+4. Run `keytool -list -v -keystore trinity-release.jks -alias trinity`, and commit the
+   certificate's SHA-256 as lowercase hex without colons to
+   `android/release-signing-cert.sha256`.
+5. Back up the keystore and the passwords offline.
+
+Android and iOS retain independent `1.0` / build-code values for the iOS app and the
+Android AAB; the APK's version comes from the release. Their other build and distribution requirements
 belong to the [Android](../../apps/docs-developers/src/content/docs/platforms/android.md)
 and [iOS](../../apps/docs-developers/src/content/docs/platforms/ios.md) guides.
 
