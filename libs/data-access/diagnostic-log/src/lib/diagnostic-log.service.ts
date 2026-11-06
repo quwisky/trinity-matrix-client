@@ -29,9 +29,7 @@ import {
 } from './diagnostic-log.tokens';
 import {
   KEEP_DIAGNOSTIC_LOG_PREFERENCE,
-  readDetailedLogSetting,
   readKeepLogSetting,
-  saveDetailedLogSetting,
   saveKeepLogSetting,
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
@@ -110,9 +108,6 @@ export class DiagnosticLogService {
   );
   private readonly _settingKnown = signal(false);
   private readonly _detailedLog = signal(false);
-  private readonly _detailedLogKnown = signal(false);
-  /** Set once the user picks "Detailed logging", so a slower stored read can't undo it. */
-  private detailedChosen = false;
   private readonly recorder = new DiagnosticLogRecorder({
     openStore: () => this.openStore(),
     removeStore: inject(DIAGNOSTIC_LOG_STORE_REMOVER),
@@ -140,10 +135,11 @@ export class DiagnosticLogService {
    * one never is.
    */
   readonly settingKnown = this._settingKnown.asReadonly();
-  /** Settings › Advanced › Detailed logging: the log also keeps the SDK's debug lines. */
+  /**
+   * Settings › Advanced › Detailed logging: the log also keeps the SDK's debug lines. Never
+   * saved, so every app start is back at info and a forgotten switch stops costing anything.
+   */
   readonly detailedLog = this._detailedLog.asReadonly();
-  /** Whether `detailedLog()` is settled: the stored value was read, or the user or a reset chose. */
-  readonly detailedLogKnown = this._detailedLogKnown.asReadonly();
 
   /** Install capture and read the setting. Idempotent; undone when the root injector is destroyed. */
   start(): void {
@@ -307,13 +303,9 @@ export class DiagnosticLogService {
     );
   }
 
-  /** Turn detailed logging on or off; applies at once, the outcome is the save's. Cold. */
-  setDetailedLog(detailed: boolean): Observable<PreferenceCommandOutcome> {
-    return defer(() => {
-      this.detailedChosen = true;
-      this.applyDetailed(detailed);
-      return saveDetailedLogSetting(this.preferences, detailed);
-    });
+  /** Turn detailed logging on or off for the rest of this session. */
+  setDetailedLog(detailed: boolean): void {
+    this.applyDetailed(detailed);
   }
 
   /**
@@ -369,22 +361,10 @@ export class DiagnosticLogService {
         // the next start, which reads the same stored "off".
         this.applySetting(stored === 'on').catch(() => undefined);
       });
-    readDetailedLogSetting(this.preferences)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (detailed) => {
-          if (detailed && !this.detailedChosen) {
-            this.applyDetailed(true);
-          }
-          this._detailedLogKnown.set(true);
-        },
-        error: () => this._detailedLogKnown.set(true),
-      });
   }
 
   private applyDetailed(detailed: boolean): void {
     this._detailedLog.set(detailed);
-    this._detailedLogKnown.set(true);
     this.sdkCapture?.setDetailed(detailed);
   }
 

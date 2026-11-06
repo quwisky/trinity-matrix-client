@@ -55,12 +55,6 @@ export class DiagnosticsGroupComponent {
   /** True while a change to the switch is being saved. */
   readonly saving = signal(false);
 
-  /** True while the stored Detailed logging value is still being read. */
-  readonly detailedPending = computed(() => !this.log.detailedLogKnown());
-
-  /** True while a change to Detailed logging is being saved. */
-  readonly savingDetailed = signal(false);
-
   /** The log is off, but the stored copy could not be deleted and is still on this device. */
   readonly notDeleted = signal(false);
 
@@ -111,24 +105,9 @@ export class DiagnosticsGroupComponent {
       });
   }
 
-  /** Applies at once; a failed save only means it won't survive a restart. */
+  /** Applies at once, for this session only. */
   setDetailedLog(detailed: boolean): void {
-    this.savingDetailed.set(true);
-    this.log
-      .setDetailedLog(detailed)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (outcome) => {
-          this.savingDetailed.set(false);
-          if (outcome.kind !== 'completed') {
-            this.showSaveFailed();
-          }
-        },
-        error: () => {
-          this.savingDetailed.set(false);
-          this.showSaveFailed();
-        },
-      });
+    this.log.setDetailedLog(detailed);
   }
 
   clear(): void {

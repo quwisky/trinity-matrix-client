@@ -17,45 +17,13 @@ import {
   type Observable,
 } from 'rxjs';
 
-function diagnosticsSwitch(
-  name: string,
-  key: string,
-  order: number,
-  defaultValue: boolean,
-) {
-  const validate = (value: unknown): PreferenceValidation<boolean> =>
-    typeof value === 'boolean'
-      ? { kind: 'accepted', value }
-      : {
-          kind: 'rejected',
-          diagnostic: { code: `diagnostics-${name}-not-boolean` },
-        };
-  return definePreference({
-    id: `diagnostics.${name}`,
-    owner: 'diagnostics',
-    section: 'advanced',
-    order,
-    scope: 'installation',
-    defaultValue,
-    sensitivity: 'private',
-    storage: 'device-preferences',
-    export: 'excluded',
-    editor: { kind: 'none' },
-    persistence: {
-      key,
-      migration: {
-        currentVersion: 1,
-        migrate: (stored: StoredPreference) =>
-          stored.version === 1
-            ? validate(stored.value)
-            : {
-                kind: 'rejected',
-                diagnostic: { code: `diagnostics-${name}-version-unsupported` },
-              },
-      },
-    },
-    validate,
-  } satisfies PreferenceDescriptor<boolean>);
+function validateKeepLog(value: unknown): PreferenceValidation<boolean> {
+  return typeof value === 'boolean'
+    ? { kind: 'accepted', value }
+    : {
+        kind: 'rejected',
+        diagnostic: { code: 'diagnostics-keep-log-not-boolean' },
+      };
 }
 
 /**
@@ -64,23 +32,32 @@ function diagnosticsSwitch(
  * governs, and it is excluded from the exported configuration because it describes this
  * device.
  */
-export const KEEP_DIAGNOSTIC_LOG_PREFERENCE = diagnosticsSwitch(
-  'keep-log',
-  'trinity.diagnostics.keep-log',
-  0,
-  true,
-);
-
-/**
- * Settings › Advanced › Diagnostics › Detailed logging: the log also keeps matrix-js-sdk's
- * debug lines. Off by default, because those lines cost formatting and storage all the time.
- */
-export const DETAILED_DIAGNOSTIC_LOG_PREFERENCE = diagnosticsSwitch(
-  'detailed-log',
-  'trinity.diagnostics.detailed-log',
-  1,
-  false,
-);
+export const KEEP_DIAGNOSTIC_LOG_PREFERENCE = definePreference({
+  id: 'diagnostics.keep-log',
+  owner: 'diagnostics',
+  section: 'advanced',
+  order: 0,
+  scope: 'installation',
+  defaultValue: true,
+  sensitivity: 'private',
+  storage: 'device-preferences',
+  export: 'excluded',
+  editor: { kind: 'none' },
+  persistence: {
+    key: 'trinity.diagnostics.keep-log',
+    migration: {
+      currentVersion: 1,
+      migrate: (stored: StoredPreference) =>
+        stored.version === 1
+          ? validateKeepLog(stored.value)
+          : {
+              kind: 'rejected',
+              diagnostic: { code: 'diagnostics-keep-log-version-unsupported' },
+            },
+    },
+  },
+  validate: validateKeepLog,
+} satisfies PreferenceDescriptor<boolean>);
 
 /** "Keep a diagnostic log" as read from storage, or `unreadable` when it couldn't be. */
 export type StoredKeepLog = 'on' | 'off' | 'unreadable';
@@ -123,40 +100,5 @@ export function saveKeepLogSetting(
     KEEP_DIAGNOSTIC_LOG_PREFERENCE,
     INSTALLATION_PREFERENCE_CONTEXT,
     keep,
-  );
-}
-
-/** Read "Detailed logging" for this installation; off when it can't be read. Cold. */
-export function readDetailedLogSetting(
-  preferences: PreferenceStoreService,
-): Observable<boolean> {
-  return defer(() =>
-    preferences.hydrateDescriptors(INSTALLATION_PREFERENCE_CONTEXT, [
-      DETAILED_DIAGNOSTIC_LOG_PREFERENCE,
-    ]),
-  ).pipe(
-    take(1),
-    map(
-      (outcome) =>
-        outcome.kind === 'ready' &&
-        preferences.stateFor(
-          DETAILED_DIAGNOSTIC_LOG_PREFERENCE,
-          INSTALLATION_PREFERENCE_CONTEXT,
-        )().value === true,
-    ),
-    catchError(() => of(false)),
-    defaultIfEmpty(false),
-  );
-}
-
-/** Save "Detailed logging" for this installation. Cold. */
-export function saveDetailedLogSetting(
-  preferences: PreferenceStoreService,
-  detailed: boolean,
-): Observable<PreferenceCommandOutcome> {
-  return preferences.setPreference(
-    DETAILED_DIAGNOSTIC_LOG_PREFERENCE,
-    INSTALLATION_PREFERENCE_CONTEXT,
-    detailed,
   );
 }

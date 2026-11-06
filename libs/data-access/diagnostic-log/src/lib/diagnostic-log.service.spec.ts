@@ -33,8 +33,7 @@ import {
 const BUILD: BuildInfo = { version: '1.2.3', commit: 'abc1234', builtAt: '' };
 /** "Keep a diagnostic log" stored as off, as the preference runtime writes it. */
 const KEEP_LOG_OFF = JSON.stringify({ version: 1, value: false });
-const DETAILED_LOG_KEY = 'trinity.diagnostics.detailed-log';
-const DETAILED_LOG_ON = JSON.stringify({ version: 1, value: true });
+const KEEP_LOG_KEY = 'trinity.diagnostics.keep-log';
 
 describe('DiagnosticLogService', () => {
   let warn: ReturnType<typeof vi.spyOn>;
@@ -43,15 +42,19 @@ describe('DiagnosticLogService', () => {
   let remove: ReturnType<typeof vi.fn<() => Promise<void>>>;
   /** The app's switch for SDK debug capture; records every call in order. */
   let setSdkCapture: ReturnType<typeof vi.fn<(enabled: boolean) => void>>;
-  let storedDetailed: string | null;
+  /** Every key written to preference storage, and what it holds besides "Keep a diagnostic log". */
+  let writtenKeys: string[];
+  let storedOthers: Map<string, string>;
   let setSdkDetailed: ReturnType<typeof vi.fn<(detailed: boolean) => void>>;
 
-  /** Installation preference storage: "Keep a diagnostic log" and "Detailed logging". */
+  /** Installation preference storage holding "Keep a diagnostic log". */
   function preferenceAdapter(): PreferenceStorageAdapter {
     return {
       read: (request) => {
         const payload =
-          request.key === DETAILED_LOG_KEY ? storedDetailed : storedSetting;
+          request.key === KEEP_LOG_KEY
+            ? storedSetting
+            : (storedOthers.get(request.key) ?? null);
         return of(
           payload === null
             ? ({ kind: 'missing' } as const)
@@ -59,10 +62,11 @@ describe('DiagnosticLogService', () => {
         );
       },
       write: (request) => {
-        if (request.key === DETAILED_LOG_KEY) {
-          storedDetailed = request.payload;
-        } else {
+        writtenKeys.push(request.key);
+        if (request.key === KEEP_LOG_KEY) {
           storedSetting = request.payload;
+        } else {
+          storedOthers.set(request.key, request.payload);
         }
         return of({ kind: 'completed' } as const);
       },
@@ -118,7 +122,8 @@ describe('DiagnosticLogService', () => {
     // Deleting the database, emulated on the memory store the factory hands out.
     remove = vi.fn(() => store.clear());
     setSdkCapture = vi.fn();
-    storedDetailed = null;
+    writtenKeys = [];
+    storedOthers = new Map();
     setSdkDetailed = vi.fn();
   });
 
@@ -568,45 +573,35 @@ describe('DiagnosticLogService', () => {
       expect(setSdkDetailed).not.toHaveBeenCalled();
     });
 
-    it('raises the SDK to debug at start when stored on', async () => {
-      storedDetailed = DETAILED_LOG_ON;
+    it('switches on and off live for this session, without saving', async () => {
       const service = setup();
       await stored();
 
+      service.setDetailedLog(true);
       expect(service.detailedLog()).toBe(true);
-      expect(setSdkDetailed.mock.calls).toEqual([[true]]);
-    });
+      service.setDetailedLog(false);
 
-    it('is known once its stored value is read', async () => {
-      const reads = new Subject<PreferenceStorageReadOutcome>();
-      const service = setup(undefined, pendingAdapter(reads));
-
-      expect(service.detailedLogKnown()).toBe(false);
-
-      reads.next({ kind: 'missing' });
-      reads.complete();
-      await vi.advanceTimersByTimeAsync(0);
-
-      expect(service.detailedLogKnown()).toBe(true);
-    });
-
-    it('applies a change at once and saves it', async () => {
-      const service = setup();
-
-      const turnedOn = firstValueFrom(service.setDetailedLog(true));
-      expect(setSdkDetailed.mock.calls).toEqual([[true]]);
-      expect(await turnedOn).toEqual({ kind: 'completed' });
-      expect(service.detailedLog()).toBe(true);
-      expect(storedDetailed).toBe(DETAILED_LOG_ON);
-
-      await firstValueFrom(service.setDetailedLog(false));
-      expect(setSdkDetailed.mock.calls).toEqual([[true], [false]]);
       expect(service.detailedLog()).toBe(false);
+      expect(setSdkDetailed.mock.calls).toEqual([[true], [false]]);
+      expect(writtenKeys).toEqual([]);
+    });
+
+    it('is off again, with the SDK at info, after a restart', async () => {
+      setup().setDetailedLog(true);
+      await stored();
+      TestBed.resetTestingModule();
+      setSdkDetailed.mockClear();
+
+      const restarted = setup();
+      await stored();
+
+      expect(restarted.detailedLog()).toBe(false);
+      expect(setSdkDetailed).not.toHaveBeenCalled();
     });
 
     it('returns to off for the session on a factory reset', async () => {
-      storedDetailed = DETAILED_LOG_ON;
       const service = setup();
+      service.setDetailedLog(true);
       await stored();
 
       await firstValueFrom(service.discard());

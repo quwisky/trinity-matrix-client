@@ -20,16 +20,14 @@
   @if (keepLog()) {
     <trn-settings-row
       label="Detailed logging"
-      description="Also keeps Matrix debug details, which help with sync and encryption problems. This uses more storage and battery, so turn it on only while you reproduce a problem."
+      description="Also keeps Matrix debug details, which help with sync and encryption problems. This uses more storage and battery, so it turns off when Trinity restarts."
       for="advanced-detailed-diagnostic-log-switch"
-      [attr.aria-busy]="detailedPending() ? 'true' : null"
       data-testid="advanced-detailed-diagnostic-log"
     >
       <trn-switch
         inputId="advanced-detailed-diagnostic-log-switch"
         aria-describedby="advanced-detailed-diagnostic-log-switch-description"
         [checked]="detailedLog()"
-        [disabled]="detailedPending() || savingDetailed()"
         (checkedChange)="setDetailedLog($event)"
       />
     </trn-settings-row>

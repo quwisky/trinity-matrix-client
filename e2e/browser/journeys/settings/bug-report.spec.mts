@@ -4,12 +4,12 @@ import {
   homeserverSession,
   login,
   preferenceKeys,
-  seedPreference,
   webNavigate,
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { passwordLogin, registerUser } from '../../../support/account.mts';
 import {
+  closeSettings,
   openSettingsSection,
   openSystemStatusFromRooms,
 } from '../../../support/journeys/navigation.mts';
@@ -18,8 +18,8 @@ import {
   sendComposerLines,
 } from '../../../support/message-composer.mts';
 
-// Covers Report a bug: with Detailed logging on, matrix-js-sdk debug output is captured into
-// IndexedDB and survives a reload; the stored entries never hold a credential; the preview and the saved
+// Covers Report a bug: with Detailed logging turned on for the session, matrix-js-sdk debug
+// output is captured into IndexedDB and survives a reload; the stored entries never hold a credential; the preview and the saved
 // trinity-<date>.log are the same redacted text, and neither contains the app's access token,
 // its device ID, a room ID, the user ID, the server name, a room name or topic, the user's
 // display name, an email address or a message body received, sent, encrypted or decrypted.
@@ -30,7 +30,6 @@ import {
 const session = homeserverSession();
 const DB_NAME = 'trinity-diagnostic-log';
 const KEEP_LOG_KEY = 'trinity.diagnostics.keep-log';
-const DETAILED_LOG_KEY = 'trinity.diagnostics.detailed-log';
 
 /** Messages in the diagnostic log database, read without creating it. */
 function storedMessages(page: Page): Promise<string[]> {
@@ -205,13 +204,14 @@ test.describe('Report a bug', () => {
       }),
     );
 
-    // Debug lines carry the requests, so the credential checks below need them recorded.
-    await seedPreference(
-      page,
-      DETAILED_LOG_KEY,
-      JSON.stringify({ version: 1, value: true }),
-    );
     await login(page, { available: true, hs, user, pass } as HomeserverSession);
+    // Debug lines carry the requests, so the credential checks below need them recorded.
+    // Detailed logging lasts one session; the reload below turns it off again.
+    await openSettingsSection(page, 'advanced');
+    const detailed = page.getByRole('switch', { name: 'Detailed logging' });
+    await detailed.click();
+    await expect(detailed).toBeChecked();
+    await closeSettings(page);
     // Receive: a message another device sent.
     await openNamedRoom(page, roomName);
     await expect(page.locator('.msg__text', { hasText: body })).toBeVisible({
@@ -297,6 +297,10 @@ test.describe('Report a bug', () => {
     }
 
     await openSettingsSection(page, 'advanced');
+    // The reload was a restart, so Detailed logging is off again.
+    await expect(
+      page.getByRole('switch', { name: 'Detailed logging' }),
+    ).not.toBeChecked();
     const reportButton = page.getByTestId('advanced-report-bug');
     await reportButton.click();
     const dialog = page.getByRole('dialog', { name: 'Report a bug' });
