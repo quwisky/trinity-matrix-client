@@ -87,6 +87,7 @@ export class AccountRuntimeService {
   private establishment: InFlightAccountEstablishment | null = null;
   private restoredOnce = false;
   private readonly backgroundRestoring = signal(false);
+  private readonly pendingRestores = signal<ReadonlySet<string>>(new Set());
 
   readonly state = this.runtimeState.asReadonly();
   /** Value-free destructive cleanup progress retained independently of UI observers. */
@@ -105,6 +106,8 @@ export class AccountRuntimeService {
   readonly newDevices: Observable<NewDeviceEstablishment> =
     this.adapter.newDevices;
   readonly hasActiveAccount = computed(() => this.activeAccountId() !== null);
+  /** The inactive Accounts a start is still restoring in the background; each leaves as it settles. */
+  readonly restoringAccountIds = this.pendingRestores.asReadonly();
   /** Each inactive Account a start restored after it settled. Hot; never replays. */
   readonly inactiveRestoreOutcomes: Observable<AccountRestoreOutcome> =
     this.lateInactiveOutcomes.asObservable();
@@ -293,7 +296,7 @@ export class AccountRuntimeService {
       this.switchWorkflow.run(
         accountId,
         this.activeAccountId,
-        this.blockingSwitchOperation(),
+        this.blockingSwitchOperation(accountId),
         coordination.prepare,
         coordination.onCommitStarted ?? (() => undefined),
         (state) => this.runtimeState.set(state),
@@ -336,11 +339,16 @@ export class AccountRuntimeService {
     );
   }
 
-  private blockingSwitchOperation(): Exclude<
-    AccountRuntimeOperation,
-    'switching-account'
-  > | null {
-    const operation = this.currentOperation();
+  private blockingSwitchOperation(
+    accountId: string,
+  ): Exclude<AccountRuntimeOperation, 'switching-account'> | null {
+    // An Account the background run has settled is as switchable as after a full start.
+    const operation =
+      this.backgroundRestoring() &&
+      !this.inactiveRestore.inProgress &&
+      !this.pendingRestores().has(accountId)
+        ? this.currentOperation(false)
+        : this.currentOperation();
     return operation === 'switching-account' ? null : operation;
   }
 
@@ -477,6 +485,7 @@ export class AccountRuntimeService {
   ): void {
     if (accountIds.length === 0 && !sweepsNativeTokens) return;
     this.backgroundRestoring.set(true);
+    this.pendingRestores.set(new Set(accountIds));
     concat(
       from(accountIds).pipe(
         mergeMap(
@@ -494,6 +503,11 @@ export class AccountRuntimeService {
               }),
               tap((outcome) => {
                 this.publishInactiveOutcome(outcome);
+                this.pendingRestores.update((pending) => {
+                  const next = new Set(pending);
+                  next.delete(accountId);
+                  return next;
+                });
                 this.lateInactiveOutcomes.next(outcome);
               }),
             ),
@@ -508,7 +522,10 @@ export class AccountRuntimeService {
         : EMPTY,
     )
       .pipe(
-        finalize(() => this.backgroundRestoring.set(false)),
+        finalize(() => {
+          this.pendingRestores.set(new Set());
+          this.backgroundRestoring.set(false);
+        }),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe();
