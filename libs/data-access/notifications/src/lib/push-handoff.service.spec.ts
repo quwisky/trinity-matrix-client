@@ -503,6 +503,34 @@ describe('PushHandoffService', () => {
     expect(getRooms.mock.calls.length).toBe(before);
   });
 
+  it('ignores a straggler answer from a replaced binding of the same account', async () => {
+    const resolvers: ((encrypted: boolean) => void)[] = [];
+    const room = { roomId: '!a:hs', name: 'Team', membership: 'join' };
+    const first = fakeClient('@me:hs', [room]);
+    first.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () =>
+        new Promise<boolean>((resolve) => resolvers.push(resolve)),
+    });
+    const replacement = fakeClient('@me:hs', [room]);
+    replacement.getCrypto = () => ({
+      isEncryptionEnabledInRoom: () => new Promise<boolean>(() => undefined),
+    });
+    const getRooms = vi.spyOn(replacement, 'getRooms');
+    const h = setup({ clients: [first] });
+    await start(h);
+
+    h.clients.set('@me:hs', replacement);
+    h.accountIds.set(['@me:hs']);
+    TestBed.tick();
+    await flush();
+    const before = getRooms.mock.calls.length;
+
+    resolvers.forEach((resolve) => resolve(false));
+    await flush();
+
+    expect(getRooms.mock.calls.length).toBe(before);
+  });
+
   it('rewrites a room stored as unencrypted once its state turns encryption on', async () => {
     const h = setup();
     await start(h);
