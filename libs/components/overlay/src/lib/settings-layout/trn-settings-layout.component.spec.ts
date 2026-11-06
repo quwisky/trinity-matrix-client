@@ -507,6 +507,96 @@ describe('TrnSettingsLayoutComponent', () => {
     });
   });
 
+  it('compact directory sets each group in a card', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections: [
+        ...sections,
+        { id: 'more2', label: 'More two', icon: 'code', group: 'More' },
+      ],
+      compact: true,
+    });
+    const cards = container.querySelectorAll(
+      '[data-testid="settings-directory-group"]',
+    );
+    expect(cards).toHaveLength(2);
+    expect(cards[0].previousElementSibling).toHaveClass(
+      'settings-layout__group-label',
+    );
+    expect(cards[0].previousElementSibling?.textContent?.trim()).toBe('Basics');
+    expect(
+      cards[1].querySelectorAll('[data-trn-settings-section]'),
+    ).toHaveLength(2);
+    expect(cards[1].querySelectorAll('trn-inset-divider')).toHaveLength(1);
+    expect(cards[1].querySelector('trn-inset-divider')).toHaveClass(
+      'ms-[calc(min(1rem,16px)*2+1.5rem)]',
+    );
+    const row = cards[0].querySelector('[data-testid="settings-tab-general"]');
+    expect(row?.getAttribute('data-trn-settings-section')).toBe('general');
+    expect(row?.querySelector('trn-icon[name="chevron-right"]')).toBeTruthy();
+  });
+
+  it('insets a framed compact directory like the shell footer', () => {
+    // jsdom applies no component styles, so this reads the rule from the scss text.
+    const css = readFileSync(
+      join(import.meta.dirname, 'trn-settings-layout.framed.scss'),
+      'utf8',
+    );
+    expect(css).toMatch(
+      /\[data-compact='true'\]\s*\{\s*:is\(\.settings-layout__nav, \.settings-layout__column\)\s*\{[^}]*padding-inline: var\(--settings-layout-gutter\)/u,
+    );
+  });
+
+  it('names each compact card by its group label', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      compact: true,
+    });
+    const cards = container.querySelectorAll<HTMLElement>(
+      '[data-testid="settings-directory-group"]',
+    );
+    expect(cards).toHaveLength(2);
+    cards.forEach((card) => {
+      expect(card).toHaveAttribute('role', 'group');
+      const label = card.previousElementSibling as HTMLElement;
+      expect(label.id).not.toBe('');
+      expect(card.getAttribute('aria-labelledby')).toBe(label.id);
+    });
+    expect(cards[0].getAttribute('aria-labelledby')).not.toBe(
+      cards[1].getAttribute('aria-labelledby'),
+    );
+  });
+
+  it('wide directory is unchanged', async () => {
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      selectedSection: 'general',
+    });
+    expect(
+      container.querySelector('[data-testid="settings-directory-group"]'),
+    ).toBeNull();
+    expect(
+      container.querySelectorAll('.settings-layout__nav-item'),
+    ).toHaveLength(2);
+    expect(
+      container.querySelector('.settings-layout__nav-item.is-active'),
+    ).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('group label is sentence case in compact', async () => {
+    // jsdom applies no component styles; the utilities override the uppercase base rule.
+    const { container } = await renderLayout({
+      title: 'Preferences',
+      sections,
+      compact: true,
+    });
+    const label = container.querySelector('.settings-layout__group-label');
+    expect(label).toHaveClass('normal-case', 'tracking-normal');
+    expect(label?.className).toContain('var(--trinity-type-control-size)');
+  });
+
   it('publishes the domain-neutral section contract', () => {
     expectTypeOf<TrnSettingsLayoutSection>().toEqualTypeOf<{
       readonly id: string;

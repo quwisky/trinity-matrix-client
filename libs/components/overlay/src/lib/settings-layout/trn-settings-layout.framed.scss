@@ -1,0 +1,69 @@
+@layer components {
+  // In a centred dialog or a sheet the shell draws the surface, header and close; the
+  // layout fills its body at a fixed height so both panes scroll, and the nav keeps a
+  // fixed width without the full-screen layer's centring gutter.
+  :host(:not([data-presentation='fullscreen'])) {
+    block-size: auto;
+    background: transparent;
+
+    // The shell body's own insets: a gap under the header and the title's side inset.
+    --settings-layout-inset: var(--trinity-space-4);
+    --settings-layout-gutter: var(--trinity-space-5);
+  }
+
+  // One surface with the header, as in every other dialog, split by a hairline; the nav keeps
+  // a fixed width.
+  :host(:not([data-presentation='fullscreen'])) {
+    .settings-layout__nav,
+    .settings-layout__content {
+      background: transparent;
+    }
+
+    // The sticky chip row stays opaque over the content scrolling under it, in the
+    // shell's surface rather than the pane colour of the full-screen layer.
+    .settings-layout__chips {
+      background: var(--trinity-surface-overlay);
+    }
+
+    .settings-layout__nav {
+      flex-basis: 16rem;
+      min-inline-size: 0;
+      padding-inline: var(--settings-layout-gutter);
+      border-inline-end: 1px solid var(--trinity-border-subtle);
+    }
+
+    .settings-layout__nav-inner {
+      inline-size: 100%;
+      margin-inline-start: 0;
+    }
+
+    // The section name beside Back, in the row's line rather than with the page's margin.
+    .settings-layout__topbar h1 {
+      margin: 0;
+    }
+
+    // A dialog or sheet already stops below the status bar, so its panes don't pad for it
+    // again. The nav's inline inset is the shell footer's, so the cards line up with Close.
+    .settings-layout[data-compact='true'] {
+      :is(.settings-layout__nav, .settings-layout__column) {
+        padding-inline: var(--settings-layout-gutter);
+        padding-block-start: var(--settings-layout-inset);
+      }
+
+      .settings-layout__nav {
+        border-inline-end: 0;
+      }
+    }
+  }
+
+  :host([data-presentation='dialog']) .settings-layout {
+    block-size: min(44rem, calc(var(--settings-layout-viewport) - 6rem));
+  }
+
+  // A sheet asks for its whole cap and shrinks into the body that its header band, home
+  // indicator inset and keyboard leave, so only the panes scroll.
+  :host([data-presentation='sheet']) .settings-layout {
+    block-size: min(90svh, var(--settings-layout-viewport));
+    min-block-size: 0;
+  }
+}

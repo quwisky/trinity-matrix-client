@@ -18,6 +18,11 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { TrnDialogRef } from '../dialog/trn-dialog-ref';
+import {
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
+} from '../inset-group/trn-inset-group';
 import { TrnDialogShellComponent } from '../dialog-shell/trn-dialog-shell.component';
 import { TrnSettingsParts } from './trn-settings-parts';
 import { TrnSettingsScrollSpy } from './trn-settings-scroll-spy';
@@ -39,6 +44,9 @@ export interface TrnSettingsLayoutSection {
     TrnButton,
     TrnIconComponent,
     TrnDialogShellComponent,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
     TrnSettingsSwipeBack,
   ],
   // A wrapper that projects the sections itself provides the registry the layout then shares:
@@ -52,9 +60,12 @@ export interface TrnSettingsLayoutSection {
     },
   ],
   templateUrl: './trn-settings-layout.component.html',
-  // The section slide sits in a sheet of its own to keep each under the style budget.
+  // The compact, framed (dialog and sheet) and section-slide rules sit in sheets of their own to
+  // keep each under the style budget; the order is the cascade order.
   styleUrls: [
     './trn-settings-layout.component.scss',
+    './trn-settings-layout.compact.scss',
+    './trn-settings-layout.framed.scss',
     './trn-settings-layout.slide.scss',
   ],
   host: {
@@ -134,6 +145,20 @@ export class TrnSettingsLayoutComponent {
   protected readonly detailView = computed(
     () => !this.listView() || this.slide() !== null,
   );
+  /** The compact directory's cards: the sections split where a new group label starts. */
+  protected readonly navGroups = computed(() => {
+    const groups: {
+      label: string | undefined;
+      sections: TrnSettingsLayoutSection[];
+    }[] = [];
+    this.sections().forEach((section, index) => {
+      if (index === 0 || this.isGroupStart(index)) {
+        groups.push({ label: section.group, sections: [] });
+      }
+      groups[groups.length - 1].sections.push(section);
+    });
+    return groups;
+  });
   protected readonly sectionHeading = computed(
     () => this.heading() ?? this.title(),
   );

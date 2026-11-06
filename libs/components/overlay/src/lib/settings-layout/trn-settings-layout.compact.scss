@@ -1,0 +1,80 @@
+@layer components {
+  .settings-layout__chips {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--trinity-z-sticky);
+    display: flex;
+    gap: var(--trinity-space-2);
+    margin-block: var(--trinity-space-3);
+    padding-block: var(--trinity-space-1);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    background: var(--trinity-surface-pane);
+  }
+
+  .settings-layout__chip {
+    flex: none;
+    display: inline-flex;
+    min-block-size: max(28px, var(--trinity-interaction-target-min-size, 0px));
+    align-items: center;
+    padding: var(--trinity-space-1) var(--trinity-space-3);
+    border-radius: var(--trinity-radius-md);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    text-decoration: none;
+  }
+
+  .settings-layout__chip.is-current {
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-state-selected-foreground);
+  }
+
+  .settings-layout__chip:focus-visible {
+    outline: 2px solid var(--trinity-focus-ring);
+    outline-offset: 2px;
+  }
+
+  // The section list shares the section page's inline padding, so the two line up.
+  .settings-layout[data-compact='true'] .settings-layout__nav {
+    flex: 1;
+    min-inline-size: 0;
+    padding-block: max(var(--trinity-space-4), env(safe-area-inset-top))
+      var(--trinity-space-4);
+    padding-inline: var(--trinity-space-4);
+  }
+
+  .settings-layout[data-compact='true'] .settings-layout__nav-inner {
+    inline-size: 100%;
+    margin-inline-start: 0;
+  }
+
+  .settings-layout[data-compact='true'] .settings-layout__column {
+    padding-block-start: max(var(--trinity-space-4), env(safe-area-inset-top));
+  }
+
+  .settings-layout__topbar {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    margin-block-end: var(--trinity-space-2);
+  }
+
+  .settings-layout[data-compact='true']
+    .settings-layout__topbar
+    .settings-layout__close {
+    position: static;
+    margin: 0 0 0 auto;
+  }
+
+  .settings-layout[data-compact='true']
+    .settings-layout__list-head
+    .settings-layout__close {
+    position: static;
+    margin: 0;
+  }
+
+  .settings-pane--hidden {
+    display: none;
+  }
+}
