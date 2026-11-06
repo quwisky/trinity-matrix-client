@@ -89,9 +89,10 @@ export class TrnButton {
           variant: this.resolvedVariant(),
         }),
         // The inset-row treatment: the focused row rises over its neighbours, and every row but
-        // the first draws the divider, which out-ranks the recipe's `border-transparent`.
+        // the first draws the divider, which out-ranks the recipe's `border-transparent`. Edges
+        // count visible rows only, since a sheet hides a footer's own dismiss button.
         this.inRow() &&
-          'relative w-full justify-center rounded-none p-4 text-center text-base wrap-anywhere not-first:border-t-[color:var(--trinity-border-sheet-divider)] first:rounded-t-xl last:rounded-b-xl focus-visible:z-1',
+          'relative w-full justify-center rounded-none p-4 text-center text-base wrap-anywhere focus-visible:z-1 [&:not(:nth-child(1_of_:not([hidden])))]:border-t-[color:var(--trinity-border-sheet-divider)] [&:nth-child(1_of_:not([hidden]))]:rounded-t-xl [&:nth-last-child(1_of_:not([hidden]))]:rounded-b-xl',
         this.inRow() && this.variant() === 'primary' && 'font-semibold',
       ),
     );

@@ -89,6 +89,16 @@ const INLINE_CLASSES = [
   'has-data-[icon=inline-start]:ps-0',
 ];
 
+// The row variants and the selectors Tailwind emits for them (`_` becomes a space).
+const FIRST_VISIBLE = ':nth-child(1 of :not([hidden]))';
+const LAST_VISIBLE = ':nth-last-child(1 of :not([hidden]))';
+const LATER_VISIBLE = ':not(:nth-child(1 of :not([hidden])))';
+const FIRST_VISIBLE_ROUNDED = '[&:nth-child(1_of_:not([hidden]))]:rounded-t-xl';
+const LAST_VISIBLE_ROUNDED =
+  '[&:nth-last-child(1_of_:not([hidden]))]:rounded-b-xl';
+const LATER_VISIBLE_DIVIDER =
+  '[&:not(:nth-child(1_of_:not([hidden])))]:border-t-[color:var(--trinity-border-sheet-divider)]';
+
 describe('TrnButton', () => {
   it('keeps a host layout class that Helm also emits, after another write to the class list', async () => {
     // Helm's base emits `justify-center` and the row shape `justify-start`. Any outside write
@@ -268,6 +278,18 @@ describe('TrnButton', () => {
 
     @Component({
       imports: [TrnButton],
+      providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(true) }],
+      template: `
+        <button trnBtn hidden>Cancel</button>
+        <button trnBtn data-testid="first">Create</button>
+        <button trnBtn data-testid="last">Save draft</button>
+        <button trnBtn hidden>Close</button>
+      `,
+    })
+    class HiddenEdgeRowsHostComponent {}
+
+    @Component({
+      imports: [TrnButton],
       providers: [{ provide: TRN_BUTTON_ROW_CONTEXT, useValue: signal(false) }],
       template: `<button trnBtn>Save</button>`,
     })
@@ -288,10 +310,10 @@ describe('TrnButton', () => {
           'wrap-anywhere',
           'relative',
           'focus-visible:z-1',
-          'first:rounded-t-xl',
-          'last:rounded-b-xl',
+          FIRST_VISIBLE_ROUNDED,
+          LAST_VISIBLE_ROUNDED,
           // The divider out-ranks the recipe's own `border-transparent`.
-          'not-first:border-t-[color:var(--trinity-border-sheet-divider)]',
+          LATER_VISIBLE_DIVIDER,
         ]) {
           expect(button.classList).toContain(cls);
         }
@@ -326,6 +348,25 @@ describe('TrnButton', () => {
       expect(remove.getAttribute('data-trn-presentation')).toBe('ghost');
       expect(remove.classList).toContain('text-danger');
       expect((remove as HTMLButtonElement).disabled).toBe(true);
+    });
+
+    // A sheet hides a consumer's own dismiss button, which must not take the card's edges.
+    it('rounds and divides only the visible rows when a hidden row comes first', async () => {
+      const { getByTestId } = await render(HiddenEdgeRowsHostComponent);
+
+      const first = getByTestId('first');
+      expect(first.classList).toContain(FIRST_VISIBLE_ROUNDED);
+      expect(first.matches(FIRST_VISIBLE)).toBe(true);
+      expect(first.matches(LATER_VISIBLE)).toBe(false);
+    });
+
+    it('rounds the last visible row when a hidden row comes last', async () => {
+      const { getByTestId } = await render(HiddenEdgeRowsHostComponent);
+
+      const last = getByTestId('last');
+      expect(last.classList).toContain(LAST_VISIBLE_ROUNDED);
+      expect(last.matches(LAST_VISIBLE)).toBe(true);
+      expect(last.matches(LATER_VISIBLE)).toBe(true);
     });
 
     it('leaves the button alone when the context is false', async () => {
