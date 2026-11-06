@@ -284,6 +284,26 @@ describe('UnreadAggregatorService', () => {
     expect(svc.totalUnread()).toBe(9);
   });
 
+  it('drops a queued recompute when destroyed', async () => {
+    const { accountIds, clients, flush } = harness();
+    const client = fakeClient([fakeRoom(1)]);
+    clients.set('@a:hs', client);
+    accountIds.set(['@a:hs']);
+    await flush();
+    let reads = 0;
+    const readRooms = client.getRooms;
+    client.getRooms = () => {
+      reads += 1;
+      return readRooms();
+    };
+
+    client.emit(RoomEvent.Receipt);
+    TestBed.resetTestingModule();
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(reads).toBe(0);
+  });
+
   it('attaches to an account added later and drops one signed out', async () => {
     const { svc, accountIds, clients, flush } = harness();
     const a = fakeClient([fakeRoom(3)]);

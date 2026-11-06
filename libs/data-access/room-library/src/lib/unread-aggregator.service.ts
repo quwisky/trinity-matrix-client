@@ -1,4 +1,11 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   ClientEvent,
   MatrixEventEvent,
@@ -87,6 +94,7 @@ export class UnreadAggregatorService {
   private readonly listeners = new Map<string, AccountListener>();
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.flusher.cancel());
     // Reconcile per-account listeners against the live account set (startup, add, remove).
     effect(() => this.reconcile(this.matrix.accountIds()));
   }

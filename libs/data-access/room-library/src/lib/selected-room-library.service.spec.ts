@@ -9,7 +9,7 @@ import {
 } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom, of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { AccountScopeService } from './account-scope.service';
 import { InvitesService, type PendingInvite } from './invites.service';
@@ -233,13 +233,14 @@ function setup(
   };
 }
 
-/** Wait out the selected projection's coalescing window, on real timers. */
+/** Wait out the selected projection's coalescing window; needs fake timers. */
 async function flushProjection(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await vi.advanceTimersByTimeAsync(100);
 }
 
 describe('SelectedRoomLibraryService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+  afterEach(() => vi.useRealTimers());
 
   it('attaches only for its owned lifetime and reconnects from empty state', () => {
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
@@ -395,6 +396,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('re-projects once after the crypto store answers for many unanswered rooms', async () => {
+    vi.useFakeTimers();
     const resolvers: ((encrypted: boolean) => void)[] = [];
     const client = Object.assign(
       fakeClient(
@@ -417,12 +419,12 @@ describe('SelectedRoomLibraryService', () => {
       ]),
     });
     TestBed.tick();
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(0);
     const initial = client.getRooms.mock.calls.length;
 
     for (const resolve of resolvers) {
       resolve(true);
-      await new Promise((r) => setTimeout(r));
+      await vi.advanceTimersByTimeAsync(0);
     }
     await flushProjection();
 
@@ -514,6 +516,7 @@ describe('SelectedRoomLibraryService', () => {
       active: string | null,
       copies: readonly (readonly [string, boolean])[],
     ) {
+      vi.useFakeTimers();
       const ids = copies.map(([id]) => id);
       const harness = setup({
         selected: new Set(ids),
@@ -522,7 +525,7 @@ describe('SelectedRoomLibraryService', () => {
         clients: new Map(copies.map(([id, e]) => [id, copy(id, e)])),
       });
       // Let every Account's crypto-store answer land before reading the row.
-      await new Promise((resolve) => setTimeout(resolve));
+      await vi.advanceTimersByTimeAsync(0);
       await flushProjection();
       return harness.service.view().rooms.find((r) => r.id === '!shared:hs');
     }
@@ -602,6 +605,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('refreshes marked-unread state after room account data changes', async () => {
+    vi.useFakeTimers();
     const room = fakeRoom('!room:hs');
     const a = fakeClient('@a:hs', [room]);
     const b = fakeClient('@b:hs', [fakeRoom('!other:hs')]);
@@ -702,6 +706,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('coalesces domain events and structurally shares unaffected projections', async () => {
+    vi.useFakeTimers();
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     const harness = setup({
@@ -798,6 +803,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('rebuilds the mixed list when a cancelled edit changes a preview', async () => {
+    vi.useFakeTimers();
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     const harness = setup({
@@ -817,6 +823,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('reconciles live Accounts and same-id client replacement', async () => {
+    vi.useFakeTimers();
     const first = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     const harness = setup({
@@ -926,6 +933,7 @@ describe('SelectedRoomLibraryService', () => {
   });
 
   it('cancels a queued projection before detaching on destruction', async () => {
+    vi.useFakeTimers();
     const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     setup({
@@ -1163,6 +1171,7 @@ describe('SelectedRoomLibraryService', () => {
 
     describe('as a reactive read', () => {
       it('follows a membership change of a selected Account in the mixed view', async () => {
+        vi.useFakeTimers();
         const space = fakeRoom('!s:hs', { kind: 'space' });
         const a = fakeClient('@a:hs', [space]);
         const harness = setup({

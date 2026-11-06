@@ -109,7 +109,11 @@ export function decryptionChangesRow(
   }
   const userId = client.getUserId();
   if (!userId) return false;
-  const reader = event.threadRootId ? room.getThread(event.threadRootId) : room;
+  // A thread root is read against the room, as the SDK counts it.
+  const reader =
+    event.threadRootId && !event.isThreadRoot
+      ? room.getThread(event.threadRootId)
+      : room;
   return !!reader && !reader.hasUserReadEvent(userId, eventId);
 }
 
