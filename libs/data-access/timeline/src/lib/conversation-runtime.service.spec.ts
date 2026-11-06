@@ -233,6 +233,7 @@ function message(
 ): MessageView {
   return {
     id,
+    key: id,
     senderId: ALICE,
     senderName: 'Alice',
     senderInitial: 'A',

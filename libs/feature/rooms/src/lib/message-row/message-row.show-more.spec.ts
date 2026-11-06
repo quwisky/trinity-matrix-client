@@ -16,6 +16,7 @@ import { MessageRowComponent, type MessageRow } from './message-row.component';
 function row(overrides: Partial<MessageRow> = {}): MessageRow {
   return {
     id: '$1',
+    key: '$1',
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',

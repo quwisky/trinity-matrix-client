@@ -266,8 +266,15 @@ function normalizeCommon(
       : senderId) || 'Unknown';
   const avatar = read<unknown>(() => member?.getMxcAvatarUrl() ?? null, null);
   const avatarMxc = typeof avatar === 'string' ? avatar : null;
+  const id = string(read<unknown>(() => event.getId(), null)) ?? '';
+  // The txnId is the one identity shared by a local echo and its remote echo.
+  const txnId = read<unknown>(
+    () => event.getTxnId() ?? event.getUnsigned().transaction_id,
+    null,
+  );
   return {
-    id: string(read<unknown>(() => event.getId(), null)) ?? '',
+    id,
+    key: typeof txnId === 'string' && txnId !== '' ? `~txn:${txnId}` : id,
     senderId,
     senderName,
     senderInitial: initialOf(senderName),

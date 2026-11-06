@@ -10,6 +10,7 @@ import { setScrollGeometry as stubScrollGeometry } from '../testing/scroll-geome
 function msg(id: string): MessageView {
   return {
     id,
+    key: id,
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',

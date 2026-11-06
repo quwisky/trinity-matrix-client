@@ -318,6 +318,7 @@ describe('MessageListComponent with windowing off', () => {
         messages: [
           {
             id: '$1',
+            key: '$1',
             senderId: '@a:hs',
             senderName: 'Alice',
             senderInitial: 'A',

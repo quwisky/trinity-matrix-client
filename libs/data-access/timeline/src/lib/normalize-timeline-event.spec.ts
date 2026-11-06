@@ -60,6 +60,51 @@ function event(over: Record<string, unknown> = {}): MatrixEvent {
 }
 
 describe('normalizeTimelineEvent', () => {
+  describe('row key', () => {
+    const view = (over: Record<string, unknown>) =>
+      normalizeTimelineEvent(
+        client,
+        room,
+        event(over),
+        null,
+        false,
+      ) as unknown as {
+        id: string;
+        key: string;
+      };
+
+    it("is the event id for someone else's message", () => {
+      expect(view({ getId: () => '$abc' }).key).toBe('$abc');
+    });
+
+    it('is shared by the local echo and the remote echo', () => {
+      const local = view({
+        getId: () => '~!room:example.org:t1',
+        getTxnId: () => 't1',
+        getUnsigned: () => ({}),
+      });
+      const remote = view({
+        getId: () => '$srv',
+        getTxnId: () => undefined,
+        getUnsigned: () => ({ transaction_id: 't1' }),
+      });
+      expect(local.key).toBe('~txn:t1');
+      expect(remote.key).toBe('~txn:t1');
+      expect(local.id).not.toBe(remote.id);
+    });
+
+    it('survives a resend of the same transaction', () => {
+      const echo = (status: string | null) =>
+        view({
+          getId: () => '~!room:example.org:t1',
+          getTxnId: () => 't1',
+          getUnsigned: () => ({}),
+          status,
+        });
+      expect(echo('not_sent').key).toBe(echo('sending').key);
+    });
+  });
+
   it('keeps why a message could not be decrypted', () => {
     const normalized = normalizeTimelineEvent(
       client,

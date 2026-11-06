@@ -49,6 +49,7 @@ class TestMessageListComponent extends MessageListBase {
 function msg(id: string): MessageView {
   return {
     id,
+    key: id,
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',

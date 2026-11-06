@@ -29,6 +29,7 @@ import { MessageListComponent } from './message-list.component';
 function msg(id: string, ts: number): MessageView {
   return {
     id,
+    key: id,
     senderId: '@a:hs',
     senderName: 'A',
     senderInitial: 'A',

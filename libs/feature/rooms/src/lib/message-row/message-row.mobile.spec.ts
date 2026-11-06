@@ -43,6 +43,7 @@ const caps = (over: Partial<MessageRowCaps> = {}): MessageRowCaps => ({
 function row(over: Partial<MessageRow> = {}): MessageRow {
   return {
     id: '$1',
+    key: '$1',
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',
