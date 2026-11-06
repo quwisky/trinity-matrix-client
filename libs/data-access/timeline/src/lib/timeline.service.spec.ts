@@ -1076,6 +1076,44 @@ describe('TimelineService', () => {
       expect(svc.messages()[0]).toBe(first);
     });
 
+    it('keeps the same list when a refresh changes no row', () => {
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+        ],
+        { $2: ['@carol:hs'] },
+      );
+      const before = svc.messages();
+
+      (svc as unknown as { refresh(): void }).refresh();
+
+      expect(svc.messages()).toBe(before);
+    });
+
+    it('publishes a new list when a receipt moves the readers', () => {
+      const receipts: Record<string, string[]> = { $2: ['@carol:hs'] };
+      const svc = setupReceipts(
+        [
+          fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+          fakeEvent({ id: '$2', sender: '@alice:hs', body: 'b' }),
+        ],
+        receipts,
+      );
+      const before = svc.messages();
+
+      receipts['$2'] = ['@carol:hs', '@dan:hs'];
+      (svc as unknown as { refresh(): void }).refresh();
+
+      const after = svc.messages();
+      expect(after).not.toBe(before);
+      expect(after[0]).toBe(before[0]);
+      expect(after[1].readReceipts.map((r) => r.userId)).toEqual([
+        '@carol:hs',
+        '@dan:hs',
+      ]);
+    });
+
     it("refreshes a receipt avatar when the reader's member loads late", async () => {
       // A reader who has posted nothing in the window is nobody's sender, reply target
       // or reactor. Both defences used to miss them: the revision folded in receipt

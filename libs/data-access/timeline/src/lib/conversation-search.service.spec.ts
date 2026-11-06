@@ -6,6 +6,7 @@ import {
   type MatrixClient,
   type Room,
 } from 'matrix-js-sdk';
+import { computed } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConversationSearchController } from './conversation-search.service';
@@ -204,6 +205,32 @@ describe('ConversationSearchController', () => {
       level: 'unencrypted',
     });
     expect(hits.find((hit) => hit.eventId === '$sealed')?.shield).toBeNull();
+  });
+
+  it('re-runs a search when the crypto store answers "encrypted" after the first pass', async () => {
+    let answer: (encrypted: boolean) => void = () => undefined;
+    isEncryptionEnabledInRoom.mockReturnValue(
+      new Promise<boolean>((resolve) => (answer = resolve)),
+    );
+    service.attach({ accountId: '@me:hs', roomId: '!r:hs' }, {
+      getRoom,
+      search,
+      getCrypto,
+    } as unknown as MatrixClient);
+    getRoom.mockReturnValue(
+      room({ events: [message({ id: '$plain', body: 'hello plain' })] }),
+    );
+    // As the search panel reads it: no timeline row changes after the first pass.
+    const loaded = computed(() => service.searchLoaded('hello'));
+    expect(loaded()).toMatchObject({ encrypted: false, serverAvailable: true });
+    expect(loaded().hits[0].shield).toBeNull();
+
+    answer(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(loaded()).toMatchObject({ encrypted: true, serverAvailable: false });
+    expect(loaded().hits[0].shield).toMatchObject({ level: 'unencrypted' });
   });
 
   it("matches what a message's sender wrote, not someone else's edit of it", () => {

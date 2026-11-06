@@ -150,6 +150,24 @@ describe('TimelineService system-line filtering', () => {
     expect(svc.messages().map((m) => m.id)).toContain('$join');
   });
 
+  it('publishes a new list when hiding a category drops rows', async () => {
+    const { svc, lines } = setupFiltered({});
+    const flush = async () => {
+      TestBed.tick();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    await flush();
+    const before = svc.messages();
+
+    lines.roomChanges.set(false);
+    await flush();
+
+    const after = svc.messages();
+    expect(after).not.toBe(before);
+    expect(after.map((m) => m.id)).toEqual(['$1', '$join', '$rename', '$2']);
+  });
+
   // The oldest RAW event drives the lists' backfill loop: the oldest RENDERED row can't,
   // because a page of purely-hidden lines would leave it unchanged and the loop would stop
   // with history still to load (or never start, for an all-hidden window).
