@@ -29,6 +29,7 @@ import {
 } from '@trinity/components/overlay';
 import {
   AccountRuntimeService,
+  type AccountRestoreOutcome,
   type AccountRestoreResult,
   type NewDeviceEstablishment,
 } from '@trinity/data-access/accounts';
@@ -119,6 +120,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
   let navigateByUrl: ReturnType<typeof vi.fn>;
   let restoreAccounts: Mock<() => Observable<AccountRestoreResult>>;
   let retryInactiveAccount: Mock<AccountRuntimeService['retryInactiveAccount']>;
+  let lateInactiveOutcomes: Subject<AccountRestoreOutcome>;
   let hostManifest: Subject<HostCapabilityManifest>;
   let appearanceHydrate: Mock<() => Observable<AppearanceHydrationOutcome>>;
   let appearanceRecover: Mock<AppearancePreferences['recoverHydration']>;
@@ -171,6 +173,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       }),
     );
     retryInactiveAccount = vi.fn(() => of({ kind: 'unavailable' as const }));
+    lateInactiveOutcomes = new Subject<AccountRestoreOutcome>();
     hostManifest = new Subject<HostCapabilityManifest>();
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
       () => of({ kind: 'ready', hydrated: 7 }),
@@ -260,6 +263,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(AccountRuntimeService, {
           restoreSavedAccounts: restoreAccounts,
           retryInactiveAccount,
+          inactiveRestoreOutcomes: lateInactiveOutcomes,
           activeAccountId,
           signOutAccount,
           resetInstallation,
@@ -807,6 +811,34 @@ describe('TrinityApplicationRuntimeAdapter', () => {
       kind: 'ready',
     });
     expect(updateCheck).not.toHaveBeenCalled();
+  });
+
+  it('reports an inactive Account that fails after the start settled', async () => {
+    restoreAccounts.mockReturnValueOnce(
+      of({
+        kind: 'restored',
+        activeAccountId: '@active:example.org',
+        accounts: [
+          { kind: 'ready', accountId: '@active:example.org', role: 'active' },
+        ],
+      }),
+    );
+    await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(health.problems()).toEqual([]);
+
+    lateInactiveOutcomes.next({
+      kind: 'timed-out',
+      accountId: '@late:example.org',
+      role: 'inactive',
+    });
+
+    expect(health.problems()[0]).toMatchObject({
+      capability: 'accounts',
+      operation: 'restore',
+      code: 'account-restoration-timeout',
+    });
   });
 
   it('maps partial and required Account outcomes without leaking account ids', async () => {

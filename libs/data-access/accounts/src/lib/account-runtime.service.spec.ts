@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { signal } from '@angular/core';
+import { ErrorHandler, signal } from '@angular/core';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import {
   NEVER,
@@ -525,7 +525,7 @@ describe('AccountRuntimeService', () => {
     expect(test.adapter.resetInstallation).toHaveBeenCalledOnce();
   });
 
-  it('starts the Active Account first while restoring saved Accounts concurrently', async () => {
+  it('settles once the Active Account is ready and restores inactive Accounts after it', async () => {
     const active = new Subject<AdapterAccountRestoreOutcome>();
     const inactive = new Subject<AdapterAccountRestoreOutcome>();
     const test = testAdapter(
@@ -537,26 +537,89 @@ describe('AccountRuntimeService', () => {
       (accountId) => (accountId === '@active:hs' ? active : inactive),
     );
     const runtime = setup(test);
+    const late = vi.fn();
+    runtime.inactiveRestoreOutcomes.subscribe(late);
 
     const resultPromise = firstValueFrom(runtime.restoreSavedAccounts());
 
-    expect(test.restoreAccount.mock.calls).toEqual([
-      ['@active:hs', 'active'],
-      ['@inactive:hs', 'inactive'],
-    ]);
-    inactive.next({ kind: 'ready' });
-    inactive.complete();
+    // Alone, so the active Account is first in the crypto setup queue.
+    expect(test.restoreAccount.mock.calls).toEqual([['@active:hs', 'active']]);
     active.next({ kind: 'ready' });
     active.complete();
 
     const result = await resultPromise;
     expect(result.kind).toBe('restored');
-    expect(result.accounts.map((account) => account.accountId)).toEqual([
-      '@active:hs',
-      '@inactive:hs',
-    ]);
     expect(runtime.hasActiveAccount()).toBe(true);
-    expect(runtime.state()).toEqual({ phase: 'settled', result });
+    expect(inactive.observed).toBe(true);
+    expect(test.sweepNativeTokens).not.toHaveBeenCalled();
+    const signIn = await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant(), activeIntent),
+    );
+    expect(signIn.kind).toBe('transition-in-progress');
+    expect(runtime.deletionBlocker()).toBe('restoring-accounts');
+    await expect(
+      firstValueFrom(runtime.switchActiveAccount('@inactive:hs')),
+    ).resolves.toMatchObject({ kind: 'transition-in-progress' });
+
+    inactive.next({ kind: 'failed', failure: 'transient-network' });
+    inactive.complete();
+
+    expect(late).toHaveBeenCalledExactlyOnceWith({
+      kind: 'failed',
+      failure: 'transient-network',
+      accountId: '@inactive:hs',
+      role: 'inactive',
+    });
+    expect(runtime.state()).toMatchObject({
+      phase: 'settled',
+      result: {
+        kind: 'restored-with-inactive-failures',
+        accounts: [
+          { accountId: '@active:hs', kind: 'ready' },
+          { accountId: '@inactive:hs', kind: 'failed' },
+        ],
+      },
+    });
+    expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+    expect(runtime.deletionBlocker()).toBeNull();
+    await expect(
+      firstValueFrom(
+        runtime.establishAuthenticatedAccount(grant(), activeIntent),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+  });
+
+  it('reports a defect in a background inactive restore and releases the block', async () => {
+    const test = testAdapter(
+      {
+        kind: 'available',
+        activeAccountId: '@active:hs',
+        accountIds: ['@active:hs', '@broken:hs', '@healthy:hs'],
+      },
+      (accountId) =>
+        accountId === '@broken:hs'
+          ? throwError(() => new Error('defect'))
+          : of({ kind: 'ready' }),
+    );
+    const handleError = vi.fn();
+    TestBed.configureTestingModule({
+      providers: [{ provide: ErrorHandler, useValue: { handleError } }],
+    });
+    const runtime = setup(test);
+
+    const result = await firstValueFrom(runtime.restoreSavedAccounts());
+
+    expect(result.kind).toBe('restored');
+    expect(handleError).toHaveBeenCalledWith(new Error('defect'));
+    expect(runtime.state()).toMatchObject({
+      phase: 'settled',
+      result: {
+        kind: 'restored',
+        accounts: [{ accountId: '@active:hs' }, { accountId: '@healthy:hs' }],
+      },
+    });
+    expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
+    expect(runtime.deletionBlocker()).toBeNull();
   });
 
   it('keeps an inactive transient failure distinct without blocking the Active Account', async () => {
@@ -577,10 +640,13 @@ describe('AccountRuntimeService', () => {
         ),
     );
 
-    const result = await firstValueFrom(setup(test).restoreSavedAccounts());
+    const runtime = setup(test);
+    await firstValueFrom(runtime.restoreSavedAccounts());
 
-    expect(result.kind).toBe('restored-with-inactive-failures');
-    expect(result.accounts[1]).toMatchObject({
+    const state = runtime.state();
+    const result = state.phase === 'settled' ? state.result : null;
+    expect(result?.kind).toBe('restored-with-inactive-failures');
+    expect(result?.accounts[1]).toMatchObject({
       accountId: '@offline:hs',
       role: 'inactive',
       kind: 'failed',
@@ -781,7 +847,7 @@ describe('AccountRuntimeService', () => {
       expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
     });
 
-    it('sweeps once every Account has restored, and refuses a sign-in until it has', async () => {
+    it('sweeps once the start has settled, and refuses a sign-in until it has', async () => {
       const restored = new Subject<AdapterAccountRestoreOutcome>();
       const test = testAdapter(SNAPSHOT, () => restored);
       const sweep = new Subject<void>();
@@ -794,29 +860,20 @@ describe('AccountRuntimeService', () => {
       restored.next({ kind: 'ready' });
       restored.complete();
       expect(test.sweepNativeTokens).toHaveBeenCalledOnce();
-      expect(settled).not.toHaveBeenCalled();
+      expect(settled).toHaveBeenCalledOnce();
 
       const signIn = await firstValueFrom(
-        service.establishAuthenticatedAccount(
-          AuthenticatedAccountGrant.issue({
-            baseUrl: 'https://hs',
-            userId: '@new:hs',
-            deviceId: 'DEVICE',
-            accessToken: 'token',
-          }),
-          {
-            placement: 'active',
-            liveAccounts: 'replace',
-            accountRecord: 'upsert',
-          },
-        ),
+        service.establishAuthenticatedAccount(grant(), activeIntent),
       );
       expect(signIn.kind).toBe('transition-in-progress');
       expect(test.establishAccount).not.toHaveBeenCalled();
 
       sweep.next();
       sweep.complete();
-      expect(settled).toHaveBeenCalledOnce();
+      await firstValueFrom(
+        service.establishAuthenticatedAccount(grant(), activeIntent),
+      );
+      expect(test.establishAccount).toHaveBeenCalledOnce();
     });
 
     it('restoring twice sweeps once', async () => {
@@ -907,10 +964,10 @@ describe('AccountRuntimeService', () => {
     });
   });
 
-  it('retains committed outcomes and cancels uncommitted work coherently', () => {
-    let inactiveCancelled = false;
-    const inactive = new Observable<AdapterAccountRestoreOutcome>(() => () => {
-      inactiveCancelled = true;
+  it('cancels a pending Active Account restore before any inactive one starts', () => {
+    let activeCancelled = false;
+    const active = new Observable<AdapterAccountRestoreOutcome>(() => () => {
+      activeCancelled = true;
     });
     const test = testAdapter(
       {
@@ -919,21 +976,22 @@ describe('AccountRuntimeService', () => {
         accountIds: ['@active:hs', '@pending:hs'],
       },
       (accountId) =>
-        accountId === '@active:hs' ? of({ kind: 'ready' }) : inactive,
+        accountId === '@active:hs' ? active : of({ kind: 'ready' }),
     );
     const runtime = setup(test);
 
     const subscription = runtime.restoreSavedAccounts().subscribe();
     subscription.unsubscribe();
 
-    expect(inactiveCancelled).toBe(true);
+    expect(activeCancelled).toBe(true);
+    expect(test.restoreAccount).toHaveBeenCalledOnce();
     expect(runtime.state()).toMatchObject({
       phase: 'cancelled',
       activeAccountId: '@active:hs',
       totalAccounts: 2,
-      outcomes: [{ accountId: '@active:hs', kind: 'ready' }],
+      outcomes: [],
     });
-    expect(runtime.hasActiveAccount()).toBe(true);
+    expect(runtime.deletionBlocker()).toBeNull();
   });
 
   it('retries after a terminal failure instead of replaying it', async () => {

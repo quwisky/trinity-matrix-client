@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   AccountRuntimeService,
   type AccountRestoreOutcome,
@@ -19,6 +20,13 @@ export class AccountStartupHealthService {
   private readonly contexts = new Map<string, CapabilityContext>();
   // Version stamped into CapabilityHealthFact.generation and compared by recover(); not a latest-wins guard.
   private readonly generations = new Map<string, number>();
+
+  constructor() {
+    // Inactive Accounts restore after the start settles, so their failures arrive late.
+    this.accounts.inactiveRestoreOutcomes
+      .pipe(takeUntilDestroyed())
+      .subscribe((outcome) => this.report([outcome]));
+  }
 
   report(outcomes: readonly AccountRestoreOutcome[]): void {
     for (const outcome of outcomes) {

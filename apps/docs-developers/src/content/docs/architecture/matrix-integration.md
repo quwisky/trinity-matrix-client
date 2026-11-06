@@ -12,7 +12,7 @@ Trinity uses `matrix-js-sdk` as the authoritative source for Matrix protocol sta
 
 ## One client per live account {#client-registry}
 
-The `AccountRuntimeService` restores saved accounts and coordinates the active account. The Matrix client registry owns live client instances and their sync lifecycle. Capability code resolves the client for an explicit account or follows the selected-account projection appropriate to its scope.
+The `AccountRuntimeService` restores saved accounts and coordinates the active account. Startup waits only for the active account; the inactive accounts restore after it, and sign-in, account switching and sign-out wait until they have finished. The Matrix client registry owns live client instances and their sync lifecycle. Capability code resolves the client for an explicit account or follows the selected-account projection appropriate to its scope.
 
 Never use the active account implicitly for work that already has an account identifier. Room and event identifiers alone do not establish which authenticated client owns an operation.
 
