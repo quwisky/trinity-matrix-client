@@ -134,14 +134,16 @@ export class SelectedAccountSourceRegistry {
     const { client, encryption } = source;
     const unanswered = roomIds.filter((id) => !encryption.answered(id));
     if (unanswered.length === 0) return;
-    void encryption.refreshAll(client.getCrypto?.(), unanswered).then(() => {
-      if (
-        unanswered.some((id) => encryption.answered(id)) &&
-        this.sources.get(accountId)?.encryption === encryption
-      ) {
+    const rebuild = () => {
+      if (this.sources.get(accountId)?.encryption === encryption) {
         this.invalidate(ROOM_DOMAINS);
       }
-    });
+    };
+    void encryption
+      .refreshAll(client.getCrypto?.(), unanswered, rebuild)
+      .then((answered) => {
+        if (answered > 0) rebuild();
+      });
   }
 
   release(): void {

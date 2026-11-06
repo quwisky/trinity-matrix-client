@@ -16,7 +16,7 @@ import { InviteBlockedError, RoomLibraryService } from './room-library.service';
 import { ROOM_LIBRARY_GOVERNANCE_POLICY } from './room-library-governance-policy';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // A live-timeline event shaped like the bits messagePreview() reads.
 function timelineEvent(over: {
@@ -207,6 +207,8 @@ function provideRooms(
 }
 
 describe('RoomLibraryService', () => {
+  afterEach(() => vi.useRealTimers());
+
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const client = {
       baseUrl: 'https://hs.example',
@@ -1214,6 +1216,7 @@ describe('RoomLibraryService', () => {
   });
 
   it("previews a room by the crypto store's answer once it has one", async () => {
+    vi.useFakeTimers();
     let answer: (encrypted: boolean) => void = () => undefined;
     const isEncryptionEnabledInRoom = vi.fn(
       (roomId: string) =>
@@ -1250,15 +1253,15 @@ describe('RoomLibraryService', () => {
     svc.runProjection().subscribe();
     const room = (id: string) => svc.rooms().find((r) => r.id === id);
 
-    // Unanswered: no previews yet; the rebuild waits for every answer.
     expect(room('!c:hs')?.lastMessage).toBe('');
-    expect(room('!p:hs')?.lastMessage).toBe('');
+    // The unanswered room holds the batch only until the cap; the answered one then shows.
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(room('!p:hs')?.lastMessage).toBe('hello all');
+    expect(room('!p:hs')?.encrypted).toBe(false);
+    // Unanswered still: no preview yet.
+    expect(room('!c:hs')?.lastMessage).toBe('');
 
     answer(true);
-    await vi.waitFor(() =>
-      expect(room('!p:hs')?.lastMessage).toBe('hello all'),
-    );
-    expect(room('!p:hs')?.encrypted).toBe(false);
     await vi.waitFor(() => expect(room('!c:hs')?.encrypted).toBe(true));
     expect(room('!c:hs')?.lastMessage).toBe('hello');
     expect(room('!c:hs')?.lastMessageMark).toBe('unencrypted');
@@ -1296,6 +1299,75 @@ describe('RoomLibraryService', () => {
 
     expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
     expect(getRooms.mock.calls.length - initial).toBe(1);
+  });
+
+  it('rebuilds at most twice when one probe never settles, once at the cap and once when the straggler lands', async () => {
+    vi.useFakeTimers();
+    const landed: ((encrypted: boolean) => void)[] = [];
+    const rooms = Array.from({ length: 4 }, (_, i) =>
+      fakeRoom({ roomId: `!r${i}:hs`, name: `room ${i}`, activity: i }),
+    );
+    const getRooms = vi.fn(() => rooms);
+    const { svc } = provideRooms({
+      baseUrl: 'https://hs.example',
+      getRooms,
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: (id: string) =>
+          id === '!r0:hs'
+            ? new Promise<boolean>((resolve) => landed.push(resolve))
+            : Promise.resolve(true),
+      }),
+      on: () => {},
+    });
+    svc.runProjection().subscribe();
+    const initial = getRooms.mock.calls.length;
+
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(svc.rooms().filter((r) => r.encrypted)).toHaveLength(3);
+
+    landed[0](true);
+    await vi.advanceTimersByTimeAsync(10);
+
+    expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
+    expect(getRooms.mock.calls.length - initial).toBeLessThanOrEqual(2);
+  });
+
+  it('schedules no rebuild when the active account switched before the answers landed', async () => {
+    const landed: ((encrypted: boolean) => void)[] = [];
+    const getRoomsA = vi.fn(() => [fakeRoom({ roomId: '!a:hs', name: 'A' })]);
+    const clientA = {
+      baseUrl: 'https://a.hs',
+      getRooms: getRoomsA,
+      getCrypto: () => ({
+        isEncryptionEnabledInRoom: () =>
+          new Promise<boolean>((resolve) => landed.push(resolve)),
+      }),
+      on: vi.fn(),
+      off: vi.fn(),
+    };
+    const { svc, matrix, activeUserId } = provideRooms(clientA);
+    activeUserId.set('@a:hs');
+    svc.runProjection().subscribe();
+    TestBed.inject(ApplicationRef).tick();
+    const getRoomsB = vi.fn(() => []);
+    ngMocks.stubMember(
+      matrix,
+      'instance',
+      asClient({
+        baseUrl: 'https://b.hs',
+        getRooms: getRoomsB,
+        on: vi.fn(),
+        off: vi.fn(),
+      }),
+    );
+    activeUserId.set('@b:hs');
+    TestBed.inject(ApplicationRef).tick();
+    const before = getRoomsB.mock.calls.length;
+
+    landed.forEach((resolve) => resolve(true));
+    await new Promise((r) => setTimeout(r));
+
+    expect(getRoomsB.mock.calls.length).toBe(before);
   });
 
   it('flags a message that arrived in clear as unencrypted when there is no crypto store', () => {

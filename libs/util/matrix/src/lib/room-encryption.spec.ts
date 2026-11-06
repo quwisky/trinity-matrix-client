@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
 import {
   RoomEncryptionFlags,
@@ -139,11 +139,58 @@ describe('RoomEncryptionFlags.refreshAll', () => {
       },
     };
 
-    await expect(
-      flags.refreshAll(crypto, ['!bad:hs', '!ok:hs']),
-    ).resolves.toBeUndefined();
+    await expect(flags.refreshAll(crypto, ['!bad:hs', '!ok:hs'])).resolves.toBe(
+      1,
+    );
     expect(flags.answered('!ok:hs')).toBe(true);
     expect(flags.answered('!bad:hs')).toBe(false);
+  });
+});
+
+describe('RoomEncryptionFlags.refreshAll with a probe that never settles', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('resolves with the answers fetched after the cap and reports the straggler when it lands', async () => {
+    vi.useFakeTimers();
+    const flags = new RoomEncryptionFlags();
+    let landHung: (encrypted: boolean) => void = () => undefined;
+    const crypto = {
+      isEncryptionEnabledInRoom: (id: string) =>
+        id === '!hung:hs'
+          ? new Promise<boolean>((resolve) => (landHung = resolve))
+          : Promise.resolve(true),
+    };
+    const onLate = vi.fn();
+    const all = flags.refreshAll(
+      crypto,
+      ['!a:hs', '!b:hs', '!hung:hs'],
+      onLate,
+    );
+
+    await vi.advanceTimersByTimeAsync(1499);
+    expect(flags.answered('!a:hs')).toBe(true);
+    let count: number | undefined;
+    void all.then((n) => (count = n));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(count).toBeUndefined();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(count).toBe(2);
+    expect(onLate).not.toHaveBeenCalled();
+
+    landHung(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onLate).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report a straggler that settles within the cap', async () => {
+    const flags = new RoomEncryptionFlags();
+    const onLate = vi.fn();
+    const crypto = { isEncryptionEnabledInRoom: async () => true };
+
+    await expect(flags.refreshAll(crypto, ['!a:hs'], onLate)).resolves.toBe(1);
+    await Promise.resolve();
+    expect(onLate).not.toHaveBeenCalled();
   });
 });
 

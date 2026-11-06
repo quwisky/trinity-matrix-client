@@ -393,12 +393,15 @@ export class PushHandoffService {
       changed.push(entry);
     }
     if (unanswered.length > 0) {
+      const rewrite = () => {
+        if (this.bindings.get(userId)?.encryption === encryption) {
+          this.writeRooms(userId);
+        }
+      };
       void encryption
-        .refreshAll(binding.client.getCrypto(), unanswered)
-        .then(() => {
-          if (unanswered.some((id) => encryption.answered(id))) {
-            this.writeRooms(userId);
-          }
+        .refreshAll(binding.client.getCrypto(), unanswered, rewrite)
+        .then((answered) => {
+          if (answered > 0) rewrite();
         });
     }
     if (changed.length === 0) return;

@@ -764,14 +764,14 @@ export class RoomLibraryService {
       .map((room) => room.roomId);
     if (unanswered.length > 0) {
       // Any answer can change the row: the lock, or a preview held back until now.
-      void encryption.refreshAll(crypto, unanswered).then(() => {
-        if (
-          unanswered.some((id) => encryption.answered(id)) &&
-          this.encryption === encryption
-        ) {
-          this.projection.schedule();
-        }
-      });
+      const rebuild = () => {
+        if (this.encryption === encryption) this.projection.schedule();
+      };
+      void encryption
+        .refreshAll(crypto, unanswered, rebuild)
+        .then((answered) => {
+          if (answered > 0) rebuild();
+        });
     }
     this.builtFrom = new Map(
       joined.map((room) => {
