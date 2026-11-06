@@ -347,6 +347,8 @@ export abstract class MessageListBase {
 
   /** A requested jump whose row had not loaded yet; applied on arrival, within the limit. */
   private awaitedJumpId: string | null = null;
+  /** The awaited jump target that just loaded; the list jumps to it, so it does not slide in. */
+  protected landingJumpId: string | null = null;
   private awaitedJumpAt = 0;
 
   constructor() {
@@ -384,6 +386,7 @@ export abstract class MessageListBase {
       const id = this.awaitedJumpId;
       if (!id || !loaded.some((m) => m.id === id)) return;
       this.awaitedJumpId = null;
+      this.landingJumpId = id;
       // Bounded like a width re-apply: a row paged in minutes later must not yank the reader back.
       if (Date.now() - this.awaitedJumpAt > JUMP_REAPPLY_MS) return;
       afterNextRender(() => this.jumpTo(id), { injector: this.injector });
@@ -545,10 +548,19 @@ export abstract class MessageListBase {
     if (!this.reaiming) this.pendingJumpAt = Date.now();
   }
 
+  /** Whether a jump still owns the view: made within {@link JUMP_REAPPLY_MS} and not ended. */
+  protected jumpedRecently(): boolean {
+    return (
+      this.pendingJumpId !== null &&
+      Date.now() - this.pendingJumpAt <= JUMP_REAPPLY_MS
+    );
+  }
+
   /** Stop re-aiming and drop a jump still waiting for its row (reader moved, or superseded). */
   protected cancelPendingJump(): void {
     this.pendingJumpId = null;
     this.awaitedJumpId = null;
+    this.landingJumpId = null;
   }
 
   /**

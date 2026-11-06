@@ -7,6 +7,7 @@ import {
   DestroyRef,
   ElementRef,
   afterNextRender,
+  afterRenderEffect,
   computed,
   effect,
   inject,
@@ -89,6 +90,9 @@ const SCROLL_IDLE_MS = 150;
 
 /** How long a new row keeps `msg-enter`: the 200 ms entrance plus margin. */
 export const ENTER_CLEAR_MS = 260;
+
+/** How long a marked row may take to mount (the pin moving the window to it) before its mark is dropped. */
+const ENTER_MOUNT_WAIT_MS = 1_000;
 
 /**
  * The room timeline. With `windowed` on (the default) it renders only the rows in and near the
@@ -192,6 +196,8 @@ export class MessageListComponent extends MessageListBase {
   /** Each row's id by key as of the last update, to follow a send's echo renaming its row. */
   private keyIds: ReadonlyMap<string, string> = new Map();
   private readonly enterTimers = new Set<ReturnType<typeof setTimeout>>();
+  /** Marked batches whose rows have not mounted yet; see {@link startEnterClears}. */
+  private unmounted: { keys: readonly string[]; at: number }[] = [];
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly scrollActivity = inject(TimelineScrollActivity);
@@ -426,7 +432,7 @@ export class MessageListComponent extends MessageListBase {
       const newest = latest?.id ?? '';
       const newestChanged = !!newest && newest !== this.lastId;
       this.lastId = newest || this.lastId;
-      if (hadPrevious && !this.jumping && !prefersReducedMotion()) {
+      if (hadPrevious && !this.jumpedRecently() && !prefersReducedMotion()) {
         this.markEntering(
           rows,
           previousKeys,
@@ -505,6 +511,12 @@ export class MessageListComponent extends MessageListBase {
       if (id) {
         untracked(() => this.jumpToRequested(id));
       }
+    });
+
+    // A marked row rendered into the window starts its clear.
+    afterRenderEffect(() => {
+      this.windowedRows();
+      untracked(() => this.startEnterClears());
     });
 
     // An effect, not a computed: turning the flag off must also release the loads the gate holds,
@@ -597,6 +609,7 @@ export class MessageListComponent extends MessageListBase {
     this.keyIds = new Map();
     this.enterTimers.forEach(clearTimeout);
     this.enterTimers.clear();
+    this.unmounted = [];
     this.enteringKeys.set(new Set());
     this.bodyOverflow.clear();
     this.scrollActivity.reset();
@@ -622,6 +635,11 @@ export class MessageListComponent extends MessageListBase {
     for (const [key, id] of this.keyIds) {
       const old = previous.get(key);
       if (old !== undefined && old !== id) renamed.set(old, id);
+    }
+    // A row that still holds the old id keeps its state (an unread split hands a run's key on).
+    const current = new Set(this.keyIds.values());
+    for (const old of renamed.keys()) {
+      if (current.has(old)) renamed.delete(old);
     }
     if (renamed.size === 0) return previous;
     const expanded = untracked(() => this.expandedRuns());
@@ -658,21 +676,55 @@ export class MessageListComponent extends MessageListBase {
     let first = rows.length;
     while (first > 0 && !previous.has(rows[first - 1].key)) first--;
     if (first === 0) return;
+    const landing = this.landingJumpId;
+    this.landingJumpId = null;
     const keys = rows
       .slice(first)
-      .filter((row) => atBottom || row.isOwn)
+      .filter(
+        (row) =>
+          (atBottom || row.isOwn) &&
+          row.id !== landing &&
+          !row.systemRun?.events.some((event) => event.id === landing),
+      )
       .map((row) => row.key);
     if (keys.length === 0) return;
     this.enteringKeys.update((marked) => new Set([...marked, ...keys]));
-    const timer = setTimeout(() => {
-      this.enterTimers.delete(timer);
-      this.enteringKeys.update((marked) => {
-        const next = new Set(marked);
-        for (const key of keys) next.delete(key);
-        return next;
-      });
-    }, ENTER_CLEAR_MS);
-    this.enterTimers.add(timer);
+    this.unmounted.push({ keys, at: Date.now() });
+    this.startEnterClears();
+  }
+
+  /**
+   * Start each marked batch's clear once its rows are in the window, so the whole entrance plays:
+   * an own send while scrolled far up mounts only after the pin has moved the window to it. A batch
+   * that has not mounted within {@link ENTER_MOUNT_WAIT_MS} loses its mark unplayed.
+   */
+  private startEnterClears(): void {
+    if (this.unmounted.length === 0) return;
+    const rendered = new Set(
+      untracked(() => this.windowedRows()).map((row) => row.key),
+    );
+    const now = Date.now();
+    this.unmounted = this.unmounted.filter(({ keys, at }) => {
+      if (now - at > ENTER_MOUNT_WAIT_MS) {
+        this.unmark(keys);
+        return false;
+      }
+      if (!rendered.has(keys[keys.length - 1])) return true;
+      const timer = setTimeout(() => {
+        this.enterTimers.delete(timer);
+        this.unmark(keys);
+      }, ENTER_CLEAR_MS);
+      this.enterTimers.add(timer);
+      return false;
+    });
+  }
+
+  private unmark(keys: readonly string[]): void {
+    this.enteringKeys.update((marked) => {
+      const next = new Set(marked);
+      for (const key of keys) next.delete(key);
+      return next;
+    });
   }
 
   /**

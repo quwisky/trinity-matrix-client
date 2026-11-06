@@ -102,9 +102,9 @@ describe('message list — new messages slide in', () => {
       scroll.dispatchEvent(new Event('scroll'));
     };
     const host = (id: string) =>
-      container
+      (container
         .querySelector(`[data-mid="${id}"]`)
-        ?.closest('trn-message-row') as HTMLElement;
+        ?.closest('trn-message-row') ?? null) as HTMLElement;
     const entering = () => container.querySelectorAll('.msg-enter');
     return {
       ...rendered,
@@ -199,24 +199,81 @@ describe('message list — new messages slide in', () => {
     expect(host('$b').classList).toContain('msg-enter');
   });
 
+  // An own send while scrolled far up mounts only once the pin has moved the window to it.
+  it('keeps the mark until the row has been on screen for the whole entrance', async () => {
+    const { fixture, scroll, scrollUp, append, host } = await setup(many(200));
+    scrollUp();
+
+    await append(msg('$mine', { isOwn: true }));
+    expect(host('$mine')).toBeNull();
+    vi.advanceTimersByTime(ENTER_CLEAR_MS);
+    (scroll as unknown as { scrollTop: number }).scrollTop = 20_000 - 600;
+    scroll.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host('$mine').classList).toContain('msg-enter');
+    vi.advanceTimersByTime(ENTER_CLEAR_MS);
+    TestBed.tick();
+    expect(host('$mine').classList).not.toContain('msg-enter');
+  });
+
+  it('drops a mark whose row has not mounted within a second', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const { fixture, scroll, scrollUp, append, host } = await setup(many(200));
+    scrollUp();
+
+    await append(msg('$mine', { isOwn: true }));
+    vi.advanceTimersByTime(1_001);
+    (scroll as unknown as { scrollTop: number }).scrollTop = 20_000 - 600;
+    scroll.dispatchEvent(new Event('scroll'));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(host('$mine').classList).not.toContain('msg-enter');
+  });
+
+  // The unread divider splits a run: the first half takes the run's key, the second keeps its id.
+  it('leaves a run its state when a split gives its key to another row', async () => {
+    const line = (id: string) => msg(id, { kind: 'event' });
+    const { cmp, fixture, append } = await setup([
+      ...many(3),
+      line('$e1'),
+      line('$e2'),
+      line('$e3'),
+      line('$e4'),
+    ]);
+    cmp.toggleRun('group:$e4');
+
+    fixture.componentRef.setInput('firstUnreadId', '$e3');
+    await append(msg('$new'));
+
+    expect([...cmp.expandedRuns()]).toEqual(['group:$e4']);
+  });
+
   describe('does not mark', () => {
     it('the first batch', async () => {
       const { entering } = await setup();
       expect(entering()).toHaveLength(0);
     });
 
-    it('prepended history', async () => {
-      const { fixture, show, scroll, entering, current } = await setup(
+    // A short room filling its history: the reader is at the top and the bottom at once, so only
+    // the prepend path keeps a row arriving with the page from sliding in.
+    it('a row landing with prepended history', async () => {
+      const { fixture, cmp, show, scroll, entering, current } = await setup(
         many(10),
         { canLoadOlder: true },
       );
-      // Near the top with more history: the scroll asks for older rows.
+      setScrollGeometry(scroll, { scrollHeight: 600 });
+      const loadOlder = vi.fn();
+      cmp.loadOlder.subscribe(loadOlder);
       scroll.dispatchEvent(new Event('scroll'));
+      expect(loadOlder).toHaveBeenCalledOnce();
       fixture.componentRef.setInput('loadingOlder', true);
       fixture.detectChanges();
       fixture.componentRef.setInput('loadingOlder', false);
 
-      await show([msg('$old1'), msg('$old2'), ...current()]);
+      await show([msg('$old1'), ...current(), msg('$new')]);
 
       expect(entering()).toHaveLength(0);
     });
@@ -247,7 +304,9 @@ describe('message list — new messages slide in', () => {
     });
 
     it('a row remounted after windowing away and back', async () => {
-      const { fixture, scroll, entering } = await setup(many(200));
+      const { fixture, scroll, show, current, host, entering } = await setup(
+        many(200),
+      );
       const scrollTo = (top: number) => {
         (scroll as unknown as { scrollTop: number }).scrollTop = top;
         scroll.dispatchEvent(new Event('scroll'));
@@ -255,17 +314,49 @@ describe('message list — new messages slide in', () => {
       };
 
       scrollTo(0);
-      scrollTo(200 * EST);
+      expect(host('$199')).toBeNull();
+      // The newest message changes while windowed out (a reaction): a new object, the same key.
+      await show(
+        current().map((m) => (m.id === '$199' ? { ...m, edited: true } : m)),
+      );
+      scrollTo(20_000 - 600);
+
+      expect(host('$199')).not.toBeNull();
+      expect(entering()).toHaveLength(0);
+    });
+
+    // The reader is back at the bottom by the list's own scroll, but the jump still owns the view.
+    it('a receive just after a jump', async () => {
+      const { cmp, fixture, scroll, append, entering } = await setup();
+      Element.prototype.scrollIntoView = vi.fn();
+
+      cmp.jumpTo('$2');
+      (scroll as unknown as { scrollTop: number }).scrollTop = 20_000 - 600;
+      scroll.dispatchEvent(new Event('scroll'));
+      fixture.detectChanges();
+      await append(msg('$new'));
 
       expect(entering()).toHaveLength(0);
     });
 
-    it('a receive after a jump', async () => {
-      const { cmp, append, entering } = await setup();
+    // A notification opens the room before its event has synced: the event arrives as the newest
+    // row and the list jumps to it. It flashes; it does not also slide in.
+    it('the row a waiting jump lands on', async () => {
+      const { fixture, append, entering } = await setup();
       Element.prototype.scrollIntoView = vi.fn();
+      fixture.componentRef.setInput('jumpToId', '$target');
+      fixture.detectChanges();
 
-      cmp.jumpTo('$2');
-      await append(msg('$new'));
+      await append(msg('$target'));
+
+      expect(entering()).toHaveLength(0);
+    });
+
+    it('the first rows of a room switched to', async () => {
+      const { fixture, show, entering } = await setup();
+
+      fixture.componentRef.setInput('roomId', '!other:hs');
+      await show([...many(10), msg('$o1'), msg('$o2')]);
 
       expect(entering()).toHaveLength(0);
     });
