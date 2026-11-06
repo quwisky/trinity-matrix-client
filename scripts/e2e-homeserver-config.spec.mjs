@@ -369,6 +369,20 @@ describe('Synapse adapter config generation', () => {
     expect(yaml.match(/^rc_3pid_validation:/gm)).toHaveLength(1);
   });
 
+  it('lets Synapse refuse a password reset for an unknown address, once', async () => {
+    stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
+    const { ensureConfig } = await adapterIn(stateDir);
+    const ctx = { log: () => undefined, generate: generateInto(stateDir) };
+    const config = join(stateDir, 'data/homeserver.yaml');
+
+    await ensureConfig(ctx);
+    await ensureConfig(ctx);
+    const yaml = readFileSync(config, 'utf8');
+    expect(
+      yaml.match(/^request_token_inhibit_3pid_errors: false$/gm),
+    ).toHaveLength(1);
+  });
+
   it('turns off the sync response cache, also on an existing config', async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'trinity-adapter-'));
     const { ensureConfig } = await adapterIn(stateDir);
