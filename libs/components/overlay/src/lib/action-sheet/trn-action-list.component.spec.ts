@@ -308,7 +308,9 @@ describe('TrnActionListComponent', () => {
       const dividers = screen.getAllByTestId('action-sheet-divider');
       expect(dividers).toHaveLength(1);
       expect(dividers[0].parentElement).toBe(cards[0]);
-      expect(dividers[0].classList).toContain('ms-14');
+      expect(dividers[0].classList).toContain(
+        'ms-[calc(min(1rem,16px)*2+1.5rem)]',
+      );
       expect(cards[0].lastElementChild).toBe(screen.getByTestId('row-archive'));
       expect(
         screen.getByTestId('row-leave').getAttribute('data-trn-variant'),

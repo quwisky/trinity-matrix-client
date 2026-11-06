@@ -36,14 +36,26 @@ describe('inset group primitives', () => {
     await render(HostComponent);
 
     const row = screen.getByRole('button', { name: 'Copy' });
-    expect(row.classList).toContain('px-4');
     expect(row.classList).toContain('py-4');
+  });
+
+  it('caps the row padding and gap so the largest text size leaves the label room', async () => {
+    await render(HostComponent);
+
+    const row = screen.getByRole('button', { name: 'Copy' });
+    // 1rem is 16px at the default size; the cap stops the 250% root from taking 80px a side.
+    expect(row.classList).toContain('px-[min(1rem,16px)]');
+    expect(row.classList).toContain('gap-[min(1rem,16px)]');
   });
 
   it('divider insets past the icon by default and to the edge on request', async () => {
     await render(HostComponent);
 
-    expect(screen.getByTestId('icon-divider').classList).toContain('ms-14');
-    expect(screen.getByTestId('edge-divider').classList).toContain('ms-4');
+    expect(screen.getByTestId('icon-divider').classList).toContain(
+      'ms-[calc(min(1rem,16px)*2+1.5rem)]',
+    );
+    expect(screen.getByTestId('edge-divider').classList).toContain(
+      'ms-[min(1rem,16px)]',
+    );
   });
 });

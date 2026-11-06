@@ -528,7 +528,9 @@ describe('TrnSettingsLayoutComponent', () => {
       cards[1].querySelectorAll('[data-trn-settings-section]'),
     ).toHaveLength(2);
     expect(cards[1].querySelectorAll('trn-inset-divider')).toHaveLength(1);
-    expect(cards[1].querySelector('trn-inset-divider')).toHaveClass('ms-14');
+    expect(cards[1].querySelector('trn-inset-divider')).toHaveClass(
+      'ms-[calc(min(1rem,16px)*2+1.5rem)]',
+    );
     const row = cards[0].querySelector('[data-testid="settings-tab-general"]');
     expect(row?.getAttribute('data-trn-settings-section')).toBe('general');
     expect(row?.querySelector('trn-icon[name="chevron-right"]')).toBeTruthy();
