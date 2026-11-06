@@ -1104,9 +1104,13 @@ describe('TimelineService incremental projection', () => {
       room.addPendingEvent(echo, 't1');
       await settle();
       expect(row('~!r:hs:t1')?.status).toBe('sending');
+      const key = row('~!r:hs:t1')?.key;
 
       room.updatePendingEvent(echo, EventStatus.SENT, '$sent');
       await settle();
+
+      expect(key).toBe('~txn:t1');
+      expect(row('$sent')?.key).toBe(key);
 
       expect(row('~!r:hs:t1')).toBeUndefined();
       expect(row('$sent')?.status).toBeNull();

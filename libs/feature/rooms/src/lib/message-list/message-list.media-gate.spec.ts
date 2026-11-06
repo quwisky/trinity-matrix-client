@@ -38,6 +38,7 @@ import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 function message(id: string, media: PresentedMediaReference | null = null) {
   return {
     id,
+    key: id,
     senderId: '@a:hs',
     senderName: 'A',
     senderInitial: 'A',

@@ -67,6 +67,19 @@
     }
   }
 
+  // A row that arrived live slides in (the list sets `msg-enter`). The host clips the offset while
+  // it does: a transform counts toward the scroller's height, and the range shrinking as the slide
+  // ended moved a bottom-pinned list off its own pin.
+  :host(.msg-enter) {
+    display: block;
+    overflow-y: clip;
+
+    .msg {
+      animation: trn-msg-enter var(--trinity-duration-base)
+        var(--trinity-ease-decelerate);
+    }
+  }
+
   .msg--cont {
     padding-top: 0;
   }

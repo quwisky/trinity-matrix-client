@@ -53,7 +53,7 @@
 
     <div class="vpad vpad--top" [style.height.px]="topPad()"></div>
 
-    @for (row of windowedRows(); track row.id) {
+    @for (row of windowedRows(); track row.key) {
       @if (row.daySeparator; as day) {
         <trn-timeline-divider kind="day" [label]="day" />
       }
@@ -76,6 +76,7 @@
         ></div>
       } @else {
         <trn-message-row
+          [entering]="enteringKeys().has(row.key)"
           [row]="row"
           [threadSummary]="threadSummaries()[row.id] ?? null"
           [threadContinues]="threadContinuationIds().has(row.id)"

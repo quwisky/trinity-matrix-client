@@ -124,6 +124,7 @@ describe('message list — loading older', () => {
 function fakeMessage(id: string, body: string): MessageView {
   return {
     id,
+    key: id,
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',

@@ -5,6 +5,7 @@ import type { MessageRow } from '../message-row/message-row.component';
 export function messageView(over: Partial<MessageView> = {}): MessageView {
   return {
     id: '$1',
+    key: over.id ?? '$1',
     senderId: '@a:hs',
     senderName: 'Alice',
     senderInitial: 'A',

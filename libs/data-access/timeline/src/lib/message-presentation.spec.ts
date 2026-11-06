@@ -10,6 +10,7 @@ import {
 
 const BASE = {
   id: '$event',
+  key: '$event',
   senderId: '@alice:example.org',
   senderName: 'Alice',
   senderInitial: 'A',

@@ -149,6 +149,8 @@ const DEVICE_FIXABLE: Readonly<Record<UndecryptableReason, boolean>> = {
  */
 export interface MessageView {
   readonly id: string;
+  /** Stays the same when a sent message's id changes from the local echo to the server's. */
+  readonly key: string;
   readonly senderId: string;
   readonly senderName: string;
   readonly senderInitial: string;
@@ -237,6 +239,7 @@ export function savableMediaKind(
 
 interface NormalizedCommon {
   readonly id: string;
+  readonly key: string;
   readonly senderId: string;
   readonly senderName: string;
   readonly senderInitial: string;
@@ -544,6 +547,7 @@ function immutableCommon(event: NormalizedCommon) {
   );
   return {
     id: event.id,
+    key: event.key,
     senderId: event.senderId,
     senderName: event.senderName,
     senderInitial: event.senderInitial,
@@ -573,6 +577,7 @@ function neutral(common: ReturnType<typeof immutableCommon>) {
 function immutableSystemCommon(event: NormalizedSystemEvent) {
   return {
     id: event.id,
+    key: event.key,
     senderId: event.senderId,
     senderName: event.senderName,
     senderInitial: event.senderInitial,
