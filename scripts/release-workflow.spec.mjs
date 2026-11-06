@@ -710,3 +710,163 @@ describe('release notes in release builds', () => {
     expect(notes.outputs.body).toBe('${{ steps.body.outputs.body }}');
   });
 });
+
+describe('release Android signing', () => {
+  const ANDROID_SECRETS = [
+    'ANDROID_KEYSTORE_BASE64',
+    'ANDROID_KEYSTORE_PASSWORD',
+    'ANDROID_KEY_ALIAS',
+    'ANDROID_KEY_PASSWORD',
+  ];
+  const job = () => workflow.jobs['sign-android'];
+  const SECRETS_STEP = 'Sign the release APK';
+  const secretsStep = () => job().steps.find((s) => s.name === SECRETS_STEP);
+  const ci = loadWorkflow('ci.yml');
+  const ciUses = (prefix) =>
+    Object.values(ci.jobs)
+      .flatMap((j) => j.steps ?? [])
+      .find((s) => s.uses?.startsWith(prefix)).uses;
+
+  it('sign-android is the only job that reads ANDROID_* secrets, only in its secrets step', () => {
+    for (const name of listWorkflows()) {
+      for (const [id, j] of Object.entries(loadWorkflow(name).jobs)) {
+        const isSign = name === 'release.yml' && id === 'sign-android';
+        const reading = (j.steps ?? [])
+          .filter((s) => /secrets\.ANDROID_/.test(JSON.stringify(s)))
+          .map((s) => s.name);
+        expect(reading, `${name} ${id}`).toEqual(isSign ? [SECRETS_STEP] : []);
+        if (isSign) {
+          const { steps, ...rest } = j;
+          expect(JSON.stringify(rest)).not.toContain('secrets.');
+        }
+      }
+    }
+    for (const secret of ANDROID_SECRETS)
+      expect(secretsStep().env[secret]).toBe(`\${{ secrets.${secret} }}`);
+  });
+
+  it('only sign-android uses environment release-android', () => {
+    for (const name of listWorkflows()) {
+      for (const [id, j] of Object.entries(loadWorkflow(name).jobs)) {
+        const environment = j.environment?.name ?? j.environment;
+        expect(environment === 'release-android', `${name} ${id}`).toBe(
+          name === 'release.yml' && id === 'sign-android',
+        );
+      }
+    }
+  });
+
+  it('sign-android fails on a missing secret before building', () => {
+    const { run } = secretsStep();
+    const check = run.indexOf('exit 1');
+    expect(check).toBeGreaterThan(-1);
+    expect(check).toBeLessThan(run.indexOf('base64 -d'));
+    expect(run.indexOf('base64 -d')).toBeLessThan(
+      run.indexOf('pnpm nx run trinity-android:build-release-apk'),
+    );
+    // The secrets step is the only build; nothing before it signs.
+    const steps = job().steps;
+    expect(steps.findIndex((s) => s.run?.includes('build-release-apk'))).toBe(
+      steps.indexOf(secretsStep()),
+    );
+
+    for (const missing of ANDROID_SECRETS) {
+      const env = { PATH: process.env.PATH, RUNNER_TEMP: tmpdir() };
+      for (const name of ANDROID_SECRETS)
+        if (name !== missing) env[name] = 'fake-secret-value';
+      const result = spawnSync('bash', ['-e', '-c', run], {
+        env,
+        encoding: 'utf8',
+      });
+      const printed = result.stdout + result.stderr;
+      expect(result.status, missing).not.toBe(0);
+      expect(printed).toContain(missing);
+      expect(printed).not.toContain('fake-secret-value');
+    }
+  });
+
+  it('sign-android deletes the keystore in an always() step', () => {
+    const steps = job().steps;
+    const cleanup = steps.find((s) => s.run?.includes('rm -f'));
+    expect(cleanup.if).toBe('${{ always() }}');
+    expect(cleanup.run.trim()).toBe('rm -f "$RUNNER_TEMP/release.jks"');
+    expect(secretsStep().run).toContain('"$RUNNER_TEMP/release.jks"');
+    expect(steps.indexOf(cleanup)).toBe(steps.indexOf(secretsStep()) + 1);
+  });
+
+  it('sign-android uploads trinity-android', () => {
+    const steps = job().steps;
+    const verify = steps.find((s) =>
+      s.run?.includes('node scripts/verify-apk-signer.mjs'),
+    );
+    expect(JSON.stringify(verify)).not.toContain('secrets.');
+    const upload = steps.find((s) =>
+      s.uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(steps.indexOf(verify)).toBeGreaterThan(steps.indexOf(secretsStep()));
+    expect(steps.indexOf(verify)).toBeLessThan(steps.indexOf(upload));
+    expect(upload.uses).toBe(
+      signJob().steps.find((s) =>
+        s.uses?.startsWith('actions/upload-artifact@'),
+      ).uses,
+    );
+    expect(upload.with).toMatchObject({
+      name: 'trinity-android',
+      path: 'release-android/Trinity-*.apk',
+      'if-no-files-found': 'error',
+    });
+    expect(
+      readFileSync(
+        resolve(root, 'android/release-signing-cert.sha256'),
+        'utf8',
+      ),
+    ).toMatch(/^(UNSET|[0-9A-Fa-f:]{64,95})\n$/);
+  });
+
+  it('sign-android has timeout-minutes and persist-credentials false', () => {
+    const j = job();
+    expect(j['timeout-minutes']).toBeGreaterThan(0);
+    const checkout = j.steps.find((s) =>
+      s.uses?.startsWith('actions/checkout@'),
+    );
+    expect(checkout.with).toEqual({
+      ref: 'refs/tags/${{ needs.verify.outputs.tag }}',
+      'persist-credentials': false,
+    });
+    expect(checkout.uses).toBe(ciUses('actions/checkout@'));
+    const java = j.steps.find((s) => s.uses?.startsWith('actions/setup-java@'));
+    expect(java.uses).toBe(ciUses('actions/setup-java@'));
+    expect(java.with).toEqual({
+      distribution: 'temurin',
+      'java-version': '21',
+    });
+    for (const step of j.steps)
+      if (step.uses && !step.uses.startsWith('./'))
+        expect(step.uses, step.uses).toMatch(/@[0-9a-f]{40}$/);
+  });
+
+  it('sign-android bundles the release notes and attaches to the draft', () => {
+    const j = job();
+    expect(j.needs).toEqual(['verify', 'release-notes']);
+    expect(j.if).toBe(
+      "${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}",
+    );
+    expect(j.permissions).toBeUndefined();
+    const sync = j.steps.find(
+      (s) => s.run === 'pnpm nx run trinity-android:sync',
+    );
+    expect(JSON.stringify(sync)).not.toContain('secrets.');
+    expect(sync.env).toEqual({
+      TRINITY_RELEASE_NOTES: 'required',
+      TRINITY_CURRENT_RELEASE_NOTES: '${{ needs.release-notes.outputs.body }}',
+      GITHUB_TOKEN: '${{ github.token }}',
+    });
+    expect(j.steps.indexOf(sync)).toBeLessThan(j.steps.indexOf(secretsStep()));
+    // The signing step runs Gradle only, against the renderer the sync step built.
+    expect(secretsStep().run).toContain(
+      'pnpm nx run trinity-android:build-release-apk --excludeTaskDependencies',
+    );
+    expect(JSON.stringify(secretsStep().env)).not.toContain('github.token');
+    expect(workflow.jobs['draft-release'].needs).toContain('sign-android');
+  });
+});

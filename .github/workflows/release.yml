@@ -491,6 +491,73 @@ jobs:
           retention-days: 30
           overwrite: true
 
+  # The signed Android APK. Unlike sign-mac, a missing secret fails the job: an unsigned
+  # APK cannot be installed, so the release stays a draft until the secrets are set.
+  sign-android:
+    name: Sign and package (Android)
+    needs: [verify, release-notes]
+    if: ${{ !cancelled() && needs.verify.result == 'success' && needs.release-notes.result == 'success' }}
+    runs-on: ubuntu-latest
+    # Holds the upload key, apart from the macOS certificates in `release`.
+    environment: release-android
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.verify.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: ./.github/actions/setup
+      # The renderer build and Capacitor sync run here, without the signing secrets.
+      - run: pnpm nx run trinity-android:sync
+        env:
+          TRINITY_RELEASE_NOTES: required
+          TRINITY_CURRENT_RELEASE_NOTES: ${{ needs.release-notes.outputs.body }}
+          GITHUB_TOKEN: ${{ github.token }}
+      # The secrets reach this step only, never $GITHUB_ENV; it runs Gradle alone.
+      - name: Sign the release APK
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=''
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Set the Android signing secrets in the release-android environment; missing:$missing"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export TRINITY_ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
+          export TRINITY_ANDROID_KEYSTORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD"
+          export TRINITY_ANDROID_KEY_ALIAS="$ANDROID_KEY_ALIAS"
+          export TRINITY_ANDROID_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
+          pnpm nx run trinity-android:build-release-apk --excludeTaskDependencies
+      - if: ${{ always() }}
+        run: rm -f "$RUNNER_TEMP/release.jks"
+      - name: Check the signer and name the APK
+        run: |
+          export PATH="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1):$PATH"
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          node scripts/verify-apk-signer.mjs "$apk"
+          version=$(node scripts/android-version.mjs | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).versionName')
+          mkdir -p release-android
+          cp "$apk" "release-android/Trinity-$version.apk"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trinity-android
+          path: release-android/Trinity-*.apk
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+
   # The self-hostable web app: the verified production renderer as a zip on the draft.
   # container.yml builds the GHCR image from this exact zip once the release is published.
   package-web:
@@ -525,7 +592,7 @@ jobs:
 
   draft-release:
     name: Draft the release
-    needs: [verify, package, sign-mac, package-web]
+    needs: [verify, package, sign-mac, package-web, sign-android]
     # NOT the default `success()`. A matrix job reports failure if ANY leg fails, even
     # with fail-fast off — so the default would skip this entirely when one platform
     # breaks, throwing away the installers that did build. That is the exact opposite of
@@ -555,6 +622,7 @@ jobs:
           ls artifacts/*.dmg >/dev/null 2>&1 || missing="$missing mac"
           ls artifacts/*.exe >/dev/null 2>&1 || missing="$missing win"
           ls artifacts/Trinity-Web-*.zip >/dev/null 2>&1 || missing="$missing web"
+          ls artifacts/Trinity-*.apk >/dev/null 2>&1 || missing="$missing android"
           if [ -n "$missing" ]; then
             echo "::warning::No artifact for:$missing — drafting a PARTIAL release. Re-run the workflow once fixed."
           fi
