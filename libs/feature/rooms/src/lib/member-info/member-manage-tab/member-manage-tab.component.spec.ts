@@ -189,6 +189,26 @@ describe('MemberManageTabComponent', () => {
     ).not.toBeNull();
   });
 
+  it('sets Block, Report and the moderation actions in cards, kick and ban as danger rows', async () => {
+    const { container } = await build(member(), {
+      canKick: true,
+      canBan: true,
+      reportsOffered: true,
+    });
+    for (const id of ['ignore', 'report', 'kick', 'ban']) {
+      const row = container.querySelector(`[data-testid="member-info-${id}"]`);
+      expect(row?.hasAttribute('trnInsetRow'), id).toBe(true);
+      expect(row?.closest('[trnInsetGroup]'), id).not.toBeNull();
+    }
+    for (const id of ['kick', 'ban']) {
+      expect(
+        container
+          .querySelector(`[data-testid="member-info-${id}"]`)
+          ?.getAttribute('data-trn-variant'),
+      ).toBe('danger');
+    }
+  });
+
   it('keeps kick/ban actions discoverable but unavailable without permission', async () => {
     const { container } = await build(); // canKick/canBan default false
     expect(

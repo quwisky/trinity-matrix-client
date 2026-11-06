@@ -4,7 +4,7 @@
   `TAttributes` over the directive's `hostAttrs`). The dialog is addressable by its
   accessible name instead.
 -->
-<trn-dialog-shell title="Pick a reaction" bodyClass="p-0">
+<trn-dialog-shell title="Pick a reaction" bodyClass="p-0" [sheetCancel]="false">
   <trn-emoji-picker
     class="reaction-picker"
     [recent]="recent()"

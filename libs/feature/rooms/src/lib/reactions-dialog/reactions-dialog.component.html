@@ -60,7 +60,7 @@
             <h3>
               {{ section.key }} <span>{{ section.reactors.length }}</span>
             </h3>
-            <ul class="reactors" data-testid="reactors-list">
+            <ul trnInsetGroup class="reactors" data-testid="reactors-list">
               @for (reactor of section.reactors; track reactor.userId) {
                 <li class="reactor">
                   <trn-avatar

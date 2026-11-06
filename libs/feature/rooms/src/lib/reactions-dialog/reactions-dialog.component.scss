@@ -82,7 +82,11 @@
     align-items: center;
     gap: var(--trinity-density-row-gap);
     min-height: var(--trinity-interaction-target-min-size);
-    padding: 6px 2px;
+    padding: 6px var(--trinity-space-4);
+
+    & + & {
+      border-top: 1px solid var(--trinity-border-sheet-divider);
+    }
   }
 
   .reactor__name {

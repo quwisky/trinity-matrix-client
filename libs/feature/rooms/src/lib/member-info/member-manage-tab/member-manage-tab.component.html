@@ -6,10 +6,12 @@
     >
       Safety
     </h3>
-    <div class="flex flex-col">
+    <div trnInsetGroup>
       <button
         trnBtn
+        trnInsetRow
         variant="secondary"
+        presentation="solid"
         shape="row"
         (click)="toggleIgnore()"
         [trnActionAllowed]="blockUnavailableReason() === null"
@@ -18,6 +20,23 @@
       >
         {{ ignored() ? 'Unblock' : 'Block' }}
       </button>
+      @if (canReport()) {
+        <trn-inset-divider inset="edge" />
+        <button
+          trnBtn
+          trnInsetRow
+          variant="secondary"
+          presentation="solid"
+          shape="row"
+          [attr.aria-label]="'Report ' + member().roomDisplayName"
+          (click)="report()"
+          data-testid="member-info-report"
+        >
+          Report
+        </button>
+      }
+    </div>
+    <div>
       <!-- Always present, so screen readers hear a confirmation as it arrives. -->
       <p
         class="m-0 text-13 text-muted-foreground not-empty:mt-2"
@@ -40,18 +59,6 @@
         </p>
       }
     </div>
-    @if (canReport()) {
-      <button
-        trnBtn
-        variant="secondary"
-        shape="row"
-        [attr.aria-label]="'Report ' + member().roomDisplayName"
-        (click)="report()"
-        data-testid="member-info-report"
-      >
-        Report
-      </button>
-    }
   </section>
 }
 @if (showModeration()) {
@@ -74,38 +81,49 @@
         (choose)="setRole($event)"
       />
     }
-    @if (showModerationAction(permissions().kick)) {
-      <button
-        trnBtn
-        variant="danger"
-        presentation="ghost"
-        shape="row"
-        (click)="kick()"
-        [trnActionAllowed]="permissions().kick.available"
-        [trnActionDisabledReason]="permissions().kick.reason"
-        [trnTooltip]="
-          permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
-        "
-        data-testid="member-info-kick"
-      >
-        Remove from {{ noun().toLowerCase() }}
-      </button>
-    }
-    @if (showModerationAction(permissions().ban)) {
-      <button
-        trnBtn
-        variant="danger"
-        shape="row"
-        (click)="ban()"
-        [trnActionAllowed]="permissions().ban.available"
-        [trnActionDisabledReason]="permissions().ban.reason"
-        [trnTooltip]="
-          permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
-        "
-        data-testid="member-info-ban"
-      >
-        Ban from {{ noun().toLowerCase() }}
-      </button>
-    }
+    <div trnInsetGroup>
+      @if (showModerationAction(permissions().kick)) {
+        <button
+          trnBtn
+          trnInsetRow
+          variant="danger"
+          presentation="ghost"
+          shape="row"
+          (click)="kick()"
+          [trnActionAllowed]="permissions().kick.available"
+          [trnActionDisabledReason]="permissions().kick.reason"
+          [trnTooltip]="
+            permissions().kick.reason ?? 'Remove from ' + noun().toLowerCase()
+          "
+          data-testid="member-info-kick"
+        >
+          Remove from {{ noun().toLowerCase() }}
+        </button>
+      }
+      @if (
+        showModerationAction(permissions().kick) &&
+        showModerationAction(permissions().ban)
+      ) {
+        <trn-inset-divider inset="edge" />
+      }
+      @if (showModerationAction(permissions().ban)) {
+        <button
+          trnBtn
+          trnInsetRow
+          variant="danger"
+          presentation="ghost"
+          shape="row"
+          (click)="ban()"
+          [trnActionAllowed]="permissions().ban.available"
+          [trnActionDisabledReason]="permissions().ban.reason"
+          [trnTooltip]="
+            permissions().ban.reason ?? 'Ban from ' + noun().toLowerCase()
+          "
+          data-testid="member-info-ban"
+        >
+          Ban from {{ noun().toLowerCase() }}
+        </button>
+      }
+    </div>
   </section>
 }

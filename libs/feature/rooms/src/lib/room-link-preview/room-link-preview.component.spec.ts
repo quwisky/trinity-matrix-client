@@ -89,6 +89,12 @@ describe('RoomLinkPreviewComponent', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
+  it('sets the room facts in a card', async () => {
+    const { container } = await build();
+
+    expect(container.querySelectorAll('[trnInsetGroup] > div').length).toBe(3);
+  });
+
   it('loads as the invited account when one is named', async () => {
     const { load } = await build({ accountId: '@work:hs' });
 

@@ -12,7 +12,13 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { filter, type Observable } from 'rxjs';
 import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
 import { TrnTooltip } from '@trinity/components/generic-content';
-import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
+import {
+  TrnAlertService,
+  TrnInsetDividerComponent,
+  TrnInsetGroup,
+  TrnInsetRow,
+  TrnToastService,
+} from '@trinity/components/overlay';
 import {
   ASSIGNABLE_MEMBER_ROLES,
   ContentReportingService,
@@ -42,6 +48,9 @@ let nextId = 0;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     TrnButton,
+    TrnInsetDividerComponent,
+    TrnInsetGroup,
+    TrnInsetRow,
     TrnActionAvailability,
     TrnTooltip,
     MemberRolePickerComponent,

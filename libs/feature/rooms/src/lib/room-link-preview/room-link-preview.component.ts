@@ -26,6 +26,7 @@ import {
   TrnDialogActions,
   TrnDialogRef,
   TrnDialogShellComponent,
+  TrnInsetGroup,
 } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { InvitesService } from '@trinity/data-access/room-library';
@@ -57,6 +58,7 @@ export interface RoomLinkPreviewResult {
     TrnSpinnerComponent,
     TrnDialogActions,
     TrnDialogShellComponent,
+    TrnInsetGroup,
   ],
   templateUrl: './room-link-preview.component.html',
   styleUrl: './room-link-preview.component.scss',

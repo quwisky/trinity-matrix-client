@@ -13,6 +13,7 @@ import { TrnButton } from '@trinity/components/controls';
 import {
   TrnDialogRef,
   TrnDialogShellComponent,
+  TrnInsetGroup,
 } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
@@ -41,6 +42,7 @@ import {
     AvatarComponent,
     TrnButton,
     TrnDialogShellComponent,
+    TrnInsetGroup,
   ],
 })
 export class ReactionsDialogComponent implements OnInit {

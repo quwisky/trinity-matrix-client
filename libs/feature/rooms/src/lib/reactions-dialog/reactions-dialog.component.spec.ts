@@ -79,6 +79,13 @@ describe('ReactionsDialogComponent', () => {
     );
   });
 
+  it('sets the reactors in a card', async () => {
+    const { container } = await build();
+
+    const card = container.querySelector('[trnInsetGroup]');
+    expect(card?.querySelectorAll('.reactor').length).toBe(2);
+  });
+
   it('switches sections when another key is picked', async () => {
     const { fixture, container } = await build();
 

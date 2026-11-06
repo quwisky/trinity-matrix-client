@@ -4,7 +4,7 @@ import { TrnDialogRef } from '@trinity/components/overlay';
 import { RecentEmojiService } from '@trinity/data-access/media';
 import { render, screen, within } from '@trinity/testing';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { Subject, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReactionPickerComponent } from './reaction-picker.component';
 import {
@@ -20,12 +20,17 @@ const pick = (native: string): TrnEmojiPick => ({
 });
 
 describe('ReactionPickerComponent', () => {
-  async function setup() {
+  async function setup(presentation: 'dialog' | 'sheet' = 'dialog') {
     const close = vi.fn();
     const record = vi.fn();
     const { fixture } = await render(ReactionPickerComponent, {
       providers: [
-        { provide: TrnDialogRef, useValue: { close } },
+        {
+          provide: TrnDialogRef,
+          useValue: Object.assign(
+            new TrnDialogRef({ closed: new Subject(), close }, presentation),
+          ),
+        },
         MockProvider(RecentEmojiService, {
           recent: signal(['🎉', '👍']).asReadonly(),
           run: () => of(undefined),
@@ -49,6 +54,12 @@ describe('ReactionPickerComponent', () => {
         name: 'Pick a reaction',
       }),
     ).toBeTruthy();
+  });
+
+  it('has no Cancel block in a sheet, since picking closes it', async () => {
+    await setup('sheet');
+
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 
   it('closes with the chosen native emoji', async () => {
