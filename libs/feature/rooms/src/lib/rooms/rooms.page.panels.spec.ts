@@ -183,6 +183,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     await settleWorkspace();
     shell.rooms.onOpenRoomSettings();
+    await vi.dynamicImportSettled();
 
     expect(editableFields).not.toHaveBeenCalled();
     expect(currentAccess).not.toHaveBeenCalled();
@@ -209,6 +210,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!r:hs');
     await settleWorkspace();
     shell.rooms.onOpenRoomSettings('members');
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).toHaveBeenCalledWith(
       RoomSettingsComponent,
@@ -232,6 +234,7 @@ describe('RoomsPage panels, pins and media', () => {
     setRouteRoom('!r:hs'); // the open room comes from /rooms/:roomId now
     await settleWorkspace();
     shell.rooms.onOpenRoomSettings();
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).toHaveBeenCalledWith(
       RoomSettingsComponent,
@@ -251,6 +254,8 @@ describe('RoomsPage panels, pins and media', () => {
     );
 
     shell.rooms.onExploreRooms();
+
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).toHaveBeenCalledWith(RoomDirectoryComponent, {
       autoFocus: '[data-autofocus]',
@@ -277,6 +282,8 @@ describe('RoomsPage panels, pins and media', () => {
 
     shell.rooms.onExploreRooms();
 
+    await vi.dynamicImportSettled();
+
     expect(waitForRoom).toHaveBeenCalledWith('@me:hs', '!space:hs');
     await vi.waitFor(() =>
       expect(shell.store.activeSpaceId()).toBe('!space:hs'),
@@ -289,6 +296,8 @@ describe('RoomsPage panels, pins and media', () => {
     dialogOpen.mockReturnValue(of(null));
 
     shell.rooms.onExploreRooms();
+
+    await vi.dynamicImportSettled();
 
     expect(shell.store.activeRoomId()).toBeNull();
   });
@@ -324,6 +333,8 @@ describe('RoomsPage panels, pins and media', () => {
     );
 
     shell.rooms.onOpenRoomSettings();
+
+    await vi.dynamicImportSettled();
     await settleWorkspace();
 
     expect(joinPublicRoom).toHaveBeenCalledWith('@alt:hs', '!next:hs');

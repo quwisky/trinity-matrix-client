@@ -14,9 +14,8 @@ import {
   TrnAlertService,
   TrnSurfaceService,
 } from '@trinity/components/overlay';
-import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
+import { filter, from, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
-import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
@@ -329,21 +328,28 @@ export class SpaceActionsService {
     spaceId: string,
     initialSection?: 'general' | 'contents' | 'members',
   ): void {
-    this.dialog
-      .openAndWait$(SpaceSettingsComponent, {
-        ariaLabel: 'Space settings',
-        autoFocus: '[data-autofocus]',
-        dismissGuard: (component) =>
-          component?.requestExternalDismiss() ?? true,
-        inputs: {
-          accountId,
-          spaceId,
-          spaceDisplayName: this.vm.activeSpaceName(),
-          initialSection,
-        },
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    from(import('../space-settings/space-settings.component'))
+      .pipe(
+        switchMap(({ SpaceSettingsComponent }) =>
+          this.dialog.openAndWait$(SpaceSettingsComponent, {
+            ariaLabel: 'Space settings',
+            autoFocus: '[data-autofocus]',
+            dismissGuard: (component) =>
+              component?.requestExternalDismiss() ?? true,
+            inputs: {
+              accountId,
+              spaceId,
+              spaceDisplayName: this.vm.activeSpaceName(),
+              initialSection,
+            },
+          }),
+        ),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        error: () =>
+          void this.status.showError('Could not open space settings.'),
+      });
   }
 
   /** Space overflow "Add existing rooms": link rooms the user is already in. */

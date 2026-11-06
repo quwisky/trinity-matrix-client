@@ -22,13 +22,10 @@ import { ReportService } from '../report/report.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
-import {
-  RoomDirectoryComponent,
-  type DirectoryJoin,
-} from '../room-directory/room-directory.component';
-import {
+import type { DirectoryJoin } from '../room-directory/room-directory.component';
+import type {
   RoomSettingsComponent,
-  type RoomSettingsSection,
+  RoomSettingsSection,
 } from '../room-settings/room-settings.component';
 import type { RoomSettingsResult } from '../room-settings/room-settings.models';
 import { RoomShellStore } from './room-shell-store';
@@ -36,7 +33,15 @@ import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
 import { AccountRoutingService } from './account-routing.service';
 import { ShellStatusService } from './shell-status.service';
-import { EMPTY, filter, forkJoin, map, switchMap, type Observable } from 'rxjs';
+import {
+  EMPTY,
+  filter,
+  forkJoin,
+  from,
+  map,
+  switchMap,
+  type Observable,
+} from 'rxjs';
 
 /** The shared invite failure copy, naming an invitee who blocks invites. */
 function inviteErrorHandling(name: string): MatrixRequestErrorHandling {
@@ -215,12 +220,14 @@ export class RoomActionsService {
   onExploreRooms(): void {
     const accountId = this.store.activeAccountId();
     if (!accountId) return;
-    this.dialog
-      .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
-        autoFocus: '[data-autofocus]',
-        inputs: { accountId },
-      })
+    from(import('../room-directory/room-directory.component'))
       .pipe(
+        switchMap(({ RoomDirectoryComponent }) =>
+          this.dialog.openAndWait$<DirectoryJoin | null>(
+            RoomDirectoryComponent,
+            { autoFocus: '[data-autofocus]', inputs: { accountId } },
+          ),
+        ),
         filter((joined): joined is DirectoryJoin => joined !== null),
         switchMap((joined) => {
           // The join endpoint can close the dialog before /sync publishes the Room, and
@@ -390,27 +397,35 @@ export class RoomActionsService {
       id,
       name: this.vm.railSpaces().find((s) => s.id === id)?.name ?? id,
     }));
-    this.dialog
-      .openAndWait$<RoomSettingsResult, RoomSettingsComponent>(
-        RoomSettingsComponent,
-        {
-          ariaLabel: 'Room settings',
-          autoFocus: '[data-autofocus]',
-          dismissGuard: (component) =>
-            component?.requestExternalDismiss() ?? true,
-          inputs: {
-            accountId,
-            roomId: room.id,
-            roomDisplayName: room.name,
-            direct: room.directUserId !== undefined,
-            parentSpaces,
-            ...(initialSection && { initialSection }),
-          },
-        },
+    from(import('../room-settings/room-settings.component'))
+      .pipe(
+        switchMap(({ RoomSettingsComponent }) =>
+          this.dialog.openAndWait$<RoomSettingsResult, RoomSettingsComponent>(
+            RoomSettingsComponent,
+            {
+              ariaLabel: 'Room settings',
+              autoFocus: '[data-autofocus]',
+              dismissGuard: (component) =>
+                component?.requestExternalDismiss() ?? true,
+              inputs: {
+                accountId,
+                roomId: room.id,
+                roomDisplayName: room.name,
+                direct: room.directUserId !== undefined,
+                parentSpaces,
+                ...(initialSection && { initialSection }),
+              },
+            },
+          ),
+        ),
+        takeUntilDestroyed(this.destroyRef),
       )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((result) => {
-        if (result) this.onGoToUpgradedRoom(result.roomId, result.accountId);
+      .subscribe({
+        next: (result) => {
+          if (result) this.onGoToUpgradedRoom(result.roomId, result.accountId);
+        },
+        error: () =>
+          void this.status.showError('Could not open room settings.'),
       });
   }
 }

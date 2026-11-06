@@ -154,11 +154,13 @@ describe('MemberActionsService member info', () => {
     vi.unstubAllGlobals();
   });
 
-  it('opens member info from the list as a centred dialog on a large screen', () => {
+  it('opens member info from the list as a centred dialog on a large screen', async () => {
     const built = build();
     surfaces = built.surfaces;
 
     built.members.onSelectMember(BOB);
+
+    await vi.dynamicImportSettled();
     built.tick();
 
     expect(shell()?.dataset['presentation']).toBe('dialog');
@@ -169,11 +171,13 @@ describe('MemberActionsService member info', () => {
     expect(built.transition).not.toHaveBeenCalled();
   });
 
-  it('opens member info from the list as a bottom sheet below md', () => {
+  it('opens member info from the list as a bottom sheet below md', async () => {
     const built = build({ narrow: true });
     surfaces = built.surfaces;
 
     built.members.onSelectMember(BOB);
+
+    await vi.dynamicImportSettled();
     built.tick();
 
     expect(shell()?.dataset['presentation']).toBe('sheet');
@@ -184,21 +188,24 @@ describe('MemberActionsService member info', () => {
     expect(built.transition).not.toHaveBeenCalled();
   });
 
-  it('opens member info from the list as a bottom sheet on a mobile OS at any width', () => {
+  it('opens member info from the list as a bottom sheet on a mobile OS at any width', async () => {
     platform.mobile = true;
     const built = build();
     surfaces = built.surfaces;
 
     built.members.onSelectMember(BOB);
+
+    await vi.dynamicImportSettled();
     built.tick();
 
     expect(shell()?.dataset['presentation']).toBe('sheet');
   });
 
-  it('closes without touching the Room surface slot, so the list stays open', () => {
+  it('closes without touching the Room surface slot, so the list stays open', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     button('member-info-close').click();
@@ -209,10 +216,11 @@ describe('MemberActionsService member info', () => {
     expect(built.createDirectMessage).not.toHaveBeenCalled();
   });
 
-  it('closes after a kick lands, leaving the list to show the change', () => {
+  it('closes after a kick lands, leaving the list to show the change', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     button('member-info-kick').click();
@@ -224,10 +232,11 @@ describe('MemberActionsService member info', () => {
     expect(built.onSelectRoom).not.toHaveBeenCalled();
   });
 
-  it('closes on Message and opens the direct message', () => {
+  it('closes on Message and opens the direct message', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     button('member-info-message').click();
@@ -241,11 +250,13 @@ describe('MemberActionsService member info', () => {
     });
   });
 
-  it('names the dialog by its visible title', () => {
+  it('names the dialog by its visible title', async () => {
     const built = build();
     surfaces = built.surfaces;
 
     built.members.onSelectMember(BOB);
+
+    await vi.dynamicImportSettled();
     built.tick();
 
     expect(
@@ -253,10 +264,11 @@ describe('MemberActionsService member info', () => {
     ).toBe('Member info');
   });
 
-  it('does not carry member info into the next room', () => {
+  it('does not carry member info into the next room', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
     expect(built.surfaces.hasOpen()).toBe(true);
 
@@ -269,12 +281,13 @@ describe('MemberActionsService member info', () => {
     expect(built.createDirectMessage).not.toHaveBeenCalled();
   });
 
-  it('does not carry member info into another account', () => {
+  it('does not carry member info into another account', async () => {
     // A notification tap can switch Account while member info is open; its commands and
     // "Message" belong to the Account it was opened for, so it closes.
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     built.activeAccountId.set('@other:hs');
@@ -287,10 +300,11 @@ describe('MemberActionsService member info', () => {
     expect(built.onSelectRoom).not.toHaveBeenCalled();
   });
 
-  it('keeps moderation on the owning account before the switch closes it', () => {
+  it('keeps moderation on the owning account before the switch closes it', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     // The switch has landed but nothing has rendered since: the dialog is still up.
@@ -304,10 +318,11 @@ describe('MemberActionsService member info', () => {
     );
   });
 
-  it('opens no direct message from another account than the one that owned it', () => {
+  it('opens no direct message from another account than the one that owned it', async () => {
     const built = build();
     surfaces = built.surfaces;
     built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
     built.tick();
 
     built.activeAccountId.set('@other:hs');

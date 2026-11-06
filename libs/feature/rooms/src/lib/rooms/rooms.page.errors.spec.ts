@@ -387,6 +387,7 @@ describe('RoomsPage action error feedback', () => {
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     shell.spaces.onOpenSpaceMembers();
+    await vi.dynamicImportSettled();
     await Promise.resolve();
     await Promise.resolve();
 
@@ -460,6 +461,8 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onManageSpaceRooms();
 
+    await vi.dynamicImportSettled();
+
     expect(dialogOpen).toHaveBeenCalledWith(
       SpaceSettingsComponent,
       expect.objectContaining({
@@ -482,6 +485,7 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.vm.canCurateSpace()).toBe(false);
     shell.spaces.onAddToSpace();
     shell.spaces.onManageSpaceRooms();
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).not.toHaveBeenCalled();
   });
@@ -516,6 +520,7 @@ describe('RoomsPage action error feedback', () => {
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     shell.spaces.onOpenSpaceSettings();
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).toHaveBeenCalledWith(SpaceSettingsComponent, {
       ariaLabel: 'Space settings',
@@ -536,6 +541,7 @@ describe('RoomsPage action error feedback', () => {
     await settleWorkspace();
     railSpacesSignal.set([railSpace('!s:hs')]);
     shell.spaces.onOpenSpaceSettings();
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).toHaveBeenCalledWith(
       SpaceSettingsComponent,
@@ -553,6 +559,8 @@ describe('RoomsPage action error feedback', () => {
 
     shell.spaces.onOpenSpaceSettings();
 
+    await vi.dynamicImportSettled();
+
     const [, options] = dialogOpen.mock.calls[0];
     expect(options.inputs).not.toHaveProperty('historyVisibility');
     expect(options.inputs).not.toHaveProperty('canEditHistory');
@@ -564,6 +572,8 @@ describe('RoomsPage action error feedback', () => {
     await settleWorkspace();
 
     shell.spaces.onOpenSpaceSettings();
+
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).not.toHaveBeenCalled();
   });
@@ -579,6 +589,8 @@ describe('RoomsPage action error feedback', () => {
     expect(shell.vm.canConfigureSpace()).toBe(false);
 
     shell.spaces.onOpenSpaceSettings();
+
+    await vi.dynamicImportSettled();
 
     expect(dialogOpen).not.toHaveBeenCalled();
   });
@@ -628,6 +640,7 @@ describe('RoomsPage action error feedback', () => {
     ]);
     parentSpaceIds.mockReturnValue(['!s:hs']);
     shell.rooms.onOpenRoomSettings();
+    await vi.dynamicImportSettled();
 
     // The label names the space, so the id alone is not enough to pass through.
     expect(dialogOpen).toHaveBeenCalledWith(RoomSettingsComponent, {

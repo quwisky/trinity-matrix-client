@@ -11,7 +11,7 @@ import { TrnSurfaceService } from '@trinity/components/overlay';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
-import { MemberInfoComponent } from '../member-info/member-info.component';
+import type { MemberInfoComponent } from '../member-info/member-info.component';
 import { type ExactRoomSelection } from '../shared/exact-selection';
 import { UserCardComponent } from '../user-card/user-card.component';
 import { RoomShellStore } from './room-shell-store';
@@ -37,7 +37,7 @@ export class MemberActionsService {
     const accountId = this.store.activeAccountId();
     const roomId = this.store.activeRoomId();
     if (accountId && roomId) {
-      this.openMemberInfo(member, { accountId, roomId });
+      void this.openMemberInfo(member, { accountId, roomId });
     }
   }
 
@@ -53,10 +53,18 @@ export class MemberActionsService {
    * navigation does not close overlays, so when another Room or Account becomes active this
    * closes it, and nothing it started runs as the new Account.
    */
-  private openMemberInfo(
+  private async openMemberInfo(
     member: MemberSummary,
     owner: ExactRoomSelection,
-  ): void {
+  ): Promise<void> {
+    const { MemberInfoComponent } =
+      await import('../member-info/member-info.component').catch(() => ({
+        MemberInfoComponent: null,
+      }));
+    if (!MemberInfoComponent) {
+      void this.status.showError('Could not open member info.');
+      return;
+    }
     const ref = this.dialog.open<string, MemberInfoComponent>(
       MemberInfoComponent,
       {
