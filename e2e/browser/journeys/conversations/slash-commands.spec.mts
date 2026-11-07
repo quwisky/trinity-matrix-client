@@ -9,14 +9,15 @@ import { openNamedRoom as openRoom } from '../../../support/message-composer.mts
 import { createRoom } from '../../support/space-journey.mts';
 
 // Covers composer slash commands (TimelineService.send → slashCommandContent):
-// /shrug appends the kaomoji, and /plain sends its argument literally (no markdown).
+// /shrug and the other text art append their art, /plain sends its argument literally (no
+// markdown), and a reply applies the text art but no other command.
 // Needs a Synapse homeserver (Docker); self-skips otherwise.
 const session = homeserverSession();
 
 test.describe('Slash commands', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('/shrug appends the kaomoji and /plain keeps markdown literal', async ({
+  test('/shrug appends the kaomoji, /plain keeps markdown literal, and a reply takes the text art', async ({
     page,
     request,
   }) => {
@@ -62,6 +63,34 @@ test.describe('Slash commands', () => {
     await expect(
       page.locator('.msg__text', { hasText: '**not bold**' }),
     ).toBeVisible({ timeout: 20_000 });
+
+    await composer.fill('/tableflip enough');
+    await sendDraft();
+    const flipped = page.locator('.msg', {
+      has: page.locator('.msg__text', { hasText: 'enough (╯°□°）╯︵ ┻━┻' }),
+    });
+    await expect(flipped).toBeVisible({ timeout: 20_000 });
+
+    // A reply applies the text art, the shrug's `\_` and `_` kept literal in its rich body,
+    // and offers only those commands.
+    await expect(async () => {
+      await flipped.hover();
+      await flipped.getByRole('button', { name: 'Reply', exact: true }).click({
+        timeout: 2_000,
+      });
+    }).toPass({ timeout: 20_000 });
+    await expect(page.locator('.composer__banner')).toContainText(
+      'Replying to',
+    );
+    await composer.fill('/');
+    const replyMenu = page.getByTestId('slash-autocomplete');
+    await expect(replyMenu.getByRole('option')).toHaveCount(4);
+    await composer.fill('/shrug calm down');
+    await sendDraft();
+    await expect(
+      page.locator('.msg__text', { hasText: 'calm down ¯\\_(ツ)_/¯' }),
+    ).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('.composer__banner')).toBeHidden();
 
     // The autocomplete: a bare `/` offers every command, typing narrows it, and Enter
     // completes the name instead of sending — the message only goes once the argument is

@@ -175,8 +175,13 @@ export function textMessageContent(
   return { msgtype: MsgType.Text, body: text, ...notified };
 }
 
-/** The classic shrug the `/shrug` command appends. */
-const SHRUG = '¯\\_(ツ)_/¯';
+/** The text-art commands, and the art each appends to its message. */
+const TEXT_ART: Readonly<Record<string, string>> = {
+  shrug: '¯\\_(ツ)_/¯',
+  tableflip: '(╯°□°）╯︵ ┻━┻',
+  unflip: '┬──┬ ノ( ゜-゜ノ)',
+  lenny: '( ͡° ͜ʖ ͡°)',
+};
 
 /** One IRC-style command the composer recognises, and what to tell someone about it. */
 export interface SlashCommand {
@@ -186,7 +191,15 @@ export interface SlashCommand {
   readonly description: string;
   /** What follows it, if anything — shown after the name so the shape is visible. */
   readonly argument?: string;
+  /** Read in a reply too: it only appends text, so the reply's rich body can carry it. */
+  readonly inReplies?: boolean;
 }
+
+/**
+ * Where a leading slash command is read: an ordinary message reads every command, a reply
+ * only those that just append text, and an edit or an attachment caption none.
+ */
+export type SlashCommandContext = 'message' | 'reply' | 'none';
 
 /**
  * The IRC-style commands the composer recognises, with the descriptions any UI should use.
@@ -200,7 +213,12 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     description: 'Send as an action, in the third person',
     argument: '<message>',
   },
-  { name: 'shrug', description: 'Append ¯\\_(ツ)_/¯', argument: '[message]' },
+  ...Object.entries(TEXT_ART).map(([name, art]) => ({
+    name,
+    description: `Append ${art}`,
+    argument: '[message]',
+    inReplies: true,
+  })),
   {
     name: 'plain',
     description: 'Send without formatting, markdown and all',
@@ -212,6 +230,16 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     argument: '<message>',
   },
 ];
+
+/** The commands read in `context`, in menu order. */
+export function slashCommandsFor(
+  context: SlashCommandContext,
+): readonly SlashCommand[] {
+  if (context === 'none') return [];
+  return context === 'reply'
+    ? SLASH_COMMANDS.filter((command) => command.inReplies)
+    : SLASH_COMMANDS;
+}
 
 // Escaped because the names are exported: a future `foo.bar` would otherwise act as a
 // wildcard in this alternation and widen what the parser accepts.
@@ -233,6 +261,26 @@ export function parseSlashCommand(
   return match
     ? { command: match[1].toLowerCase(), arg: (match[2] ?? '').trim() }
     : null;
+}
+
+/**
+ * A reply's text with a leading text-art command applied, or null when there is none. A reply
+ * is always rich, so `markdown` is what to render: the text with the art's markdown escaped,
+ * else the shrug's `\_` and `_` would turn into emphasis.
+ */
+export function replyTextArt(
+  text: string,
+): { text: string; markdown: string } | null {
+  const parsed = parseSlashCommand(text);
+  const art = parsed && TEXT_ART[parsed.command];
+  if (!parsed || !art) {
+    return null;
+  }
+  // CommonMark lets any ASCII punctuation be backslash-escaped to a literal.
+  const literal = art.replace(/[!-/:-@[-`{-~]/g, '\\$&');
+  return parsed.arg
+    ? { text: `${parsed.arg} ${art}`, markdown: `${parsed.arg} ${literal}` }
+    : { text: art, markdown: literal };
 }
 
 /** `m.emote` content (`/me`), rich when the markdown adds formatting. */
@@ -312,11 +360,17 @@ export function slashCommandContent(
     // The remaining commands emit a body the sender authored, so they need the same
     // `m.mentions` marker as an ordinary message (else `/plain > @room …` re-pings the room).
     case 'shrug':
+    case 'tableflip':
+    case 'unflip':
+    case 'lenny': {
+      // Plain text with no HTML twin: the art's `\_` and `_` must not read as markdown.
+      const art = TEXT_ART[command];
       return {
         msgtype: MsgType.Text,
-        body: arg ? `${arg} ${SHRUG}` : SHRUG,
+        body: arg ? `${arg} ${art}` : art,
         ...mentionsBlock([], mentionsRoom(arg)),
       };
+    }
     case 'plain':
       return arg
         ? {

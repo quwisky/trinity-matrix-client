@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { SLASH_COMMANDS } from '@trinity/util/matrix';
+import { signal } from '@angular/core';
+import { SLASH_COMMANDS, slashCommandsFor } from '@trinity/util/matrix';
 import { SlashAutocomplete } from './slash-autocomplete';
 
 /** Sync against the end of `text`, which is where the caret is while typing. */
@@ -24,6 +25,22 @@ describe('SlashAutocomplete', () => {
   it('narrows as the name is typed', async () => {
     expect(names(typed('/s'))).toEqual(['shrug', 'spoiler']);
     expect(names(typed('/sh'))).toEqual(['shrug']);
+    expect(names(typed('/t'))).toEqual(['tableflip']);
+  });
+
+  it('offers only the commands it is given, and starts again at the top when they change', async () => {
+    const reply = signal(false);
+    const engine = new SlashAutocomplete(() =>
+      slashCommandsFor(reply() ? 'reply' : 'message'),
+    );
+    engine.sync('/', 1);
+    engine.move(6);
+    expect(engine.matches()[engine.activeIndex()].name).toBe('spoiler');
+
+    reply.set(true);
+
+    expect(names(engine)).toEqual(['shrug', 'tableflip', 'unflip', 'lenny']);
+    expect(engine.activeIndex()).toBe(0);
   });
 
   it('closes on a name that matches nothing', async () => {

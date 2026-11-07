@@ -1722,6 +1722,16 @@ describe('ThreadsService', () => {
       expect(content['formatted_body']).toContain('</mx-reply>replying');
     });
 
+    it('applies a text-art command in a thread reply', async () => {
+      const { svc, sent } = openedThread();
+
+      await firstValueFrom(svc.replyInThread('$r1', '/shrug oh well'));
+
+      const content = sent[0][2] as Record<string, unknown>;
+      expect(content['body']).toBe('> <@b:hs> a reply\n\noh well ¯\\_(ツ)_/¯');
+      expect(content['formatted_body']).toContain('oh well ¯\\_(ツ)_/¯');
+    });
+
     it('resolves the thread context on subscribe, not when called', async () => {
       // The in-thread actions are cold, so the thread (and the account behind it)
       // must be resolved at subscribe. Capturing the context eagerly means a send

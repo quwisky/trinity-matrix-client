@@ -77,6 +77,7 @@ import {
   messagePreview,
   renderMarkdown,
   replyMessageContent,
+  replyTextArt,
   slashCommandContent,
   textMessageContent,
   type Mention,
@@ -662,7 +663,7 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, threadId } = ctx;
-      // A leading slash command (/me, /shrug, /plain, /spoiler) rewrites the content as in
+      // A leading slash command (see SLASH_COMMANDS) rewrites the content as in
       // the main composer; otherwise build normal text content so mentions carry
       // `m.mentions` + matrix.to pills.
       const render = (value: string) =>
@@ -723,11 +724,12 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, threadId } = ctx;
+      const art = replyTextArt(text);
       const content = replyMessageContent(
         room,
         messageId,
-        text,
-        renderMarkdown(text, this.packs.emoticons()),
+        art?.text ?? text,
+        renderMarkdown(art?.markdown ?? text, this.packs.emoticons()),
         mentions,
         undefined,
         shownContent,

@@ -307,6 +307,31 @@ describe('MatrixConversationTextSender', () => {
     expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
   });
 
+  it('applies a text-art command in a reply, keeping its markdown literal', async () => {
+    const { sender, client } = setup();
+
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: '/tableflip **enough**',
+        mentions: [],
+        intent: { kind: 'reply', eventId: '$original' },
+      }).outcome,
+    );
+
+    const reply = client.sendMessage.mock.calls[0][1] as Record<
+      string,
+      unknown
+    >;
+    expect(reply['body']).toMatch(/\*\*enough\*\* \(╯°□°）╯︵ ┻━┻$/u);
+    expect(reply['formatted_body']).toContain(
+      '<strong>enough</strong> (╯°□°）╯︵ ┻━┻',
+    );
+    expect(reply['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$original' },
+    });
+  });
+
   it('sending :code: from the composer sends the inline image', async () => {
     const { sender, client } = setup();
     const image =

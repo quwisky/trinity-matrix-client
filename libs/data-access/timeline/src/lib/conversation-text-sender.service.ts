@@ -16,6 +16,7 @@ import {
   editMessageContent,
   renderMarkdown,
   replyMessageContent,
+  replyTextArt,
   slashCommandContent,
   textMessageContent,
 } from '@trinity/util/matrix';
@@ -168,16 +169,18 @@ class MatrixConversationTextSender implements ConversationTextSender {
           slashCommandContent(request.body, render, mentions) ??
           textMessageContent(request.body, render(request.body), mentions)
         );
-      case 'reply':
+      case 'reply': {
+        const art = replyTextArt(request.body);
         return replyMessageContent(
           room,
           request.intent.eventId,
-          request.body,
-          render(request.body),
+          art?.text ?? request.body,
+          render(art?.markdown ?? request.body),
           mentions,
           target,
           shownContent,
         );
+      }
       case 'edit':
         return editMessageContent(
           request.intent.eventId,

@@ -8,7 +8,9 @@ import {
   messagePreview,
   parseSlashCommand,
   replyMessageContent,
+  replyTextArt,
   slashCommandContent,
+  slashCommandsFor,
   textMessageContent,
   type Mention,
 } from './message-content';
@@ -67,6 +69,49 @@ describe('parseSlashCommand', () => {
   });
 });
 
+describe('slashCommandsFor', () => {
+  it('reads every command in a message, the text art in a reply, none in an edit', () => {
+    const names = (context: Parameters<typeof slashCommandsFor>[0]) =>
+      slashCommandsFor(context).map((command) => command.name);
+
+    expect(names('message')).toEqual([
+      'me',
+      'shrug',
+      'tableflip',
+      'unflip',
+      'lenny',
+      'plain',
+      'spoiler',
+    ]);
+    expect(names('reply')).toEqual(['shrug', 'tableflip', 'unflip', 'lenny']);
+    expect(names('none')).toEqual([]);
+  });
+});
+
+describe('replyTextArt', () => {
+  it('appends the art, with markdown that renders it literally', () => {
+    const art = replyTextArt('/shrug **oh** well');
+
+    expect(art?.text).toBe('**oh** well ¯\\_(ツ)_/¯');
+    expect(renderMarkdown(art!.markdown).html.trim()).toBe(
+      '<p><strong>oh</strong> well ¯\\_(ツ)_/¯</p>',
+    );
+  });
+
+  it('sends the art alone with no message', () => {
+    expect(replyTextArt('/lenny')?.text).toBe('( ͡° ͜ʖ ͡°)');
+    expect(renderMarkdown(replyTextArt('/unflip')!.markdown).html.trim()).toBe(
+      '<p>┬──┬ ノ( ゜-゜ノ)</p>',
+    );
+  });
+
+  it('leaves the other commands and plain text alone', () => {
+    expect(replyTextArt('/me waves')).toBeNull();
+    expect(replyTextArt('/spoiler x')).toBeNull();
+    expect(replyTextArt('just text')).toBeNull();
+  });
+});
+
 describe('slashCommandContent', () => {
   const plain: RenderedMarkdown = { formatted: false, html: '' };
   const render = () => plain;
@@ -101,6 +146,23 @@ describe('slashCommandContent', () => {
     expect(
       (slashCommandContent('/shrug oh well', render) as { body: string }).body,
     ).toBe('oh well ¯\\_(ツ)_/¯');
+  });
+
+  it.each([
+    ['tableflip', '(╯°□°）╯︵ ┻━┻'],
+    ['unflip', '┬──┬ ノ( ゜-゜ノ)'],
+    ['lenny', '( ͡° ͜ʖ ͡°)'],
+  ])('appends its art for /%s, as plain text', (command, art) => {
+    expect(slashCommandContent(`/${command}`, render)).toEqual({
+      msgtype: 'm.text',
+      body: art,
+      'm.mentions': {},
+    });
+    expect(slashCommandContent(`/${command} ugh @room`, render)).toEqual({
+      msgtype: 'm.text',
+      body: `ugh @room ${art}`,
+      'm.mentions': { room: true },
+    });
   });
 
   it('sends /plain as plain text (no formatting)', () => {
