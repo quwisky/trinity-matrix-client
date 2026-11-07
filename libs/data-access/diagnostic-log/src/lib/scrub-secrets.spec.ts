@@ -352,6 +352,30 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets('{ password: hunter2 }')).not.toContain('hunter2');
   });
 
+  it('masks a whole quoted parameter value, and still reads parameters inside other ones', () => {
+    expect(scrubSecrets('password="hunter2"')).toBe(`password=${REDACTED}`);
+    expect(scrubSecrets('send body="meet me at 5 behind the bank"')).toBe(
+      `send body=${REDACTED}`,
+    );
+    expect(
+      scrubSecrets(String.raw`{"msg":"login password=\"hunter2 x\""}`),
+    ).toBe(String.raw`{"msg":"login password=${REDACTED}"}`);
+    expect(scrubSecrets(`open url='https://x.example/?access_token=abc'`)).toBe(
+      `open url='https://x.example/?access_token=${REDACTED}'`,
+    );
+  });
+
+  it('masks an escaped string through its own closing quote, past quotes escaped deeper', () => {
+    expect(
+      scrubSecrets(
+        String.raw`{"msg":"{\"body\":\"he said \\\"hi\\\" top secret plans\"}"}`,
+      ),
+    ).toBe(String.raw`{"msg":"{\"body\":\"${REDACTED}\"}"}`);
+    expect(
+      scrubSecrets(String.raw`{"msg":"{\"body\":\"ends in \\\\\",\"x\":1}"}`),
+    ).toBe(String.raw`{"msg":"{\"body\":\"${REDACTED}\",\"x\":1}"}`);
+  });
+
   it('masks non-string values of secret fields', () => {
     expect(scrubSecrets('{"password":12345}')).toBe(
       `{"password":"${REDACTED}"}`,

@@ -166,8 +166,12 @@ function isReadableFlag(name: string, value: string): boolean {
   return FLAG_VALUE.test(value) && !CREDENTIAL_WORDS.has(normalizeName(name));
 }
 
-/** A parameter name and its value; the name may start after any non-alphanumeric character. */
-const PARAM = /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=([^&#\s"']*)/g;
+/**
+ * A parameter name and its value; the name may start after any non-alphanumeric character.
+ * The value may be a quoted string, its quotes escaped or not, which is masked whole.
+ */
+const PARAM =
+  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=(\\{0,8}"[^"\n]*"|\\{0,8}'[^'\n]*'|[^&#\s"']*)/g;
 
 /** `code` and `state` values that are diagnostics, not OAuth secrets. */
 const KEPT_OAUTH_VALUE =
@@ -241,17 +245,23 @@ export function scrubSecrets(text: string): string {
   }
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
-  scrubbed = scrubbed.replace(PARAM, (whole, name: string, value: string) =>
-    isSecretParam(name) && !isReadableFlag(name, value)
-      ? `${name}=${REDACTED}`
-      : whole,
-  );
+  scrubbed = maskParams(scrubbed);
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
   scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
   return maskFields(scrubbed, isOAuthName, true);
+}
+
+function maskParams(text: string): string {
+  return text.replace(PARAM, (whole, name: string, value: string) => {
+    if (isSecretParam(name) && !isReadableFlag(name, value)) {
+      return `${name}=${REDACTED}`;
+    }
+    // A quoted value may itself hold parameters: `url="https://…?access_token=…"`.
+    return /^\\*["']/.test(value) ? `${name}=${maskParams(value)}` : whole;
+  });
 }
 
 /**
@@ -315,7 +325,7 @@ const CUT_RECOVERY_KEY =
  * without anything that could be a recovery key's leading groups, which the full-key rule
  * would no longer match.
  */
-function cutAtSeparator(text: string, limit: number): string {
+export function cutAtSeparator(text: string, limit: number): string {
   let end = limit;
   while (end > 0 && !SEPARATOR.test(text[end - 1])) {
     end -= 1;
@@ -435,7 +445,24 @@ function readString(text: string, start: number, opener: string): FieldValue {
   const from = start + opener.length;
   let close = -1;
   if (opener.length > 1) {
-    close = text.indexOf(opener, from);
+    const slashes = opener.length - 1;
+    for (
+      let at = text.indexOf(opener, from);
+      at !== -1;
+      at = text.indexOf(opener, at + 1)
+    ) {
+      let run = slashes;
+      while (text[at - run + slashes - 1] === '\\') {
+        run += 1;
+      }
+      // The quote closes this string only when its backslash run, unescaped level by level,
+      // leaves it bare: a run of `slashes` modulo 2(slashes + 1). Inside `\"`, `\\\"` is a
+      // deeper quote and `\\\\\"` a backslash followed by the close.
+      if (run % (2 * slashes + 2) === slashes) {
+        close = at;
+        break;
+      }
+    }
   } else {
     for (let i = from; i < text.length; i += text[i] === '\\' ? 2 : 1) {
       if (text[i] === opener) {

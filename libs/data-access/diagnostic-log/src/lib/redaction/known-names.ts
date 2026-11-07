@@ -321,14 +321,18 @@ class NameIndex {
   }
 
   private consider(raw: string, kind: NameKind, take: boolean): boolean {
-    const name = raw.normalize('NFC').trim();
+    const stored = raw.trim();
+    const name = stored.normalize('NFC');
     if (!isReplaceable(name)) {
       return false;
     }
-    // A multi-line topic is also matched line by line: a log line may quote one line.
-    const pieces = name.includes('\n')
-      ? [name, ...name.split('\n').map((line) => line.trim())]
-      : [name];
+    // A name stored in mixed composition is neither its NFC nor its NFD spelling: search it
+    // as stored too. A multi-line topic is also matched line by line: a log line may quote one.
+    const pieces = [...new Set([name, stored])].flatMap((whole) =>
+      whole.includes('\n')
+        ? [whole, ...whole.split('\n').map((line) => line.trim())]
+        : [whole],
+    );
     const id = this.kinds.length;
     let taken = false;
     for (const piece of pieces) {

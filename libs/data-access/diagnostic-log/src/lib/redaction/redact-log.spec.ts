@@ -929,6 +929,55 @@ describe('createLogRedactor', () => {
       ).toBe('@me:server1 and @me:server1');
     });
 
+    it('replaces aliases and user IDs whose local part holds any character Matrix allows', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact(
+          "#café-secret:example.org #my+room:example.org @carol.o'neil:example.org",
+        ),
+      ).toBe('#alias1:server1 #alias2:server1 @user1:server1');
+      expect(
+        redactor.redact(
+          'GET /directory/room/%23caf%C3%A9-secret%3Aexample.org',
+        ),
+      ).toBe('GET /directory/room/%23alias1%3Aserver1');
+      expect(
+        redactor.redact('"#café-secret:example.org", <#my+room:example.org>'),
+      ).toBe('"#alias1:server1", <#alias2:server1>');
+    });
+
+    it('replaces the hosts of TURN and STUN URIs, keeping their ports', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact(
+          'Got TURN URIs: turn:203.0.113.10:3478?transport=udp,turns:turn.coturn-host.net:5349,stun:stun.example.com',
+        ),
+      ).toBe(
+        'Got TURN URIs: turn:server3:3478?transport=udp,turns:server4:5349,stun:server5',
+      );
+    });
+
+    it('replaces bare IPv4 and IPv6 addresses', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(redactor.redact('peer 2001:db8::1 and 198.51.100.7')).toBe(
+        'peer server3 and server4',
+      );
+      expect(redactor.redact('@bob:[2001:db8::1]:8448 from 198.51.100.7')).toBe(
+        '@user1:server3 from server4',
+      );
+    });
+
+    it('keeps version numbers, times and code paths that only look like addresses', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+      const text =
+        'Chrome/141.0.0.0 v1.2.3.4 1.2.3.4.5 build 141.0.7390.54 at 12:34:56 in matrix_sdk_crypto::machine';
+
+      expect(redactor.redact(text)).toBe(text);
+    });
+
     it('replaces IPv6 server names in user IDs', () => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
 
@@ -951,6 +1000,18 @@ describe('createLogRedactor', () => {
       );
       expect(redactor.redact('again: Alice.Smith+test@MAIL.example.com')).toBe(
         'again: email1@example.invalid',
+      );
+    });
+
+    it('replaces a URL-encoded address like the plain one', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact(
+          'GET /lookup?email=carol%40gmail.com then carol@gmail.com',
+        ),
+      ).toBe(
+        'GET /lookup?email=email1@example.invalid then email1@example.invalid',
       );
     });
 
@@ -1394,6 +1455,14 @@ describe('createLogRedactor', () => {
         expect(
           redactLog(['GET /search?q=Team%20Bravo&x=1'], [rooms('Team Bravo')]),
         ).toEqual(['GET /search?q=Room 1&x=1']);
+      });
+
+      it('replaces a name stored in mixed composition as it was stored', () => {
+        const mixed = `Café Jose${'́'} club`;
+
+        expect(redactLog([`joined ${mixed}`], [rooms(mixed)])).toEqual([
+          'joined Room 1',
+        ]);
       });
 
       it('replaces composed and decomposed spellings alike', () => {

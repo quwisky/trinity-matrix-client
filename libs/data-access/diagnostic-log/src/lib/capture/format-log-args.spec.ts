@@ -61,9 +61,17 @@ describe('formatLogArgs', () => {
 
 describe('truncateMessage', () => {
   it('cuts a huge message and says how much was cut', () => {
-    const text = truncateMessage('x'.repeat(MAX_MESSAGE_LENGTH + 500));
+    const text = truncateMessage('x '.repeat((MAX_MESSAGE_LENGTH + 500) / 2));
 
-    expect(text.startsWith('x'.repeat(MAX_MESSAGE_LENGTH))).toBe(true);
+    expect(text.startsWith('x '.repeat(MAX_MESSAGE_LENGTH / 2))).toBe(true);
     expect(text.endsWith('… [500 characters truncated]')).toBe(true);
+  });
+
+  it('cuts before an identifier the limit runs through, never inside it', () => {
+    const filler = `${'x'.repeat(MAX_MESSAGE_LENGTH - 7)} `;
+
+    expect(truncateMessage(`${filler}@carol-jones:other.net`)).toBe(
+      `${filler}… [22 characters truncated]`,
+    );
   });
 });

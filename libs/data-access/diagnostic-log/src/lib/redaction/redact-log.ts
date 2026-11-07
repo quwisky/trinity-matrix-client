@@ -48,7 +48,11 @@ const USER_PORT = String.raw`(?::\d{1,5}(?!${ID_GOES_ON}|\/(?=[\p{L}\p{N}_~+=.-]
 const serverName = (port: string): string =>
   String.raw`(?:\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*)${port}?`;
 const SERVER = serverName(PORT);
-const USER_LOCALPART = String.raw`[A-Za-z0-9._=\-/+]+`;
+// Historical user IDs may hold any printable ASCII but ":" (Matrix spec, "Historical user
+// IDs"); an alias any character but ":" and NUL. Both stop where a log writes around an ID:
+// whitespace, double quotes, "<>", brackets, "," and an escape or a further sigil.
+const USER_LOCALPART = String.raw`[A-Za-z0-9._=\-/+!$&'*;?^|~]+`;
+const ALIAS_LOCALPART = String.raw`[^\s\0:"<>#%@,;()[\]{}\\\x60]+`;
 const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
@@ -56,11 +60,21 @@ const URL_HOST = new RegExp(
   String.raw`\b(https?|wss?):\/\/(?:[^\s/@?#]{1,256}@)?(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)${PORT}?`,
   'giu',
 );
+// A TURN or STUN URI (RFC 7064, 7065): the host goes, the port stays.
+const TURN_HOST = /\b(turns?|stuns?):(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)/giu;
+// A bare IP address, outside a word or dotted run: `Chrome/141.0.0.0` and `v1.2.3.4` are
+// versions. IPv6 needs all eight groups or a "::" after a group, so times stay.
+const OCTET = String.raw`(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)`;
+const HEX_GROUP = String.raw`[0-9A-Fa-f]{1,4}`;
+const IP_ADDRESS = new RegExp(
+  String.raw`(?<![\p{L}\p{N}_./:-])(?:(?:${OCTET}\.){3}${OCTET}|(?:${HEX_GROUP}:){7}${HEX_GROUP}|(?:${HEX_GROUP}:){1,7}:(?:${HEX_GROUP}(?::${HEX_GROUP}){0,6})?)(?![\p{L}\p{N}_:-]|\.\p{N})`,
+  'gu',
+);
 // An email address. The local part starts a run (no ID or URL character before it) and every
 // part is bounded, so a long run of address characters cannot make the scan quadratic. A
 // Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
 const EMAIL =
-  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,63}(?![A-Za-z0-9-])/g;
+  /(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]{1,64}(?:@|%40)(?:[A-Za-z0-9-]{1,63}\.){1,8}[A-Za-z]{2,63}(?![A-Za-z0-9-])/g;
 const MXC = new RegExp(
   String.raw`\bmxc:\/\/([\p{L}\p{N}.-]+${PORT}?)\/([A-Za-z0-9_-]+)`,
   'gu',
@@ -80,9 +94,9 @@ const AFTER_LITERAL_COLON = String.raw`[A-Za-z0-9._~%:=/+[\]-]*`;
 const ENCODED_ID = new RegExp(
   [
     String.raw`%(?:25)?(?:40|21|23|24)${ID_PART}*(?:${ESCAPED_COLON}${AFTER_ESCAPED_COLON}|:${AFTER_LITERAL_COLON})?`,
-    String.raw`(?<![A-Za-z0-9._%+-])@[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
-    String.raw`(?<![A-Za-z0-9&])#[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
-    String.raw`\$[A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`(?<![A-Za-z0-9._%+-])@${ID_PART}+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`(?<![A-Za-z0-9&])#${ID_PART}+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
+    String.raw`\$${ID_PART}+${ESCAPED_COLON}${AFTER_LITERAL_COLON}`,
     String.raw`![A-Za-z0-9._~=/+-]+${ESCAPED_COLON}${AFTER_ESCAPED_COLON}`,
   ].join('|'),
   'gi',
@@ -98,7 +112,7 @@ const ROOM = new RegExp(String.raw`!${OPAQUE}:(${SERVER})`, 'gu');
 // Room version 12 room IDs carry no server name: "!" and 43 unpadded base64url characters.
 const ROOM_V12 = /![A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
 const ALIAS = new RegExp(
-  String.raw`(?<![A-Za-z0-9&])#[A-Za-z0-9._=\-]+:(${SERVER})`,
+  String.raw`(?<![A-Za-z0-9&])#${ALIAS_LOCALPART}:(${SERVER})`,
   'gu',
 );
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
@@ -324,10 +338,15 @@ class IdentifierRedactor implements LogRedactor {
       (match, scheme: string, host: string) =>
         `${scheme}://${match.includes('@') ? '<redacted>@' : ''}${this.server(host)}`,
     );
+    text = text.replace(
+      TURN_HOST,
+      (_match, scheme: string, host: string) =>
+        `${scheme}:${this.server(host)}`,
+    );
     text = text.replace(EMAIL, (match) =>
       this.placeholder(
         this.emails,
-        match.toLowerCase(),
+        match.toLowerCase().replace('%40', '@'),
         (n) => `email${n}@example.invalid`,
       ),
     );
@@ -342,6 +361,10 @@ class IdentifierRedactor implements LogRedactor {
     );
     text = text.replace(ENCODED_ID, (match) => this.redactEncoded(match));
     text = this.redactIdentifiers(text);
+    // After the IDs, whose server may be an address. An IPv6 one is keyed as in an ID.
+    text = text.replace(IP_ADDRESS, (ip) =>
+      this.server(ip.includes(':') ? `[${ip}]` : ip),
+    );
     text = this.redactServerNames(text);
     return this.redactDevices(text);
   }
