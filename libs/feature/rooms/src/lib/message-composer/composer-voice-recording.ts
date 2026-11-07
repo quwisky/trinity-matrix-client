@@ -1,13 +1,16 @@
 import {
   DestroyRef,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
   type Signal,
   type WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnToastService } from '@trinity/components/overlay';
+import { AppLockService } from '@trinity/data-access/app-lock';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import type { ComposerAttachmentsHost } from './composer-attachments.service';
@@ -22,6 +25,7 @@ export class ComposerVoiceRecording {
   private readonly toast = inject(TrnToastService);
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly appLock = inject(AppLockService);
   /** Elapsed recording time in seconds, for the live timer. */
   private readonly voiceElapsed = signal(0);
   /** Interval handle for the recording timer, cleared on stop/cancel/destroy. */
@@ -48,6 +52,12 @@ export class ComposerVoiceRecording {
       this.clearVoiceTimer();
       if (this.recordingVoice() || this.voiceStarting) {
         this.voiceRecorder.cancel();
+      }
+    });
+    // A lock only hides the composer: without this the mic records on behind the lock screen.
+    effect(() => {
+      if (this.appLock.locked()) {
+        untracked(() => this.cancelVoiceRecording());
       }
     });
   }
@@ -78,9 +88,13 @@ export class ComposerVoiceRecording {
       return;
     }
     this.voiceStarting = false;
-    // The view may have been torn down, or the room switched, during acquisition: don't leave
-    // a stream open, and never bind the clip to a room the user has since left.
-    if (this.destroyed || this.host().roomId() !== roomAtStart) {
+    // The view may have been torn down, the room switched or the app locked during acquisition:
+    // don't leave a stream open, and never bind the clip to a room the user has since left.
+    if (
+      this.destroyed ||
+      this.host().roomId() !== roomAtStart ||
+      this.appLock.locked()
+    ) {
       this.voiceRecorder.cancel();
       return;
     }
