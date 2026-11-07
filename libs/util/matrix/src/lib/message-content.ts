@@ -44,26 +44,28 @@ export function placeMentions(
   mentions: readonly Mention[],
 ): PlacedMention[] {
   const placed: PlacedMention[] = [];
-  const covered: (readonly [number, number])[] = [];
+  // One flag per character, so checking an occurrence costs its length, not the claim count.
+  const covered = new Uint8Array(text.length);
   const longestFirst = [...mentions].sort(
     (a, b) => b.display.length - a.display.length,
   );
   for (const mention of longestFirst) {
     const { display } = mention;
-    const own: (readonly [number, number])[] = [];
+    const own: number[] = [];
     for (
       let at = text.indexOf(display);
       at !== -1;
       at = text.indexOf(display, at + 1)
     ) {
-      const end = at + display.length;
-      if (!covered.some(([start, stop]) => at < stop && start < end)) {
-        own.push([at, end]);
+      if (!covered.subarray(at, at + display.length).includes(1)) {
+        own.push(at);
       }
     }
-    covered.push(...own);
+    for (const at of own) {
+      covered.fill(1, at, at + display.length);
+    }
     if (own.length > 0) {
-      placed.push({ mention, index: own[0][0] });
+      placed.push({ mention, index: own[0] });
     }
   }
   return placed;

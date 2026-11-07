@@ -7,6 +7,7 @@ import {
   mediaCaptionFields,
   messagePreview,
   parseSlashCommand,
+  placeMentions,
   replyMessageContent,
   replyTextArt,
   slashCommandContent,
@@ -519,6 +520,39 @@ describe('mentions in content builders', () => {
     expect(body).toContain(
       '<a href="https://matrix.to/#/@alr:hs">@Al-Rashid</a>',
     );
+  });
+
+  it('pills a shorter name written before a longer one, and several in one text node', () => {
+    const lee: Mention = { userId: '@lee:hs', display: '@Lee' };
+    const annLee: Mention = { userId: '@annlee:hs', display: '@Ann Lee' };
+
+    expect(
+      pilled('@Lee then @Ann Lee, @Jo and @Jo Smith', [
+        lee,
+        annLee,
+        JO,
+        JO_SMITH,
+      ]),
+    ).toContain(
+      '<a href="https://matrix.to/#/@lee:hs">@Lee</a> then ' +
+        '<a href="https://matrix.to/#/@annlee:hs">@Ann Lee</a>, ' +
+        '<a href="https://matrix.to/#/@jo:hs">@Jo</a> and ' +
+        '<a href="https://matrix.to/#/@jo.smith:hs">@Jo Smith</a>',
+    );
+  });
+
+  it('places mentions in a long pasted message in time linear in its length', () => {
+    const text = '@Jo Smith and @Jo, '.repeat(20_000);
+    const started = performance.now();
+    const placed = placeMentions(text, [JO, JO_SMITH]);
+    const elapsed = performance.now() - started;
+
+    expect(placed).toEqual([
+      { mention: JO_SMITH, index: 0 },
+      { mention: JO, index: 14 },
+    ]);
+    // Generous: the per-claim scan this replaced took seconds at this size.
+    expect(elapsed).toBeLessThan(500);
   });
 
   it('pills a mention inside markdown emphasis', () => {
