@@ -806,3 +806,38 @@ test.describe('Message actions on a phone', () => {
     await expectScrollerPositionRestored(threadRow, targetTopBefore);
   });
 });
+
+test.describe('"More reactions…" on a phone held sideways', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.describe.configure({ timeout: 90_000 });
+  // Pixel 5 landscape. Too short for the title, tabs, search and Cancel plus the vendor's
+  // 270px list: the list gives way down to about two rows before the sheet has to scroll.
+  test.use({ viewport: { width: 851, height: 393 } });
+
+  test('shrinks the emoji list to fit, but not past two rows', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'l');
+    await longPress(page, rowSel);
+    await page.getByTestId('sheet-react-more').click();
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    await expect(dialog.locator('.emoji-mart')).toBeVisible({
+      timeout: 20_000,
+    });
+    await sheetAtRest(dialog.getByTestId('dialog-surface'));
+
+    const fit = await dialog.evaluate((sheet) => {
+      const body = sheet.querySelector('.dialog-shell__body')!;
+      return {
+        list: sheet.querySelector('.emoji-mart-scroll')!.getBoundingClientRect()
+          .height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThanOrEqual(99);
+    expect(fit.list).toBeLessThan(270);
+    // The fixed list left the body scrolling about 250px around it.
+    expect(fit.bodyOverflow).toBeLessThan(100);
+  });
+});

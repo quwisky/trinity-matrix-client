@@ -10,6 +10,10 @@
   .trn-emoji-picker {
     display: block;
 
+    trn-emoji-picker-panel {
+      display: block;
+    }
+
     // Stands in for the medium picker (302 x 358 px) while its chunk loads, so the overlay
     // around it keeps its size. Painted like `.emoji-mart` below so the swap is invisible.
     .trn-emoji-picker__placeholder {
@@ -154,28 +158,35 @@
         padding: var(--trn-emoji-cell-padding);
       }
 
-      // In a host with a definite height (a full-height sheet), the list grows to fill it and
-      // shrinks when the keyboard takes room. In any other host each `100%` resolves to auto,
-      // so the list keeps the vendor's 270px.
+      // A flex column from the host down to the list, so a host that is itself a flex item
+      // with a height to give (a sheet's body) passes it to the list: the list grows into a
+      // full-height sheet, and shrinks to fit one capped below its content, or the keyboard.
+      // Anywhere else the column is as tall as its content, and the list keeps the vendor's
+      // 270px.
+      &,
       trn-emoji-picker-panel,
-      emoji-mart {
-        display: block;
-        height: 100%;
-      }
-
+      emoji-mart,
       .emoji-mart {
         display: flex;
         flex-direction: column;
-        height: 100%;
+      }
+
+      trn-emoji-picker-panel,
+      emoji-mart,
+      .emoji-mart {
+        flex: 1 1 auto;
+        min-height: 0;
       }
 
       // The list takes the height that is left. The vendor also promotes it to a layer
       // (`will-change: transform`); filling, that left a hairline of stale paint under the
       // sticky headings in Chromium.
+      // It never shrinks below about two rows of touch cells: on a phone held sideways the
+      // sheet scrolls instead, rather than leave a list too short to use.
       .emoji-mart-scroll {
         will-change: auto;
         flex: 1 1 auto;
-        min-height: 0;
+        min-height: 100px;
       }
     }
 
