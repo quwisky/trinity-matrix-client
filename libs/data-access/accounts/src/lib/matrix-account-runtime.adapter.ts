@@ -255,12 +255,15 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             return of({ kind: 'ready' as const });
           }
           let activePointerCommitted = false;
+          let pushersRemoved = false;
+          let activated = false;
           return defer(() => {
             if (!this.matrix.clientFor(session.userId)) {
               throw new Error(
                 `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
               );
             }
+            pushersRemoved = intent.liveAccounts === 'replace';
             return releaseLiveAccounts$.pipe(
               switchMap(() =>
                 this.storage.setActiveForEstablishment(session.userId),
@@ -271,6 +274,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   session.userId,
                   intent.liveAccounts,
                 );
+                activated = true;
               }),
               map(() => ({ kind: 'ready' as const })),
               catchError((error: unknown) =>
@@ -279,16 +283,17 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   previousActiveAccountId,
                   activePointerCommitted,
                   error,
-                ).pipe(
-                  finalize(() => {
-                    if (intent.liveAccounts === 'replace') {
-                      this.lifecycle
-                        .registerNotifications()
-                        .subscribe({ error: () => undefined });
-                    }
-                  }),
                 ),
               ),
+              // Failed or left before activation: the live accounts stay, so they get their
+              // pushers back.
+              finalize(() => {
+                if (pushersRemoved && !activated) {
+                  this.lifecycle
+                    .registerNotifications()
+                    .subscribe({ error: () => undefined });
+                }
+              }),
             );
           });
         }),

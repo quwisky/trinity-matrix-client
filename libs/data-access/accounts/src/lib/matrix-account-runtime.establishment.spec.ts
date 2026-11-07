@@ -396,6 +396,25 @@ it("registers the live Accounts' pushers again when placing the replacing Accoun
   expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
 });
 
+it("registers the live Accounts' pushers again when the replacing sign-in is left before activation", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(NEVER);
+
+  const attempt = adapter
+    .establishAccount(AuthenticatedAccountGrant.issue(session), activeIntent)
+    .subscribe();
+  await settled();
+  expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+  attempt.unsubscribe();
+
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
+});
+
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(
