@@ -1,19 +1,19 @@
 ---
 title: Install Trinity
-description: Install Trinity on macOS, Windows or Linux, or self-host the web app.
+description: Install Trinity on macOS, Windows, Linux or Android, or self-host the web app.
 audience: user
 contentChannel: release
 productVersion: '0.6.0' # x-release-please-version
 canonicalTopic: user-home
 pageType: how-to
-platforms: [web, desktop]
+platforms: [web, desktop, android]
 ---
 
 <!-- x-release-please-start-version -->
 
 Trinity is an end-to-end encrypted [Matrix](https://matrix.org) client. Release 0.6.0 is
-available for macOS, Windows and Linux, and as a self-hostable web app (PWA). Android and
-iOS apps are still in development.
+available for macOS, Windows and Linux, and as a self-hostable web app (PWA). The
+iOS app is still in development.
 
 After an update, Trinity shows what changed once, when you sign in (and unlock, if App lock
 is on) on the new version. To see it again, open Settings and choose **What's new**.
@@ -60,6 +60,12 @@ Trinity keeps your sign-in and encryption keys in your desktop's keyring (GNOME 
 KWallet). Without one, it asks before signing in, because it would have to store them
 unprotected on disk, and Security settings warns about it for as long as that lasts.
 
+## Android {#android}
+
+Releases from 0.7.0 on carry `Trinity-<version>.apk`. Download it from the [latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest),
+then allow installs from your browser or file manager. Each new version installs over the
+previous one.
+
 ## Try Trinity Next {#trinity-next}
 
 Trinity Next is the prerelease of the desktop app, for trying what comes next. It installs
@@ -78,6 +84,10 @@ brew install --cask quwisky/trinity/trinity@next
 
 On Debian and Ubuntu, the prerelease's `.deb` installs as a separate package,
 `trinity-next`.
+
+On Android there is no separate Trinity Next: a prerelease APK installs as Trinity itself,
+over the stable app. After you install a prerelease, Android won't install a lower stable
+version over it; uninstall Trinity first, which deletes its local data.
 
 Older prereleases installed as "Trinity": you can tell one by its name, Trinity, with a
 version ending in `-next.` and a number (for example `-next.3`). With Homebrew,

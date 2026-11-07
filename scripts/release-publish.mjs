@@ -14,6 +14,7 @@ export const REQUIRED_ASSETS = Object.freeze([
   /\.AppImage$/,
   /^trinity-desktop_.+_amd64\.deb$/,
   /^Trinity-Web-.+\.zip$/,
+  /^Trinity-.+\.apk$/,
 ]);
 
 export const missingAssets = (names) =>

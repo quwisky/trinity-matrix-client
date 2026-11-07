@@ -32,7 +32,9 @@ describe('release workflow web zip', () => {
 
   it('waits for the web zip and names it in a partial-release warning', () => {
     const draft = job(release, 'draft-release');
-    expect(draft).toMatch(/needs: \[verify, package, sign-mac, package-web\]/);
+    expect(draft).toMatch(
+      /needs: \[verify, package, sign-mac, package-web, sign-android\]/,
+    );
     expect(draft).toContain(
       'ls artifacts/Trinity-Web-*.zip >/dev/null 2>&1 || missing="$missing web"',
     );

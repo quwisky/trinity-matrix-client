@@ -8,7 +8,7 @@ renderer; host capabilities handle platform-specific behavior.
 
 The desktop app and the self-hostable web app (PWA) are available from
 [the latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest);
-the Android and iOS apps are still in development. The
+releases from 0.7.0 on also carry an Android APK. The iOS app is still in development. The
 [user guide](https://docs.trinityproject.dev/trinity-matrix-client/users/) covers installing
 the latest release. The
 [developer guide](https://docs.trinityproject.dev/trinity-matrix-client/developers/) follows
@@ -73,11 +73,17 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 [release](https://github.com/quwisky/trinity-matrix-client/releases). See
 [Self-host a release](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release).
 
-### Android and iOS
+### Android
 
-🚧 In development. Build them from source with the developer guide:
-[Android](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/android/),
-[iOS](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/ios/).
+Releases from 0.7.0 on carry `Trinity-<version>.apk`. Download it from the
+[latest release](https://github.com/quwisky/trinity-matrix-client/releases/latest), then allow
+installs from your browser or file manager. Each new version installs over the previous one.
+Build from source with the [developer guide](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/android/).
+
+### iOS
+
+🚧 In development. Build it from source with the
+[developer guide](https://docs.trinityproject.dev/trinity-matrix-client/developers/platforms/ios/).
 
 ## How Trinity compares
 
@@ -87,7 +93,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 | Windows   | ✅                 | ✅                  | —         | ✅         | ✅    |
 | macOS     | ✅ (Apple Silicon) | ✅                  | —         | —          | ✅    |
 | Linux     | ✅ (x86-64)        | ✅                  | —         | ✅         | ✅    |
-| Android   | 🚧                 | —                   | ✅        | ✅         | —     |
+| Android   | ✅ (APK)           | —                   | ✅        | ✅         | —     |
 | iOS       | 🚧                 | —                   | ✅        | ✅         | —     |
 
 | Features                          | Trinity                         | Element Web/Desktop | Element X | FluffyChat | Cinny |

@@ -1,5 +1,25 @@
 apply plugin: 'com.android.application'
 
+// The release version is the single source of truth: scripts/android-version.mjs derives both values from package.json.
+def androidVersion
+try {
+    def versionExec = providers.exec {
+        commandLine 'node', file("${rootDir}/../scripts/android-version.mjs").absolutePath
+        ignoreExitValue = true
+    }
+    if (versionExec.result.get().exitValue != 0) {
+        throw new GradleException(versionExec.standardError.asText.get().trim())
+    }
+    androidVersion = new groovy.json.JsonSlurper().parseText(versionExec.standardOutput.asText.get())
+} catch (Exception e) {
+    throw new GradleException("Could not read the Android version from scripts/android-version.mjs (is node on PATH?): ${e.message}", e)
+}
+
+// Signing is opt-in: only a complete TRINITY_ANDROID_* environment signs the release build.
+def signingEnv = ['TRINITY_ANDROID_KEYSTORE', 'TRINITY_ANDROID_KEYSTORE_PASSWORD', 'TRINITY_ANDROID_KEY_ALIAS', 'TRINITY_ANDROID_KEY_PASSWORD']
+        .collectEntries { [(it): System.getenv(it) ?: ''] }
+def releaseSigningEnabled = signingEnv.values().every { !it.isEmpty() }
+
 android {
     namespace = "dev.trinityproject.trinity"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,13 +27,23 @@ android {
         applicationId "dev.trinityproject.trinity"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode androidVersion.versionCode as int
+        versionName androidVersion.versionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (releaseSigningEnabled) {
+            release {
+                storeFile file(signingEnv.TRINITY_ANDROID_KEYSTORE)
+                storePassword signingEnv.TRINITY_ANDROID_KEYSTORE_PASSWORD
+                keyAlias signingEnv.TRINITY_ANDROID_KEY_ALIAS
+                keyPassword signingEnv.TRINITY_ANDROID_KEY_PASSWORD
+            }
         }
     }
     buildTypes {
@@ -24,6 +54,9 @@ android {
         }
         release {
             minifyEnabled false
+            if (releaseSigningEnabled) {
+                signingConfig signingConfigs.release
+            }
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }

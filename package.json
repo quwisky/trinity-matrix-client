@@ -70,6 +70,7 @@
     "android:build": "node scripts/nx.mjs run trinity-android:build",
     "android:build:prebuilt": "node scripts/nx.mjs run trinity-android:build-prebuilt",
     "android:build:release": "node scripts/nx.mjs run trinity-android:build-release",
+    "android:build:release-apk": "node scripts/nx.mjs run trinity-android:build-release-apk",
     "android:verify": "node scripts/nx.mjs run trinity-android:verify",
     "ios:sync": "node scripts/nx.mjs run trinity-ios:sync",
     "ios:open": "node scripts/nx.mjs run trinity-ios:open",

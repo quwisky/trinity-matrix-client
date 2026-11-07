@@ -7,6 +7,7 @@ const complete = [
   'Trinity-0.2.0.AppImage',
   'trinity-desktop_0.2.0_amd64.deb',
   'Trinity-Web-0.2.0.zip',
+  'Trinity-0.2.0.apk',
 ];
 
 describe('release publishing', () => {
@@ -16,6 +17,12 @@ describe('release publishing', () => {
       expect(missingAssets(complete.filter((n) => n !== name))).toHaveLength(1);
     }
     expect(missingAssets([])).toHaveLength(complete.length);
+  });
+
+  it('requires the Android APK', () => {
+    expect(missingAssets(complete.filter((n) => !n.endsWith('.apk')))).toEqual([
+      '^Trinity-.+\\.apk$',
+    ]);
   });
 
   it('marks only the highest stable release as latest', () => {
