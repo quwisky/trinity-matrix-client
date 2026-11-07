@@ -127,6 +127,23 @@ describe('repairStaleMembership', () => {
     expect(await targets(room)).toEqual([ALICE]);
   });
 
+  it('leaves the state alone when the join replaces some other event, or names none', async () => {
+    const { client, room } = setup();
+    repairStaleMembership(client);
+
+    await sync(
+      room,
+      [member('$invite', BOB, KnownMembership.Invite)],
+      [
+        member('$join1', BOB, KnownMembership.Join, '$older'),
+        member('$join2', BOB, KnownMembership.Join),
+      ],
+    );
+
+    expect(room.getMember(BOB)?.membership).toBe(KnownMembership.Invite);
+    expect(await targets(room)).toEqual([ALICE]);
+  });
+
   it('ignores membership events paginated into the past', async () => {
     const { client, room } = setup();
     repairStaleMembership(client);

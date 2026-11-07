@@ -14,6 +14,11 @@ import {
  * timeline (Bob's join beside his invite); the SDK applies only `state_after`, so in a
  * members-only room the next message's key skips him (#1986). A state that has moved on to any
  * other event is kept. Returns the call that stops listening.
+ *
+ * `replaces_state` is set by our own homeserver, which also writes `state_after`, so this trusts
+ * the server no more than the SDK already does. A join from a fork that state resolution
+ * overruled could still be applied, as the SDK did before MSC4222. `liveEvent` is deliberately
+ * not checked: a replay from the sync cache brings back the stale state and needs the repair too.
  */
 export function repairStaleMembership(client: MatrixClient): () => void {
   const onTimeline = (
