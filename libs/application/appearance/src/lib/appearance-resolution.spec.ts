@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { AppearanceValue } from './appearance-preferences';
 import {
   resolveAppearance,
+  sameResolvedAppearance,
   surfaceMode,
   toNativeChromeAppearance,
 } from './appearance-resolution';
@@ -17,6 +18,7 @@ const committed = (mode: AppearanceValue['mode']): AppearanceValue => ({
   roomList: 'compact',
   codeSize: 'smaller',
   codeLinePresentation: 'always',
+  trueBlack: false,
 });
 
 describe('Appearance resolution', () => {
@@ -34,6 +36,31 @@ describe('Appearance resolution', () => {
   it('keeps fixed Modes independent from later system changes', () => {
     expect(resolveAppearance(committed('light'), 'dark').mode).toBe('light');
     expect(resolveAppearance(committed('dark'), 'light').mode).toBe('dark');
+  });
+
+  it('keeps true black only while the resolved Mode is dark', () => {
+    const on = (mode: AppearanceValue['mode']) => ({
+      ...committed(mode),
+      trueBlack: true,
+    });
+
+    expect(resolveAppearance(on('dark'), 'light').trueBlack).toBe(true);
+    expect(resolveAppearance(on('light'), 'dark').trueBlack).toBe(false);
+    // System follows the OS in both directions.
+    expect(resolveAppearance(on('system'), 'dark').trueBlack).toBe(true);
+    expect(resolveAppearance(on('system'), 'light').trueBlack).toBe(false);
+    expect(resolveAppearance(committed('dark'), 'dark').trueBlack).toBe(false);
+  });
+
+  it('treats a true black change as a new resolved Appearance', () => {
+    const off = resolveAppearance(committed('dark'), 'dark');
+    const on = resolveAppearance(
+      { ...committed('dark'), trueBlack: true },
+      'dark',
+    );
+
+    expect(sameResolvedAppearance(off, on)).toBe(false);
+    expect(sameResolvedAppearance(on, { ...on })).toBe(true);
   });
 
   it('projects only resolved Mode to native chrome without a status area reading', () => {

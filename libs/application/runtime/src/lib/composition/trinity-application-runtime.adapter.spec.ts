@@ -190,10 +190,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     lateInactiveOutcomes = new Subject<AccountRestoreOutcome>();
     hostManifest = new Subject<HostCapabilityManifest>();
     appearanceHydrate = vi.fn<() => Observable<AppearanceHydrationOutcome>>(
-      () => of({ kind: 'ready', hydrated: 7 }),
+      () => of({ kind: 'ready', hydrated: 8 }),
     );
     appearanceRecover = vi.fn<AppearancePreferences['recoverHydration']>(() =>
-      of({ kind: 'ready', hydrated: 7 }),
+      of({ kind: 'ready', hydrated: 8 }),
     );
     badgeSession = new Subject<HostOperationOutcome>();
     appearanceSession = new Subject<never>();

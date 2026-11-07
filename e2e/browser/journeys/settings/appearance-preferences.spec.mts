@@ -286,6 +286,50 @@ test.describe('Settings', () => {
     ).toBe('enter');
   });
 
+  test('true black turns the dark grounds black and leaves light mode alone', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await openSection(page, 'appearance');
+    await page.getByTestId('mode-dark').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(true);
+
+    const html = page.locator('html');
+    const ground = (token: string) =>
+      page.evaluate(
+        (name) =>
+          getComputedStyle(document.documentElement)
+            .getPropertyValue(name)
+            .trim(),
+        token,
+      );
+    const toggle = page.getByRole('switch', { name: 'True black backgrounds' });
+    await expect(toggle).not.toBeChecked();
+    await expect(html).not.toHaveAttribute('data-true-black');
+    const overlay = await ground('--trinity-surface-overlay');
+
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    await expect(html).toHaveAttribute('data-true-black', '');
+    await expect.poll(() => ground('--trinity-chat')).toBe('oklch(0% 0 0deg)');
+    await expect
+      .poll(() => ground('--trinity-surface-app'))
+      .toBe('oklch(0% 0 0deg)');
+    // Sheets and menus keep the Theme's raised stop, so they still lift off the ground.
+    expect(await ground('--trinity-surface-overlay')).toBe(overlay);
+
+    // Light mode ignores the choice; returning to dark brings it back.
+    await page.getByTestId('mode-light').click();
+    await expect.poll(() => hasDarkMode(page)).toBe(false);
+    await expect(html).not.toHaveAttribute('data-true-black');
+    await expect(toggle).toBeChecked();
+    await page.getByTestId('mode-dark').click();
+    await expect(html).toHaveAttribute('data-true-black', '');
+
+    await toggle.click();
+    await expect(html).not.toHaveAttribute('data-true-black');
+  });
+
   test('selects a Theme from the dropdown', async ({ page }) => {
     await openSection(page, 'appearance');
 

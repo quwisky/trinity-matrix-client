@@ -53,6 +53,7 @@ describe('config key ledger', () => {
       'trinity.appearance.text-size',
       'trinity.appearance.density',
       'trinity.appearance.room-list',
+      'trinity.appearance.true-black',
     ]);
     expect(exportedKeysFor('data-access/timeline')).toEqual([
       'trinity.appearance.code-size',

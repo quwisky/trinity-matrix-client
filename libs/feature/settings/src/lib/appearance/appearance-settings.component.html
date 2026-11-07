@@ -51,6 +51,30 @@
       (retry)="appearance.retry('mode')"
     />
   }
+  <trn-settings-row
+    [label]="appearance.axes.trueBlack.editor.label"
+    [description]="appearance.axes.trueBlack.editor.description"
+    for="true-black-switch"
+    data-testid="true-black"
+  >
+    <trn-switch
+      inputId="true-black-switch"
+      aria-describedby="true-black-switch-description"
+      [checked]="appearance.axes.trueBlack.value()"
+      [disabled]="
+        appearance.hydrationBusy() || appearance.status.trueBlack.busy()
+      "
+      (checkedChange)="appearance.update('trueBlack', $event)"
+    />
+  </trn-settings-row>
+  @if (appearance.status.trueBlack.failed()) {
+    <trn-save-failure
+      class="justify-end py-2"
+      data-testid="true-black-failure"
+      retryTestId="true-black-retry"
+      (retry)="appearance.retry('trueBlack')"
+    />
+  }
   <trn-appearance-preference-field [field]="themeField" />
 </trn-settings-group>
 

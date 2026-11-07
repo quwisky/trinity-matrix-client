@@ -15,6 +15,7 @@ function clearAppearanceCarriers(): void {
   root.removeAttribute('data-density');
   root.removeAttribute('data-room-list');
   root.removeAttribute('data-code-lines');
+  root.removeAttribute('data-true-black');
   root.style.removeProperty('font-size');
   root.style.removeProperty('--trinity-code-scale');
 }
@@ -38,6 +39,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       roomList: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
+      trueBlack: false,
     };
 
     adapter().apply(value);
@@ -61,6 +63,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
+      trueBlack: false,
     };
 
     documentAdapter.apply(base);
@@ -80,6 +83,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       roomList: 'compact',
       codeSize: 'default',
       codeLinePresentation: 'auto',
+      trueBlack: false,
     };
 
     documentAdapter.apply(base);
@@ -87,6 +91,26 @@ describe('BrowserAppearanceDocumentAdapter', () => {
 
     documentAdapter.apply({ ...base, roomList: 'rich' });
     expect(root.hasAttribute('data-room-list')).toBe(false);
+  });
+
+  it('stamps data-true-black for resolved true black and removes it again', () => {
+    const documentAdapter = adapter();
+    const base: ResolvedAppearance = {
+      mode: 'dark',
+      theme: 'classic',
+      textSize: 'default',
+      density: 'cosy',
+      roomList: 'rich',
+      codeSize: 'default',
+      codeLinePresentation: 'auto',
+      trueBlack: true,
+    };
+
+    documentAdapter.apply(base);
+    expect(root.hasAttribute('data-true-black')).toBe(true);
+
+    documentAdapter.apply({ ...base, trueBlack: false });
+    expect(root.hasAttribute('data-true-black')).toBe(false);
   });
 
   it('removes every optional carrier for default axes', () => {
@@ -99,6 +123,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       roomList: 'compact',
       codeSize: 'smaller',
       codeLinePresentation: 'off',
+      trueBlack: true,
     });
 
     documentAdapter.apply({
@@ -109,6 +134,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
       roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
+      trueBlack: false,
     });
 
     expect(root.classList.contains('dark')).toBe(false);
@@ -118,6 +144,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     expect(root.hasAttribute('data-room-list')).toBe(false);
     expect(root.style.getPropertyValue('--trinity-code-scale')).toBe('');
     expect(root.hasAttribute('data-code-lines')).toBe(false);
+    expect(root.hasAttribute('data-true-black')).toBe(false);
   });
 
   for (const theme of THEME_CATALOG.themes) {
@@ -130,6 +157,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
         roomList: 'rich',
         codeSize: 'default',
         codeLinePresentation: 'auto',
+        trueBlack: false,
       });
 
       expect(root.getAttribute('data-theme')).toBe(theme.dataTheme);
@@ -146,6 +174,7 @@ describe('iOS Dynamic Type', () => {
     roomList: 'rich',
     codeSize: 'default',
     codeLinePresentation: 'auto',
+    trueBlack: false,
   };
 
   afterEach(() => {

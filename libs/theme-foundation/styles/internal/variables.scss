@@ -648,7 +648,9 @@
     --trinity-surface-app: oklch(18% 0.014 265deg);
     --trinity-surface-sidebar: oklch(24% 0.016 265deg);
     --trinity-surface-pane: oklch(28% 0.016 265deg);
-    --trinity-surface-raised: var(--trinity-sidebar);
+
+    // The sidebar tone, stated rather than aliased: true black turns the sidebar black.
+    --trinity-surface-raised: oklch(24% 0.016 265deg);
     --trinity-surface-floating-card: oklch(28% 0.016 265deg);
     --trinity-surface-overlay: var(--trinity-surface-raised);
     --trinity-surface-overlay-footer: var(--trinity-surface-overlay);
@@ -830,6 +832,31 @@
     --trinity-control-muted-foreground: oklch(74% 0.025 300deg);
     --trinity-border-control: var(--trinity-control-muted-foreground);
     --trinity-surface-drop-overlay: oklch(22% 0.022 300deg / 82%);
+  }
+
+  // =============================================================================
+  // True black — an Appearance choice that applies on top of whichever Theme is dark. The
+  // carrier `data-true-black` is only stamped while dark Mode is in effect.
+  // =============================================================================
+  // Only the grounds (app, sidebar, rail, pane, canvas) go to #000. Raised, overlay, control
+  // and state surfaces keep the Theme's own dark stops, so cards, sheets, menus, hover and
+  // selection still separate from the ground, and every text role only gains contrast.
+  // `:root.dark[data-true-black]` (0,3,0) ties a Theme's dark block, so it must stay after them.
+  :root.dark[data-true-black] {
+    --trinity-surface-app: oklch(0% 0 0deg);
+    --trinity-surface-sidebar: oklch(0% 0 0deg);
+    --trinity-surface-pane: oklch(0% 0 0deg);
+    --trinity-surface-canvas: oklch(0% 0 0deg);
+    --trinity-rail: oklch(0% 0 0deg);
+    --trinity-sidebar: oklch(0% 0 0deg);
+    --trinity-sidebar-header: oklch(0% 0 0deg);
+    --trinity-chat: oklch(0% 0 0deg);
+    --trinity-surface-drop-overlay: oklch(0% 0 0deg / 82%);
+
+    // Floating controls followed the sidebar tone, which is now the ground itself.
+    --trinity-surface: var(--trinity-surface-raised);
+    --trinity-surface-floating: var(--trinity-surface-raised);
+    --trinity-scrollbar-thumb: var(--trinity-state-hover-surface);
   }
 
   // -----------------------------------------------------------------------------

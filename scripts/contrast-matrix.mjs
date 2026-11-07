@@ -75,8 +75,9 @@ export function catalogRoles(name) {
 }
 
 /**
- * Resolve a token for one theme x mode, honouring the cascade the selectors encode:
- * defaults first, then dark, then the theme's block for that mode.
+ * Resolve a token for one theme x mode (`light`, `dark` or `true-black`), honouring the
+ * cascade the selectors encode: defaults first, then dark, then the theme's block for that
+ * mode, then the true-black blocks.
  */
 export function resolve(token, theme, mode, seen = new Set()) {
   if (seen.has(token)) return null; // a var() cycle; nothing to measure
@@ -95,8 +96,13 @@ export function resolve(token, theme, mode, seen = new Set()) {
     // because `pairs()` discards a pair whose value fails to resolve, and the
     // "can measure every role" guard only catches a value it cannot PARSE, not one it never
     // found. The two lines below are the whole of the mode filter, and always were.
-    if (isDark && mode !== 'dark') return false;
-    if (!isDark && mode === 'dark' && selector.includes(':not(.dark)'))
+    // `true-black` is dark Mode plus the `data-true-black` carrier, so it takes every dark
+    // block and its own; plain dark must not see the true-black blocks.
+    if (selector.includes('[data-true-black]') && mode !== 'true-black') {
+      return false;
+    }
+    if (isDark && mode === 'light') return false;
+    if (!isDark && mode !== 'light' && selector.includes(':not(.dark)'))
       return false;
     return true;
   });

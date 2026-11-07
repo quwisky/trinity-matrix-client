@@ -75,6 +75,8 @@ A new live message slides in once: the timeline marks the row host `msg-enter` f
 
 Appearance has three independent choices: mode (light, dark, or system), theme, and density. Themes only override governed color roles, so every theme must pass the contrast matrix in both modes.
 
+True black backgrounds is a switch under Mode, off by default. While dark mode is in effect (Dark, or System on a dark device) and the switch is on, Appearance stamps `data-true-black` on the root next to `dark`; in light mode it removes it. One block in `variables.scss`, after the Theme blocks it ties on specificity and not a Theme block itself, sets the grounds (`--trinity-surface-app`, `--trinity-surface-sidebar`, `--trinity-surface-pane`, `--trinity-surface-canvas`, `--trinity-rail`, `--trinity-sidebar`, `--trinity-sidebar-header`, `--trinity-chat`) to `#000` for every Theme. Raised, overlay, control and state surfaces keep the Theme's dark stops, so sheets, menus, hover and selection still read against the ground, and accents stay the Theme's. Text and control colours only gain contrast on `#000`; `scripts/contrast-matrix.spec.mjs` measures every pair in a third `true-black` mode. The status bar strip, the browser's `theme-color` and the Electron title bar read the painted ground, so they turn black with it. Like Mode, it applies when preferences load: before that the boot screen seeds only the system colour scheme.
+
 | Theme    | Notes                                                                             |
 | -------- | --------------------------------------------------------------------------------- |
 | Graphite | The default (id `trinity`). Neutral greys, warm in light mode.                    |

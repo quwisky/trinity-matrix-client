@@ -178,6 +178,45 @@ export const ROOM_LIST_PREFERENCE = definePreference({
   ),
 } satisfies PreferenceDescriptor<AppearanceRoomList>);
 
+/** Pure black grounds whenever dark Mode is in effect; light Mode ignores it. */
+export const TRUE_BLACK_PREFERENCE = definePreference({
+  id: 'design-system.appearance.true-black',
+  owner: 'design-system',
+  section: 'appearance',
+  order: 60,
+  scope: 'installation',
+  defaultValue: false,
+  sensitivity: 'public',
+  storage: 'device-preferences',
+  export: 'portable',
+  editor: {
+    kind: 'toggle',
+    label: 'True black backgrounds',
+    description: 'Pure black in dark mode saves battery on OLED screens.',
+    testId: 'true-black',
+  },
+  persistence: {
+    key: 'trinity.appearance.true-black',
+    migration: {
+      currentVersion: 1,
+      migrate: (stored: StoredPreference): PreferenceValidation<boolean> =>
+        stored.version <= 1 && typeof stored.value === 'boolean'
+          ? { kind: 'accepted', value: stored.value }
+          : {
+              kind: 'rejected',
+              diagnostic: { code: 'appearance-preference-migration-rejected' },
+            },
+    },
+  },
+  validate: (value: unknown): PreferenceValidation<boolean> =>
+    typeof value === 'boolean'
+      ? { kind: 'accepted', value }
+      : {
+          kind: 'rejected',
+          diagnostic: { code: 'appearance-true-black-invalid' },
+        },
+} satisfies PreferenceDescriptor<boolean>);
+
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [
     MODE_PREFERENCE,
@@ -185,6 +224,7 @@ export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly Preferenc
     TEXT_SIZE_PREFERENCE,
     DENSITY_PREFERENCE,
     ROOM_LIST_PREFERENCE,
+    TRUE_BLACK_PREFERENCE,
   ];
 
 export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {

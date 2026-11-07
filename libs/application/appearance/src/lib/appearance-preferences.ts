@@ -34,6 +34,7 @@ import {
   ROOM_LIST_PREFERENCE,
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
+  TRUE_BLACK_PREFERENCE,
   provideDesignSystemAppearancePreferences,
   type AppearanceDensity,
   type AppearanceRoomList,
@@ -54,10 +55,14 @@ export interface AppearanceValue {
   readonly roomList: AppearanceRoomList;
   readonly codeSize: CodeSize;
   readonly codeLinePresentation: CodeLinePresentation;
+  readonly trueBlack: boolean;
 }
 
-export interface AppearanceAxis<T extends PreferenceValue> {
-  readonly editor: Extract<PreferenceEditor, { readonly kind: 'select' }>;
+export interface AppearanceAxis<
+  T extends PreferenceValue,
+  K extends 'select' | 'toggle' = 'select',
+> {
+  readonly editor: Extract<PreferenceEditor, { readonly kind: K }>;
   readonly state: Signal<PreferenceState<T>>;
   readonly value: Signal<T>;
   readonly set: (candidate: unknown) => Observable<PreferenceCommandOutcome>;
@@ -69,7 +74,7 @@ export interface AppearanceStartupWarning {
 }
 
 export type AppearanceHydrationOutcome =
-  | { readonly kind: 'ready'; readonly hydrated: 7 }
+  | { readonly kind: 'ready'; readonly hydrated: 8 }
   | {
       readonly kind: 'partial';
       readonly hydrated: number;
@@ -78,7 +83,7 @@ export type AppearanceHydrationOutcome =
     };
 
 /**
- * Application-level read model over seven capability-owned preference cells.
+ * Application-level read model over eight capability-owned preference cells.
  *
  * Persistence remains in PreferenceStoreService and in each descriptor. This projection only
  * groups their committed values, preserves per-axis failure state, and reduces any partial
@@ -97,6 +102,7 @@ export class AppearancePreferences {
     roomList: this.axis(ROOM_LIST_PREFERENCE),
     codeSize: this.axis(CODE_SIZE_PREFERENCE),
     codeLinePresentation: this.axis(CODE_LINE_PRESENTATION_PREFERENCE),
+    trueBlack: this.axis(TRUE_BLACK_PREFERENCE, 'toggle'),
   });
 
   readonly value = computed<AppearanceValue>(() => ({
@@ -107,6 +113,7 @@ export class AppearancePreferences {
     roomList: this.axes.roomList.value(),
     codeSize: this.axes.codeSize.value(),
     codeLinePresentation: this.axes.codeLinePresentation.value(),
+    trueBlack: this.axes.trueBlack.value(),
   }));
 
   /** Last completed aggregate hydration, retained for recovery-capable consumers. */
@@ -121,7 +128,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 7 }
+            ? { kind: 'ready', hydrated: 8 }
             : {
                 ...outcome,
                 warning: {
@@ -151,6 +158,7 @@ export class AppearancePreferences {
       roomList: read(ROOM_LIST_PREFERENCE),
       codeSize: read(CODE_SIZE_PREFERENCE),
       codeLinePresentation: read(CODE_LINE_PRESENTATION_PREFERENCE),
+      trueBlack: read(TRUE_BLACK_PREFERENCE),
     });
   }
 
@@ -163,7 +171,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 7 }
+            ? { kind: 'ready', hydrated: 8 }
             : {
                 ...outcome,
                 warning: {
@@ -176,13 +184,17 @@ export class AppearancePreferences {
       );
   }
 
-  private axis<T extends PreferenceValue>(
+  private axis<
+    T extends PreferenceValue,
+    K extends 'select' | 'toggle' = 'select',
+  >(
     descriptor: PreferenceDescriptor<T>,
-  ): AppearanceAxis<T> {
+    kind: K = 'select' as K,
+  ): AppearanceAxis<T, K> {
     const editor = descriptor.editor;
-    if (editor.kind !== 'select') {
+    if (editor.kind !== kind) {
       throw new Error(
-        `Appearance preference ${descriptor.id} is not selectable`,
+        `Appearance preference ${descriptor.id} is not a ${kind}`,
       );
     }
     const state = this.preferences.stateFor(
@@ -190,7 +202,7 @@ export class AppearancePreferences {
       INSTALLATION_PREFERENCE_CONTEXT,
     );
     return Object.freeze({
-      editor,
+      editor: editor as Extract<PreferenceEditor, { readonly kind: K }>,
       state,
       value: computed(() => state().value),
       set: (candidate: unknown) =>
@@ -203,7 +215,7 @@ export class AppearancePreferences {
   }
 }
 
-/** Contributes all seven descriptors without moving their capability ownership. */
+/** Contributes all eight descriptors without moving their capability ownership. */
 export function provideAppearancePreferences(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideDesignSystemAppearancePreferences(),

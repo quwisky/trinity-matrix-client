@@ -1,6 +1,13 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  BehaviorSubject,
+  defer,
+  firstValueFrom,
+  of,
+  throwError,
+  type Observable,
+} from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AppearancePreferences,
@@ -47,6 +54,7 @@ const defaults = (): AppearanceValue => ({
   roomList: 'rich',
   codeSize: 'default',
   codeLinePresentation: 'auto',
+  trueBlack: false,
 });
 
 describe('AppearanceEffects', () => {
@@ -106,6 +114,40 @@ describe('AppearanceEffects', () => {
     committed.set({ ...committed(), mode: 'dark' });
     TestBed.flushEffects();
     expect(documentAdapter.apply).toHaveBeenCalledTimes(4);
+  });
+
+  it('reads the status area again when true black turns on, so native chrome turns black', () => {
+    const committed = signal({ ...defaults(), mode: 'dark' as const });
+    let painted = '#151618';
+    const nativeAdapter: AppearanceNativeChromeAdapter = {
+      apply: vi.fn(() => of(void 0)),
+    };
+    configureEffects(
+      { value: committed.asReadonly() },
+      new BehaviorSubject<'light' | 'dark'>('dark'),
+      {
+        apply: vi.fn((appearance) => {
+          painted = appearance.trueBlack ? '#000000' : '#151618';
+        }),
+      },
+      nativeAdapter,
+      // Samples once per subscription, like the browser source between DOM changes.
+      defer(() => of(page(painted))),
+    );
+    const subscription = TestBed.inject(AppearanceEffects).run().subscribe();
+    TestBed.flushEffects();
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: '#151618',
+    });
+
+    committed.set({ ...committed(), trueBlack: true });
+    TestBed.flushEffects();
+    expect(nativeAdapter.apply).toHaveBeenLastCalledWith({
+      mode: 'dark',
+      color: '#000000',
+    });
+    subscription.unsubscribe();
   });
 
   it('gives native chrome the Mode and colour of the surface under the status bar', () => {
@@ -389,7 +431,11 @@ function configureEffects(
   systemMode: BehaviorSubject<'light' | 'dark'>,
   documentAdapter: AppearanceDocumentAdapter,
   nativeAdapter?: AppearanceNativeChromeAdapter,
-  statusArea = new BehaviorSubject<StatusAreaReading>({ kind: 'unknown' }),
+  statusArea: Observable<StatusAreaReading> = new BehaviorSubject<StatusAreaReading>(
+    {
+      kind: 'unknown',
+    },
+  ),
 ): void {
   TestBed.configureTestingModule({
     providers: [
