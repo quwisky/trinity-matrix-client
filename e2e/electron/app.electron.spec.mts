@@ -520,6 +520,77 @@ test('fetches pack media through the scoped homeserver CORS bridge', async () =>
   }
 });
 
+test('hands clicked mailto and magnet links to the operating system', async () => {
+  type OpenExternal = (url: string) => Promise<void>;
+  type CaptureGlobals = {
+    trinityOpenedUrls?: string[];
+    trinityRealOpenExternal?: OpenExternal;
+  };
+  const links = {
+    mail: 'mailto:alice@example.org',
+    magnet: 'magnet:?xt=urn:btih:c9e15763f722f23e98a29decdfae341b98d53056',
+    script: 'javascript:void(0)',
+  };
+  // Only the final OS call is replaced, so the shell's own scheme filter still runs.
+  await app.evaluate(({ shell }: { shell: { openExternal: OpenExternal } }) => {
+    const globals = globalThis as CaptureGlobals;
+    const opened: string[] = [];
+    const capture: OpenExternal = async (url) => {
+      opened.push(url);
+    };
+    globals.trinityOpenedUrls = opened;
+    globals.trinityRealOpenExternal = shell.openExternal;
+    shell.openExternal = capture;
+    if (shell.openExternal !== capture) {
+      throw new Error('shell.openExternal could not be replaced');
+    }
+  });
+  const opened = () =>
+    app.evaluate(() => (globalThis as CaptureGlobals).trinityOpenedUrls ?? []);
+  const names = Object.keys(links) as (keyof typeof links)[];
+  // Raw mouse clicks at the pinned anchors: once the shell cancels a navigation, Playwright's
+  // locators and page.evaluate keep waiting for it to finish.
+  const clickLink = (name: keyof typeof links) =>
+    page.mouse.click(205, 210 + names.indexOf(name) * 40);
+  const appUrl = () =>
+    app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.getURL(),
+    );
+  try {
+    // Plain anchors, as the sanitized message HTML renders them, pinned on screen because
+    // the app frame fills the viewport.
+    await page.evaluate((hrefs) => {
+      Object.entries(hrefs).forEach(([name, href], index) => {
+        const anchor = document.createElement('a');
+        anchor.href = href;
+        anchor.dataset['externalLink'] = name;
+        anchor.textContent = `external ${name}`;
+        anchor.style.cssText = `position:fixed;z-index:2147483647;left:200px;top:${200 + index * 40}px;line-height:20px`;
+        document.body.append(anchor);
+      });
+    }, links);
+
+    await clickLink('script');
+    await clickLink('mail');
+    await expect.poll(opened).toEqual([links.mail]);
+    await clickLink('magnet');
+    await expect.poll(opened).toEqual([links.mail, links.magnet]);
+    expect(await appUrl()).toMatch(/^trinity:\/\/app\//);
+  } finally {
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].webContents.executeJavaScript(
+        "document.querySelectorAll('[data-external-link]').forEach((a) => a.remove())",
+      ),
+    );
+    await app.evaluate(
+      ({ shell }: { shell: { openExternal: OpenExternal } }) => {
+        const real = (globalThis as CaptureGlobals).trinityRealOpenExternal;
+        if (real) shell.openExternal = real;
+      },
+    );
+  }
+});
+
 test('hides to the tray when the page calls window.close()', async () => {
   // Its own instance: the shared one must keep its window for the tests above.
   const closing = await launchApp();
