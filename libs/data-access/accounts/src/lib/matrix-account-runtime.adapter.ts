@@ -15,6 +15,7 @@ import {
   Subject,
   catchError,
   defer,
+  finalize,
   map,
   of,
   switchMap,
@@ -205,7 +206,9 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   .pipe(map(() => stored)),
               ),
             );
-      const prepare$ =
+      // Runs only once the new account is ready: a failed save or start must leave the
+      // live accounts their pushers.
+      const releaseLiveAccounts$ =
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
@@ -219,8 +222,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             })
           : of(void 0);
 
-      return prepare$.pipe(
-        switchMap(() => persisted$),
+      return persisted$.pipe(
         map((stored) => ({ kind: 'persisted' as const, stored })),
         catchError((error: unknown) => this.storageFailure(error)),
         switchMap((persisted) =>
@@ -256,7 +258,10 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                 `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
               );
             }
-            return this.storage.setActiveForEstablishment(session.userId).pipe(
+            return releaseLiveAccounts$.pipe(
+              switchMap(() =>
+                this.storage.setActiveForEstablishment(session.userId),
+              ),
               tap(() => {
                 activePointerCommitted = true;
                 this.matrix.activateAccount(
@@ -271,6 +276,14 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   previousActiveAccountId,
                   activePointerCommitted,
                   error,
+                ).pipe(
+                  finalize(() => {
+                    if (intent.liveAccounts === 'replace') {
+                      this.lifecycle
+                        .registerNotifications()
+                        .subscribe({ error: () => undefined });
+                    }
+                  }),
                 ),
               ),
             );

@@ -275,7 +275,7 @@ it('never asks for consent where the keychain works', async () => {
   expect(test.consent.confirm).not.toHaveBeenCalled();
 });
 
-it('empties the push handoff before replacing the live Accounts', async () => {
+it('empties the push handoff once the new Account is ready, before replacing the live Accounts', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   const order: string[] = [];
   vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
@@ -297,9 +297,15 @@ it('empties the push handoff before replacing the live Accounts', async () => {
     }),
   );
   vi.mocked(matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'ready' as const }),
+    defer(() => {
+      order.push('start');
+      return of({ kind: 'ready' as const });
+    }),
   );
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+  vi.mocked(matrix.activateAccount).mockImplementation(() => {
+    order.push('activate');
+  });
 
   await firstValueFrom(
     adapter.establishAccount(
@@ -309,7 +315,79 @@ it('empties the push handoff before replacing the live Accounts', async () => {
   );
 
   expect(lifecycle.forgetPushHandoff).toHaveBeenCalledWith();
-  expect(order).toEqual(['forget-handoff', 'unregister', 'persist']);
+  expect(order).toEqual([
+    'persist',
+    'start',
+    'forget-handoff',
+    'unregister',
+    'activate',
+  ]);
+});
+
+it("keeps the live Accounts' pushers when saving the replacing Account fails", async () => {
+  const { adapter, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(
+    throwError(() => new DOMException('quota', 'QuotaExceededError')),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.releaseSharedCaches).not.toHaveBeenCalled();
+});
+
+it("keeps the live Accounts' pushers when the replacing Account does not start", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({
+      kind: 'failed' as const,
+      failure: 'local-state-unavailable' as const,
+    }),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+});
+
+it("registers the live Accounts' pushers again when placing the replacing Account fails", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
+    throwError(() => new DOMException('quota', 'QuotaExceededError')),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
 });
 
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
