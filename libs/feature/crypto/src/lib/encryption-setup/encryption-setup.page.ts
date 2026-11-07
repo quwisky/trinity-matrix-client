@@ -55,8 +55,6 @@ export class EncryptionSetupPage {
 
   /** What the last failed setup said the user can do about it; cleared by the next try. */
   private readonly failureRecovery = signal<TrustRecovery | null>(null);
-  /** Whether the last failure came after minting the key on screen, so a retry can finish it. */
-  private readonly failureKeptKey = signal(false);
 
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
@@ -78,18 +76,19 @@ export class EncryptionSetupPage {
   readonly recoveryKey = signal<string | null>(null);
 
   /**
-   * Setup failed after minting the key on screen; trying again reuses that key. A later
-   * failure without a key (a refusal, say) withdraws the offer but keeps the key shown:
-   * the account may still use it.
+   * A key is on screen and the last failure is one a retry answers; trying again reuses
+   * that key. A refusal withdraws the offer (its answer is in Security settings).
    */
   readonly unfinished = computed(
-    () => this.error() !== null && this.failureKeptKey(),
+    () =>
+      this.error() !== null &&
+      this.recoveryKey() !== null &&
+      this.failureRecovery() === 'retry',
   );
 
   /** Bootstrap cross-signing, secret storage and key backup. */
   setUp(): void {
     this.failureRecovery.set(null);
-    this.failureKeptKey.set(false);
     const setUp = this.crypto.setUp(this.promptPassword).pipe(
       tap({
         error: (err: unknown) => {
@@ -98,8 +97,10 @@ export class EncryptionSetupPage {
           }
           this.failureRecovery.set(err.recovery);
           if (err.recoveryKey) {
-            this.failureKeptKey.set(true);
             this.recoveryKey.set(err.recoveryKey);
+          } else if (err.kind === 'invalid-secret') {
+            // The key on screen is provably not the account's: stop offering it.
+            this.recoveryKey.set(null);
           }
         },
       }),

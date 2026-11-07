@@ -279,6 +279,57 @@ describe('EncryptionSetupPage', () => {
       expect(fixture.nativeElement.textContent).toContain(KEY);
     });
 
+    it('keeps Try again when the retry fails for a reason a retry answers', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      vi.mocked(crypto.setUp).mockReturnValue(
+        throwError(
+          () =>
+            new TrustOperationError(
+              'setup',
+              'server-failure',
+              'retry',
+              'The homeserver could not confirm this account’s encryption identity. Try again.',
+            ),
+        ),
+      );
+      screen.getByRole('button', { name: 'Try again' }).click();
+      fixture.detectChanges();
+
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+      expect(fixture.nativeElement.textContent).toContain(KEY);
+    });
+
+    it('drops the key when the account provably uses another one', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      vi.mocked(crypto.setUp).mockReturnValue(
+        throwError(
+          () =>
+            new TrustOperationError(
+              'setup',
+              'invalid-secret',
+              'review-security-settings',
+              'This account now has a different recovery key.',
+            ),
+        ),
+      );
+      screen.getByRole('button', { name: 'Try again' }).click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).not.toContain(KEY);
+      expect(screen.getByRole('alert').textContent).toContain(
+        'different recovery key',
+      );
+      expect(screen.getByTestId('setup-security-settings')).toBeTruthy();
+    });
+
     it('withdraws Try again, but keeps the key, when the retry is refused', async () => {
       const { fixture, crypto } = await setup();
       vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));

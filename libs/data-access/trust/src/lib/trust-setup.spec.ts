@@ -629,9 +629,50 @@ describe('setUp failures', () => {
     secretStorage.getKey.mockResolvedValue(['someone-else', { mac: 'm' }]);
     secretStorage.checkKey.mockResolvedValue(false);
 
-    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow(
-      /already has a recovery key/i,
-    );
+    await expect(
+      firstValueFrom(svc.setUp(async () => 'pw')),
+    ).rejects.toMatchObject({
+      kind: 'invalid-secret',
+      recovery: 'review-security-settings',
+      message: expect.stringMatching(/different recovery key/i),
+    });
     expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
+  });
+
+  for (const [label, local] of [
+    ['has no default yet', { defaultKeyId: null }],
+    [
+      'has not synced the default key’s description',
+      { defaultKeyId: 'pending' },
+    ],
+  ] as const) {
+    it(`still shows the key after an unreadable pointer when this device ${label}`, async () => {
+      // The pointer PUT may have landed with its echo lost: the server's default would
+      // then be this key, and discarding it leaves one nobody has.
+      const { svc, crypto, client, secretStorage } = setup(local);
+      secretStorage.getKey.mockResolvedValue(null);
+      client.http.authedRequest.mockRejectedValue(new Error('network down'));
+      crypto.bootstrapSecretStorage.mockRejectedValue(new Error('echo lost'));
+
+      await expect(
+        firstValueFrom(svc.setUp(async () => 'pw')),
+      ).rejects.toMatchObject({
+        kind: 'partial-update',
+        recoveryKey: 'EsTRecoveryKey',
+      });
+    });
+  }
+
+  it('keeps no key for an account signed out while its setup ran', async () => {
+    const { svc, crypto, keys } = setup({});
+    crypto.bootstrapSecretStorage.mockImplementation(async () => {
+      keys.clear();
+      throw new Error('stopped');
+    });
+
+    await expect(
+      firstValueFrom(svc.setUp(async () => 'pw')),
+    ).rejects.toMatchObject({ recoveryKey: 'EsTRecoveryKey' });
+    expect(keys.unfinishedSetupKey).toBeNull();
   });
 });

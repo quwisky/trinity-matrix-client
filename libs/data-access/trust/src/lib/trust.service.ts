@@ -42,7 +42,7 @@ import {
 import {
   assertNoIdentityElsewhere,
   assertNoRecoveryOnAccount,
-  isDefaultKey,
+  isAnotherKeyDefault,
 } from './setup-guards';
 import { TrustHealthService } from './trust-health.service';
 
@@ -140,7 +140,7 @@ export class TrustService {
                 privateKey: new Uint8Array(unfinished.privateKey),
               }
             : await crypto.createRecoveryKeyFromPassphrase();
-          if (typeof found === 'object') {
+          if (typeof found === 'object' && !holder?.released) {
             // The first try's pointer landed but its cache step may not have, and with the
             // default key in place the SDK stores secrets only through this callback cache.
             holder?.set(found.ownKeyId, recoveryKey.privateKey);
@@ -165,11 +165,11 @@ export class TrustService {
           } catch (cause) {
             // The SDK makes the key the account default before the backup, its last and
             // most failure-prone step, so the key may be in use: the user must see it.
-            // Unless the guard could not read the pointer and it is not ours now: then
-            // another key may be the default, and showing this one would mislead.
+            // Unless the guard could not read the pointer and this device now sees another
+            // key as the default: then showing this one would mislead.
             const mayBeInUse =
               found !== 'unreadable' ||
-              (await isDefaultKey(client, recoveryKey.privateKey));
+              !(await isAnotherKeyDefault(client, recoveryKey.privateKey));
             await this.healthRuntime.reconcile();
             if (!mayBeInUse) {
               throw cause;

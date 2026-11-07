@@ -109,4 +109,15 @@ describe('SecretStorageKeyHolder', () => {
     expect(keys.unfinishedSetupKey).toBeNull();
     expect(held?.privateKey).toEqual(new Uint8Array([0, 0, 0]));
   });
+
+  it('keeps no unfinished setup key once the account is torn down', () => {
+    keys.clear();
+    keys.holdUnfinishedSetupKey({
+      encodedPrivateKey: 'EsT',
+      privateKey: new Uint8Array([7]),
+    });
+
+    expect(keys.released).toBe(true);
+    expect(keys.unfinishedSetupKey).toBeNull();
+  });
 });

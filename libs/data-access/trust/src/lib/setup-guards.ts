@@ -45,8 +45,18 @@ export async function assertNoRecoveryOnAccount(
   if (keyId === null || keyId === undefined) {
     return keyId === null ? 'none' : 'unreadable';
   }
-  if (ownKey && (await isKeyFor(client, keyId, ownKey))) {
+  const match = ownKey ? await keyMatch(client, keyId, ownKey) : 'unknown';
+  if (match === 'match') {
     return { ownKeyId: keyId };
+  }
+  if (match === 'mismatch') {
+    // `invalid-secret`: the key this device showed earlier is provably not the account's.
+    throw new TrustOperationError(
+      'setup',
+      'invalid-secret',
+      'review-security-settings',
+      'This account now has a different recovery key, set up from another device. Don’t use the key shown here. Unlock this device with the account’s recovery key instead.',
+    );
   }
   throw new TrustOperationError(
     'setup',
@@ -154,34 +164,44 @@ export async function assertNoIdentityElsewhere(
       );
 }
 
-/** Whether `privateKey` opens the account's current default 4S key, as this device sees it. */
-export async function isDefaultKey(
+/**
+ * Whether this device sees a default 4S key that `privateKey` provably does not open. No
+ * default, or one whose description has not synced yet, is not a different key.
+ */
+export async function isAnotherKeyDefault(
   client: TrustMatrixClient,
   privateKey: Uint8Array,
 ): Promise<boolean> {
   try {
     const keyId = await client.secretStorage.getDefaultKeyId();
-    return !!keyId && (await isKeyFor(client, keyId, privateKey));
+    return (
+      !!keyId && (await keyMatch(client, keyId, privateKey)) === 'mismatch'
+    );
   } catch {
     return false;
   }
 }
 
-/** Whether `privateKey` opens the 4S key `keyId`; any failed read is a no. */
-async function isKeyFor(
+/**
+ * Whether `privateKey` opens the 4S key `keyId`: `unknown` when the description is not
+ * readable here (a lagging local copy), so only `mismatch` proves it is another key.
+ */
+async function keyMatch(
   client: TrustMatrixClient,
   keyId: string,
   privateKey: Uint8Array,
-): Promise<boolean> {
+): Promise<'match' | 'mismatch' | 'unknown'> {
   try {
     const stored = await client.secretStorage.getKey(keyId);
     // checkKey answers true for a description with no MAC, which proves nothing.
-    return (
-      !!stored?.[1].mac &&
-      (await client.secretStorage.checkKey(privateKey, stored[1]))
-    );
+    if (!stored?.[1].mac) {
+      return 'unknown';
+    }
+    return (await client.secretStorage.checkKey(privateKey, stored[1]))
+      ? 'match'
+      : 'mismatch';
   } catch {
-    return false;
+    return 'unknown';
   }
 }
 

@@ -18,6 +18,12 @@ export class SecretStorageKeyHolder {
   private keyId: string | null = null;
   private privateKey: Uint8Array<ArrayBuffer> | null = null;
   private unfinished: GeneratedSecretStorageKey | null = null;
+  private torn = false;
+
+  /** Whether {@link clear} ran: the account is gone and nothing should be cached here. */
+  get released(): boolean {
+    return this.torn;
+  }
 
   /**
    * The recovery key a partly failed first setup already showed, kept so a retry reuses
@@ -31,10 +37,11 @@ export class SecretStorageKeyHolder {
   /** Remember (or, with null, zero and forget) {@link unfinishedSetupKey}. */
   holdUnfinishedSetupKey(key: GeneratedSecretStorageKey | null): void {
     this.unfinished?.privateKey.fill(0);
-    this.unfinished = key && {
-      ...key,
-      privateKey: new Uint8Array(key.privateKey),
-    };
+    // A setup still running when its account signed out must not leave a key behind.
+    this.unfinished =
+      key && !this.torn
+        ? { ...key, privateKey: new Uint8Array(key.privateKey) }
+        : null;
   }
 
   /** Cache the unlocked key for a key id (after generate or unlock). */
@@ -54,6 +61,7 @@ export class SecretStorageKeyHolder {
    * client has stopped, so no crypto operation still reads the returned reference.
    */
   clear(): void {
+    this.torn = true;
     this.holdUnfinishedSetupKey(null);
     this.privateKey?.fill(0);
     this.keyId = null;
