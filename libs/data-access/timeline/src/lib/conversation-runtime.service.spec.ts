@@ -789,6 +789,27 @@ describe('ConversationRuntime', () => {
       expect(controller('!x:example.org', 1).visible()).toBe(true);
     });
 
+    it('carries an edit in progress over when the room on screen reopens', () => {
+      const { runtime, controller, accountIds } = setup(2, undefined, [
+        message('$edit'),
+      ]);
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      runtime.focus(x).messages.beginEdit('$edit', 'original message');
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      accountIds.set([BOB, ALICE]);
+      TestBed.tick();
+
+      expect(runtime.focused()?.compose.intent()).toEqual({
+        kind: 'edit',
+        eventId: '$edit',
+      });
+      expect(runtime.focused()?.compose.draft()).toBe('original message');
+    });
+
     it('keeps the room on screen while its account has no client', () => {
       const { runtime, controller, accountIds } = setup();
       const shown = runtime.focus({

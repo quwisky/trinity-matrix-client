@@ -355,8 +355,13 @@ export class ConversationRuntime {
           continue;
         }
         try {
-          this.retireOutlived(entry);
-          if (focused) this.focus(entry.handle.key);
+          if (focused) {
+            // Event ids hold across clients, so a reply or edit in progress carries over.
+            this.retire(entry);
+            this.focus(entry.handle.key);
+          } else {
+            this.retireOutlived(entry);
+          }
         } catch (error: unknown) {
           this.errors.handleError(error);
         }
