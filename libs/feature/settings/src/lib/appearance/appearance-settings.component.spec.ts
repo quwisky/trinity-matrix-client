@@ -225,6 +225,22 @@ describe('AppearanceSettingsComponent', () => {
     expect(toggle.checked()).toBe(true);
   });
 
+  it('says true black waits for dark mode while light mode shows, and stays enabled', async () => {
+    resolved.update((value) => value && { ...value, mode: 'light' });
+    const { container, fixture } = await renderPage();
+
+    expect(
+      container.querySelector('#true-black-switch-description')?.textContent,
+    ).toContain('Takes effect in dark mode.');
+    expect(switchFor(fixture, 'true-black')!.disabled()).toBe(false);
+
+    resolved.update((value) => value && { ...value, mode: 'dark' });
+    await fixture.whenStable();
+    expect(
+      container.querySelector('#true-black-switch-description')?.textContent,
+    ).not.toContain('Takes effect in dark mode.');
+  });
+
   it('applies the chosen Mode on change', async () => {
     const { fixture } = await renderPage();
 

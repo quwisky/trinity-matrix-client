@@ -648,9 +648,7 @@
     --trinity-surface-app: oklch(18% 0.014 265deg);
     --trinity-surface-sidebar: oklch(24% 0.016 265deg);
     --trinity-surface-pane: oklch(28% 0.016 265deg);
-
-    // The sidebar tone, stated rather than aliased: true black turns the sidebar black.
-    --trinity-surface-raised: oklch(24% 0.016 265deg);
+    --trinity-surface-raised: var(--trinity-sidebar);
     --trinity-surface-floating-card: oklch(28% 0.016 265deg);
     --trinity-surface-overlay: var(--trinity-surface-raised);
     --trinity-surface-overlay-footer: var(--trinity-surface-overlay);
@@ -838,25 +836,24 @@
   // True black — an Appearance choice that applies on top of whichever Theme is dark. The
   // carrier `data-true-black` is only stamped while dark Mode is in effect.
   // =============================================================================
-  // Only the grounds (app, sidebar, rail, pane, canvas) go to #000. Raised, overlay, control
-  // and state surfaces keep the Theme's own dark stops, so cards, sheets, menus, hover and
-  // selection still separate from the ground, and every text role only gains contrast.
+  // Only the column and page grounds go to #000. `--trinity-rail` and `--trinity-sidebar` are
+  // not grounds any more: code blocks, table headers, the voice pill, badges, link previews,
+  // floating toolbars and the scrollbar thumb fill with them, so they keep the Theme's stop,
+  // as do raised, overlay, control and state surfaces. Text roles only gain contrast.
   // `:root.dark[data-true-black]` (0,3,0) ties a Theme's dark block, so it must stay after them.
   :root.dark[data-true-black] {
     --trinity-surface-app: oklch(0% 0 0deg);
     --trinity-surface-sidebar: oklch(0% 0 0deg);
     --trinity-surface-pane: oklch(0% 0 0deg);
     --trinity-surface-canvas: oklch(0% 0 0deg);
-    --trinity-rail: oklch(0% 0 0deg);
-    --trinity-sidebar: oklch(0% 0 0deg);
     --trinity-sidebar-header: oklch(0% 0 0deg);
+    --trinity-members: oklch(0% 0 0deg);
     --trinity-chat: oklch(0% 0 0deg);
     --trinity-surface-drop-overlay: oklch(0% 0 0deg / 82%);
 
-    // Floating controls followed the sidebar tone, which is now the ground itself.
-    --trinity-surface: var(--trinity-surface-raised);
-    --trinity-surface-floating: var(--trinity-surface-raised);
-    --trinity-scrollbar-thumb: var(--trinity-state-hover-surface);
+    // A dialog footer was a step darker than its dialog; the sidebar stop keeps that step
+    // instead of a black band.
+    --trinity-surface-overlay-footer: var(--trinity-sidebar);
   }
 
   // -----------------------------------------------------------------------------

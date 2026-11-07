@@ -116,6 +116,14 @@ export class AppearanceSettingsComponent {
       (this.appearance.axes.mode.value() === 'light' ? 'light' : 'dark'),
   );
 
+  /** Kept enabled in light mode, so the hint says when it applies. */
+  readonly trueBlackDescription = computed(() => {
+    const { description } = this.appearance.axes.trueBlack.editor;
+    return this.resolvedMode() === 'light'
+      ? `${description} Takes effect in dark mode.`
+      : description;
+  });
+
   /** Persist the chosen Mode; projection observes it only after the command commits. */
   onModeChange(value: string): void {
     this.appearance.update('mode', value);

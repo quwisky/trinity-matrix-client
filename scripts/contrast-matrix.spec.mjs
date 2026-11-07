@@ -657,11 +657,24 @@ describe('contrast matrix', () => {
     const black = 'oklch(0% 0 0deg)';
     const grounds = [
       '--trinity-surface-app',
+      '--trinity-surface-sidebar',
       '--trinity-surface-pane',
       '--trinity-surface-canvas',
+      '--trinity-surface-panel',
+      '--trinity-surface-navigation-header',
+      '--trinity-chat',
+    ];
+    // Fills drawn ON a ground (code blocks, table headers, the voice pill, the sticker
+    // skeleton, the empty-state badge, link previews, floating toolbars, the scrollbar thumb)
+    // and the elevated surfaces keep the Theme's stop, so they never vanish into the black.
+    const fills = [
       '--trinity-rail',
       '--trinity-sidebar',
-      '--trinity-chat',
+      '--trinity-surface',
+      '--trinity-surface-floating',
+      '--trinity-scrollbar-thumb',
+      '--trinity-surface-raised',
+      '--trinity-surface-overlay',
     ];
     for (const theme of themes) {
       for (const ground of grounds) {
@@ -672,22 +685,16 @@ describe('contrast matrix', () => {
           black,
         );
       }
-      // Overlays and cards stay a Theme stop, so a sheet still separates from the ground.
-      for (const raised of [
-        '--trinity-surface-raised',
-        '--trinity-surface-overlay',
-        '--trinity-surface-floating',
-      ]) {
-        expect(resolve(raised, theme, 'true-black'), `${theme} ${raised}`).toBe(
-          resolve(
-            raised === '--trinity-surface-floating'
-              ? '--trinity-surface-raised'
-              : raised,
-            theme,
-            'dark',
-          ),
+      for (const fill of fills) {
+        expect(resolve(fill, theme, 'true-black'), `${theme} ${fill}`).toBe(
+          resolve(fill, theme, 'dark'),
         );
       }
+      // A dialog footer must not become a black band across a grey dialog.
+      expect(
+        resolve('--trinity-surface-overlay-footer', theme, 'true-black'),
+        `${theme} overlay footer`,
+      ).not.toBe(black);
     }
   });
 
