@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { PushService } from '@trinity/data-access/notifications';
+import { signal } from '@angular/core';
 import { HostLifecycleService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
@@ -8,10 +10,12 @@ import { BackgroundSync } from './background-sync.service';
 
 type LifecycleEvent = { readonly kind: 'active' | 'background' };
 
-function setup(suspendedInBackground: boolean) {
+function setup(suspendedInBackground: boolean, notifiesFromSync = false) {
   const events = new Subject<LifecycleEvent>();
+  const notifiesFromBackgroundSync = signal(notifiesFromSync);
   TestBed.configureTestingModule({
     providers: [
+      MockProvider(PushService, { notifiesFromBackgroundSync }),
       MockProvider(HostLifecycleService, {
         events,
         suspendedInBackground,
@@ -21,7 +25,7 @@ function setup(suspendedInBackground: boolean) {
   });
   const matrix = TestBed.inject(MatrixClientService);
   const subscription = TestBed.inject(BackgroundSync).run().subscribe();
-  return { events, matrix, subscription };
+  return { events, matrix, subscription, notifiesFromBackgroundSync };
 }
 
 describe('BackgroundSync', () => {
@@ -36,6 +40,22 @@ describe('BackgroundSync', () => {
 
     events.next({ kind: 'active' });
     expect(matrix.resumeSync).toHaveBeenCalledOnce();
+    subscription.unsubscribe();
+  });
+
+  it('keeps syncing in the background while the app itself notifies from sync (Android without push)', () => {
+    const { events, matrix, subscription, notifiesFromBackgroundSync } = setup(
+      true,
+      true,
+    );
+
+    events.next({ kind: 'background' });
+    expect(matrix.suspendSync).not.toHaveBeenCalled();
+    events.next({ kind: 'active' });
+
+    notifiesFromBackgroundSync.set(false);
+    events.next({ kind: 'background' });
+    expect(matrix.suspendSync).toHaveBeenCalledOnce();
     subscription.unsubscribe();
   });
 

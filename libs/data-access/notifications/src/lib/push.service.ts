@@ -150,6 +150,16 @@ export class PushService {
       : 'app',
   );
 
+  /**
+   * Whether the app's own sync is what notifies while it is in the background: on Android
+   * until push delivers there. iOS is suspended in the background and always relies on push.
+   */
+  readonly notifiesFromBackgroundSync = computed(
+    () =>
+      this.nativePush.platform === 'android' &&
+      this.backgroundDelivery() === 'app',
+  );
+
   runtimePrerequisite():
     'ready' | 'unsupported' | 'not-configured' | 'no-account' {
     if (!this.nativePush.supported()) return 'unsupported';
