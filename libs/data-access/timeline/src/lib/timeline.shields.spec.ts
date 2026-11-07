@@ -567,19 +567,57 @@ describe('per-message authenticity shields', () => {
       expect(svc.messages()[0].shield?.level).toBe('red');
     });
 
-    it('checks every sender on a fresh check whatever the filter says', async () => {
-      const getInfo = vi.fn().mockResolvedValue(info);
+    it('checks every sender when the first check is a trust pass, even once superseded', async () => {
+      // Each probe takes a few ms, so the second trust event lands while the first pass runs.
+      const getInfo = vi
+        .fn()
+        .mockImplementation(
+          () => new Promise((r) => setTimeout(() => r(info), 5)),
+        );
+      // Enough of @a's messages ahead of @c's that the first pass is superseded before @c.
       const events = [
-        fakeEvent({ id: '$a', sender: '@a:hs', body: 'a', encrypted: true }),
+        ...Array.from({ length: 40 }, (_, i) =>
+          fakeEvent({
+            id: `$a${i}`,
+            sender: '@a:hs',
+            body: 'a',
+            encrypted: true,
+          }),
+        ),
         fakeEvent({ id: '$b', sender: '@b:hs', body: 'b', encrypted: true }),
+        fakeEvent({ id: '$c', sender: '@c:hs', body: 'c', encrypted: true }),
       ];
-      const { handlers } = openWithEvents(getInfo, events, false);
-      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
-      await vi.waitFor(() =>
-        expect(getInfo.mock.calls.length).toBeGreaterThan(1),
-      );
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const client = shieldClient(events, getInfo);
+      const crypto = client.getCrypto();
+      let ready = false;
+      client.getCrypto = () => (ready ? crypto : null) as typeof crypto;
+      TestBed.configureTestingModule({
+        providers: [TimelineService, matrixProvider(client)],
+      });
+      const svc = TestBed.inject(TimelineService);
+      // A first visit caches every shield; the reopen finds crypto not ready yet.
+      ready = true;
+      svc.open('!r:hs');
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(42), {
+        timeout: 500,
+      });
+      svc.close();
+      ready = false;
+      getInfo.mockClear();
+      svc.open('!r:hs');
       await new Promise((r) => setTimeout(r, 10));
-      expect(sendersProbed(getInfo)).toContain('@b:hs');
+      expect(getInfo).not.toHaveBeenCalled();
+      ready = true;
+      client.handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled(), {
+        interval: 1,
+      });
+      client.handlers.get('client:crypto.devicesUpdated')?.(['@b:hs']);
+      await vi.waitFor(
+        () => expect(sendersProbed(getInfo)).toContain('@c:hs'),
+        { timeout: 500 },
+      );
     });
   });
 });

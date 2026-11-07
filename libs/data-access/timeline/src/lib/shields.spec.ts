@@ -539,6 +539,15 @@ describe('TrustRechecks', () => {
     expect(t.take()?.senders).toBe('all');
   });
 
+  it('keeps a widened pass covering everyone when a newer one takes over', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    const a = t.take();
+    t.widen(a?.pass ?? 0);
+    t.note(['@b:hs'], '@me:hs');
+    expect(t.take()?.senders).toBe('all');
+  });
+
   it('lets a newer pass take over the senders of one still running', () => {
     const t = new TrustRechecks();
     t.note(['@a:hs'], '@me:hs');

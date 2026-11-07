@@ -1309,6 +1309,7 @@ export class TimelineService {
     // The first check after opening asks for every row, whatever the sender filter says.
     const fresh = !this.shieldsChecked;
     this.shieldsChecked = true;
+    if (fresh && pass > 0) this.trust.widen(pass);
     const everyone = fresh || senders === 'all';
     const encrypted = events
       .filter(

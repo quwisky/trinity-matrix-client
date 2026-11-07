@@ -958,6 +958,7 @@ export class ThreadsService {
     const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
     const fresh = !this.threadShieldsChecked;
     this.threadShieldsChecked = true;
+    if (fresh && pass > 0) this.threadTrust.widen(pass);
     const everyone = fresh || senders === 'all';
     const encrypted = ordered
       .filter((e) => everyone || senders.has(e.getSender() ?? ''))

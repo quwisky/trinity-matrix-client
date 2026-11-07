@@ -322,6 +322,11 @@ export class TrustRechecks {
     return { senders, pass: ++this.current };
   }
 
+  /** A running pass that is a room's first check covers everyone, and so must its successor. */
+  widen(pass: number): void {
+    if (pass === this.current) this.active = 'all';
+  }
+
   isCurrent(pass: number): boolean {
     return pass === this.current;
   }
