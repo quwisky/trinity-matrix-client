@@ -4,11 +4,7 @@ import {
   type APIRequestContext,
   type Page,
 } from '../../../fixtures.mts';
-import {
-  login,
-  homeserverSession,
-  seedPreference,
-} from '../../../support/app.mts';
+import { login, homeserverSession } from '../../../support/app.mts';
 import { apiLogin } from '../../../support/account.mts';
 import {
   freshAccount,
@@ -164,16 +160,8 @@ async function pauseNextPaneSlide(page: Page): Promise<void> {
   });
 }
 
-// Classic is the theme whose room list header differs from its column.
-const RUNS = [
-  ['light', 'trinity'],
-  ['dark', 'trinity'],
-  ['light', 'classic'],
-  ['dark', 'classic'],
-] as const;
-
-for (const [colorScheme, theme] of RUNS) {
-  test.describe(`Status bar colour (${theme}, ${colorScheme})`, () => {
+for (const colorScheme of ['light', 'dark'] as const) {
+  test.describe(`Status bar colour (${colorScheme})`, () => {
     test.skip(!session.available, 'requires a homeserver (Docker or native)');
     // A touch screen: the colour reading runs only where a status bar shows it.
     test.use({
@@ -202,9 +190,6 @@ for (const [colorScheme, theme] of RUNS) {
         owner.token,
         await createRoom(request, hs, owner, roomName),
       );
-      if (theme !== 'trinity') {
-        await seedPreference(page, 'trinity.appearance.theme', theme);
-      }
       const room = page.locator('.sidebar__scroll .channel', {
         hasText: roomName,
       });

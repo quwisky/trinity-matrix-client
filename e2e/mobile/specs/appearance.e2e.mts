@@ -145,13 +145,13 @@ describe('mobile Appearance', () => {
     expect(lightStatusBar.height).toBeGreaterThan(0);
 
     await $('[data-testid="mode-dark"]').click();
-    await choose('theme-select', 'theme-midnight');
+    await choose('theme-select', 'theme-trinity');
     await choose('density-select', 'density-compact');
     await choose('text-scale-select', 'text-scale-larger');
 
     await expect($('[data-testid="mode-dark"] input')).toBeChecked();
     await expect($('html')).toHaveElementClass('dark', { containing: true });
-    await expect($('html')).toHaveAttribute('data-theme', 'midnight');
+    await expect($('html')).not.toHaveAttribute('data-theme');
     await expect($('html')).toHaveAttribute('data-density', 'compact');
     expect(await $('html').getCSSProperty('font-size')).toMatchObject({
       value: '20px',
@@ -213,6 +213,6 @@ describe('mobile Appearance', () => {
     expect(geometry.headingTop).toBeGreaterThanOrEqual(geometry.sheetTop - 1);
 
     await $('[data-testid="theme-select"] button').click();
-    await expect($('[data-testid="theme-midnight"]')).toBeDisplayed();
+    await expect($('[data-testid="theme-amethyst"]')).toBeDisplayed();
   });
 });

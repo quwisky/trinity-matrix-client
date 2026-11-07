@@ -184,17 +184,42 @@ describe('Appearance config entries', () => {
     });
   });
 
-  it('imports a retired Onyx theme as Midnight', async () => {
+  it.each([
+    ['classic', {}, false],
+    ['midnight', {}, true],
+    ['onyx', {}, true],
+    ['midnight', { trueBlack: false }, false],
+    ['classic', { trueBlack: true }, true],
+  ] as const)(
+    'imports a retired %s theme as Graphite, with true black %j giving %s',
+    async (theme, extra, trueBlack) => {
+      const { appearance, config } = await setup();
+
+      const plan = config.validate({
+        version: CONFIG_EXPORT_VERSION,
+        settings: { appearance: { theme, ...extra } },
+      });
+      if (!plan.ok) {
+        throw new Error(plan.problems.join(' / '));
+      }
+      await firstValueFrom(config.apply(plan));
+
+      expect(appearance.value()).toEqual(
+        expect.objectContaining({ theme: 'trinity', trueBlack }),
+      );
+    },
+  );
+
+  it('imports a version 1 Midnight palette as Graphite with true black', async () => {
     const { config } = await setup();
 
     const plan = config.validate({
-      version: CONFIG_EXPORT_VERSION,
-      settings: { appearance: { theme: 'onyx' } },
+      version: 1,
+      settings: { theme: { palette: 'midnight' } },
     });
 
-    expect(plan.ok).toBe(true);
     expect(plan.ok && plan.changes).toEqual([
-      expect.objectContaining({ path: 'appearance.theme', to: 'midnight' }),
+      { path: 'appearance.trueBlack', from: false, to: true },
     ]);
   });
 
@@ -208,7 +233,7 @@ describe('Appearance config entries', () => {
 
     expect(plan.ok).toBe(false);
     expect(plan.ok === false && plan.problems).toEqual([
-      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, classic, midnight or amethyst)",
+      "appearance.theme: 'removed-theme' is not a supported theme (expected trinity or amethyst)",
     ]);
   });
 

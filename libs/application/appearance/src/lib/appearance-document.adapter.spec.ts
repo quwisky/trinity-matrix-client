@@ -97,7 +97,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     const documentAdapter = adapter();
     const base: ResolvedAppearance = {
       mode: 'dark',
-      theme: 'classic',
+      theme: 'trinity',
       textSize: 'default',
       density: 'cosy',
       roomList: 'rich',
@@ -117,7 +117,7 @@ describe('BrowserAppearanceDocumentAdapter', () => {
     const documentAdapter = adapter();
     documentAdapter.apply({
       mode: 'dark',
-      theme: 'midnight',
+      theme: 'amethyst',
       textSize: 'small',
       density: 'compact',
       roomList: 'compact',

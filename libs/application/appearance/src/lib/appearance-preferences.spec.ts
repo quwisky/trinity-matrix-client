@@ -42,6 +42,22 @@ describe('Design System Appearance preference descriptors', () => {
         }),
       }),
       expect.objectContaining({
+        id: 'design-system.appearance.true-black',
+        owner: 'design-system',
+        section: 'appearance',
+        order: 60,
+        scope: 'installation',
+        defaultValue: false,
+        sensitivity: 'public',
+        storage: 'device-preferences',
+        export: 'portable',
+        editor: expect.objectContaining({
+          kind: 'toggle',
+          label: 'True black backgrounds',
+          testId: 'true-black',
+        }),
+      }),
+      expect.objectContaining({
         id: 'design-system.appearance.theme',
         owner: 'design-system',
         section: 'appearance',
@@ -101,26 +117,10 @@ describe('Design System Appearance preference descriptors', () => {
           testId: 'room-list-select',
         }),
       }),
-      expect.objectContaining({
-        id: 'design-system.appearance.true-black',
-        owner: 'design-system',
-        section: 'appearance',
-        order: 60,
-        scope: 'installation',
-        defaultValue: false,
-        sensitivity: 'public',
-        storage: 'device-preferences',
-        export: 'portable',
-        editor: expect.objectContaining({
-          kind: 'toggle',
-          label: 'True black backgrounds',
-          testId: 'true-black',
-        }),
-      }),
     ]);
   });
 
-  it('accepts only a boolean true black choice, also from storage', () => {
+  it('accepts only a boolean true black choice, or reads one from a saved Theme', () => {
     expect(TRUE_BLACK_PREFERENCE.validate(true)).toEqual({
       kind: 'accepted',
       value: true,
@@ -131,7 +131,15 @@ describe('Design System Appearance preference descriptors', () => {
       kind: 'accepted',
       value: true,
     });
-    expect(migrate({ version: 1, value: 'yes' }).kind).toBe('rejected');
+    expect(migrate({ version: 1, value: 7 }).kind).toBe('rejected');
+    expect(migrate({ version: 2, value: 'midnight' })).toEqual({
+      kind: 'accepted',
+      value: true,
+    });
+    expect(migrate({ version: 2, value: 'amethyst' })).toEqual({
+      kind: 'accepted',
+      value: false,
+    });
     expect(migrate({ version: 2, value: true }).kind).toBe('rejected');
   });
 
@@ -202,9 +210,14 @@ describe('Design System Appearance preference descriptors', () => {
         version: 1,
       },
       {
+        key: 'trinity.appearance.true-black',
+        legacyKeys: ['trinity.appearance.theme', 'trinity.palette'],
+        version: 1,
+      },
+      {
         key: 'trinity.appearance.theme',
         legacyKeys: ['trinity.palette'],
-        version: 2,
+        version: 3,
       },
       {
         key: 'trinity.appearance.text-size',
@@ -218,11 +231,6 @@ describe('Design System Appearance preference descriptors', () => {
       },
       {
         key: 'trinity.appearance.room-list',
-        legacyKeys: undefined,
-        version: 1,
-      },
-      {
-        key: 'trinity.appearance.true-black',
         legacyKeys: undefined,
         version: 1,
       },
@@ -306,55 +314,128 @@ describe('AppearancePreferences', () => {
       codeLinePresentation: 'auto',
       trueBlack: false,
     });
-    expect(write).toHaveBeenCalledOnce();
-    expect(write.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({ key: CODE_SIZE_PREFERENCE.persistence.key }),
-    );
+    // An unknown saved Theme leaves true black off; only Theme fails.
+    expect(write.mock.calls.map(([request]) => request.key)).toEqual([
+      TRUE_BLACK_PREFERENCE.persistence.key,
+      CODE_SIZE_PREFERENCE.persistence.key,
+    ]);
   });
 
+  function storedAppearance(entries: Record<string, string>) {
+    const stored = new Map(Object.entries(entries));
+    const write = vi.fn<PreferenceStorageAdapter['write']>((request) => {
+      stored.set(request.key, request.payload);
+      return of({ kind: 'completed' });
+    });
+    TestBed.configureTestingModule({
+      providers: [
+        provideAppearancePreferences(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: (request) =>
+              of(
+                stored.has(request.key)
+                  ? { kind: 'found', payload: stored.get(request.key) ?? '' }
+                  : { kind: 'missing' },
+              ),
+            write,
+          } satisfies PreferenceStorageAdapter,
+        },
+      ],
+    });
+    return { appearance: TestBed.inject(AppearancePreferences), stored };
+  }
+
   it.each([
-    ['trinity.appearance.theme', JSON.stringify({ version: 1, value: 'onyx' })],
-    ['trinity.palette', 'onyx'],
-  ])(
-    'migrates a stored Onyx theme from %s to Midnight',
-    async (key, payload) => {
-      const read = vi.fn<PreferenceStorageAdapter['read']>((request) =>
-        of(
-          request.key === key
-            ? { kind: 'found', payload }
-            : { kind: 'missing' },
-        ),
-      );
-      const write = vi.fn<PreferenceStorageAdapter['write']>(() =>
-        of({ kind: 'completed' }),
-      );
-      TestBed.configureTestingModule({
-        providers: [
-          provideAppearancePreferences(),
-          {
-            provide: PREFERENCE_STORAGE_ADAPTER,
-            useValue: { read, write } satisfies PreferenceStorageAdapter,
-          },
-        ],
-      });
-      const appearance = TestBed.inject(AppearancePreferences);
+    [
+      'Classic',
+      'trinity.appearance.theme',
+      '{"version":2,"value":"classic"}',
+      false,
+    ],
+    [
+      'Midnight',
+      'trinity.appearance.theme',
+      '{"version":2,"value":"midnight"}',
+      true,
+    ],
+    ['Onyx', 'trinity.appearance.theme', '{"version":1,"value":"onyx"}', true],
+    ['Onyx', 'trinity.palette', 'onyx', true],
+    ['Classic', 'trinity.palette', 'classic', false],
+  ] as const)(
+    'moves a stored %s theme from %s to Graphite',
+    async (_name, key, payload, trueBlack) => {
+      const { appearance, stored } = storedAppearance({ [key]: payload });
 
       await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
         kind: 'ready',
         hydrated: 8,
       });
-      expect(appearance.axes.theme.state()).toEqual({
-        kind: 'ready',
-        value: 'midnight',
-      });
-      expect(write).toHaveBeenCalledWith(
-        expect.objectContaining({
-          key: THEME_PREFERENCE.persistence.key,
-          payload: JSON.stringify({ version: 2, value: 'midnight' }),
-        }),
+      expect(appearance.value()).toEqual(
+        expect.objectContaining({ theme: 'trinity', trueBlack }),
+      );
+      expect(stored.get(THEME_PREFERENCE.persistence.key)).toBe(
+        JSON.stringify({ version: 3, value: 'trinity' }),
+      );
+      expect(stored.get(TRUE_BLACK_PREFERENCE.persistence.key)).toBe(
+        JSON.stringify({ version: 1, value: trueBlack }),
       );
     },
   );
+
+  it.each([
+    ['classic', true],
+    ['midnight', false],
+  ] as const)(
+    'keeps a saved true black choice when moving off %s',
+    async (theme, trueBlack) => {
+      const { appearance } = storedAppearance({
+        [THEME_PREFERENCE.persistence.key]: JSON.stringify({
+          version: 2,
+          value: theme,
+        }),
+        [TRUE_BLACK_PREFERENCE.persistence.key]: JSON.stringify({
+          version: 1,
+          value: trueBlack,
+        }),
+      });
+
+      await firstValueFrom(appearance.hydrate());
+
+      expect(appearance.value()).toEqual(
+        expect.objectContaining({ theme: 'trinity', trueBlack }),
+      );
+    },
+  );
+
+  it('reads a saved Midnight as Graphite with true black before hydrating', async () => {
+    const { appearance } = storedAppearance({
+      [THEME_PREFERENCE.persistence.key]: JSON.stringify({
+        version: 2,
+        value: 'midnight',
+      }),
+    });
+
+    await expect(firstValueFrom(appearance.readSaved())).resolves.toEqual(
+      expect.objectContaining({ theme: 'trinity', trueBlack: true }),
+    );
+  });
+
+  it('leaves true black off for a kept Theme', async () => {
+    const { appearance } = storedAppearance({
+      [THEME_PREFERENCE.persistence.key]: JSON.stringify({
+        version: 2,
+        value: 'amethyst',
+      }),
+    });
+
+    await firstValueFrom(appearance.hydrate());
+
+    expect(appearance.value()).toEqual(
+      expect.objectContaining({ theme: 'amethyst', trueBlack: false }),
+    );
+  });
 
   it('contributes all eight descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {
