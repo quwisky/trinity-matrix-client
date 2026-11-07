@@ -137,7 +137,9 @@ export class SpacesService {
   private readonly matrix = inject(MatrixClientService);
   private readonly governance = inject(ROOM_LIBRARY_GOVERNANCE_POLICY);
 
-  private readonly _spaces = signal<SpaceSummary[]>([]);
+  private readonly _spaces = signal<SpaceSummary[]>([], {
+    equal: sameSpaces,
+  });
   /** The user's joined spaces, sorted by name; live as the client syncs. */
   readonly spaces = this._spaces.asReadonly();
 
@@ -667,6 +669,30 @@ export class SpacesService {
       childRoomIds: spaceChildIdsOf(client, room),
     };
   }
+}
+
+/**
+ * Whether two space lists carry the same summaries, so a sync that changed no space does
+ * not republish the list. `initial` derives from `name`, so it needs no comparison.
+ */
+function sameSpaces(
+  a: readonly SpaceSummary[],
+  b: readonly SpaceSummary[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((x, i) => {
+      const y = b[i];
+      return (
+        x.id === y.id &&
+        x.accountId === y.accountId &&
+        x.name === y.name &&
+        x.avatarMxc === y.avatarMxc &&
+        x.childRoomIds.length === y.childRoomIds.length &&
+        x.childRoomIds.every((id, j) => id === y.childRoomIds[j])
+      );
+    })
+  );
 }
 
 /** One Account's leave of one space, as a single set key. */

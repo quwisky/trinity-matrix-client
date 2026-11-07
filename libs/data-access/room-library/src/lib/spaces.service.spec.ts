@@ -306,6 +306,125 @@ describe('SpacesService', () => {
     expect(svc.spaces().map((s) => s.id)).toEqual(['!s:hs']);
   });
 
+  it('keeps the space list identity across a sync that changes nothing', async () => {
+    const { svc, client } = setup([
+      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
+    ]);
+    const before = svc.spaces();
+
+    handlerFor(
+      client,
+      'RoomState.events',
+    )?.({
+      getType: () => 'm.space.child',
+    });
+    await Promise.resolve();
+
+    expect(svc.spaces()).toBe(before);
+  });
+
+  it.each([
+    ['name', (r: ReturnType<typeof fakeRoom>) => (r.name = 'Renamed')],
+    [
+      'avatar',
+      (r: ReturnType<typeof fakeRoom>) =>
+        (r.getMxcAvatarUrl = () => 'mxc://hs/a' as never),
+    ],
+    ['id', (r: ReturnType<typeof fakeRoom>) => (r.roomId = '!t:hs')],
+    [
+      'children',
+      (r: ReturnType<typeof fakeRoom>) =>
+        r._children.push({ childId: '!a:hs' }),
+    ],
+  ])('emits a new space list when its %s changes', async (_field, change) => {
+    const space = fakeRoom({ roomId: '!s:hs', name: 'Space', space: true });
+    const { svc, client } = setup([
+      space,
+      fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
+    ]);
+    const before = svc.spaces();
+
+    change(space);
+    handlerFor(
+      client,
+      'RoomState.events',
+    )?.({
+      getType: () => 'm.space.child',
+    });
+    await Promise.resolve();
+
+    expect(svc.spaces()).not.toBe(before);
+  });
+
+  it.each([
+    [
+      'reordered',
+      (r: ReturnType<typeof fakeRoom>) => {
+        r._children[0].order = '30';
+      },
+      ['!b:hs', '!a:hs'],
+    ],
+    [
+      'removed',
+      (r: ReturnType<typeof fakeRoom>) => r._children.pop(),
+      ['!a:hs'],
+    ],
+  ])(
+    'emits a new space list when a child is %s',
+    async (_what, change, expected) => {
+      const space = fakeRoom({
+        roomId: '!s:hs',
+        name: 'Space',
+        space: true,
+        children: [
+          { childId: '!a:hs', order: '10' },
+          { childId: '!b:hs', order: '20' },
+        ],
+      });
+      const { svc, client } = setup([
+        space,
+        fakeRoom({ roomId: '!a:hs', name: 'alpha' }),
+        fakeRoom({ roomId: '!b:hs', name: 'bravo' }),
+      ]);
+      const before = svc.spaces();
+      expect(before[0].childRoomIds).toEqual(['!a:hs', '!b:hs']);
+
+      change(space);
+      handlerFor(
+        client,
+        'RoomState.events',
+      )?.({
+        getType: () => 'm.space.child',
+      });
+      await Promise.resolve();
+
+      expect(svc.spaces()).not.toBe(before);
+      expect(svc.spaces()[0].childRoomIds).toEqual(
+        expected.length === 1 ? ['!a:hs'] : ['!b:hs', '!a:hs'],
+      );
+    },
+  );
+
+  it('emits a new space list when the owning account changes', async () => {
+    const { svc, client, matrix } = setup([
+      fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),
+    ]);
+    const before = svc.spaces();
+
+    client.getUserId = () => '@other:hs';
+    vi.spyOn(matrix, 'activeUserId').mockReturnValue('@other:hs');
+    handlerFor(
+      client,
+      'RoomState.events',
+    )?.({
+      getType: () => 'm.space.child',
+    });
+    await Promise.resolve();
+
+    expect(svc.spaces()[0].accountId).toBe('@other:hs');
+    expect(svc.spaces()).not.toBe(before);
+  });
+
   it('detaches listeners and clears the model on teardown', () => {
     const { svc, client, lifetime } = setup([
       fakeRoom({ roomId: '!s:hs', name: 'Space', space: true }),

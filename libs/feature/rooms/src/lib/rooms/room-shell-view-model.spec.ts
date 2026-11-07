@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { effect, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { describe, expect, it, vi } from 'vitest';
@@ -633,5 +633,207 @@ describe('RoomShellViewModel rail unread chats', () => {
     expect(vm.railUnreadChats().entries.map((e) => e.accountBadge?.id)).toEqual(
       ['@ben:hs', undefined],
     );
+  });
+});
+
+describe('RoomShellViewModel rail badges', () => {
+  const team = spaceSummary({ id: '!s:hs', childRoomIds: ['!c:hs'] });
+  const view = (rooms: RoomSummary[]): SelectedRoomLibraryView => ({
+    accountIds: new Set(['@me:hs']),
+    mode: 'active',
+    rooms,
+    spaces: [team],
+    spaceChildRoomIdsByAccount: new Map([['@me:hs', new Set(['!c:hs'])]]),
+    invitations: [],
+  });
+  const child = (over: Partial<RoomSummary> = {}) =>
+    roomSummary({ id: '!c:hs', accountId: '@me:hs', unreadCount: 2, ...over });
+  const other = (over: Partial<RoomSummary> = {}) =>
+    roomSummary({ id: '!o:hs', accountId: '@me:hs', ...over });
+
+  /** Counts how often a rail computed hands its consumers a new value. */
+  function watch(vm: RoomShellViewModel) {
+    const seen = { railUnread: 0 };
+    TestBed.runInInjectionContext(() =>
+      effect(() => {
+        vm.railUnread();
+        seen.railUnread += 1;
+      }),
+    );
+    TestBed.tick();
+    return seen;
+  }
+
+  it('keeps every badge object when only an unrelated room’s name changes', () => {
+    const { vm, selectedView } = build({
+      selectedView: view([child(), other()]),
+    });
+    const seen = watch(vm);
+    const before = [vm.spaceUnread(), vm.spaceMentions(), vm.railUnread()];
+
+    selectedView.set(view([child(), other({ name: 'renamed' })]));
+    TestBed.tick();
+
+    expect([vm.spaceUnread(), vm.spaceMentions(), vm.railUnread()]).toEqual(
+      before,
+    );
+    expect(vm.spaceUnread()).toBe(before[0]);
+    expect(vm.spaceMentions()).toBe(before[1]);
+    expect(vm.railUnread()).toBe(before[2]);
+    expect(seen.railUnread).toBe(1);
+  });
+
+  it('emits a new badge object when a relevant count changes', () => {
+    const { vm, selectedView } = build({ selectedView: view([child()]) });
+    const before = vm.railUnread();
+
+    selectedView.set(view([child({ unreadCount: 3, highlightCount: 1 })]));
+
+    expect(vm.spaceUnread()).toEqual({ '!s:hs': 3 });
+    expect(vm.spaceMentions()).toEqual({ '!s:hs': 1 });
+    expect(vm.railUnread()).not.toBe(before);
+    expect(vm.railUnread().perSpace['!s:hs']).toEqual({
+      unread: 3,
+      mentions: 1,
+    });
+  });
+
+  describe('each count', () => {
+    // `!x` is a space child no listed space claims: it counts toward Recent only, so a
+    // matching change on it cancels in Recent and isolates the count under test.
+    const dm = (over: Partial<RoomSummary> = {}) =>
+      roomSummary({
+        id: '!d:hs',
+        accountId: '@me:hs',
+        directUserId: '@ben:hs',
+        ...over,
+      });
+    const plain = (over: Partial<RoomSummary> = {}) =>
+      roomSummary({ id: '!p:hs', accountId: '@me:hs', ...over });
+    const orphan = (over: Partial<RoomSummary> = {}) =>
+      roomSummary({ id: '!x:hs', accountId: '@me:hs', ...over });
+    const scene = (
+      rooms: RoomSummary[],
+      spaces = [team],
+    ): SelectedRoomLibraryView => ({
+      ...view(rooms),
+      spaces,
+      spaceChildRoomIdsByAccount: new Map([
+        ['@me:hs', new Set(['!c:hs', '!x:hs'])],
+      ]),
+    });
+    const base = () => [
+      child({ unreadCount: 1 }),
+      dm({ unreadCount: 1 }),
+      plain({ unreadCount: 1 }),
+      orphan({ unreadCount: 1, highlightCount: 1 }),
+    ];
+    const swap = (
+      rooms: RoomSummary[],
+      id: string,
+      over: Partial<RoomSummary>,
+    ) => rooms.map((r) => (r.id === id ? { ...r, ...over } : r));
+
+    function change(next: (rooms: RoomSummary[]) => RoomSummary[]) {
+      const { vm, selectedView } = build({ selectedView: scene(base()) });
+      const before = vm.railUnread();
+      selectedView.set(scene(next(base())));
+      return { before, after: vm.railUnread(), vm };
+    }
+
+    it('emits when only a space’s mentions change', () => {
+      const { before, after, vm } = change((r) =>
+        swap(swap(r, '!c:hs', { highlightCount: 1 }), '!x:hs', {
+          highlightCount: 0,
+        }),
+      );
+      expect(vm.spaceMentions()).toEqual({ '!s:hs': 1 });
+      expect(after).not.toBe(before);
+      expect(after.recent).toEqual(before.recent);
+    });
+
+    it('emits when only a space’s unread count changes', () => {
+      const { before, after, vm } = change((r) =>
+        swap(swap(r, '!c:hs', { unreadCount: 2 }), '!x:hs', {
+          unreadCount: 0,
+        }),
+      );
+      expect(vm.spaceUnread()).toEqual({ '!s:hs': 2 });
+      expect(after).not.toBe(before);
+      expect(after.recent).toEqual(before.recent);
+    });
+
+    it('emits when a room is marked unread', () => {
+      const { vm, selectedView } = build({
+        selectedView: scene([child({ unreadCount: 0 })]),
+      });
+      const before = vm.railUnread();
+
+      selectedView.set(scene([child({ unreadCount: 0, markedUnread: true })]));
+
+      expect(vm.spaceUnread()).toEqual({ '!s:hs': 1 });
+      expect(vm.railUnread()).not.toBe(before);
+    });
+
+    it('emits when only Home changes', () => {
+      const { before, after } = change((r) =>
+        swap(swap(r, '!d:hs', { unreadCount: 2 }), '!x:hs', {
+          unreadCount: 0,
+        }),
+      );
+      expect(after).not.toBe(before);
+      expect(after.home.unread).toBe(2);
+      expect(after.recent).toEqual(before.recent);
+      expect(after.rooms).toEqual(before.rooms);
+    });
+
+    it('emits when only Rooms changes', () => {
+      const { before, after } = change((r) =>
+        swap(swap(r, '!p:hs', { unreadCount: 2 }), '!x:hs', {
+          unreadCount: 0,
+        }),
+      );
+      expect(after).not.toBe(before);
+      expect(after.rooms.unread).toBe(2);
+      expect(after.recent).toEqual(before.recent);
+      expect(after.home).toEqual(before.home);
+    });
+
+    it('emits when only Recent changes', () => {
+      const { before, after } = change((r) =>
+        swap(r, '!x:hs', { unreadCount: 2 }),
+      );
+      expect(after).not.toBe(before);
+      expect(after.recent.unread).toBe(before.recent.unread + 1);
+      expect(after.home).toEqual(before.home);
+      expect(after.rooms).toEqual(before.rooms);
+    });
+
+    it('emits when one space is swapped for another with the same counts', () => {
+      const { vm, selectedView } = build({ selectedView: scene(base()) });
+      const before = vm.railUnread();
+
+      selectedView.set(
+        scene(base(), [spaceSummary({ id: '!t:hs', childRoomIds: ['!c:hs'] })]),
+      );
+
+      expect(Object.keys(vm.railUnread().perSpace)).toEqual(['!t:hs']);
+      expect(vm.railUnread()).not.toBe(before);
+    });
+
+    it('emits when a space is added or removed', () => {
+      const { vm, selectedView } = build({ selectedView: scene(base()) });
+      const before = vm.railUnread();
+
+      selectedView.set(
+        scene(base(), [team, spaceSummary({ id: '!t:hs', childRoomIds: [] })]),
+      );
+      const added = vm.railUnread();
+      expect(Object.keys(added.perSpace).sort()).toEqual(['!s:hs', '!t:hs']);
+      expect(added).not.toBe(before);
+
+      selectedView.set(scene(base(), []));
+      expect(vm.railUnread().perSpace).toEqual({});
+    });
   });
 });

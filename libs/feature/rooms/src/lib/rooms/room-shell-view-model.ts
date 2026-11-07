@@ -33,7 +33,10 @@ import {
 } from '../server-rail/rail-unread-chats';
 import { MentionInboxPreferences } from '@trinity/data-access/notifications';
 import { TrustAccountStatusService } from '@trinity/data-access/trust';
-import { type RailUnread } from '../server-rail/server-rail.component';
+import {
+  type RailCounts,
+  type RailUnread,
+} from '../server-rail/server-rail.component';
 import { type AccountSummary } from '../channel-sidebar/sidebar-user-panel/sidebar-user-panel.component';
 
 /**
@@ -326,22 +329,25 @@ export class RoomShellViewModel {
 
   /** Unread notifications summed per space, keyed by space id (space-pill badges). In mixed
    * mode this covers every account's space pills, summing over that account's child rooms. */
-  readonly spaceUnread = computed<Record<string, number>>(() => {
-    const view = this.selectedLibrary.view();
-    const source = view.rooms;
-    const byId = new Map(source.map((r) => [r.id, r] as const));
-    const totals: Record<string, number> = {};
-    for (const space of view.spaces) {
-      totals[space.id] = space.childRoomIds.reduce((sum, id) => {
-        const room = byId.get(id);
-        // A flagged room has no notification count behind it, so it counts as one —
-        // otherwise the pill for the space holding it stays blank and the flag is
-        // invisible from everywhere except that space's own list.
-        return sum + (room?.unreadCount || (room?.markedUnread ? 1 : 0));
-      }, 0);
-    }
-    return totals;
-  });
+  readonly spaceUnread = computed<Record<string, number>>(
+    () => {
+      const view = this.selectedLibrary.view();
+      const source = view.rooms;
+      const byId = new Map(source.map((r) => [r.id, r] as const));
+      const totals: Record<string, number> = {};
+      for (const space of view.spaces) {
+        totals[space.id] = space.childRoomIds.reduce((sum, id) => {
+          const room = byId.get(id);
+          // A flagged room has no notification count behind it, so it counts as one —
+          // otherwise the pill for the space holding it stays blank and the flag is
+          // invisible from everywhere except that space's own list.
+          return sum + (room?.unreadCount || (room?.markedUnread ? 1 : 0));
+        }, 0);
+      }
+      return totals;
+    },
+    { equal: sameRecord },
+  );
 
   /** Mentions (highlight counts) over the same rooms each unread total covers. */
   private sumHighlights(include: (room: RoomSummary) => boolean): number {
@@ -352,44 +358,50 @@ export class RoomShellViewModel {
   }
 
   /** Mentions summed per space, over the same child rooms as {@link spaceUnread}. */
-  readonly spaceMentions = computed<Record<string, number>>(() => {
-    const view = this.selectedLibrary.view();
-    const byId = new Map(view.rooms.map((r) => [r.id, r] as const));
-    const totals: Record<string, number> = {};
-    for (const space of view.spaces) {
-      totals[space.id] = space.childRoomIds.reduce(
-        (sum, id) => sum + (byId.get(id)?.highlightCount ?? 0),
-        0,
-      );
-    }
-    return totals;
-  });
+  readonly spaceMentions = computed<Record<string, number>>(
+    () => {
+      const view = this.selectedLibrary.view();
+      const byId = new Map(view.rooms.map((r) => [r.id, r] as const));
+      const totals: Record<string, number> = {};
+      for (const space of view.spaces) {
+        totals[space.id] = space.childRoomIds.reduce(
+          (sum, id) => sum + (byId.get(id)?.highlightCount ?? 0),
+          0,
+        );
+      }
+      return totals;
+    },
+    { equal: sameRecord },
+  );
 
   /** The rail's unread and mention counts bundled into one object input. */
-  readonly railUnread = computed<RailUnread>(() => {
-    const mentions = this.spaceMentions();
-    const perSpace: RailUnread['perSpace'] = {};
-    for (const [id, unread] of Object.entries(this.spaceUnread())) {
-      perSpace[id] = { unread, mentions: mentions[id] ?? 0 };
-    }
-    return {
-      recent: {
-        unread: this.recentUnread(),
-        mentions: this.sumHighlights(() => true),
-      },
-      home: {
-        unread: this.homeUnread(),
-        mentions: this.sumHighlights((r) => this.isDirectRow(r)),
-      },
-      rooms: {
-        unread: this.roomsUnread(),
-        mentions: this.sumHighlights(
-          (r) => !this.isDirectRow(r) && !this.isSpaceChild(r),
-        ),
-      },
-      perSpace,
-    };
-  });
+  readonly railUnread = computed<RailUnread>(
+    () => {
+      const mentions = this.spaceMentions();
+      const perSpace: RailUnread['perSpace'] = {};
+      for (const [id, unread] of Object.entries(this.spaceUnread())) {
+        perSpace[id] = { unread, mentions: mentions[id] ?? 0 };
+      }
+      return {
+        recent: {
+          unread: this.recentUnread(),
+          mentions: this.sumHighlights(() => true),
+        },
+        home: {
+          unread: this.homeUnread(),
+          mentions: this.sumHighlights((r) => this.isDirectRow(r)),
+        },
+        rooms: {
+          unread: this.roomsUnread(),
+          mentions: this.sumHighlights(
+            (r) => !this.isDirectRow(r) && !this.isSpaceChild(r),
+          ),
+        },
+        perSpace,
+      };
+    },
+    { equal: sameRailUnread },
+  );
 
   /**
    * Unread chats for the rail, across every signed-in account. A chat counts as open only
@@ -584,4 +596,29 @@ export class RoomShellViewModel {
     }
     return 'Connecting…';
   });
+}
+
+function sameRecord<T>(
+  a: Readonly<Record<string, T>>,
+  b: Readonly<Record<string, T>>,
+  same: (x: T, y: T) => boolean = Object.is,
+): boolean {
+  const keys = Object.keys(a);
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((key) => Object.hasOwn(b, key) && same(a[key], b[key]))
+  );
+}
+
+function sameCounts(a: RailCounts, b: RailCounts): boolean {
+  return a.unread === b.unread && a.mentions === b.mentions;
+}
+
+function sameRailUnread(a: RailUnread, b: RailUnread): boolean {
+  return (
+    sameCounts(a.recent, b.recent) &&
+    sameCounts(a.home, b.home) &&
+    sameCounts(a.rooms, b.rooms) &&
+    sameRecord(a.perSpace, b.perSpace, sameCounts)
+  );
 }
