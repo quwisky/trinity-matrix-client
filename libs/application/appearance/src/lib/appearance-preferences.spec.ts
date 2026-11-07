@@ -132,6 +132,18 @@ describe('Design System Appearance preference descriptors', () => {
       value: true,
     });
     expect(migrate({ version: 1, value: 7 }).kind).toBe('rejected');
+    expect(migrate({ version: 1, value: 'garbage' }).kind).toBe('rejected');
+    expect(migrate({ version: 0, value: 'yes' }).kind).toBe('rejected');
+    for (const [theme, trueBlack] of [
+      ['classic', false],
+      ['onyx', true],
+      ['trinity', false],
+    ] as const) {
+      expect(migrate({ version: 2, value: theme })).toEqual({
+        kind: 'accepted',
+        value: trueBlack,
+      });
+    }
     expect(migrate({ version: 2, value: 'midnight' })).toEqual({
       kind: 'accepted',
       value: true,
@@ -281,8 +293,14 @@ describe('AppearancePreferences', () => {
 
     expect(outcome).toEqual({
       kind: 'partial',
-      hydrated: 7,
+      hydrated: 6,
+      // True black reads the unknown Theme as its predecessor, so it fails with it.
       failures: [
+        {
+          preferenceId: TRUE_BLACK_PREFERENCE.id,
+          recovery: 'reset-preference',
+          diagnostic: { code: 'preference-migration-rejected' },
+        },
         {
           preferenceId: THEME_PREFERENCE.id,
           recovery: 'reset-preference',
@@ -314,11 +332,10 @@ describe('AppearancePreferences', () => {
       codeLinePresentation: 'auto',
       trueBlack: false,
     });
-    // An unknown saved Theme leaves true black off; only Theme fails.
-    expect(write.mock.calls.map(([request]) => request.key)).toEqual([
-      TRUE_BLACK_PREFERENCE.persistence.key,
-      CODE_SIZE_PREFERENCE.persistence.key,
-    ]);
+    expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ key: CODE_SIZE_PREFERENCE.persistence.key }),
+    );
   });
 
   function storedAppearance(entries: Record<string, string>) {

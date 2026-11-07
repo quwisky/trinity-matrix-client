@@ -107,11 +107,12 @@ describe('AppearanceSettingsController', () => {
       recovery: 'reset-preferences',
     });
     expect(controller.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
+    // True black reads the unknown Theme as its predecessor, so it fails with it.
     expect(
       Object.values(controller.axes).filter(
         (axis) => axis.state().kind !== 'recoverable-failure',
       ),
-    ).toHaveLength(7);
+    ).toHaveLength(6);
 
     controller.recoverHydration();
     expect(controller.hydrationWarning()).toBeNull();

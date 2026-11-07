@@ -207,7 +207,7 @@ export const TRUE_BLACK_PREFERENCE = definePreference({
     migration: {
       currentVersion: 1,
       migrate: (stored: StoredPreference): PreferenceValidation<boolean> =>
-        typeof stored.value === 'string'
+        isSavedThemeId(stored.value)
           ? { kind: 'accepted', value: TRUE_BLACK_THEMES.has(stored.value) }
           : stored.version <= 1 && typeof stored.value === 'boolean'
             ? { kind: 'accepted', value: stored.value }
@@ -251,6 +251,14 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 function isThemeId(value: unknown): value is ThemeId {
   return THEME_CATALOG.themes.some(({ id }) => id === value);
+}
+
+/** A Theme id as storage may hold it: current, or retired and renamed. */
+function isSavedThemeId(value: unknown): value is string {
+  return (
+    isThemeId(value) ||
+    (typeof value === 'string' && Object.hasOwn(THEME_RENAMES, value))
+  );
 }
 
 function isTextSize(value: unknown): value is TextSize {
