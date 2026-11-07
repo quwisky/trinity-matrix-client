@@ -6,6 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
+import {
+  SessionStorageService,
+  type AccountRecord,
+} from '@trinity/platform-native';
 
 vi.mock('matrix-js-sdk', async (importActual) => {
   const actual = await importActual<typeof import('matrix-js-sdk')>();
@@ -53,6 +57,8 @@ function client(overrides: Record<string, unknown> = {}) {
 describe('RegistrationService', () => {
   let service: RegistrationService;
   let accounts: AccountRuntimeService;
+  /** The record saved on this device for `@new:hs`, as the account runtime left it. */
+  let savedRecord: AccountRecord | null;
   let interactiveAuthLog: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -60,9 +66,13 @@ describe('RegistrationService', () => {
     interactiveAuthLog = vi
       .spyOn(console, 'debug')
       .mockImplementation(() => {});
+    savedRecord = null;
     TestBed.configureTestingModule({
       providers: [
         RegistrationService,
+        MockProvider(SessionStorageService, {
+          record: vi.fn(() => of(savedRecord)),
+        }),
         MockProvider(AccountRuntimeService, {
           establishAuthenticatedAccount: vi.fn(() =>
             of({
@@ -404,6 +414,30 @@ describe('RegistrationService', () => {
     expect(service.stage().kind).toBe('idle');
   });
 
+  it('keeps the session when left after local setup failed but the account was saved', async () => {
+    const logout = vi.fn().mockResolvedValue({});
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(
+      client({ registerRequest, logout }) as never,
+    );
+    vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValue(
+      throwError(() => new Error('start failed')),
+    );
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+    // The record was saved before the start failed: the next launch restores it.
+    savedRecord = {
+      baseUrl: 'https://hs',
+      userId: '@new:hs',
+      deviceId: 'DEVICE',
+    } as AccountRecord;
+
+    service.cancel();
+
+    expect(logout).not.toHaveBeenCalled();
+  });
+
   describe('leaving after a Retry', () => {
     const READY = {
       kind: 'ready',
@@ -449,10 +483,43 @@ describe('RegistrationService', () => {
 
       service.retryEstablishment().subscribe({ error: () => undefined });
       service.cancel();
+      savedRecord = {
+        baseUrl: 'https://hs',
+        userId: '@new:hs',
+        deviceId: 'DEVICE',
+      } as AccountRecord;
       started.next(READY);
       started.complete();
 
       expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('lets a Retry finish when the page that started it goes away', async () => {
+      await failedSetup();
+      const started = new Subject<typeof READY>();
+      vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValueOnce(
+        started,
+      );
+
+      service.retryEstablishment().subscribe().unsubscribe();
+      service.cancel();
+
+      expect(started.observed).toBe(true);
+    });
+
+    it('signs the session out when a Retry left mid-way saves nothing', async () => {
+      const logout = await failedSetup();
+      const started = new Subject<typeof READY>();
+      vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValueOnce(
+        started,
+      );
+
+      service.retryEstablishment().subscribe().unsubscribe();
+      service.cancel();
+      expect(logout).not.toHaveBeenCalled();
+      started.error(new Error('storage failed'));
+
+      expect(logout).toHaveBeenCalledExactlyOnceWith(true);
     });
   });
 

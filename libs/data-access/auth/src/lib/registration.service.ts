@@ -22,10 +22,12 @@ import {
   from,
   map,
   of,
+  shareReplay,
   switchMap,
   take,
   tap,
 } from 'rxjs';
+import { SessionStorageService } from '@trinity/platform-native';
 import {
   EMAIL_STAGE,
   NATIVE_REGISTRATION_STAGES,
@@ -70,6 +72,7 @@ type InitialRegistrationResult =
 export class RegistrationService {
   private readonly accounts = inject(AccountRuntimeService);
   private readonly handoff = inject(HostAuthenticationHandoffService);
+  private readonly storage = inject(SessionStorageService);
 
   private readonly stageState = signal<RegistrationStage>({ kind: 'idle' });
   readonly stage = this.stageState.asReadonly();
@@ -220,18 +223,34 @@ export class RegistrationService {
     const response = this.createdResponse;
     if (!response || this.stageState().kind !== 'session-error') return EMPTY;
     const token = this.token;
+    const baseUrl = this.activeBaseUrl;
     this.errorState.set(null);
-    return this.establishCreated(token, response).pipe(
+    // Runs to the end even when the page goes away: cut off mid-save, it could leave a
+    // record whose session nothing restores, or a session nothing signs out.
+    const run = this.establishCreated(token, response).pipe(
       catchError((error: unknown) => this.handleFailure(token, error)),
+      finalize(() => {
+        if (!this.attempt.isCurrent(token)) {
+          this.leaveCreatedSession(response, baseUrl);
+        }
+      }),
+      shareReplay({ bufferSize: 1, refCount: false }),
     );
+    run.subscribe({ error: () => undefined });
+    return run;
   }
 
   /** Invalidate callbacks from the current route and discard unpersisted UIA state. */
   cancel(): void {
     // A created session kept only for Retry: leaving means nothing will use it. A Retry
-    // still running may yet start the account with it.
-    if (this.stageState().kind === 'session-error' && !this.busyState()) {
-      this.handBackDeclinedSession();
+    // still running decides once it ends.
+    const created = this.createdResponse;
+    if (
+      created &&
+      this.stageState().kind === 'session-error' &&
+      !this.busyState()
+    ) {
+      this.leaveCreatedSession(created, this.activeBaseUrl);
     }
     this.token = this.attempt.next();
     this.emailInput?.complete();
@@ -519,6 +538,32 @@ export class RegistrationService {
         : 'Trinity refused to replace an account already stored on this device. ' +
             'No local account data was changed.',
     );
+  }
+
+  /**
+   * Sign out a created session nothing will use, unless a record saved for its device will
+   * restore it on the next launch. Detached and best-effort.
+   */
+  private leaveCreatedSession(
+    response: RegisterResponse,
+    baseUrl: string,
+  ): void {
+    const accessToken = response.access_token;
+    if (!accessToken) return;
+    this.storage
+      .record(response.user_id)
+      .pipe(
+        take(1),
+        map((record) => record?.deviceId !== response.device_id),
+        // A failed read proves nothing: keep the session rather than strand a saved record.
+        catchError(() => of(false)),
+        switchMap((unsaved) =>
+          unsaved
+            ? from(createClient({ baseUrl, accessToken }).logout(true))
+            : EMPTY,
+        ),
+      )
+      .subscribe({ error: () => undefined });
   }
 
   /**
