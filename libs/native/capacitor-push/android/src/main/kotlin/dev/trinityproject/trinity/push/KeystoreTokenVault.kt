@@ -24,28 +24,33 @@ class KeystoreTokenVault internal constructor(
         var stored: String? = null
         return try {
             stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
-            decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
+            open(stored)
         } catch (error: AEADBadTagException) {
             // Sealed under a key the alias no longer holds: it can never be opened, so the account
             // reads as signed out instead of failing on every refresh.
             discard(userId, stored)
-            TokenVaultRead.Absent
         } catch (error: Exception) {
             // Keystore faults are security and provider exceptions; Android's JSONException is checked.
             TokenVaultRead.Unavailable
         }
     }
 
-    /** Removes [stale] unless a write replaced it meanwhile. */
-    private fun discard(userId: String, stale: String?) {
-        synchronized(LOCK) {
-            try {
-                if (preferences.getString(key(userId), null) == stale) {
-                    preferences.edit().remove(key(userId)).commit()
-                }
-            } catch (error: Exception) {
-                // Left in place, it reads as Absent again next time.
-            }
+    private fun open(stored: String): TokenVaultRead =
+        decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
+
+    /**
+     * Removes [stale] and reads as Absent. A record written meanwhile stays and is what the read
+     * answers; one that cannot be opened either is Unavailable, never Absent.
+     */
+    private fun discard(userId: String, stale: String?): TokenVaultRead = synchronized(LOCK) {
+        try {
+            val current = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
+            if (current != stale) return open(current)
+            // A failed removal leaves it to read as Absent again next time.
+            preferences.edit().remove(key(userId)).commit()
+            TokenVaultRead.Absent
+        } catch (error: Exception) {
+            TokenVaultRead.Unavailable
         }
     }
 
