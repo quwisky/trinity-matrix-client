@@ -2,11 +2,18 @@ import {
   ConnectionError,
   EventStatus,
   MatrixError,
+  ClientEvent,
   MatrixEvent,
+  SyncState,
+  createClient,
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { resendWaitingEchoes } from './outgoing-work';
+import {
+  pauseClientSync,
+  resendWaitingEchoes,
+  resumeClientSync,
+} from './outgoing-work';
 
 function waiting(body: string): MatrixEvent {
   const event = new MatrixEvent({
@@ -226,5 +233,107 @@ describe('resendWaitingEchoes', () => {
     await Promise.resolve();
 
     expect(fake.resendEvent).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('pausing and resuming a real sync loop', () => {
+  /**
+   * A started client on a fake homeserver: the first `/sync` answers `s1`, every later one
+   * waits until it is aborted. `syncs` lists each `/sync` request's query.
+   */
+  async function syncingClient() {
+    const syncs: URLSearchParams[] = [];
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    const fetchFn = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/versions'))
+        return json({ versions: ['v1.11'] });
+      if (url.pathname.includes('/pushrules')) return json({ global: {} });
+      // A filter id the SDK remembered from an earlier test reads back as a different filter.
+      if (url.pathname.includes('/filter'))
+        return json(init?.method === 'POST' ? { filter_id: 'f1' } : {});
+      if (url.pathname.endsWith('/sync')) {
+        syncs.push(url.searchParams);
+        if (syncs.length === 1) return json({ next_batch: 's1' });
+        return new Promise((_, reject) =>
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          ),
+        );
+      }
+      return json({ errcode: 'M_UNRECOGNIZED' }, 404);
+    };
+    const client = createClient({
+      baseUrl: 'https://hs.example',
+      userId: '@me:hs',
+      accessToken: 'tok',
+      fetchFn,
+    });
+    const states: SyncState[] = [];
+    client.on(ClientEvent.Sync, (state) => states.push(state));
+    await client.startClient({ initialSyncLimit: 1 });
+    await vi.waitFor(() => expect(syncs).toHaveLength(2));
+    return { client, syncs, states };
+  }
+
+  it('resumes from the token it stopped at, without syncing from scratch again', async () => {
+    const { client, syncs, states } = await syncingClient();
+    try {
+      pauseClientSync(client);
+      await vi.waitFor(() => expect(states.at(-1)).toBe(SyncState.Stopped));
+
+      resumeClientSync(client);
+
+      await vi.waitFor(() => expect(syncs).toHaveLength(3));
+      expect(syncs[2].get('since')).toBe('s1');
+      expect(states.filter((s) => s === SyncState.Prepared)).toHaveLength(1);
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('starts no second loop when the client is already syncing', async () => {
+    const { client, syncs } = await syncingClient();
+    try {
+      resumeClientSync(client);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(syncs).toHaveLength(2);
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('resumes a loop paused before it had stopped', async () => {
+    const { client, syncs } = await syncingClient();
+    try {
+      pauseClientSync(client);
+      resumeClientSync(client);
+      pauseClientSync(client);
+      resumeClientSync(client);
+
+      await vi.waitFor(() => expect(syncs.length).toBeGreaterThan(2));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(syncs).toHaveLength(3);
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('leaves a stopped client stopped', async () => {
+    const { client, syncs } = await syncingClient();
+    client.stopClient();
+
+    resumeClientSync(client);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(syncs).toHaveLength(2);
   });
 });

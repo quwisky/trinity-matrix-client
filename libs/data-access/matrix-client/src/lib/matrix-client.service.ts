@@ -68,6 +68,7 @@ import {
   clientHasOutgoingWork,
   clientPendingTexts,
   pauseClientSync,
+  resumeClientSync,
   resendWaitingEchoes,
   waitingEchoCount,
   type PendingTextMessage,
@@ -244,6 +245,8 @@ export class MatrixClientService {
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
   /** Set by a session handover's {@link pauseSync}: a reconnect then resends nothing. */
   private syncPaused = false;
+  /** Between {@link suspendSync} and {@link resumeSync}: the app is in a phone's background. */
+  private syncSuspended = false;
 
   /**
    * Tell the Electron main process which origins we legitimately talk to, so its CORS
@@ -689,6 +692,34 @@ export class MatrixClientService {
     this.syncPaused = true;
     for (const account of this.clients.values()) {
       pauseClientSync(account.client);
+    }
+  }
+
+  /**
+   * Stop every live client's sync loop while the app is in a phone's background, where push
+   * wakes it instead, until {@link resumeSync}. Like {@link pauseSync}, crypto and sends carry
+   * on; an account that finishes starting meanwhile starts paused.
+   */
+  suspendSync(): void {
+    this.syncSuspended = true;
+    for (const account of this.clients.values()) {
+      pauseClientSync(account.client);
+    }
+  }
+
+  /**
+   * Restart the loops {@link suspendSync} stopped, the active account's first, from where each
+   * stopped. A session handover's pause stays: that tab is about to reload.
+   */
+  resumeSync(): void {
+    this.syncSuspended = false;
+    if (this.syncPaused) return;
+    const active = this.active();
+    for (const account of [
+      ...(active ? [active] : []),
+      ...[...this.clients.values()].filter((other) => other !== active),
+    ]) {
+      resumeClientSync(account.client);
     }
   }
 
@@ -1190,6 +1221,7 @@ export class MatrixClientService {
           };
           account = started;
           this.clients.set(session.userId, started);
+          if (this.syncPaused || this.syncSuspended) pauseClientSync(created!);
           // A logout recorded for a replaced client must not end this one; a token that is
           // still dead reports itself again.
           const held = this.logoutHolds.get(session.userId);

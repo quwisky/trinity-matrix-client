@@ -142,6 +142,11 @@ export interface HostLifecycleOperation {
   >;
   /** Ask the host to drop its own caches after the app went to the background. */
   releaseMemory?(): Observable<HostOperationOutcome>;
+  /**
+   * The system suspends the app soon after it goes to the background and push wakes it
+   * (iOS, Android), so work there should stop rather than be frozen mid-request.
+   */
+  readonly suspendedInBackground?: boolean;
 }
 
 export interface HostUpdatesOperation {

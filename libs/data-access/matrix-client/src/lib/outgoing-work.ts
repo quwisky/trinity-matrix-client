@@ -67,6 +67,77 @@ export function pauseClientSync(client: MatrixClient): void {
   if (typeof loop?.stop === 'function') loop.stop();
 }
 
+/** The protected and private matrix-js-sdk members {@link resumeClientSync} restarts a loop with. */
+interface ResumableClient {
+  readonly clientRunning: boolean;
+  readonly clientOpts?: object;
+  syncApi?: ResumableSyncLoop;
+  buildSyncApiOptions(): object;
+}
+
+interface ResumableSyncLoop {
+  running: boolean;
+  abortController?: AbortController;
+  syncState: unknown;
+  syncStateData: unknown;
+  readonly onOnline: () => void;
+  getPushRules(): Promise<void>;
+  prepareSyncFilterLazyLoading(): void;
+  prepareSyncFilterUserProfiles(): Promise<void>;
+  getFilter(): Promise<{
+    readonly filterId?: string;
+    readonly filter?: object;
+  }>;
+  doSync(options: {
+    readonly filter?: string;
+    readonly hasSyncedBefore?: boolean;
+  }): Promise<void>;
+}
+
+/**
+ * Restart a loop {@link pauseClientSync} stopped, from the sync token the client holds. The SDK
+ * has no public resume, and its `sync()` would first replay the saved sync into the live rooms,
+ * so this runs `sync()`'s steps without that replay on a new loop object: the stopped one may
+ * still be finishing a response or a keep-alive and would pick up a reset `running` flag. Does
+ * nothing while the loop runs, before the client has one, or once `stopClient()` ended it.
+ */
+export function resumeClientSync(client: MatrixClient): void {
+  const owner = client as unknown as ResumableClient;
+  const paused = owner.syncApi;
+  if (!owner.clientRunning || !paused || paused.running) return;
+  const Loop = paused.constructor as new (
+    ...args: unknown[]
+  ) => ResumableSyncLoop;
+  const loop = new Loop(client, owner.clientOpts, owner.buildSyncApiOptions());
+  // getSyncState() keeps answering as before rather than null, which means "never synced".
+  loop.syncState = paused.syncState;
+  loop.syncStateData = paused.syncStateData;
+  loop.running = true;
+  loop.abortController = new AbortController();
+  owner.syncApi = loop;
+  void runResumedLoop(client, loop).catch((error: unknown) => {
+    console.warn("Couldn't resume syncing.", error);
+  });
+}
+
+async function runResumedLoop(
+  client: MatrixClient,
+  loop: ResumableSyncLoop,
+): Promise<void> {
+  globalThis.window?.addEventListener?.('online', loop.onOnline, false);
+  // Rules a pause cut off before they loaded would leave notifications unevaluated.
+  await loop.getPushRules();
+  loop.prepareSyncFilterLazyLoading();
+  await loop.prepareSyncFilterUserProfiles();
+  const { filterId, filter } = await loop.getFilter();
+  if (!filter) return;
+  await loop.doSync({
+    filter: filterId,
+    // Only a client that never synced still owes its Prepared.
+    hasSyncedBefore: client.store.getSyncToken() !== null,
+  });
+}
+
 /**
  * Whether a client still has a message on its way (a local echo queued, encrypting or sending,
  * in a room or a thread) or a file uploading. Work the SDK has not been handed yet, such as a

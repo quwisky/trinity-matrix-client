@@ -81,6 +81,7 @@ import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-applica
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
 import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
+import { BackgroundSync } from './background-sync.service';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 import { UnprotectedStorageNotice } from './unprotected-storage.presenter';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
@@ -110,6 +111,7 @@ function setup({
     { readonly kind: 'active' } | { readonly kind: 'background' }
   >();
   const memoryRelease = new Subject<never>();
+  const backgroundSync = new Subject<never>();
   const timelineTrim = new Subject<never>();
   const navigate = vi.fn().mockResolvedValue(true);
   const workspaceNavigate = vi.fn<WorkspaceNavigationService['navigate']>(() =>
@@ -219,6 +221,7 @@ function setup({
       }),
       MockProvider(HostLifecycleService, { events: lifecycleEvents }),
       MockProvider(BackgroundMemoryRelease, { run: () => memoryRelease }),
+      MockProvider(BackgroundSync, { run: () => backgroundSync }),
       MockProvider(WhatsNewLauncherAdapter, { runPending: () => EMPTY }),
       MockProvider(UnprotectedStorageNotice, {
         runPendingNotice: () => EMPTY,
@@ -274,6 +277,7 @@ function setup({
     pushActivations,
     lifecycleEvents,
     memoryRelease,
+    backgroundSync,
     timelineTrim,
     navigate,
     workspaceNavigate,
@@ -366,6 +370,7 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.backIntents.observed).toBe(false);
     expect(test.lifecycleEvents.observed).toBe(false);
     expect(test.memoryRelease.observed).toBe(false);
+    expect(test.backgroundSync.observed).toBe(false);
     expect(test.timelineTrim.observed).toBe(false);
     expect(test.hostUpdateCheck).not.toHaveBeenCalled();
 
@@ -381,11 +386,13 @@ describe('TrinityApplicationSessionAdapter', () => {
     expect(test.backIntents.observed).toBe(true);
     expect(test.lifecycleEvents.observed).toBe(true);
     expect(test.memoryRelease.observed).toBe(true);
+    expect(test.backgroundSync.observed).toBe(true);
     expect(test.timelineTrim.observed).toBe(true);
     expect(test.hostUpdateCheck).toHaveBeenCalledOnce();
 
     lifetime.unsubscribe();
     expect(test.memoryRelease.observed).toBe(false);
+    expect(test.backgroundSync.observed).toBe(false);
     expect(test.timelineTrim.observed).toBe(false);
     expect(preparation.observed).toBe(false);
     expect(test.deepLinks.observed).toBe(false);

@@ -267,6 +267,8 @@ export class HostLifecycleService implements HostLifecycleOperation {
 
   readonly events = defer(() => this.adapter?.events ?? EMPTY);
 
+  readonly suspendedInBackground = this.adapter?.suspendedInBackground === true;
+
   releaseMemory(): Observable<HostOperationOutcome> {
     return defer(
       () => this.adapter?.releaseMemory?.() ?? of(unavailableOutcome()),
