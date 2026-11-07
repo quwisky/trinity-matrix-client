@@ -101,11 +101,10 @@ function sha256(text: string): string {
  * The files the synchronous builder produced before the export was split into slices,
  * pinned so the sliced build can be checked byte for byte against them. Re-pinned when the
  * header's placeholder note began to list names and email addresses, and when placeholders
- * stopped being read as device IDs (`@user10` had become `@DEVICE441` after "device … of"),
- * and when a token already masked by its shape stopped taking the ")" after it.
+ * stopped being read as device IDs (`@user10` had become `@DEVICE441` after "device … of").
  */
 const PINNED = {
-  corpus: 'bc053cb6e51bbf49e7b480afbbf930a9cf618ef7706971eedd2174d8b9523acb',
+  corpus: '8b897c8b864abd8a48794c4da244e43c7f94ad75d7f8a95041303419fbcb666a',
   large: '3c7611959b87ffbe6518970e9dd5dd3422495428caddabcf476a68023a6584c5',
 };
 

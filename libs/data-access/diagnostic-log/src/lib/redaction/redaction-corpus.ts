@@ -154,9 +154,9 @@ export const REDACTION_CORPUS: readonly RedactionCase[] = [
     line: `M_UNKNOWN_TOKEN: MatrixError: [401] Invalid access token passed. (${HOMESERVER}/_matrix/media/v3/upload?filename=photo.jpg&access_token=${SYNAPSE_TOKEN})`,
     secrets: [SYNAPSE_TOKEN, 'matrix.example.org'],
     expected:
-      // The token rule masks the Synapse token by its shape, so the parenthesis after it
-      // stays; a raw value of another shape is masked through any ")" in it.
-      'M_UNKNOWN_TOKEN: MatrixError: [401] Invalid access token passed. (https://server2/_matrix/media/v3/upload?filename=photo.jpg&access_token=<redacted>)',
+      // The masked value runs to the next separator, closing parenthesis included: a raw
+      // value may contain one, and nothing after it may survive.
+      'M_UNKNOWN_TOKEN: MatrixError: [401] Invalid access token passed. (https://server2/_matrix/media/v3/upload?filename=photo.jpg&access_token=<redacted>',
   },
   {
     name: 'error code',

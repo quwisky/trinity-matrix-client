@@ -472,6 +472,39 @@ describe('scrubSecrets', () => {
     },
   );
 
+  it.each([
+    'password="hunter2". Retrying',
+    "token='abc123'.",
+    'client_secret="s3cr3t"--verbose',
+    'access_token="abc"/x',
+    'GET https://evil.org/cb?code=AbCdEfGh1234567890IjKlMnOpQrStUvWx%2BsecretTail%2Fmore%3D%3D&state=x',
+    'GET https://evil.org/cb?access_token=AbCdEfGh1234567890IjKlMnOpQrStUvWx%2Bp4rt2%2F9q%3D',
+    'refresh_token=syr_YWxpY2U_abcdefghij%2Bmore&x=1',
+    'https://accounts.example.com/o/oauth2/token?code=4/0AfJohXabcdefGHIJKLmnop1234567890QRSTuvwx-yz%2Fabc&scope=x',
+    'client_secret=AbCdEfGh1234567890IjKlMnOpQrStUvWx.yz9&grant_type=x',
+    'state=0123456789abcdef0123456789abcdef.tail',
+    'token=syt_abcdefghij. Retrying in 5s',
+    'key=syt_abcdefghij/path/to/file',
+  ])('scrubs to the same text a second time: %s', (line) => {
+    const once = scrubSecrets(line);
+
+    expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it.each([
+    ['password="hunter2". Retrying', `password=${REDACTED}. Retrying`],
+    ["token='abc123'.", `token=${REDACTED}.`],
+    ['client_secret="s3cr3t"--verbose', `client_secret=${REDACTED}--verbose`],
+    ['access_token="abc"/x', `access_token=${REDACTED}/x`],
+    [
+      'token=syt_abcdefghij. Retrying in 5s',
+      `token=${REDACTED}. Retrying in 5s`,
+    ],
+    ['password=hunter2-', `password=${REDACTED}-`],
+  ])('keeps what follows a masked parameter value: %s', (line, expected) => {
+    expect(scrubSecrets(line)).toBe(expected);
+  });
+
   it('leaves an already masked parameter as it is when scrubbed again', () => {
     const once = scrubSecrets('password="hunter2","x" y');
 

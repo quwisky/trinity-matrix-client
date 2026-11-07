@@ -275,16 +275,17 @@ export function scrubSecrets(text: string): string {
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  for (const [pattern, replacement] of SECRET_RULES) {
-    scrubbed = scrubbed.replace(pattern, replacement);
-  }
-  scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
   scrubbed = maskFields(scrubbed, isOAuthName, true);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
-  // After the fields, so a parameter value can never run over a field and hide it from them.
-  return maskParams(scrubbed);
+  // After the fields, so a parameter value can never run over a field and hide it from them;
+  // before the token rules, so each value is read whole, as written.
+  scrubbed = maskParams(scrubbed);
+  for (const [pattern, replacement] of SECRET_RULES) {
+    scrubbed = scrubbed.replace(pattern, replacement);
+  }
+  return maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
 }
 
 /**
@@ -307,15 +308,11 @@ function maskParams(text: string): string {
       continue;
     }
     const start = match.index + match[0].length;
-    // A value a token rule masked the start of goes on through the token's characters; what
-    // follows a whole masked value (`password=<redacted>,"x"` on a second pass) stays.
-    const masked = text.startsWith(REDACTED, start);
-    const end = masked
-      ? maskedValueEnd(text, start + REDACTED.length)
-      : paramValueEnd(text, start, spaced, isOpen);
-    if (masked && end === start + REDACTED.length) {
+    // Masked by a header rule or an earlier pass: what follows it is not part of the value.
+    if (text.startsWith(REDACTED, start)) {
       continue;
     }
+    const end = paramValueEnd(text, start, spaced, isOpen);
     if (isReadableFlag(match[1], text.slice(start, end))) {
       continue;
     }
@@ -358,20 +355,13 @@ function paramValueEnd(
   while (end < text.length && !valueEnd.test(text[end])) {
     end += 1;
   }
-  return end;
+  // A "." or "-" ending the value before a space or the end closes the sentence.
+  return end > start + 1 && (text[end - 1] === '.' || text[end - 1] === '-')
+    ? end - 1
+    : end;
 }
 
 /** Characters a token value goes on with, escapes included. */
-const TOKEN_TAIL = /[\w.~%+/=-]/;
-
-function maskedValueEnd(text: string, from: number): number {
-  let end = from;
-  while (end < text.length && TOKEN_TAIL.test(text[end])) {
-    end += 1;
-  }
-  return end;
-}
-
 /** The level of a quote after `run` backslashes: the lowest one whose escape it can be. */
 function quoteLevel(run: number): number {
   let level = 0;
