@@ -217,7 +217,14 @@ export class AccountLifecycleAdapter {
     accountId: string,
     issues: readonly AccountCleanupIssue[],
   ): Observable<AccountSignOutOutcome> {
-    return this.signOutRetry.retry(accountId, issues);
+    return defer(() => {
+      // Signed in again: the leftovers are stale, and the live account needs a full removal.
+      if (this.matrix.accountIds().includes(accountId)) {
+        this.signOutRetry.clear(accountId);
+        return this.signOutAccount(accountId);
+      }
+      return this.signOutRetry.retry(accountId, issues);
+    });
   }
 
   resetInstallation(): Observable<InstallationResetOutcome> {

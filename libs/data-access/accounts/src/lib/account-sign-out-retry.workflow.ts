@@ -99,8 +99,6 @@ export class AccountSignOutRetryWorkflow {
     issues: readonly AccountCleanupIssue[],
   ): Observable<AccountSignOutOutcome> {
     return defer(() => {
-      // Signed in again: what was left over now belongs to a live account.
-      if (this.matrix.accountIds().includes(accountId)) this.clear(accountId);
       const context = this.residue.get(accountId);
       if (!context) {
         return of({

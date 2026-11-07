@@ -1101,7 +1101,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.setActive).toHaveBeenLastCalledWith('@d:hs');
   });
 
-  it('leaves an account that signed in again alone when its sign-out cleanup is retried', async () => {
+  it('removes an account signed in again afresh instead of retrying its old leftovers', async () => {
     const { adapter, matrix, storage, lifecycle, accountIds } = setup('@a:hs');
     vi.mocked(matrix.clientFor).mockReturnValue({
       logout: vi.fn(() => Promise.resolve()),
@@ -1131,14 +1131,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
 
     await expect(
       firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
-    ).resolves.toMatchObject({
-      kind: 'failed',
-      failure: 'account-unavailable',
-    });
-    expect(storage.remove).toHaveBeenCalledOnce();
-    expect(lifecycle.forgetPushHandoff).toHaveBeenCalledOnce();
-    expect(lifecycle.unregisterNotifications).toHaveBeenCalledOnce();
+    ).resolves.toMatchObject({ kind: 'ready', accountId: '@x:hs' });
+    expect(matrix.remove).toHaveBeenCalledTimes(2);
+    expect(storage.remove).toHaveBeenCalledTimes(2);
+    expect(storage.remove).toHaveBeenLastCalledWith('@x:hs');
 
+    // The old leftovers are gone with it: nothing stale is retried later.
     accountIds.set(['@a:hs']);
     await expect(
       firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
@@ -1146,7 +1144,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       kind: 'failed',
       failure: 'account-unavailable',
     });
-    expect(storage.remove).toHaveBeenCalledOnce();
+    expect(storage.remove).toHaveBeenCalledTimes(2);
   });
 
   it('retries only settled safe Account-removal residue', async () => {
