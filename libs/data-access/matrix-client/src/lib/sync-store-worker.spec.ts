@@ -1,3 +1,4 @@
+import { IndexedDBStore, MemoryStore } from 'matrix-js-sdk';
 import { IndexedDBStoreWorker } from 'matrix-js-sdk/lib/indexeddb-worker';
 import { LocalIndexedDBStoreBackend } from 'matrix-js-sdk/lib/store/indexeddb-local-backend';
 import { RemoteIndexedDBStoreBackend } from 'matrix-js-sdk/lib/store/indexeddb-remote-backend';
@@ -272,7 +273,7 @@ describe('syncStore', () => {
     expect(Object.keys(inFlight)).toHaveLength(0);
   });
 
-  it('does not reopen the database on the main thread once destroyed during startup', async () => {
+  it('ends startup without reopening the database on the main thread once destroyed', async () => {
     vi.useFakeTimers();
     const open = vi.fn(() => {
       throw new Error('no IndexedDB here');
@@ -284,13 +285,101 @@ describe('syncStore', () => {
       () => worker as unknown as Worker,
     );
 
-    void store.startup().catch(() => undefined);
+    const started = store.startup();
+    const settled = expect(started).rejects.toThrow('destroyed');
     await Promise.resolve();
     await store.destroy();
     await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS * 2);
 
+    await settled;
     expect(open).not.toHaveBeenCalled();
     expect(worker.terminated).toBe(true);
+  });
+
+  it('keeps a worker whose reply was queued behind a timer overdue from a suspended page', async () => {
+    vi.useFakeTimers();
+    const worker = new FakeWorker(healthy('getSavedSync'));
+    const store = storeWith(worker);
+    await store.startup();
+
+    const loaded = store.getSavedSync();
+    await vi.waitFor(() =>
+      expect(worker.sent.map((m) => m.command)).toContain('getSavedSync'),
+    );
+    const { seq } = worker.sent.find((m) => m.command === 'getSavedSync')!;
+    // Suspended: the wall clock jumps and the timer comes due late, with the reply queued.
+    vi.setSystemTime(Date.now() + 10 * SYNC_STORE_REQUEST_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS);
+    worker.reply(seq, null);
+
+    await expect(loaded).resolves.toBeNull();
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS);
+    expect(worker.terminated).toBe(false);
+  });
+
+  it('does not retry startup for a failure outside the worker', async () => {
+    const open = vi.fn();
+    const worker = new FakeWorker(({ command }) =>
+      command === 'getUserPresenceEvents' ? [['@a:x', null]] : undefined,
+    );
+    const store = syncStore(
+      { open } as unknown as IDBFactory,
+      'test',
+      () => worker as unknown as Worker,
+    );
+
+    await expect(store.startup()).rejects.toThrow('assigning it to the client');
+    expect(open).not.toHaveBeenCalled();
+    expect(worker.terminated).toBe(false);
+  });
+
+  it('reaches no backend method once the worker dies', async () => {
+    const worker = new FakeWorker(healthy());
+    const store = storeWith(worker);
+    await store.startup();
+    worker.crash();
+    const reached = new Error('reached the backend');
+    (store as unknown as { _backend: unknown })._backend = new Proxy(
+      {},
+      {
+        get: () => {
+          throw reached;
+        },
+      },
+    );
+    // Only save() calls reallySave; the rest are lifecycle, not storage.
+    const lifecycle = new Set([
+      'constructor',
+      'startup',
+      'destroy',
+      'on',
+      'degradable',
+      'reallySave',
+    ]);
+    const names = new Set([
+      ...Object.getOwnPropertyNames(IndexedDBStore.prototype),
+      ...Object.getOwnPropertyNames(MemoryStore.prototype),
+      ...Object.keys(
+        new IndexedDBStore({ indexedDB: deniedIndexedDB, dbName: 'x' }),
+      ),
+    ]);
+    const store_ = store as unknown as Record<string, unknown>;
+
+    const leaks: string[] = [];
+    for (const name of names) {
+      if (lifecycle.has(name) || typeof store_[name] !== 'function') {
+        continue;
+      }
+      try {
+        await (store_[name] as () => unknown).call(store);
+      } catch (error) {
+        if (error === reached) {
+          leaks.push(name);
+        }
+      }
+    }
+
+    expect(leaks).toEqual([]);
   });
 
   it('clears and closes the database through the worker', async () => {

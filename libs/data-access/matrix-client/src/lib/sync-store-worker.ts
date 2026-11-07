@@ -7,6 +7,9 @@ import { RemoteIndexedDBStoreBackend } from 'matrix-js-sdk/lib/store/indexeddb-r
  */
 export const SYNC_STORE_REQUEST_TIMEOUT_MS = 30_000;
 
+/** A timer this late means the page was suspended, not that the worker stopped answering. */
+const SUSPENDED_LATENESS_MS = 1_000;
+
 const WORKER_STOPPED = 'The sync store worker stopped.';
 
 /** The store methods that reach the backend, swapped for MemoryStore's once the worker dies. */
@@ -26,6 +29,9 @@ const BACKEND_METHODS = [
   'saveToDeviceBatches',
   'getOldestToDeviceBatch',
   'removeToDeviceBatch',
+  'getUserProfile',
+  'storeUserProfiles',
+  'removeUserProfiles',
 ] as const satisfies readonly (keyof MemoryStore & keyof IndexedDBStore)[];
 
 /**
@@ -60,7 +66,13 @@ class WorkerSyncStore extends IndexedDBStore {
   private answered = false;
   private started = false;
   private destroyed = false;
+  /** Set once the worker failed a request or was stopped: only then is a fallback due. */
+  private workerFailed = false;
   private readonly watchdogs = new Map<number, ReturnType<typeof setTimeout>>();
+  private rejectDestroyed: (error: Error) => void = () => undefined;
+  private readonly whenDestroyed = new Promise<never>((_, reject) => {
+    this.rejectDestroyed = reject;
+  });
 
   constructor(
     indexedDB: IDBFactory,
@@ -74,22 +86,27 @@ class WorkerSyncStore extends IndexedDBStore {
       workerFactory: createWorker && (() => watch(createWorker())),
     });
     watch = (worker) => this.watch(worker);
+    this.whenDestroyed.catch(() => undefined);
   }
 
   override async startup(): Promise<void> {
+    // A destroyed store's worker never answers again; startup ends rather than waits.
+    const attempt = (): Promise<void> =>
+      Promise.race([super.startup(), this.whenDestroyed]);
     try {
-      await super.startup();
+      await attempt();
     } catch (error) {
       if (
         !(this.backend instanceof RemoteIndexedDBStoreBackend) ||
-        this.destroyed
+        this.destroyed ||
+        !this.workerFailed
       ) {
         throw error;
       }
       // The SDK falls back only when connect fails; with the worker stopped, a second
       // attempt's connect fails at once and takes that path.
       this.stopWorker();
-      await super.startup();
+      await attempt();
     } finally {
       // The SDK swaps in the main-thread backend without stopping the worker it gave up on.
       if (!(this.backend instanceof RemoteIndexedDBStoreBackend)) {
@@ -103,6 +120,7 @@ class WorkerSyncStore extends IndexedDBStore {
     // A removed account's store must not fall back and reopen its database.
     this.destroyed = true;
     this.clearWatchdogs();
+    this.rejectDestroyed(new Error('The sync store was destroyed.'));
     return super.destroy();
   }
 
@@ -113,7 +131,10 @@ class WorkerSyncStore extends IndexedDBStore {
     worker.addEventListener('messageerror', stop);
     worker.addEventListener('message', ({ data }: MessageEvent) => {
       this.answered = true;
-      const seq = (data as { seq?: unknown }).seq;
+      const { command, seq } = data as { command?: unknown; seq?: unknown };
+      if (command === 'cmd_fail') {
+        this.workerFailed = true;
+      }
       if (typeof seq === 'number') {
         clearTimeout(this.watchdogs.get(seq));
         this.watchdogs.delete(seq);
@@ -123,13 +144,25 @@ class WorkerSyncStore extends IndexedDBStore {
     worker.postMessage = (message: { seq?: unknown }) => {
       post(message);
       if (typeof message.seq === 'number' && !this.destroyed) {
-        this.watchdogs.set(
-          message.seq,
-          setTimeout(() => this.stopWorker(), SYNC_STORE_REQUEST_TIMEOUT_MS),
-        );
+        this.arm(message.seq);
       }
     };
     return worker;
+  }
+
+  private arm(seq: number): void {
+    const due = Date.now() + SYNC_STORE_REQUEST_TIMEOUT_MS;
+    this.watchdogs.set(
+      seq,
+      setTimeout(() => {
+        if (Date.now() - due > SUSPENDED_LATENESS_MS) {
+          // Its reply may be queued behind this timer; give the worker a fresh window.
+          this.arm(seq);
+        } else {
+          this.stopWorker();
+        }
+      }, SYNC_STORE_REQUEST_TIMEOUT_MS),
+    );
   }
 
   /** Stop the worker and fail everything waiting on it, now and later, instead of hanging. */
@@ -139,6 +172,7 @@ class WorkerSyncStore extends IndexedDBStore {
       return;
     }
     this.worker = null;
+    this.workerFailed = true;
     this.clearWatchdogs();
     worker.terminate();
     // The SDK keeps posting to this worker; each later request is rejected (and dropped) at once.
