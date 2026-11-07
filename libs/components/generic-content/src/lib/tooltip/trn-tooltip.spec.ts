@@ -170,6 +170,18 @@ describe('TrnTooltip', () => {
       expect(await focusWith(true, mousePress)).toBeNull();
     });
 
+    it('opens on focus-visible focus once a key is pressed after a mouse press', async () => {
+      // Escape closing a panel the mouse opened: the restored focus is keyboard intent.
+      expect(
+        await focusWith(true, () => {
+          mousePress();
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape' }),
+          );
+        }),
+      ).not.toBeNull();
+    });
+
     it('closes a hover tooltip on leave when focus was restored after a mouse press', async () => {
       // The opener still under the pointer when its panel closes: focus must not pin the
       // tooltip open over the neighbouring actions once the pointer moves on.
