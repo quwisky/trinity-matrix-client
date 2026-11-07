@@ -16,6 +16,8 @@ describe('serverNameOfInput', () => {
     ['HTTPS://Example.org:443/path', 'example.org'],
     ['user:pass@example.org', 'example.org'],
     ['example.org:8448/', 'example.org:8448'],
+    ['@a/b:example.org', 'example.org'],
+    ['@a/b:example.org:8448/', 'example.org:8448'],
   ])('reads %j as %j', (input, expected) => {
     expect(serverNameOfInput(input)).toBe(expected);
   });

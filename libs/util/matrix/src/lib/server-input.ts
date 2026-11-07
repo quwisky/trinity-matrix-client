@@ -14,9 +14,15 @@ export function serverNameOfInput(input: string): string {
   }
   let name = trimmed.replace(/^@/, '');
   // Credentials (`user:pass@host`) or an address-like `user@host`: the server follows the @.
-  name = name.slice(name.lastIndexOf('@') + 1).split('/')[0];
-  if (name.startsWith('[')) return name;
-  const colon = name.indexOf(':');
-  if (colon < 0 || /^\d+$/.test(name.slice(colon + 1))) return name;
-  return name.slice(colon + 1);
+  name = name.slice(name.lastIndexOf('@') + 1);
+  // The server-name colon comes first: a localpart may hold a `/` (`@a/b:example.org`).
+  const colon = name.startsWith('[') ? -1 : name.indexOf(':');
+  if (colon >= 0 && !/^\d+$/.test(withoutPath(name.slice(colon + 1)))) {
+    name = name.slice(colon + 1);
+  }
+  return withoutPath(name);
+}
+
+function withoutPath(name: string): string {
+  return name.split('/')[0];
 }
