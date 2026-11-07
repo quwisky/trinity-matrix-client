@@ -72,7 +72,7 @@ import {
 import {
   ComposerExpressionTabPreference,
   ConversationRuntime,
-  mergeDrafts,
+  appendDraft,
 } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
@@ -432,7 +432,7 @@ export class MessageComposerComponent {
         if (signedIn()) {
           this.drafts.set(
             roomId,
-            mergeDrafts(this.drafts.get(roomId), caption),
+            appendDraft(this.drafts.get(roomId), caption),
           );
         }
       };
@@ -471,6 +471,7 @@ export class MessageComposerComponent {
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
       blocked: this.cannotSend,
+      editing: this.editing,
       conversation: computed(() =>
         conversationOf(this.accountId(), this.roomId()),
       ),

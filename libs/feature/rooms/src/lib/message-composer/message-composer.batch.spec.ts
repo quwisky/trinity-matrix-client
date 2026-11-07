@@ -381,9 +381,9 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(cmp.text()).toBe('the only one');
   });
 
-  it('does not clobber something typed while the batch was going out', async () => {
-    // Restoring is for the caption the user lost, not for overwriting the one they are in the
-    // middle of writing — outcomes land long after the box was cleared.
+  it('puts a lost caption back after something typed while the batch was going out', async () => {
+    // Outcomes land long after the box was cleared: neither the lost caption nor what is being
+    // written now may be dropped.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
@@ -397,7 +397,34 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
       { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
     ]);
 
-    expect(cmp.text()).toBe('second thoughts');
+    expect(cmp.text()).toBe('second thoughts\n\nfirst caption');
+  });
+
+  it('keeps a lost caption out of an edit begun while the batch was going out', async () => {
+    const kept: string[] = [];
+    const { fixture } = await renderComposer({ roomId: '!r:hs' });
+    const cmp = fixture.componentInstance;
+    const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
+    cmp.submitMedia.subscribe(({ onOutcomes }) => finish.push(onOutcomes));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('first caption');
+    cmp.submit();
+
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$m');
+    fixture.componentRef.setInput('draft', 'the edited body');
+    fixture.detectChanges();
+    finish[0]?.([
+      { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
+    ]);
+    kept.push(TestBed.inject(DraftStoreService).get('!r:hs'));
+
+    expect(cmp.text()).toBe('the edited body');
+    expect(kept).toEqual(['first caption']); // where the edit's end restores from
+    fixture.componentRef.setInput('editing', false);
+    fixture.componentRef.setInput('editTargetId', null);
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('first caption');
   });
 
   it('carries the caption on a per-row retry', async () => {

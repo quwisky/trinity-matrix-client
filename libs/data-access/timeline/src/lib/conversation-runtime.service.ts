@@ -49,7 +49,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
-import { mergeDrafts } from './draft-text';
+import { appendDraft } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -254,7 +254,7 @@ export class ConversationRuntime {
       return;
     }
     const draftKey = conversationDraftKey(key);
-    this.drafts.set(draftKey, mergeDrafts(this.drafts.get(draftKey), text));
+    this.drafts.set(draftKey, appendDraft(this.drafts.get(draftKey), text));
   }
 
   /** Whether the Account has a focused or retained handle for the room. */

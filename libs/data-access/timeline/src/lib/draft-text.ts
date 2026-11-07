@@ -1,25 +1,21 @@
-import { holdsText } from '@trinity/platform-native';
-
-const PARAGRAPHS = /\n\s*\n/;
-
-/** `draft` with each paragraph of `more` it does not already hold added after it. */
-export function mergeDrafts(draft: string, more: string): string {
-  let merged = draft;
-  for (const part of more.split(PARAGRAPHS)) {
-    if (!part.trim() || holdsText(merged, part)) continue;
-    merged = merged.trim()
-      ? `${merged.trimEnd()}\n\n${part.trim()}`
-      : part.trim();
-  }
-  return merged;
+/**
+ * `draft` with `text` added after it as its own paragraph. Never de-duplicated: a paragraph
+ * that looks the same may be a message still sending, which a success then removes.
+ */
+export function appendDraft(draft: string, text: string): string {
+  if (!text.trim()) return draft;
+  return draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text;
 }
 
-/** `draft` without the paragraphs of a `sent` message, so text kept beside it stays. */
+/**
+ * `draft` without a `sent` message that was the whole draft when it was sent, so it leads the
+ * draft; whatever was added after it stays. A draft that does not start with it is left alone.
+ */
 export function withoutSent(draft: string, sent: string): string {
-  const left = draft.split(PARAGRAPHS);
-  for (const part of sent.split(PARAGRAPHS)) {
-    const at = left.findIndex((kept) => kept.trim() === part.trim());
-    if (at >= 0) left.splice(at, 1);
-  }
-  return left.join('\n\n').trim();
+  const head = sent.trim();
+  const body = draft.trimStart();
+  if (!head || !body.startsWith(head)) return draft;
+  const rest = body.slice(head.length);
+  if (!rest.trim()) return '';
+  return /^\s*\n\s*\n/.test(rest) ? rest.trim() : draft;
 }

@@ -5,6 +5,7 @@ import {
   type WritableSignal,
 } from '@angular/core';
 import { type Mention } from '@trinity/util/matrix';
+import { appendDraft } from '@trinity/data-access/timeline';
 import {
   type BatchItem,
   type BatchOutcome,
@@ -18,6 +19,8 @@ export type KeepCaption = (caption: string) => void;
 export interface ComposerBatchPorts {
   /** Upload fraction while an attachment uploads, else null — a signal input, so it lags. */
   readonly uploadProgress: Signal<BatchProgress | null>;
+  /** Whether the box holds the body of a message being edited. */
+  readonly editing: Signal<boolean>;
   /** The Conversation cannot take a send right now. */
   readonly blocked: Signal<boolean>;
   /** The account and room/thread this composer is showing right now. */
@@ -222,12 +225,17 @@ export class ComposerBatchSender {
       this.ports.sendCaption({ text: caption, mentions: [...mentions] });
       return;
     }
-    if (!delivered && !this.ports.text().trim()) {
+    if (!delivered) {
       // Nothing carried it: a single file's caption rides its media event (MSC2530) and failed
       // with it, and a batch caption is never sent when nothing was delivered. `submit()` cleared
-      // the box on dispatch, so restore it, unless something has been typed since.
-      this.ports.text.set(caption);
-      this.ports.regrow();
+      // the box on dispatch, so put it back after anything typed since. An edit's box holds that
+      // message's body, so the caption waits in the draft the edit's end restores.
+      if (this.ports.editing()) {
+        atDispatch.draft?.(caption);
+      } else {
+        this.ports.text.set(appendDraft(this.ports.text(), caption));
+        this.ports.regrow();
+      }
     }
   }
 }

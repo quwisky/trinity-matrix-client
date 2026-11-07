@@ -3,7 +3,7 @@ import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
 import { type ConversationState } from './conversation-runtime.service';
 import { type ConversationKey } from './conversation-messages';
-import { mergeDrafts, withoutSent } from './draft-text';
+import { appendDraft, withoutSent } from './draft-text';
 
 export type ConversationComposeIntent =
   | { readonly kind: 'message' }
@@ -138,8 +138,8 @@ export class ConversationComposeController {
    * it would have, and its text stays in the persisted draft until it does.
    */
   keepMessageDraft(text: string): void {
-    this.messageDraftState.set(mergeDrafts(this.messageDraftState(), text));
-    this.ports.persistDraft(mergeDrafts(this.ports.readDraft(), text));
+    this.messageDraftState.set(appendDraft(this.messageDraftState(), text));
+    this.ports.persistDraft(appendDraft(this.ports.readDraft(), text));
   }
 
   private setDraft(draft: string): void {
@@ -230,14 +230,14 @@ export class ConversationComposeController {
             next: (outcome) => {
               settled = true;
               if (outcome.kind !== 'rejected') {
-                if (this.revision === revision) {
-                  if (intent.kind !== 'edit') {
-                    this.ports.persistDraft(
-                      withoutSent(this.ports.readDraft(), draft),
-                    );
-                  }
-                  this.finishIntent();
+                // Storage drops the sent text even if a reply or edit began meanwhile, or a
+                // reload would offer it again; only the box waits on the revision.
+                if (intent.kind !== 'edit') {
+                  this.ports.persistDraft(
+                    withoutSent(this.ports.readDraft(), draft),
+                  );
                 }
+                if (this.revision === revision) this.finishIntent();
                 subscriber.next(
                   outcome.kind === 'queued'
                     ? outcome
@@ -278,11 +278,11 @@ export class ConversationComposeController {
     revision: number,
   ): void {
     if (intent.kind === 'edit') return;
-    // Merged, never skipped: text typed or kept since the send must not cost the failed one.
-    const restored = mergeDrafts(
-      mergeDrafts(draft, this.ports.readDraft()),
-      this.messageDraftState(),
-    );
+    // Never skipped: text typed or kept since the send goes after the failed one. A retired
+    // handle's box is empty; what was kept for it waits in storage behind the failed text.
+    const since =
+      this.messageDraftState() || withoutSent(this.ports.readDraft(), draft);
+    const restored = appendDraft(draft, since);
     this.messageDraftState.set(restored);
     this.ports.persistDraft(restored);
     if (this.revision === revision && this.intentState().kind === 'message') {

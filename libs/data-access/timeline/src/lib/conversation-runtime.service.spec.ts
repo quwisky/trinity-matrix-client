@@ -985,15 +985,48 @@ describe('ConversationRuntime', () => {
       expect(held.compose.draft()).toBe('caption');
     });
 
-    it('adds it after text already in the draft, once', () => {
+    it('adds it after text already in the draft', () => {
       const { runtime } = setup();
       const held = runtime.focus(KEY);
       held.compose.setDraft('typed since');
 
       runtime.keepDraft(KEY, 'caption');
-      runtime.keepDraft(KEY, 'caption');
 
       expect(held.compose.draft()).toBe('typed since\n\ncaption');
+    });
+
+    it('keeps a caption that reads like the message still sending', async () => {
+      const { runtime, sends, drafts } = setup();
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('ok');
+      const outcome = firstValueFrom(held.compose.submit());
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+      runtime.retireRetained();
+
+      runtime.keepDraft(KEY, 'ok');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(drafts.get(conversationDraftKey(KEY))).toBe('ok');
+    });
+
+    it('drops sent text from storage even when a reply began while it was sending', async () => {
+      const { runtime, sends, drafts } = setup(2, undefined, [
+        message('$target'),
+      ]);
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('hi');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      held.messages.beginReply('$target');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+      expect(held.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
     });
 
     describe('while a text send is in flight', () => {
