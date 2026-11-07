@@ -82,6 +82,8 @@ import {
 
 /** Older thread replies pulled in per backward-pagination round. */
 const THREAD_SCROLLBACK = 30;
+/** Empty thread pages in a row after which the thread stops paging, whatever its tokens do. */
+const MAX_EMPTY_THREAD_PAGES = 20;
 
 /**
  * Projects a room's threads into render-ready signals, mirroring {@link TimelineService}'s
@@ -211,8 +213,11 @@ export class ThreadsService {
 
   // --- Opened thread --------------------------------------------------------
   private thread: Thread | null = null;
-  /** Root of the open thread once a page came back with nothing new, so no further page is offered. */
+  /** Root of the open thread once an empty page led nowhere new, so no further page is offered. */
   private exhaustedThreadRootId: string | null = null;
+  /** Backward tokens the open thread was paged from, to catch a server cycling through empty pages. */
+  private readonly pagedThreadTokens = new Set<string | null>();
+  private emptyThreadPages = 0;
   /** The exact Account client {@link attachThreadRoot} inherited — see {@link summariesClient}. */
   private threadClient: MatrixClient | null = null;
   private threadRoom: Room | null = null;
@@ -462,6 +467,8 @@ export class ThreadsService {
     this.threadClient = null;
     this.thread = null;
     this.exhaustedThreadRootId = null;
+    this.pagedThreadTokens.clear();
+    this.emptyThreadPages = 0;
     this.threadRoom = null;
     this.threadRoomId = null;
     this.threadReceiptSubscription?.unsubscribe();
@@ -505,32 +512,47 @@ export class ThreadsService {
     ) {
       return of(void 0);
     }
-    // Sampled before the request: the SDK adds the page's events (and re-enters
-    // refreshThread through the timeline events) before the promise resolves.
-    let loadedBefore = 0;
     return defer(() => {
       const client = this.threadClient;
-      if (!client || this.thread !== thread) return of(void 0);
+      // The SDK shares one request between concurrent calls; this keeps a second call from also
+      // judging that page empty and refreshing the thread again.
+      if (!client || this.thread !== thread || this._loadingOlderThread()) {
+        return of(void 0);
+      }
       this._loadingOlderThread.set(true);
-      loadedBefore = thread.events.length;
+      // Sampled before the request: the SDK adds the page's events (and re-enters
+      // refreshThread through the timeline events) before the promise resolves.
+      const loadedBefore = thread.events.length;
+      this.pagedThreadTokens.add(
+        timeline.getPaginationToken(Direction.Backward),
+      );
       return from(
         client.paginateEventTimeline(timeline, {
           backwards: true,
           limit: THREAD_SCROLLBACK,
         }),
+      ).pipe(
+        tap(() => {
+          // An empty page that leads back to a token already paged from (hidden replies the
+          // count still includes keep it in place) must not leave the button offering it again.
+          // One that moves on is not the end: a page overlapping replies the room's own history
+          // already added keeps the old token, so the next one repeats it and finds nothing new.
+          if (thread.events.length !== loadedBefore) {
+            this.emptyThreadPages = 0;
+          } else if (
+            this.pagedThreadTokens.has(
+              timeline.getPaginationToken(Direction.Backward),
+            ) ||
+            ++this.emptyThreadPages >= MAX_EMPTY_THREAD_PAGES
+          ) {
+            this.exhaustedThreadRootId = thread.id;
+          }
+          this.refreshThread();
+        }),
+        finalize(() => this._loadingOlderThread.set(false)),
+        map(() => void 0),
       );
-    }).pipe(
-      tap(() => {
-        // A page that brought no events at all (hidden replies the count still includes)
-        // must not leave the button offering the same empty page again.
-        if (thread.events.length === loadedBefore) {
-          this.exhaustedThreadRootId = thread.id;
-        }
-        this.refreshThread();
-      }),
-      finalize(() => this._loadingOlderThread.set(false)),
-      map(() => void 0),
-    );
+    });
   }
 
   // --- In-thread composing --------------------------------------------------
@@ -830,7 +852,7 @@ export class ThreadsService {
     // already holds every reply, so the token alone would offer a Load older that finds
     // nothing. The server's reply count (`thread.length`) settles it. Edits are not
     // displayable replies and are not counted; a hidden event type keeps the button,
-    // which is the safe side (a page that then finds nothing hides it, see paginateOpenThread).
+    // which is the safe side (a page that then finds nothing and keeps its token hides it, see paginateOpenThread).
     const timeline = thread?.liveTimeline ?? null;
     this._oldestThreadEventId.set(thread?.events[0]?.getId() ?? null);
     // A redacted reply lowers the server count, so it must not count as loaded either.

@@ -1,4 +1,4 @@
-import { Component, signal } from '@angular/core';
+import { Component, afterNextRender, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { render } from '@trinity/testing';
 import { MockComponent } from 'ng-mocks';
@@ -1358,6 +1358,112 @@ describe('MessageListComponent', () => {
       await fixture.whenStable();
 
       expect(replyTop()).toBe(before);
+    });
+
+    // A programmatic jump to the top (Home, a screen reader) fires its scroll event before the
+    // window re-renders, so the rendered rows still sit where the reader was, far below.
+    it('anchors history on a row on screen after a long jump to the top', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(30),
+        canLoadOlder: true,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 0, sh: 3700, prepended: 0, stale: 3000 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      const rowTop = (i: number) =>
+        40 + i * EST + view.prepended + view.stale - view.st;
+      scroll.querySelectorAll('[data-mid]').forEach((row, i) => {
+        (row as HTMLElement).getBoundingClientRect = () =>
+          rect(rowTop(i), rowTop(i) + EST);
+      });
+      cmp.onScroll(); // the jump's scroll event, at the top: asks for history
+      view.stale = 0; // the window renders the rows of the new position
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const before = rowTop(0);
+
+      view.prepended = 110;
+      view.sh += 110;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      expect(rowTop(0)).toBe(before);
+    });
+
+    // The anchoring effect recaptures when the list moved with no scroll event yet, which it first
+    // sees as the page lands: a jump made while history loads. The window still holds the rows of
+    // the old position, so the anchor is the row on screen once that render is done.
+    it('anchors a row on screen when a jump made while history loads lands with the page', async () => {
+      const { fixture, container } = await renderList({
+        messages: many(30),
+        canLoadOlder: true,
+      });
+      const cmp = fixture.componentInstance;
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const view = { st: 100, sh: 3700, prepended: 0, stale: 0 };
+      Object.defineProperties(scroll, {
+        scrollTop: {
+          get: () => view.st,
+          set: (value: number) =>
+            (view.st = Math.max(0, Math.min(value, view.sh - 600))),
+        },
+        scrollHeight: { get: () => view.sh },
+        clientHeight: { value: 600 },
+      });
+      scroll.getBoundingClientRect = () => rect(0);
+      const rowTop = (i: number) =>
+        40 + i * EST + view.prepended + view.stale - view.st;
+      scroll.querySelectorAll('[data-mid]').forEach((row, i) => {
+        (row as HTMLElement).getBoundingClientRect = () =>
+          rect(rowTop(i), rowTop(i) + EST);
+      });
+      cmp.onScroll(); // near the top: anchors and asks for history
+      fixture.componentRef.setInput('loadingOlder', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      // The jump, its scroll event still to come, and the page lands in the same frame.
+      view.st = 0;
+      view.stale = 3000;
+      afterNextRender(() => (view.stale = 0), {
+        injector: fixture.componentRef.injector,
+      });
+      view.prepended = 110;
+      view.sh += 110;
+      fixture.componentRef.setInput('loadingOlder', false);
+      fixture.componentRef.setInput('messages', [
+        ...['$p0', '$p1', '$p2', '$p3', '$p4'].map((id, i) =>
+          msg(id, '@a:hs', 'A', 1 + i),
+        ),
+        ...many(30),
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+
+      const anchor = cmp as unknown as {
+        prependAnchorId: string;
+        prependAnchorOffset: number;
+      };
+      expect(anchor.prependAnchorId).toBe('$0');
+      expect(anchor.prependAnchorOffset).toBe(rowTop(0));
     });
 
     async function afterHistoryPage(below = 0) {
