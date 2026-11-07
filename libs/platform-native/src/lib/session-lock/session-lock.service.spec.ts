@@ -412,6 +412,25 @@ describe('SessionLockService', () => {
     expect(owner.state()).toBe('releasing');
   });
 
+  it('answers on declining a request that arrived while releasing, without another click', async () => {
+    const { channels, openTab } = setup();
+    const owner = openTab();
+    await firstValueFrom(owner.acquire());
+    const heard = vi.fn();
+    owner.handoverRequests.subscribe(heard);
+    channels.broadcast({ type: 'handover-request', id: 'first' });
+    await settle();
+    channels.broadcast({ type: 'handover-request', id: 'again' });
+    await settle();
+    expect(heard).toHaveBeenCalledOnce();
+
+    owner.declineHandover();
+    await settle();
+
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(owner.state()).toBe('releasing');
+  });
+
   it('emits granted when the lock is free at once, and not where it is not required', async () => {
     const { openTab } = setup();
     const tab = openTab();

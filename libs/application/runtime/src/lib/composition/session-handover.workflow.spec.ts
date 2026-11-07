@@ -63,6 +63,7 @@ function setup(
   const steps: string[] = [];
   const lifecycleBusy = signal(options.lifecycleBusy ?? false);
   const restoringAccounts = signal(options.restoringAccounts ?? false);
+  const busyFails = signal(false);
   const runtimeState = signal<AccountRuntimeState>({ phase: 'idle' });
   const lifecycle = signal<AccountLifecycleState>({ phase: 'idle' });
   const requests = new Subject<void>();
@@ -152,7 +153,11 @@ function setup(
       MockProvider(AccountRuntimeService, {
         lifecycleBusy: lifecycleBusy.asReadonly(),
         lifecycle: lifecycle.asReadonly(),
-        restoringInBackground: () => restoringAccounts(),
+        restoringInBackground: () => {
+          if (busyFails())
+            throw new Error('the restore state could not be read');
+          return restoringAccounts();
+        },
         state: runtimeState.asReadonly(),
       }),
     ],
@@ -169,6 +174,7 @@ function setup(
     lifetime,
     lifecycleBusy,
     restoringAccounts,
+    busyFails,
     runtimeState,
     lifecycle,
     handleError,
@@ -417,7 +423,8 @@ describe('SessionHandoverWorkflow', () => {
     expect(handleError).toHaveBeenCalledOnce();
     // The handover still ends: the lifetime keeps answering requests.
     expect(lifetime.closed).toBe(false);
-    expect(sessionLock.state()).toBe('held');
+    // Its clients are stopped: held, the rooms page would send it to sign-in.
+    expect(sessionLock.state()).toBe('releasing');
     lifetime.unsubscribe();
   });
 
@@ -572,5 +579,48 @@ describe('SessionHandoverWorkflow', () => {
       expect(steps).toEqual(HANDED_OVER);
       lifetime.unsubscribe();
     });
+
+    it('answers a "Try again" that came while it waited, once it gives up, without another click', async () => {
+      const { steps, requestHandover, lifecycleBusy, lifetime } = setup({
+        lifecycleBusy: true,
+        realLock: true,
+      });
+      const sessionLock = TestBed.inject(SessionLockService);
+      await firstValueFrom(sessionLock.acquire());
+
+      requestHandover();
+      await vi.advanceTimersByTimeAsync(1_000);
+      requestHandover();
+      await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_TIMEOUT_MS);
+      expect(steps).toEqual([]);
+      expect(sessionLock.state()).toBe('releasing');
+
+      lifecycleBusy.set(false);
+      await vi.advanceTimersByTimeAsync(500);
+      expect(steps).toEqual(HANDED_OVER);
+      lifetime.unsubscribe();
+    });
+  });
+
+  it('reports a failure before the handover, holds the session again and hears the next request', async () => {
+    const { steps, requestHandover, busyFails, handleError, lifetime } = setup({
+      realLock: true,
+    });
+    const sessionLock = TestBed.inject(SessionLockService);
+    await firstValueFrom(sessionLock.acquire());
+    busyFails.set(true);
+
+    requestHandover();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(handleError).toHaveBeenCalledOnce();
+    expect(steps).toEqual([]);
+    expect(sessionLock.state()).toBe('held');
+
+    busyFails.set(false);
+    requestHandover();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(steps).toEqual(HANDED_OVER);
+    lifetime.unsubscribe();
   });
 });
