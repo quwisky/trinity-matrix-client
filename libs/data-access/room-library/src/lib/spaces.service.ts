@@ -30,6 +30,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import {
+  initialOf,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
@@ -717,12 +718,6 @@ export function sameIds(
     }
   }
   return true;
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
 }
 
 /**

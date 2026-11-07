@@ -11,7 +11,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { initialOf, roomAvatarMxc } from '@trinity/util/matrix';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
@@ -215,10 +215,4 @@ export function sameInvites(
       ),
     )
   );
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
 }

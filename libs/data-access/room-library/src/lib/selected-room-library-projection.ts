@@ -11,7 +11,7 @@ import {
   type RoomState,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
-import { RoomEncryptionFlags } from '@trinity/util/matrix';
+import { RoomEncryptionFlags, initialOf } from '@trinity/util/matrix';
 import {
   buildInvite,
   sameInvites,
@@ -23,7 +23,6 @@ import {
   countsMoved,
   decryptionChangesRow,
   directMapOf,
-  initialOf,
   isJoinedSpace,
   reuseUnchanged,
   sameRooms,

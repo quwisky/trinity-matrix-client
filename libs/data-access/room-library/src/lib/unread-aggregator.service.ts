@@ -18,11 +18,10 @@ import {
   coalesce,
   MatrixClientService,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { initialOf, roomAvatarMxc } from '@trinity/util/matrix';
 import {
   decryptionChangesRow,
   directMapOf,
-  initialOf,
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
@@ -51,8 +50,7 @@ export interface UnreadRoom {
 }
 
 /**
- * Cross-account unread aggregator: where {@link RoomLibraryService.totalUnread} sums only the
- * ACTIVE account's rooms, this sums every signed-in account (app-icon badge). A lightweight
+ * Cross-account unread aggregator: sums every signed-in account's unread counts (app-icon badge). A lightweight
  * listener per account client reads notification counts directly, without a full room
  * projection, and the same pass publishes the per-room {@link unreadRooms} list. Rebuilds are
  * held for up to 100 ms, and run at the end of each account's sync, so one sync rebuilds once.

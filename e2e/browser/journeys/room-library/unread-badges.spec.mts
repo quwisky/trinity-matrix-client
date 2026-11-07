@@ -158,7 +158,7 @@ test.describe('Unread badges', () => {
     await login(page, reader);
 
     // Wait for AppBadgeService's effect to settle on the seeded total (its
-    // constructor effect runs on every RoomsService.totalUnread() change).
+    // constructor effect runs on every UnreadAggregatorService.totalUnread() change).
     await page.waitForFunction(
       (seed) => {
         const w = window as unknown as { __appBadgeCalls?: unknown[][] };

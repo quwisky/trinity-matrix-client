@@ -7,6 +7,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   arrivedInClear,
+  initialOf,
   liveRoomState,
   messagePreview,
   roomAvatarMxc,
@@ -55,12 +56,6 @@ interface ChildEntry {
   id: string;
   order: string;
   name: string;
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallback avatars. */
-export function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
 }
 
 /**

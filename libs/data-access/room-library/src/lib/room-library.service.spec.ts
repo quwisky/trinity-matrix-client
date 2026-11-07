@@ -523,7 +523,7 @@ describe('RoomLibraryService', () => {
       unread['!c:hs'] = 4;
 
       expect(await endSync()).toEqual(['!c:hs']);
-      expect(svc.totalUnread()).toBe(4);
+      expect(svc.rooms().find((r) => r.id === '!c:hs')?.unreadCount).toBe(4);
     });
 
     it('picks up a member count the SDK changed after the room was rebuilt', async () => {
@@ -1061,8 +1061,6 @@ describe('RoomLibraryService', () => {
       hasUnread: true,
     });
     expect(mid.hasUnread).toBe(false);
-    // totalUnread is the app-wide sum of every room's unread count.
-    expect(svc.totalUnread()).toBe(3);
   });
 
   describe('thread activity', () => {
@@ -1769,7 +1767,7 @@ describe('RoomLibraryService', () => {
     expect(clientB.on).toHaveBeenCalled(); // new client wired
   });
 
-  it('recomputes totalUnread when a sync event refreshes an updated unread count', async () => {
+  it('refreshes the unread count when a sync event updates it', async () => {
     // A mutable "room" so the fake client can report a bumped unread count on
     // the next refresh, the same way a real Room's counters change in place.
     const unread = { count: 2 };
@@ -1785,13 +1783,13 @@ describe('RoomLibraryService', () => {
     };
     const { svc } = provideRooms(client);
     svc.runProjection().subscribe();
-    expect(svc.totalUnread()).toBe(2);
+    expect(svc.rooms()[0]?.unreadCount).toBe(2);
 
     unread.count = 9; // e.g. a new message arrives
     handlers.get(ClientEvent.Sync)?.(); // sync fires; refresh is coalesced onto a microtask
     await Promise.resolve();
 
-    expect(svc.totalUnread()).toBe(9);
+    expect(svc.rooms()[0]?.unreadCount).toBe(9);
   });
 
   it('refreshes unread on MatrixEventEvent.Decrypted (encrypted message decrypts late)', async () => {
@@ -1813,13 +1811,13 @@ describe('RoomLibraryService', () => {
     };
     const { svc } = provideRooms(client);
     svc.runProjection().subscribe();
-    expect(svc.totalUnread()).toBe(0);
+    expect(svc.rooms()[0]?.unreadCount).toBe(0);
 
     // The count only settles once the ciphertext decrypts, which fires Decrypted
     // (not a fresh Sync) — relying on Sync alone would drop the increment.
     unread.count = 1;
     handlers.get(MatrixEventEvent.Decrypted)?.(decryptedEvent('$new'));
-    await vi.waitFor(() => expect(svc.totalUnread()).toBe(1));
+    await vi.waitFor(() => expect(svc.rooms()[0]?.unreadCount).toBe(1));
   });
 
   describe('when an event decrypts', () => {
@@ -1938,7 +1936,7 @@ describe('RoomLibraryService', () => {
     expect(svc.rooms()[0]?.lastMessage).toBe('server text');
   });
 
-  it('recomputes totalUnread when a room is added to the synced list', async () => {
+  it('lists a room added to the synced list with its unread count', async () => {
     vi.useFakeTimers();
     let currentRooms = [fakeRoom({ roomId: '!a:hs', name: 'a', unread: 2 })];
     const handlers = new Map<string, () => void>();
@@ -1950,7 +1948,7 @@ describe('RoomLibraryService', () => {
     };
     const { svc } = provideRooms(client);
     svc.runProjection().subscribe();
-    expect(svc.totalUnread()).toBe(2);
+    expect(svc.rooms()[0]?.unreadCount).toBe(2);
 
     currentRooms = [
       ...currentRooms,
@@ -1959,8 +1957,10 @@ describe('RoomLibraryService', () => {
     handlers.get(ClientEvent.Room)?.();
     await windowEnds();
 
-    expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
-    expect(svc.totalUnread()).toBe(7);
+    expect(svc.rooms().map((r) => [r.id, r.unreadCount])).toEqual([
+      ['!a:hs', 2],
+      ['!b:hs', 5],
+    ]);
   });
 
   it('ignores a repeat connect() for the same client', () => {
