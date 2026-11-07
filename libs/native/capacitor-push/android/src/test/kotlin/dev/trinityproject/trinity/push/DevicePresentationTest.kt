@@ -1,6 +1,7 @@
 package dev.trinityproject.trinity.push
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DevicePresentationTest {
@@ -26,6 +27,18 @@ class DevicePresentationTest {
 
             override fun notificationText(): String = throw java.security.ProviderException("keystore")
         }
-        assertEquals(DevicePresentation.GENERIC_ONLY, presentationFor(faulty))
+        assertEquals(DevicePresentation.GENERIC_ONLY, presentationFor(faulty, null))
+    }
+
+    @Test
+    fun anAccountSignedOutBeforePostingIsGenericOnly() {
+        val store = PushHandoffStore(MemoryPreferences(), FakeCrypto(), KeystoreTokenVault(MemoryPreferences(), FakeCrypto()))
+        assertTrue(store.setNotificationText(NotificationTextMode.SHOW))
+        assertTrue(store.setAccount("@a:hs", HandoffAccount("https://hs.example", "token", sound = true)))
+        assertEquals(DevicePresentation.FULL, presentationFor(store, "@a:hs"))
+
+        assertTrue(store.removeAccount("@a:hs"))
+
+        assertEquals(DevicePresentation.GENERIC_ONLY, presentationFor(store, "@a:hs"))
     }
 }

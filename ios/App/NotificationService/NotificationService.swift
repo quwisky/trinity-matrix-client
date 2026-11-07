@@ -33,7 +33,9 @@ final class NotificationService: UNNotificationServiceExtension {
             return
         }
         Self.apply(render.fallback, to: content)
-        let delivery = deliveries.begin(content, handler: present)
+        let delivery = deliveries.begin(
+            content,
+            handler: PushRenderRules.presenting(store: store, accountId: render.accountId, handler: contentHandler))
         delivery.track(Task {
             let rendered = await render.resolve()
             delivery.update { Self.apply(rendered, to: $0) }

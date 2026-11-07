@@ -34,6 +34,7 @@ public struct PushRender {
     /// What to show if time runs out: the stored room name (else "Trinity") and "New message",
     /// or the expired-token text when the stored token has expired.
     public let fallback: PushNotificationContent
+    public var accountId: String { payload.accountId }
     private let payload: PushPayload
     private let resolver: PushContentResolver
 

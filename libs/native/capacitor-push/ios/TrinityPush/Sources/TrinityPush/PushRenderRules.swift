@@ -175,12 +175,20 @@ public extension PushRenderRules {
     }
 
     /// `handler`, reading the mirror again and applying it just before the content is handed
-    /// over, on time or when time runs out, so a change made meanwhile still applies.
+    /// over, on time or when time runs out, so a change made meanwhile still applies. When
+    /// `accountId` has left the store by then (signed out), the content is the generic
+    /// "Trinity" / "New message".
     static func presenting<Content: PushTextContent>(
         store: HandoffReading?,
+        accountId: String? = nil,
         handler: @escaping (Content) -> Void
     ) -> (Content) -> Void {
         { content in
+            if let accountId, store?.account(accountId) == nil {
+                content.title = fallbackTitle
+                content.subtitle = ""
+                content.body = fallbackBody
+            }
             present(NotificationTextMode.mirrored(by: store), on: content)
             handler(content)
         }

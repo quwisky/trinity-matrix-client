@@ -108,8 +108,9 @@ final class PushRenderRulesTests: XCTestCase {
 
     private final class ChangingReader: HandoffReading {
         var mode: NotificationTextMode
+        var accounts: [String: HandoffAccount] = [:]
         init(_ mode: NotificationTextMode) { self.mode = mode }
-        func account(_ userId: String) -> HandoffAccount? { nil }
+        func account(_ userId: String) -> HandoffAccount? { accounts[userId] }
         func room(_ userId: String, _ roomId: String) -> HandoffRoom? { nil }
         func notificationText() -> NotificationTextMode { mode }
     }
@@ -127,6 +128,34 @@ final class PushRenderRulesTests: XCTestCase {
             delivered.map { [$0.title, $0.subtitle, $0.body, $0.categoryIdentifier] },
             [["", "", "New message", ""]]
         )
+    }
+
+    func testASignOutWhileAPushResolvesHandsOverOnlyTheGenericText() {
+        let reader = ChangingReader(.show)
+        reader.accounts["@alice:hs"] = HandoffAccount(homeserverUrl: "https://a.example", accessToken: "t", sound: true)
+        var delivered: [FakeContent] = []
+        let deliveries = PushDeliveries<FakeContent>()
+        let delivery = deliveries.begin(
+            FakeContent(),
+            handler: PushRenderRules.presenting(store: reader, accountId: "@alice:hs") { delivered.append($0) })
+        reader.accounts = [:]
+        delivery.update { $0.body = "Rendered secret" }
+        delivery.finish()
+        XCTAssertEqual(
+            delivered.map { [$0.title, $0.subtitle, $0.body, $0.categoryIdentifier] },
+            [["Trinity", "", "New message", "other"]]
+        )
+    }
+
+    func testAnAccountStillSignedInKeepsItsTextAtHandOver() {
+        let reader = ChangingReader(.show)
+        reader.accounts["@alice:hs"] = HandoffAccount(homeserverUrl: "https://a.example", accessToken: "t", sound: true)
+        var delivered: [FakeContent] = []
+        let present: (FakeContent) -> Void = PushRenderRules.presenting(store: reader, accountId: "@alice:hs") {
+            delivered.append($0)
+        }
+        present(FakeContent())
+        XCTAssertEqual(delivered.map { [$0.title, $0.subtitle, $0.body] }, [["Team", "Alice", "Secret plans"]])
     }
 
     func testTheModeAtHandOverWinsOverTheModeAtTheStart() {

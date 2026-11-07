@@ -23,9 +23,15 @@ fun devicePresentation(mode: String): DevicePresentation = when (mode) {
     else -> DevicePresentation.GENERIC_ONLY
 }
 
-/** The presentation the store's mirror asks for; a store fault hides everything. */
-fun presentationFor(store: HandoffReader): DevicePresentation =
-    devicePresentation(BoundedPushResolver.FaultTolerantReader(store).notificationText())
+/**
+ * The presentation the store's mirror asks for; a store fault hides everything, and so does
+ * [accountId] having left the store (signed out) while its push resolved.
+ */
+fun presentationFor(store: HandoffReader, accountId: String?): DevicePresentation {
+    val reader = BoundedPushResolver.FaultTolerantReader(store)
+    if (accountId != null && reader.account(accountId) == null) return DevicePresentation.GENERIC_ONLY
+    return devicePresentation(reader.notificationText())
+}
 
 /**
  * Posts, updates or cancels the notification for one device-rendered push: one
@@ -61,8 +67,8 @@ class DevicePushHandler(
         ensureChannel()
         val key = roomNotificationKey(outcome.accountId, outcome.roomId ?: outcome.eventId)
         val rendered = outcome.notification
-        // App lock's Notification text, read as late as possible.
-        val presentation = presentationFor(handoff)
+        // App lock's Notification text and the account, read as late as possible.
+        val presentation = presentationFor(handoff, outcome.accountId)
         if (presentation == DevicePresentation.GENERIC_ONLY) {
             // A plain notification: replacing the room's one drops its conversation history too.
             compat.notify(key.tag, key.id, genericNotification(outcome, key, messageId).build())
