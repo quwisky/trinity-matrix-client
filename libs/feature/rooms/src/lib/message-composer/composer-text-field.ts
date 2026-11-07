@@ -20,8 +20,8 @@ const MAX_HEIGHT_PX = 200;
 /**
  * Replace `el.value[start, end)` with `insert` as a native edit, so the textarea's undo stack
  * keeps it; assigning `value` from script empties that stack in Chromium and Firefox. False when
- * the browser refused (an unfocusable field, a nested `execCommand`, jsdom) and the caller must
- * write the value itself.
+ * the edit wasn't made (WebKit, an unfocusable field, a nested `execCommand`, jsdom) and the
+ * caller must write the value itself.
  */
 function splice(
   el: HTMLTextAreaElement,
@@ -30,6 +30,8 @@ function splice(
   insert: string,
 ): boolean {
   if (start === end && !insert) return true;
+  // WebKit merges this edit into the typing run before it, so one undo erases the whole draft.
+  if (isWebKit()) return false;
   const expected = el.value.slice(0, start) + insert + el.value.slice(end);
   el.focus();
   if (el.ownerDocument.activeElement !== el) return false;
@@ -42,6 +44,12 @@ function splice(
     insert,
   );
   return el.value === expected;
+}
+
+/** Safari and every iOS browser; Chromium and Electron also say AppleWebKit, but with Chrome/. */
+function isWebKit(): boolean {
+  const ua = navigator.userAgent;
+  return ua.includes('AppleWebKit') && !ua.includes('Chrome/');
 }
 
 /** The span of `before` that differs from `after`, and what `after` has there instead. */
