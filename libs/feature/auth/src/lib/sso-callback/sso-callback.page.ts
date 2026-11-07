@@ -27,7 +27,7 @@ import {
 } from '../account-establishment-outcome';
 
 /** How long a web callback that matches no live stash waits for one that does. */
-export const UNMATCHED_CALLBACK_WAIT_MS = 2_000;
+export const UNMATCHED_CALLBACK_WAIT_MS = 3_000;
 
 /**
  * Landing route for the auth redirect, for both login flows: legacy SSO returns
