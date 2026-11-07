@@ -371,6 +371,36 @@ test.describe('Message actions on a phone', () => {
     );
   });
 
+  test('"More reactions…" fills the sheet and leaves the keyboard down', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'm');
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    const grid = dialog.locator('.emoji-mart');
+    await longPress(page, rowSel);
+    await page.getByTestId('sheet-react-more').click();
+    await expect(grid).toBeVisible({ timeout: 20_000 });
+    await sheetAtRest(dialog.getByTestId('dialog-surface'));
+
+    // The desktop picker is a fixed 302px card; in a sheet it spans the sheet's padded width.
+    const [gridBox, sheetBox] = await Promise.all([
+      grid.boundingBox(),
+      dialog.getByTestId('dialog-surface').boundingBox(),
+    ]);
+    expect(gridBox!.width).toBeGreaterThan(sheetBox!.width - 48);
+    // A focused search raises a phone's keyboard over the grid. The full-width grid draws
+    // only after measuring the sheet, which happens to land after the dialog places focus;
+    // the dialog is told to focus itself so this holds whatever the timing.
+    await expect(dialog.locator('.emoji-mart-search input')).not.toBeFocused();
+
+    await dialog.getByRole('button', { name: '😂' }).first().click();
+    await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(
+      '😂',
+      { timeout: 15_000 },
+    );
+  });
+
   test('groups the actions into cards under a row of reaction tiles', async ({
     page,
     request,
