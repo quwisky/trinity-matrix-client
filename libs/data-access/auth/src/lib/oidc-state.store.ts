@@ -114,6 +114,12 @@ export class OidcStateStore {
 
   /** Stash the round-trip state before redirecting to the OIDC provider. */
   async save(params: OidcStateSave): Promise<void> {
+    // Absent rather than empty for an ordinary login, so a stale value can never be read
+    // back as an expectation. Removed before the write, so a re-auth another tab saves in
+    // between keeps its expectation.
+    if (!params.expectedUserId) {
+      await firstValueFrom(this.storage.remove(EXPECTED_USER_ID_KEY));
+    }
     await firstValueFrom(
       this.storage.setMany([
         { key: STATE_KEY, value: params.state },
@@ -136,11 +142,6 @@ export class OidcStateStore {
           : []),
       ]),
     );
-    // Absent rather than empty for an ordinary login, so a stale value can never be
-    // read back as an expectation.
-    if (!params.expectedUserId) {
-      await firstValueFrom(this.storage.remove(EXPECTED_USER_ID_KEY));
-    }
   }
 
   /**

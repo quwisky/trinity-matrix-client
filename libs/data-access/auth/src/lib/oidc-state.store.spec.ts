@@ -3,16 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OidcStateStore } from './oidc-state.store';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
-const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));
+const { prefs, writes } = vi.hoisted(() => ({
+  prefs: new Map<string, string>(),
+  writes: [] as string[],
+}));
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
     get: async ({ key }: { key: string }) => ({
       value: prefs.get(key) ?? null,
     }),
     set: async ({ key, value }: { key: string; value: string }) => {
+      writes.push(`set:${key}`);
       prefs.set(key, value);
     },
     remove: async ({ key }: { key: string }) => {
+      writes.push(`remove:${key}`);
       prefs.delete(key);
     },
   },
@@ -38,6 +43,7 @@ describe('OidcStateStore', () => {
 
   beforeEach(() => {
     prefs.clear();
+    writes.length = 0;
     TestBed.configureTestingModule({ providers: [OidcStateStore] });
     store = TestBed.inject(OidcStateStore);
   });
@@ -71,6 +77,16 @@ describe('OidcStateStore', () => {
 
     await store.save(SAVE);
     expect((await store.peek()).expectedUserId).toBeNull();
+  });
+
+  it('drops a stale re-auth expectation before writing an ordinary login', async () => {
+    // Removed after the write, a re-auth saved by another tab in between would lose its
+    // expectation.
+    await store.save(SAVE);
+
+    const removed = writes.indexOf('remove:oidc.expectedUserId');
+    expect(removed).toBeGreaterThanOrEqual(0);
+    expect(removed).toBeLessThan(writes.indexOf('set:oidc.state'));
   });
 
   it('peek returns the stash without clearing it (state can be verified first)', async () => {
