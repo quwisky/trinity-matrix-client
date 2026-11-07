@@ -491,6 +491,7 @@ export class MessageComposerComponent {
     // Unassigned on purpose: its effects are its whole lifetime.
     new ComposerDrafts({
       roomId: this.roomId,
+      accountId: this.accountId,
       editing: this.editing,
       editTargetId: this.editTargetId,
       draft: this.draft,

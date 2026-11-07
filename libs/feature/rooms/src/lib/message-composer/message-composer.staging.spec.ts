@@ -294,6 +294,27 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     expect(stagedFiles(cmp)).toEqual([]);
   });
 
+  it('discards a staged attachment when another account opens the same room', async () => {
+    const { fixture } = await renderComposer({
+      accountId: '@a:hs',
+      roomId: '!r:hs',
+    });
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    cmp.submitMedia.subscribe((e) =>
+      sent.push(...e.items.map((i) => i.file.name)),
+    );
+    pickFiles(cmp, [png('a-only.png')]);
+    expect(stagedFiles(cmp).map((f) => f.name)).toEqual(['a-only.png']);
+
+    fixture.componentRef.setInput('accountId', '@b:hs');
+    fixture.detectChanges();
+    cmp.submit();
+
+    expect(stagedFiles(cmp)).toEqual([]);
+    expect(sent).toEqual([]); // never uploaded as account B
+  });
+
   it('Escape discards a staged attachment', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;

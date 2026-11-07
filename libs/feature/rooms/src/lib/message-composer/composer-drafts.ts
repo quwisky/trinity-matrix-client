@@ -8,6 +8,8 @@ import {
 /** What the drafts need from the composer around them. */
 export interface ComposerDraftsPorts {
   readonly roomId: Signal<string | null>;
+  /** The same room under another account is another conversation. */
+  readonly accountId: Signal<string | null>;
   readonly editing: Signal<boolean>;
   readonly editTargetId: Signal<string | null>;
   /** The body to prefill when an edit starts. */
@@ -49,18 +51,29 @@ export class ComposerDrafts {
   private wasEditing = false;
   private wasEditTargetId: string | null = null;
   private wasRoomId: string | null | undefined = undefined;
+  private wasConversation: string | undefined = undefined;
 
   constructor(private readonly ports: ComposerDraftsPorts) {
-    const { roomId, editing, editTargetId, draft, composeDraft, text, store } =
-      ports;
+    const {
+      roomId,
+      accountId,
+      editing,
+      editTargetId,
+      draft,
+      composeDraft,
+      text,
+      store,
+    } = ports;
 
-    // On a room/thread change, drop what belonged to the old room and swap drafts. The composer
+    // On a room, thread or account change, drop what belonged to the old room and swap drafts. The composer
     // instance is reused across rooms, so otherwise a half-typed message leaks into the next one.
     effect(() => {
       const id = roomId();
-      if (id !== this.wasRoomId) {
+      const conversation = `${accountId() ?? ''}\u0000${id ?? ''}`;
+      if (conversation !== this.wasConversation) {
         const prev = this.wasRoomId;
         this.wasRoomId = id;
+        this.wasConversation = conversation;
         untracked(() => {
           ports.leaveRoom(prev);
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
