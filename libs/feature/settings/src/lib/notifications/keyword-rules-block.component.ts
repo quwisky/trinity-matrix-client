@@ -17,6 +17,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   KeywordRulesService,
   KeywordValidationError,
+  PushRulesService,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
 import {
@@ -52,6 +53,9 @@ import { Subject, takeUntil } from 'rxjs';
 export class KeywordRulesBlockComponent {
   private readonly keywordsSvc = inject(KeywordRulesService);
   private readonly matrix = inject(MatrixClientService);
+  /** The section connects it; read here only for its revision. */
+  private readonly push = inject(PushRulesService);
+  private accountId: string | null | undefined;
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -97,14 +101,22 @@ export class KeywordRulesBlockComponent {
   readonly nothingTyped = computed(() => this.typedWord().length === 0);
 
   constructor() {
-    // Show the active account's keywords, and drop the previous account's row state.
+    // Re-read on every sync of the active account's rules; on a switch, also drop the
+    // previous account's writes, row state and half-typed word.
     effect(() => {
-      this.matrix.activeUserId();
+      const accountId = this.matrix.activeUserId();
+      this.push.revision();
       untracked(() => {
-        this.accountSwitches.next();
-        this.adding.set(false);
-        this.busy.set(new Set());
-        this.optimisticSound.set(new Map());
+        if (accountId !== this.accountId) {
+          this.accountSwitches.next();
+          this.adding.set(false);
+          this.busy.set(new Set());
+          this.optimisticSound.set(new Map());
+          if (this.accountId !== undefined) {
+            this.keywordForm().reset({ word: '' });
+          }
+          this.accountId = accountId;
+        }
         this.reload();
       });
     });

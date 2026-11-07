@@ -1,12 +1,18 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import {
+  ClientEvent,
+  EventType,
   PushRuleKind,
+  type MatrixEvent,
   RuleId,
   type IPushRule,
   type IPushRules,
 } from 'matrix-js-sdk';
 import { Observable, defer, forkJoin, from, map, throwError } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import {
+  MatrixClientService,
+  projectFromClient,
+} from '@trinity/data-access/matrix-client';
 
 /**
  * One account-level notification preference, mapping a labelled toggle to a predefined
@@ -101,9 +107,36 @@ interface ResolvedRule {
 @Injectable({ providedIn: 'root' })
 export class PushRulesService {
   private readonly matrix = inject(MatrixClientService);
+  private readonly _revision = signal(0);
+  private readonly onAccountData = (event: MatrixEvent): void => {
+    if (event.getType() === EventType.PushRules) this.bumpRevision();
+  };
+  private readonly projection = projectFromClient({
+    id: 'notifications.push-rules',
+    matrix: this.matrix,
+    bind: (client) => client.on(ClientEvent.AccountData, this.onAccountData),
+    unbind: (client) => client.off(ClientEvent.AccountData, this.onAccountData),
+    rebuild: () => this.bumpRevision(),
+    reset: () => this.bumpRevision(),
+  });
+
+  /**
+   * Changes whenever the active account's synced push rules may have changed: a sync, the
+   * echo of a write, or an account switch. Read it to re-run {@link isOn} and keyword reads.
+   */
+  readonly revision = this._revision.asReadonly();
 
   /** The notification preferences to surface, in display order. */
   readonly toggles = TOGGLES;
+
+  /** Track the active account's push rules for {@link revision}; pair with {@link disconnect}. */
+  connect(): void {
+    this.projection.connect();
+  }
+
+  disconnect(): void {
+    this.projection.disconnect();
+  }
 
   /** Whether the toggle is "on" from the user's perspective (accounting for `invert`). */
   isOn(toggle: PushRuleToggle): boolean {
@@ -135,6 +168,10 @@ export class PushRulesService {
         ),
       ).pipe(map(() => void 0));
     });
+  }
+
+  private bumpRevision(): void {
+    this._revision.update((n) => n + 1);
   }
 
   /** Every candidate rule for the toggle that the synced ruleset actually defines. */

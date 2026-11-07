@@ -34,6 +34,7 @@ const reactionSetOn = vi.fn(() => of(undefined));
 const reactionConnect = vi.fn();
 const reactionDisconnect = vi.fn();
 const activeAccount = signal<string | null>('@me:hs');
+const pushRevision = signal(0);
 
 beforeEach(() => {
   soundEnabled.set(true);
@@ -55,7 +56,12 @@ async function build(over: { setOn?: Mock } = {}) {
   const toastShow = vi.fn();
   const { fixture } = await render(NotificationsSectionComponent, {
     providers: [
-      MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
+      MockProvider(PushRulesService, {
+        toggles: TOGGLES,
+        isOn,
+        setOn,
+        revision: pushRevision.asReadonly(),
+      }),
       MockProvider(NotificationSoundService, {
         enabled: soundEnabled.asReadonly(),
         setOn: soundSetOn,
@@ -275,6 +281,29 @@ describe('NotificationsSectionComponent', () => {
       (t: PushRuleToggle) => t.id === '.m.rule.roomnotif',
     );
     activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[0])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('refreshes the toggles when the account’s push rules sync', async () => {
+    const { cmp, fixture, isOn } = await build();
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+
+    isOn.mockImplementation(() => true);
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('keeps a pending toggle’s new value when the rules sync mid-write', async () => {
+    const { cmp, fixture, isOn } = await build({ setOn: vi.fn(() => NEVER) });
+
+    cmp.toggle(TOGGLES[0], false);
+    isOn.mockImplementation(() => true);
+    pushRevision.update((n) => n + 1);
     fixture.detectChanges();
 
     expect(cmp.checked(TOGGLES[0])).toBe(false);

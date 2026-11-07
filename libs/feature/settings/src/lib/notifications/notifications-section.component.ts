@@ -72,19 +72,33 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   protected readonly reactionsKey = 'reaction-notifications';
 
   constructor() {
+    // Re-read the rule toggles on every sync of the account's rules and on a switch; a
+    // toggle with a write in flight keeps its optimistic value.
     effect(() => {
       const accountId = this.matrix.activeUserId();
-      if (this.accountId !== undefined && this.accountId !== accountId) {
-        this.accountSwitches.next();
-        this.state.set(untracked(() => this.seededToggles()));
-        this.pending.set(new Set());
-      }
-      this.accountId = accountId;
+      this.push.revision();
+      untracked(() => {
+        const switched =
+          this.accountId !== undefined && this.accountId !== accountId;
+        if (switched) {
+          this.accountSwitches.next();
+          this.pending.set(new Set());
+        }
+        this.accountId = accountId;
+        const pending = this.pending();
+        const next = new Map(switched ? [] : this.state());
+        for (const toggle of this.toggles) {
+          if (!pending.has(toggle.id)) {
+            next.set(toggle.id, this.push.isOn(toggle));
+          }
+        }
+        this.state.set(next);
+      });
     });
   }
 
   ngOnInit(): void {
-    this.state.set(this.seededToggles());
+    this.push.connect();
     // Tracks account data, so a value that arrives after this page has rendered (a cold
     // load, or a change made on another device) still shows.
     this.sound.connect();
@@ -92,6 +106,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.push.disconnect();
     this.sound.disconnect();
     this.reactions.disconnect();
   }
@@ -227,13 +242,6 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
           }
         },
       });
-  }
-
-  /** Each rule toggle as the active account's synced rules have it. */
-  private seededToggles(): Map<string, boolean> {
-    return new Map(
-      this.toggles.map((toggle) => [toggle.id, this.push.isOn(toggle)]),
-    );
   }
 
   private setState(id: string, on: boolean): void {

@@ -7,6 +7,7 @@ import { describe, expect, it, type Mock, vi } from 'vitest';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import {
   KeywordRulesService,
+  PushRulesService,
   KeywordValidationError,
   type KeywordRule,
 } from '@trinity/data-access/notifications';
@@ -37,6 +38,7 @@ const OFF: KeywordRule = {
 };
 
 const activeAccount = signal<string | null>('@me:hs');
+const pushRevision = signal(0);
 
 async function build(
   over: {
@@ -58,15 +60,17 @@ async function build(
   const setSound = over.setSound ?? vi.fn(() => of(undefined));
   const find = over.find ?? vi.fn(() => undefined);
   const toastShow = vi.fn();
+  const hasLoaded = vi.fn(() => over.hasLoaded ?? true);
   activeAccount.set('@me:hs');
   const { fixture } = await render(KeywordRulesBlockComponent, {
     providers: [
       MockProvider(MatrixClientService, {
         activeUserId: activeAccount.asReadonly(),
       }),
+      MockProvider(PushRulesService, { revision: pushRevision.asReadonly() }),
       MockProvider(KeywordRulesService, {
         keywords,
-        hasLoaded: () => over.hasLoaded ?? true,
+        hasLoaded,
         add,
         remove,
         setSound,
@@ -79,6 +83,7 @@ async function build(
     cmp: fixture.componentInstance,
     fixture,
     keywords,
+    hasLoaded,
     add,
     remove,
     setSound,
@@ -117,6 +122,30 @@ describe('KeywordRulesBlockComponent', () => {
     expect(keywords).toHaveBeenCalledTimes(2);
     expect(rows(fixture)).toHaveLength(1);
     expect(rows(fixture)[0].textContent).toContain('trinity');
+  });
+
+  it('shows the keywords once the account’s rules arrive', async () => {
+    const { fixture, hasLoaded } = await build({
+      keywords: [[], [LOUD]],
+      hasLoaded: false,
+    });
+    expect(text(fixture)).toContain('Loading your keywords');
+
+    hasLoaded.mockReturnValue(true);
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(rows(fixture)).toHaveLength(1);
+  });
+
+  it('clears a half-typed keyword on an account switch', async () => {
+    const { cmp, fixture } = await build();
+    cmp.keywordForm.word().value.set('depl');
+
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.keywordForm.word().value()).toBe('');
   });
 
   it('drops the previous account’s write after a switch', async () => {
