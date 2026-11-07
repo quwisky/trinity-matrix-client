@@ -4,12 +4,14 @@ import {
   EventType,
   HistoryVisibility,
   MatrixEventEvent,
+  NotificationCountType,
   Preset,
   ReceiptType,
   RoomEvent,
   RoomMemberEvent,
   RoomStateEvent,
   MatrixError,
+  type EmittedEvents,
   type EventTimeline,
   type MatrixClient,
   type MatrixEvent,
@@ -189,14 +191,66 @@ export class RoomLibraryService {
     state: RoomState,
     member: RoomMember,
   ): void => {
-    void state;
     // A DM peer's profile can arrive or change without a sync (`loadMembersIfNeeded` from opening
     // a member list) and their avatar IS the room's picture. Gated on the DM map so a member
-    // event in a large room does not rebuild the whole list, which is why this listener stays
-    // out of the coalesced rebuild.
+    // event in a large room does not rebuild the list, which is why this listener stays out of
+    // the coalesced rebuild. A profile is not one room's, so every row is rebuilt.
     if (this.dmPeers.has(member.userId)) {
+      this.rebuildAll = true;
       this.projection.schedule();
+    } else {
+      this.markDirty(state.roomId);
     }
+  };
+
+  /**
+   * Rooms whose rows the next {@link refresh} rebuilds; every other row keeps its summary.
+   * Events mark a room here rather than rebuilding it, so a sync rebuilds the rooms it touched.
+   */
+  private dirtyRooms = new Set<string>();
+  /** Rebuild every row next time: something that no single room names has changed. */
+  private rebuildAll = true;
+  /** Sync state of the last rebuild; a change (a reconnect, a catch-up) rebuilds every row. */
+  private builtAtSyncState: string | null = null;
+
+  /** Mark a room's row for the next rebuild, or every row when the event names no room. */
+  private markDirty(roomId: string | undefined): void {
+    if (roomId) this.dirtyRooms.add(roomId);
+    else this.rebuildAll = true;
+  }
+
+  /** A room-naming event that changes the row on its own, not only alongside a sync. */
+  private onRoomChanged(roomId: string | undefined): void {
+    this.markDirty(roomId);
+    this.projection.schedule();
+  }
+
+  private readonly onRoomEvent = (_event: unknown, room?: Room): void =>
+    this.onRoomChanged(room?.roomId);
+
+  /** A change the next sync's rebuild picks up, as it did when every sync rebuilt every row. */
+  private readonly onRoomTouched = (
+    _event: MatrixEvent | undefined,
+    room: Room | undefined,
+  ): void => this.markDirty(room?.roomId);
+
+  private readonly onStateEvent = (
+    event: MatrixEvent,
+    state: RoomState | undefined,
+  ): void => {
+    const type = event.getType?.();
+    // An upgrade (tombstone, or the successor's create event) can change more than one row.
+    if (type === EventType.RoomTombstone || type === EventType.RoomCreate) {
+      this.rebuildAll = true;
+    } else {
+      this.markDirty(state?.roomId ?? event.getRoomId?.());
+    }
+  };
+
+  /** Account data (`m.direct`, push rules) belongs to no one room. */
+  private readonly onAccountData = (): void => {
+    this.rebuildAll = true;
+    this.projection.schedule();
   };
 
   /**
@@ -206,11 +260,12 @@ export class RoomLibraryService {
    * preview and order would stay as they were until the next sync.
    */
   private builtFrom = new Map<string, EventTimeline | null>();
-  private readonly onPagedIn = (
-    _event: MatrixEvent | undefined,
+  private readonly onTimeline = (
+    event: MatrixEvent | undefined,
     room: Room | undefined,
     toStartOfTimeline: boolean | undefined,
   ): void => {
+    this.markDirty(room?.roomId ?? event?.getRoomId());
     if (
       toStartOfTimeline &&
       room &&
@@ -227,6 +282,7 @@ export class RoomLibraryService {
    * changes neither, so it does not rebuild the list.
    */
   private readonly onDecrypted = (event: MatrixEvent): void => {
+    this.markDirty(event.getRoomId());
     const client = this.projection.client();
     if (client && decryptionChangesRow(client, event)) {
       this.projection.schedule();
@@ -256,6 +312,35 @@ export class RoomLibraryService {
   private readonly _directRoomIds = signal<ReadonlySet<string>>(new Set());
   readonly directRoomIds = this._directRoomIds.asReadonly();
 
+  /** The room-naming listeners {@link projection} binds; each marks the row it changes. */
+  private readonly roomListeners: readonly [
+    EmittedEvents,
+    (...args: never[]) => void,
+  ][] = [
+    // Name, receipts (a read clears the count), tags (favourite re-sorts), room account data
+    // (marked unread) and the edit a preview resolves to can all change with no sync.
+    [RoomEvent.Name, (room?: Room) => this.onRoomChanged(room?.roomId)],
+    [RoomEvent.Receipt, this.onRoomEvent],
+    [RoomEvent.Tags, this.onRoomEvent],
+    [RoomEvent.AccountData, this.onRoomEvent],
+    [
+      MatrixEventEvent.Replaced,
+      (event?: MatrixEvent) => this.onRoomChanged(event?.getRoomId()),
+    ],
+    [ClientEvent.AccountData, this.onAccountData],
+    [MatrixEventEvent.Decrypted, this.onDecrypted],
+    [RoomEvent.Timeline, this.onTimeline],
+    [
+      RoomEvent.TimelineReset,
+      (room: Room | undefined) => this.markDirty(room?.roomId),
+    ],
+    [RoomEvent.Redaction, this.onRoomTouched],
+    [RoomEvent.RedactionCancelled, this.onRoomTouched],
+    [RoomEvent.LocalEchoUpdated, this.onRoomTouched],
+    [RoomStateEvent.Events, this.onStateEvent],
+    [RoomStateEvent.Members, this.onMemberChanged],
+  ];
+
   /**
    * Active-Account Projection Runtime entry: {@link projectFromClient} owns listener identity,
    * coalescing, switching and acknowledgement; only the event list and rebuild stay here.
@@ -263,40 +348,23 @@ export class RoomLibraryService {
   private readonly projection = projectFromClient({
     id: 'rooms.list',
     matrix: this.matrix,
-    events: [
-      ClientEvent.Sync,
-      ClientEvent.Room,
-      RoomEvent.Name,
-      RoomEvent.MyMembership,
-      // Receipt fires when a room is read and its count clears. (UnreadNotifications is
-      // Room-only, not re-emitted here.) Decrypted is bound below.
-      // Which edit the preview resolves to can change with no Sync: a cancelled echo.
-      MatrixEventEvent.Replaced,
-      RoomEvent.Receipt,
-      // Room tags (e.g. `m.favourite`, the favourite flag) can change from another device;
-      // rebuild so a remote favourite/unfavourite re-partitions and re-sorts the list live.
-      RoomEvent.Tags,
-      // Room account data carries the marked-unread flag; without it a room flagged on another
-      // device would not surface until an unrelated event rebuilt the list.
-      RoomEvent.AccountData,
-    ],
+    // A room joining or leaving changes the set of rows, which rebuilds every row.
+    events: [ClientEvent.Sync, ClientEvent.Room, RoomEvent.MyMembership],
     rebuild: () => this.refresh(),
     // One sync's events span several tasks; rebuild once per sync, not once per room.
     coalesceMs: 100,
-    // Bound by hand because typing has its own per-Room coalescer and member changes only
-    // rebuild the Room list when a DM peer's profile affects its summary. Room
-    // Administration owns the member-roster projection itself.
+    // Bound by hand because these handlers need the room they name, typing has its own
+    // per-Room coalescer and member changes only rebuild the Room list when a DM peer's
+    // profile affects its summary. Room Administration owns the member-roster projection.
     bind: (client) => {
-      client.on(MatrixEventEvent.Decrypted, this.onDecrypted);
-      client.on(RoomEvent.Timeline, this.onPagedIn);
-      client.on(RoomStateEvent.Members, this.onMemberChanged);
+      for (const [event, handler] of this.roomListeners)
+        client.on(event, handler);
       client.on(RoomEvent.MyMembership, this.typing.onMyMembership);
       client.on(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
     unbind: (client) => {
-      client.off(MatrixEventEvent.Decrypted, this.onDecrypted);
-      client.off(RoomEvent.Timeline, this.onPagedIn);
-      client.off(RoomStateEvent.Members, this.onMemberChanged);
+      for (const [event, handler] of this.roomListeners)
+        client.off(event, handler);
       client.off(RoomEvent.MyMembership, this.typing.onMyMembership);
       client.off(RoomMemberEvent.Typing, this.typing.onTypingChanged);
     },
@@ -304,6 +372,9 @@ export class RoomLibraryService {
       this.encryption = new RoomEncryptionFlags();
       this._rooms.set([]);
       this.builtFrom = new Map();
+      this.dirtyRooms = new Set();
+      this.rebuildAll = true;
+      this.builtAtSyncState = null;
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
       this.typing.reset();
@@ -393,7 +464,10 @@ export class RoomLibraryService {
         ? client.setRoomTag(roomId, tag, {})
         : client.deleteRoomTag(roomId, tag);
       return from(write).pipe(
-        tap(() => this.refresh()),
+        tap(() => {
+          this.markDirty(roomId);
+          this.refresh();
+        }),
         map(() => void 0),
       );
     });
@@ -498,6 +572,7 @@ export class RoomLibraryService {
       // and `Room.accountData` is only written from /sync, so a post-write refresh alone
       // re-reads the OLD value.
       this.pendingUnread.set(roomId, unread);
+      this.markDirty(roomId);
       this.refresh();
       return from(
         client.setRoomAccountData(roomId, EventType.MarkedUnread, { unread }),
@@ -505,6 +580,7 @@ export class RoomLibraryService {
         map(() => void 0),
         catchError((err: unknown) => {
           this.pendingUnread.delete(roomId); // put the row back
+          this.markDirty(roomId);
           this.refresh();
           return throwError(() => err);
         }),
@@ -696,6 +772,12 @@ export class RoomLibraryService {
     return this.matrix.isInitialized ? this.matrix.instance : null;
   }
 
+  /**
+   * Rebuild the rows of the rooms marked dirty since the last rebuild, or every row when
+   * something no single room names changed, and re-sort only when a sort key or the set of
+   * rooms changed. A clean row keeps its summary unless its unread count moved: the SDK
+   * updates the count from a sync without an event the client re-emits.
+   */
   private refresh(): void {
     if (!this.matrix.isInitialized) {
       return;
@@ -703,9 +785,11 @@ export class RoomLibraryService {
     const client = this.matrix.instance;
     const accountId = this.matrix.activeUserId() ?? client.getUserId?.() ?? '';
     const { ids: direct, userByRoom } = directMapOf(client);
+    const syncState = client.getSyncState?.() ?? null;
 
+    const previousRooms = untracked(this._rooms);
     const previous = new Map(
-      untracked(this._rooms).map((room) => [room.id, room] as const),
+      previousRooms.map((room) => [room.id, room] as const),
     );
     const encryption = this.encryption;
     const crypto = client.getCrypto?.();
@@ -713,24 +797,50 @@ export class RoomLibraryService {
     const joined = client
       .getRooms()
       .filter((r) => !r.isSpaceRoom() && r.getMyMembership() === 'join');
-    this._rooms.set(
-      joined
-        .map((r) =>
-          reuseUnchanged(
-            previous.get(r.roomId),
-            this.applyPendingUnread(
-              buildRoomSummary(
-                r,
-                accountId,
-                userByRoom.get(r.roomId),
-                encryption,
-                !!crypto,
-              ),
-            ),
+    const all =
+      this.rebuildAll ||
+      syncState !== this.builtAtSyncState ||
+      joined.length !== previous.size ||
+      joined.some((room) => !previous.has(room.roomId));
+    const build = (room: Room): RoomSummary =>
+      reuseUnchanged(
+        previous.get(room.roomId),
+        this.applyPendingUnread(
+          buildRoomSummary(
+            room,
+            accountId,
+            userByRoom.get(room.roomId),
+            encryption,
+            !!crypto,
           ),
-        )
-        .sort(compareRoomSummaries),
-    );
+        ),
+      );
+
+    let rebuilt: Room[];
+    let rooms: RoomSummary[];
+    if (all) {
+      rebuilt = joined;
+      rooms = joined.map(build).sort(compareRoomSummaries);
+      this.builtFrom = new Map();
+    } else {
+      const byId = new Map(joined.map((room) => [room.roomId, room] as const));
+      rebuilt = [];
+      let resort = false;
+      rooms = previousRooms.map((row) => {
+        const room = byId.get(row.id) as Room;
+        if (!this.dirtyRooms.has(row.id) && !countsMoved(room, row)) return row;
+        rebuilt.push(room);
+        const next = build(room);
+        resort ||= next !== row && sortKeyChanged(row, next);
+        return next;
+      });
+      if (resort) rooms.sort(compareRoomSummaries);
+    }
+    this._rooms.set(rooms);
+    this.dirtyRooms = new Set();
+    this.rebuildAll = false;
+    this.builtAtSyncState = syncState;
+
     const unanswered = joined
       .filter(
         (room) =>
@@ -740,7 +850,9 @@ export class RoomLibraryService {
     if (unanswered.length > 0) {
       // Any answer can change the row: the lock, or a preview held back until now.
       const rebuild = () => {
-        if (this.encryption === encryption) this.projection.schedule();
+        if (this.encryption !== encryption) return;
+        for (const roomId of unanswered) this.dirtyRooms.add(roomId);
+        this.projection.schedule();
       };
       void encryption
         .refreshAll(crypto, unanswered, rebuild)
@@ -748,12 +860,13 @@ export class RoomLibraryService {
           if (answered > 0) rebuild();
         });
     }
-    this.builtFrom = new Map(
-      joined.map((room) => {
-        const timeline = room.getLiveTimeline();
-        return [room.roomId, timeline.getEvents().length ? timeline : null];
-      }),
-    );
+    for (const room of rebuilt) {
+      const timeline = room.getLiveTimeline();
+      this.builtFrom.set(
+        room.roomId,
+        timeline.getEvents().length ? timeline : null,
+      );
+    }
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
   }
@@ -774,4 +887,28 @@ export class RoomLibraryService {
       hasUnread: summary.unreadCount > 0 || pending,
     };
   }
+}
+
+/**
+ * The SDK's unread or member counts no longer match the row's. A sync updates them without an
+ * event naming the room, possibly after this room's row was rebuilt mid-sync.
+ */
+function countsMoved(room: Room, row: RoomSummary): boolean {
+  return (
+    room.getJoinedMemberCount() !== row.memberCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Total) !==
+      row.unreadCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
+      row.highlightCount
+  );
+}
+
+/** Whether `next` sorts by different keys than `previous`; see {@link compareRoomSummaries}. */
+function sortKeyChanged(previous: RoomSummary, next: RoomSummary): boolean {
+  return (
+    previous.favourite !== next.favourite ||
+    previous.lowPriority !== next.lowPriority ||
+    previous.activityTs !== next.activityTs ||
+    previous.name !== next.name
+  );
 }
