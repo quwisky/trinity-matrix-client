@@ -5,6 +5,7 @@ import {
   type Signal,
   type WritableSignal,
 } from '@angular/core';
+import { isWebKit } from '@trinity/platform-native';
 import { type EditResult } from '@trinity/util/matrix';
 
 /**
@@ -44,12 +45,6 @@ function splice(
     insert,
   );
   return el.value === expected;
-}
-
-/** Safari and every iOS browser; Chromium and Electron also say AppleWebKit, but with Chrome/. */
-function isWebKit(): boolean {
-  const ua = navigator.userAgent;
-  return ua.includes('AppleWebKit') && !ua.includes('Chrome/');
 }
 
 /** The span of `before` that differs from `after`, and what `after` has there instead. */
