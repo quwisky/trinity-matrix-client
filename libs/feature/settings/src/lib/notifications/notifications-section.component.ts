@@ -59,6 +59,11 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly state = signal<ReadonlyMap<string, boolean>>(new Map());
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
+  /**
+   * Written values the synced rules don't show yet, by rule id. The SDK updates its local
+   * rules only from the sync echo, so an earlier sync would otherwise flip the toggle back.
+   */
+  private readonly awaitingSync = new Map<string, boolean>();
   private accountId: string | null | undefined;
   /** Emits on an account switch; releases the previous account's writes. */
   private readonly accountSwitches = new Subject<void>();
@@ -73,7 +78,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
 
   constructor() {
     // Re-read the rule toggles on every sync of the account's rules and on a switch; a
-    // toggle with a write in flight keeps its optimistic value.
+    // toggle keeps its written value until the sync carries it.
     effect(() => {
       const accountId = this.matrix.activeUserId();
       this.push.revision();
@@ -83,13 +88,18 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
         if (switched) {
           this.accountSwitches.next();
           this.pending.set(new Set());
+          this.awaitingSync.clear();
         }
         this.accountId = accountId;
         const pending = this.pending();
         const next = new Map(switched ? [] : this.state());
         for (const toggle of this.toggles) {
-          if (!pending.has(toggle.id)) {
-            next.set(toggle.id, this.push.isOn(toggle));
+          if (pending.has(toggle.id)) continue;
+          const synced = this.push.isOn(toggle);
+          const written = this.awaitingSync.get(toggle.id);
+          if (written === undefined || written === synced) {
+            this.awaitingSync.delete(toggle.id);
+            next.set(toggle.id, synced);
           }
         }
         this.state.set(next);
@@ -228,11 +238,13 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
       .subscribe({
         next: () => {
           if (this.isCurrentAccount(accountId)) {
+            this.awaitingSync.set(toggle.id, on);
             this.setPending(toggle.id, false);
           }
         },
         error: () => {
           if (this.isCurrentAccount(accountId)) {
+            this.awaitingSync.delete(toggle.id);
             this.setState(toggle.id, !on); // revert the optimistic flip
             this.setPending(toggle.id, false);
             this.toast.show('Could not update your notification settings.', {

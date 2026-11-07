@@ -310,6 +310,46 @@ describe('NotificationsSectionComponent', () => {
     expect(cmp.checked(TOGGLES[1])).toBe(true);
   });
 
+  it('keeps a written toggle’s value until the sync carries it', async () => {
+    const { cmp, fixture, isOn } = await build();
+    const sync = () => {
+      pushRevision.update((n) => n + 1);
+      fixture.detectChanges();
+    };
+
+    cmp.toggle(TOGGLES[1], true); // resolves at once; the local rules are still old
+    sync();
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+
+    isOn.mockImplementation(() => true); // the write's echo
+    sync();
+    isOn.mockImplementation((t: PushRuleToggle) => t.id === '.m.rule.master');
+    sync(); // a later change from elsewhere shows again
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('keeps the last write when an older sync lands after two quick writes', async () => {
+    const { cmp, fixture, isOn } = await build();
+
+    cmp.toggle(TOGGLES[1], true);
+    cmp.toggle(TOGGLES[1], false);
+    isOn.mockImplementation(() => true); // the first write's echo, after the second resolved
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('forgets an unsynced write on an account switch', async () => {
+    const { cmp, fixture } = await build();
+
+    cmp.toggle(TOGGLES[1], true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
   it('does not let the previous account’s failed toggle write touch the new account', async () => {
     const write = new Subject<void>();
     const { cmp, fixture, toastShow } = await build({
