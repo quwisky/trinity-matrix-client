@@ -125,18 +125,10 @@ describe('modern room shell layout contracts', () => {
     expect(ruleBody(railCss, '.pill')).not.toContain(
       'background: var(--trinity-surface-app)',
     );
-    // Classic keeps today's sidebar tone; every other Theme inherits the app ground.
+    // The sidebar inherits the app ground.
     expect(variables).toMatch(
       /--trinity-surface-sidebar:\s*var\(--trinity-surface-app\)/,
     );
-    for (const selector of [
-      ":root[data-theme='classic']:not(.dark)",
-      ":root[data-theme='classic'].dark",
-    ]) {
-      expect(ruleBody(variables, selector), selector).toContain(
-        '--trinity-surface-sidebar:',
-      );
-    }
 
     const main = ruleBody(roomsCss, '.main');
     expect(main).toContain('background: var(--trinity-surface-pane)');

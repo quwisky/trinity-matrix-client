@@ -17,6 +17,9 @@ const VERSION_ONE_APPEARANCE_PATHS: Readonly<Record<string, string>> = {
   'theme.codeLineNumbers': 'appearance.codeLinePresentation',
 };
 
+/** Import-only: Midnight (and Onyx before it) became Graphite, kept as dark by true black. */
+const TRUE_BLACK_THEMES: ReadonlySet<unknown> = new Set(['midnight', 'onyx']);
+
 /** One setting the document would move, and where it would move it. */
 export interface ConfigChange {
   readonly path: string;
@@ -116,6 +119,13 @@ export function planConfigApply(
     },
     version,
   );
+  if (
+    TRUE_BLACK_THEMES.has(pasted.get('appearance.theme')) &&
+    !pasted.has('appearance.trueBlack') &&
+    entries.some(({ path }) => path === 'appearance.trueBlack')
+  ) {
+    pasted.set('appearance.trueBlack', true);
+  }
   if (migratedPaths.size > 0) {
     warnings.unshift(
       'Appearance settings from portable format version 1 were migrated to their current paths.',

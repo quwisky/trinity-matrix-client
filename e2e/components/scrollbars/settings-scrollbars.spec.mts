@@ -262,7 +262,7 @@ test.describe('Settings scrollbars', () => {
     const railColours: string[] = [];
     for (const theme of [
       { theme: 'amethyst', dark: false },
-      { theme: 'midnight', dark: true },
+      { theme: 'amethyst', dark: true },
     ]) {
       await page.evaluate(({ theme, dark }) => {
         document.documentElement.dataset['theme'] = theme;

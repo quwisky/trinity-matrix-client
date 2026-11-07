@@ -356,6 +356,7 @@ test.describe('Settings', () => {
     // overlay closes again. jsdom can't drive this overlay; the unit spec covers the rest.
     await trigger.click();
     await expect(amethyst).toBeVisible();
+    await expect(page.getByRole('option')).toHaveText(['Graphite', 'Amethyst']);
     await amethyst.click();
     await expect.poll(() => themeAttr(page)).toBe('amethyst');
     await expect(amethyst).toHaveCount(0); // closed after selecting

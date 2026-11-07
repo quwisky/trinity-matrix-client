@@ -64,8 +64,13 @@ export const MODE_PREFERENCE = definePreference({
 
 /** Retired theme ids and the Theme they became. */
 export const THEME_RENAMES: Readonly<Record<string, string>> = {
-  onyx: 'midnight',
+  onyx: 'trinity',
+  classic: 'trinity',
+  midnight: 'trinity',
 };
+
+/** Retired dark themes whose users keep their darkness through true black. */
+const TRUE_BLACK_THEMES: ReadonlySet<unknown> = new Set(['onyx', 'midnight']);
 
 export const THEME_PREFERENCE = definePreference({
   id: 'design-system.appearance.theme',
@@ -91,7 +96,7 @@ export const THEME_PREFERENCE = definePreference({
   persistence: {
     key: 'trinity.appearance.theme',
     legacyKeys: ['trinity.palette'],
-    migration: closedStringMigration(isThemeId, 2, THEME_RENAMES),
+    migration: closedStringMigration(isThemeId, 3, THEME_RENAMES),
   },
   validate: closedStringValidation(isThemeId, 'appearance-theme-invalid'),
 } satisfies PreferenceDescriptor<ThemeId>);
@@ -197,15 +202,21 @@ export const TRUE_BLACK_PREFERENCE = definePreference({
   },
   persistence: {
     key: 'trinity.appearance.true-black',
+    // A saved Theme stands in for a missing choice: a retired dark Theme means true black.
+    legacyKeys: ['trinity.appearance.theme', 'trinity.palette'],
     migration: {
       currentVersion: 1,
       migrate: (stored: StoredPreference): PreferenceValidation<boolean> =>
-        stored.version <= 1 && typeof stored.value === 'boolean'
-          ? { kind: 'accepted', value: stored.value }
-          : {
-              kind: 'rejected',
-              diagnostic: { code: 'appearance-preference-migration-rejected' },
-            },
+        isSavedThemeId(stored.value)
+          ? { kind: 'accepted', value: TRUE_BLACK_THEMES.has(stored.value) }
+          : stored.version <= 1 && typeof stored.value === 'boolean'
+            ? { kind: 'accepted', value: stored.value }
+            : {
+                kind: 'rejected',
+                diagnostic: {
+                  code: 'appearance-preference-migration-rejected',
+                },
+              },
     },
   },
   validate: (value: unknown): PreferenceValidation<boolean> =>
@@ -220,11 +231,12 @@ export const TRUE_BLACK_PREFERENCE = definePreference({
 export const DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
   [
     MODE_PREFERENCE,
+    // Hydrates first: it reads the saved Theme before Theme's migration rewrites it.
+    TRUE_BLACK_PREFERENCE,
     THEME_PREFERENCE,
     TEXT_SIZE_PREFERENCE,
     DENSITY_PREFERENCE,
     ROOM_LIST_PREFERENCE,
-    TRUE_BLACK_PREFERENCE,
   ];
 
 export function provideDesignSystemAppearancePreferences(): EnvironmentProviders {
@@ -239,6 +251,14 @@ function isThemeMode(value: unknown): value is ThemeMode {
 
 function isThemeId(value: unknown): value is ThemeId {
   return THEME_CATALOG.themes.some(({ id }) => id === value);
+}
+
+/** A Theme id as storage may hold it: current, or retired and renamed. */
+function isSavedThemeId(value: unknown): value is string {
+  return (
+    isThemeId(value) ||
+    (typeof value === 'string' && Object.hasOwn(THEME_RENAMES, value))
+  );
 }
 
 function isTextSize(value: unknown): value is TextSize {

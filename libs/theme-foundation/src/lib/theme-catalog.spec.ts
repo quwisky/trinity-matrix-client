@@ -60,7 +60,7 @@ function authoredStatements(body: string): readonly string[] {
 }
 
 describe('Theme Foundation catalog', () => {
-  it('offers Graphite as the default and Classic, Midnight and Amethyst', () => {
+  it('offers Graphite as the default and Amethyst', () => {
     expect(
       THEME_CATALOG.themes.map(({ id, label, dataTheme }) => ({
         id,
@@ -69,8 +69,6 @@ describe('Theme Foundation catalog', () => {
       })),
     ).toEqual([
       { id: 'trinity', label: 'Graphite', dataTheme: null },
-      { id: 'classic', label: 'Classic', dataTheme: 'classic' },
-      { id: 'midnight', label: 'Midnight', dataTheme: 'midnight' },
       { id: 'amethyst', label: 'Amethyst', dataTheme: 'amethyst' },
     ]);
     expect(THEME_CATALOG.defaults.theme).toBe('trinity');
@@ -196,12 +194,12 @@ describe('Theme Foundation stylesheet interface', () => {
     const bypassAttempts = `
       :root[data-theme="amethyst"] .component { font-family: serif; }
       @media (width > 1px) {
-        :root[data-theme=midnight] { --trinity-accent: image-set("asset.png" 1x); }
+        :root[data-theme=retired] { --trinity-accent: image-set("asset.png" 1x); }
       }
     `;
 
     expect(themeBlocks(bypassAttempts).map(({ selector }) => selector)).toEqual(
-      [':root[data-theme="amethyst"] .component', ':root[data-theme=midnight]'],
+      [':root[data-theme="amethyst"] .component', ':root[data-theme=retired]'],
     );
     expect(bypassAttempts).toMatch(ASSET_VALUE_FUNCTION);
   });
