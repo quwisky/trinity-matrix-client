@@ -440,6 +440,32 @@ it('starts the account without placing it when placement is no longer wanted', a
   expect(matrix.activateAccount).not.toHaveBeenCalled();
 });
 
+it('still places the account when none is active, wanted or not', async () => {
+  const { adapter, matrix, storage } = setup(null);
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(AuthenticatedAccountGrant.issue(session), {
+        ...activeIntent,
+        placementWanted: () => false,
+      }),
+    ),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(storage.setActiveForEstablishment).toHaveBeenCalledWith(
+    session.userId,
+  );
+  expect(matrix.activateAccount).toHaveBeenCalledWith(
+    session.userId,
+    'replace',
+  );
+});
+
 it("does not register the replaced Accounts' pushers again when left after activation", async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));

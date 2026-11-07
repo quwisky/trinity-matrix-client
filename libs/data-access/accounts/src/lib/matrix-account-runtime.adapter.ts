@@ -252,10 +252,11 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             return of(started);
           }
           // Read at the last moment: whoever asked may have moved on since, and must not
-          // lose the account they use now to this one.
+          // lose the account they use now to this one. With none active, it is placed
+          // anyway: a saved account with no active pointer would block the next launch.
           placed =
             intent.placement === 'active' &&
-            (intent.placementWanted?.() ?? true);
+            (!this.activeAccountId() || (intent.placementWanted?.() ?? true));
           if (!placed) {
             this.pendingNewAccounts.delete(session.userId);
             return of({ kind: 'ready' as const });
