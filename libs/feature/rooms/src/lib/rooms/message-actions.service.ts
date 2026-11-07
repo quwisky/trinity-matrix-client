@@ -1,5 +1,5 @@
 import { DestroyRef, Injectable, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspace';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnSurfaceService } from '@trinity/components/overlay';
@@ -21,8 +21,10 @@ import {
   finalize,
   filter,
   switchMap,
+  takeUntil,
   tap,
   throwError,
+  type MonoTypeOperatorFunction,
 } from 'rxjs';
 import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { type MatrixLinkClick } from '../matrix-link/matrix-link.directive';
@@ -74,6 +76,7 @@ export class MessageActionsService {
   private readonly timelineActions = inject(TimelineActionsService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly activeRoomId$ = toObservable(this.store.activeRoomId);
 
   /**
    * Which file of how many is uploading, and how far along, or null when idle.
@@ -218,7 +221,7 @@ export class MessageActionsService {
     // list has no row to scroll to. Already-loaded events resolve synchronously.
     this.timeline
       .loadEvent(eventId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(this.untilRoomChanges(), takeUntilDestroyed(this.destroyRef))
       .subscribe((loaded) => {
         if (loaded) {
           this.roomSurfaces.transition({ kind: 'reveal-message', eventId });
@@ -573,6 +576,7 @@ export class MessageActionsService {
       .pipe(
         filter((at): at is number => at !== null),
         switchMap((at) => this.timeline.jumpToDate(at)),
+        this.untilRoomChanges(),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
@@ -588,6 +592,15 @@ export class MessageActionsService {
         },
         error: () => void this.status.showError('Could not jump to that date.'),
       });
+  }
+
+  /**
+   * End a jump when the person leaves its room: its outcome would be shown in the room
+   * they moved to, and unsubscribing stops its paging.
+   */
+  private untilRoomChanges<T>(): MonoTypeOperatorFunction<T> {
+    const roomId = this.store.activeRoomId();
+    return takeUntil(this.activeRoomId$.pipe(filter((id) => id !== roomId)));
   }
 }
 

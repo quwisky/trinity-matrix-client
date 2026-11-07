@@ -10,7 +10,7 @@ import {
 import { type MediaTransferEvent } from '@trinity/data-access/media';
 import { TrnToastService } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
-import { EMPTY, Observable, Subject, of, throwError } from 'rxjs';
+import { EMPTY, Observable, Subject, finalize, of, throwError } from 'rxjs';
 import { DraftStoreService } from '@trinity/platform-native';
 import { conversationDraftKey } from '@trinity/data-access/timeline';
 import {
@@ -28,6 +28,7 @@ import { MessageActionsService } from './message-actions.service';
 import { RoomShellStore } from './room-shell-store';
 import { RoomSurfaceLifecycle } from './room-surface-lifecycle';
 import { ShellStatusService } from './shell-status.service';
+import { JumpToDateService } from '../jump-to-date/jump-to-date.service';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
 import type { Mention } from '@trinity/util/matrix';
 import {
@@ -88,6 +89,10 @@ describe('MessageActionsService', () => {
   const endPoll = vi.fn(() => of(undefined));
   const sendSticker = vi.fn(() => of(undefined));
   const loadOlder = vi.fn(() => of(undefined));
+  const loadEvent = vi.fn<() => Observable<boolean>>(() => of(true));
+  const jumpToDate = vi.fn<() => Observable<{ kind: 'too-far' }>>(() =>
+    of({ kind: 'too-far' }),
+  );
   const setTyping = vi.fn();
   const setDraft = vi.fn();
   const draft = signal('');
@@ -133,6 +138,8 @@ describe('MessageActionsService', () => {
       provide: ConversationTimelineStub,
       useValue: {
         loadOlder,
+        loadEvent,
+        jumpToDate,
         setTyping,
         messages: timelineMessages,
         openRoomId: null,
@@ -174,6 +181,7 @@ describe('MessageActionsService', () => {
     MockProvider(TrnToastService, { show: toastShow }),
     MockProvider(AccountRoutingService),
     MockProvider(MemberActionsService),
+    MockProvider(JumpToDateService, { pick$: () => of(1_000) }),
   ];
 
   function build(): {
@@ -827,6 +835,58 @@ describe('MessageActionsService', () => {
       actions.loadOlder();
 
       expect(loadOlder).toHaveBeenCalled();
+    });
+  });
+
+  describe('jumping to a message or a date', () => {
+    function pending<T>() {
+      const outcome = new Subject<T>();
+      let stopped = false;
+      return {
+        source: outcome.pipe(finalize(() => (stopped = true))),
+        outcome,
+        stopped: () => stopped,
+      };
+    }
+
+    it('shows nothing in the room switched to and stops paging the one left', () => {
+      const { actions, openRoom } = build();
+      openRoom('!r:hs');
+      TestBed.tick();
+      const event = pending<boolean>();
+      const date = pending<{ kind: 'too-far' }>();
+      loadEvent.mockReturnValueOnce(event.source);
+      jumpToDate.mockReturnValueOnce(date.source);
+
+      actions.onPanelJump('$pinned');
+      actions.jumpToDate();
+      openRoom('!other:hs');
+      TestBed.tick();
+      event.outcome.next(false);
+      date.outcome.next({ kind: 'too-far' });
+
+      expect(event.stopped()).toBe(true);
+      expect(date.stopped()).toBe(true);
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('reports a jump that fails in the room still open', () => {
+      const { actions, openRoom } = build();
+      openRoom('!r:hs');
+      TestBed.tick();
+      loadEvent.mockReturnValueOnce(of(false));
+
+      actions.onPanelJump('$pinned');
+      actions.jumpToDate();
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Could not load that message.',
+        expect.anything(),
+      );
+      expect(toastShow).toHaveBeenCalledWith(
+        expect.stringContaining('further back'),
+        expect.anything(),
+      );
     });
   });
 
