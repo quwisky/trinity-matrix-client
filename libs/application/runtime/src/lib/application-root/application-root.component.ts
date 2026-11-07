@@ -7,6 +7,7 @@ import {
   inject,
   signal,
   untracked,
+  type WritableSignal,
 } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -25,14 +26,16 @@ import {
   TrnSurfaceService,
   TrnToasterComponent,
 } from '@trinity/components/overlay';
+import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { SessionLockService } from '@trinity/platform-native';
 import { markRoutedPage } from '@trinity/util/ui';
 import { filter, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
-import type {
-  ApplicationStartupRecovery,
-  ApplicationStartupStage,
+import {
+  APPLICATION_STARTUP_STAGES,
+  type ApplicationStartupRecovery,
+  type ApplicationStartupStage,
 } from '../application-runtime.models';
 import {
   CapabilityStatusService,
@@ -54,6 +57,9 @@ import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.bindi
  * within this time, so it never flashes "Trinity is open in another tab".
  */
 const WAITING_NOTICE_DELAY_MS = 500;
+
+/** A healthy stage settles well within this; the watchdog's sum of budgets is minutes away. */
+export const STARTUP_STALL_NOTICE_MS = 15_000;
 
 @Component({
   selector: 'trn-root',
@@ -82,6 +88,9 @@ export class ApplicationRootComponent {
   private readonly sessionLock = inject(SessionLockService);
   private readonly showStartupDetail = signal(false);
   private readonly waitingNoticeDue = signal(false);
+  private readonly stallDue = signal(false);
+  private readonly hasActiveAccount = inject(AccountRuntimeService)
+    .hasActiveAccount;
   private readonly routeUrl = toSignal(
     this.router.events.pipe(
       filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -107,6 +116,20 @@ export class ApplicationRootComponent {
     return state.phase === 'starting' && this.showStartupDetail()
       ? startupStep(state.stage)
       : null;
+  });
+  /** Still starting with no stage progress for {@link STARTUP_STALL_NOTICE_MS}. */
+  readonly stalled = computed(
+    () => this.state().phase === 'starting' && this.stallDue(),
+  );
+  /** Only a restored account can be removed; before that there is nothing to remove. */
+  readonly stalledAccountRemovable = computed(() => {
+    const state = this.state();
+    return (
+      state.phase === 'starting' &&
+      APPLICATION_STARTUP_STAGES.indexOf(state.stage) >
+        APPLICATION_STARTUP_STAGES.indexOf('account-restoration') &&
+      this.hasActiveAccount()
+    );
   });
   readonly blocked = computed(() => {
     const state = this.state();
@@ -146,7 +169,21 @@ export class ApplicationRootComponent {
       500,
     );
     this.destroyRef.onDestroy(() => window.clearTimeout(timer));
-    this.revealWaitingNotice();
+    this.revealAfter(
+      computed(() => this.state().phase === 'waiting-for-session'),
+      WAITING_NOTICE_DELAY_MS,
+      this.waitingNoticeDue,
+    );
+    this.revealAfter(
+      computed(() => {
+        const state = this.state();
+        return state.phase === 'starting'
+          ? `${state.attempt}:${state.stage}`
+          : null;
+      }),
+      STARTUP_STALL_NOTICE_MS,
+      this.stallDue,
+    );
     this.presentSystemStatus();
   }
 
@@ -170,23 +207,21 @@ export class ApplicationRootComponent {
     this.sessionLock.requestHandover();
   }
 
-  /** Reveal the waiting notice after {@link WAITING_NOTICE_DELAY_MS} of waiting for another tab. */
-  private revealWaitingNotice(): void {
-    const waiting = computed(
-      () => this.state().phase === 'waiting-for-session',
-    );
+  /** Sets `due` once `key` has held one truthy value for `delayMs`; any change restarts the wait. */
+  private revealAfter(
+    key: () => unknown,
+    delayMs: number,
+    due: WritableSignal<boolean>,
+  ): void {
     let timer: number | undefined;
     effect(() => {
-      const isWaiting = waiting();
+      const current = key();
       untracked(() => {
         window.clearTimeout(timer);
         timer = undefined;
-        this.waitingNoticeDue.set(false);
-        if (isWaiting) {
-          timer = window.setTimeout(
-            () => this.waitingNoticeDue.set(true),
-            WAITING_NOTICE_DELAY_MS,
-          );
+        due.set(false);
+        if (current) {
+          timer = window.setTimeout(() => due.set(true), delayMs);
         }
       });
     });

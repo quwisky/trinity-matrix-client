@@ -30,19 +30,23 @@ import {
   HostLockIntegrationService,
   NO_USER_PRESENCE,
 } from '@trinity/runtime/host';
-import { render, screen, TIMERS } from '@trinity/testing';
+import { render, screen, TIMERS, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { EMPTY, NEVER, Observable, firstValueFrom, of } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type {
   ApplicationRecoveryOutcome,
   ApplicationRuntimeState,
+  ApplicationStartupStage,
 } from '../application-runtime.models';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import { SystemStatusVisibilityService } from '../system-status-visibility.service';
 import { CapabilityHealthService } from '../capability-health.service';
 import { healthFact } from '../testing/capability-health.fixture';
-import { ApplicationRootComponent } from './application-root.component';
+import {
+  ApplicationRootComponent,
+  STARTUP_STALL_NOTICE_MS,
+} from './application-root.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
 
@@ -101,6 +105,7 @@ describe('ApplicationRootComponent', () => {
     routes: Routes = [],
     lock: SessionLockState = 'held',
     appLocked = false,
+    hasActiveAccount = false,
   ) {
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
@@ -178,7 +183,9 @@ describe('ApplicationRootComponent', () => {
         MockProvider(HostLockIntegrationService, {
           coverPainted: () => of({ kind: 'completed' as const }),
         }),
-        MockProvider(AccountRuntimeService),
+        MockProvider(AccountRuntimeService, {
+          hasActiveAccount: signal(hasActiveAccount).asReadonly(),
+        }),
         MockProvider(AppRestartService),
       ],
     });
@@ -309,6 +316,135 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('app-booting').textContent).toContain(
       'Opening your chats…',
     );
+  });
+
+  describe('a stalled startup', () => {
+    const starting = (
+      stage: ApplicationStartupStage,
+      attempt = 1,
+    ): ApplicationRuntimeState => ({
+      phase: 'starting',
+      attempt,
+      stage,
+      settlements: [],
+    });
+
+    it('offers a way out after 15 s without progress, without moving focus', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, queryByTestId } = await setup(
+        starting('workspace-restoration'),
+      );
+
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS - 1);
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1);
+      fixture.detectChanges();
+      expect(
+        screen.getByTestId('app-booting').querySelector('[aria-live]')
+          ?.textContent,
+      ).toContain('Still starting…');
+      const actions = within(screen.getByTestId('app-startup-stalled'));
+      expect(
+        actions.getByRole('button', { name: 'Try again' }),
+      ).toBeInTheDocument();
+      expect(
+        actions.getByRole('button', { name: 'System status' }),
+      ).toBeInTheDocument();
+      // No account is restored yet, so there is none to remove.
+      expect(
+        actions.queryByRole('button', { name: 'Remove account' }),
+      ).toBeNull();
+      expect(document.activeElement).toBe(document.body);
+    });
+
+    it('restarts the 15 s wait whenever a stage advances', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, state, queryByTestId } = await setup(
+        starting('account-restoration'),
+      );
+
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS - 1_000);
+      state.set(starting('session-capabilities'));
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS - 1_000);
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).toBeNull();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).not.toBeNull();
+
+      // A retried attempt is progress too.
+      state.set(starting('session-capabilities', 2));
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).toBeNull();
+    });
+
+    it('goes away when startup finishes or the watchdog blocks it', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, state, queryByTestId } = await setup(
+        starting('readiness'),
+      );
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).not.toBeNull();
+
+      state.set(READY);
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).toBeNull();
+
+      state.set(starting('readiness', 2));
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
+      fixture.detectChanges();
+      state.set(
+        blocked(
+          {
+            stage: 'readiness',
+            recovery: 'retry-startup',
+            diagnostic: { code: 'application-startup-watchdog-expired' },
+          },
+          2,
+        ),
+      );
+      fixture.detectChanges();
+      expect(queryByTestId('app-startup-stalled')).toBeNull();
+      expect(queryByTestId('app-startup-blocked')).not.toBeNull();
+    });
+
+    it('retries through the startup recovery', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, recover } = await setup(starting('readiness'));
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
+      fixture.detectChanges();
+
+      screen.getByRole('button', { name: 'Try again' }).click();
+
+      expect(recover).toHaveBeenCalledExactlyOnceWith('retry-startup');
+    });
+
+    it('removes a restored account behind its confirm', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, recover, confirm } = await setup(
+        starting('readiness'),
+        [],
+        'held',
+        false,
+        true,
+      );
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
+      fixture.detectChanges();
+
+      screen.getByRole('button', { name: 'Remove account' }).click();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(confirm).toHaveBeenCalledWith(
+        expect.objectContaining({ header: 'Remove account and sign in again' }),
+      );
+      expect(recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+    });
   });
 
   it('asks to unlock the keychain when it blocks startup', async () => {

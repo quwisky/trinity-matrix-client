@@ -14,6 +14,7 @@ import {
   map,
   merge,
   of,
+  raceWith,
   switchMap,
   take,
   takeUntil,
@@ -48,6 +49,12 @@ import {
 /** Allows Account Runtime's ten-second destructive observation to report first. */
 const APPLICATION_RECOVERY_OBSERVATION_BUDGET_MS = 11_000;
 
+/** The ways out of an attempt still starting: try again, or remove its account. */
+const STALLED_RECOVERIES: readonly ApplicationStartupRecovery[] = [
+  'retry-startup',
+  'reauthenticate',
+];
+
 class ApplicationRuntimeAlreadyRunningError extends Error {
   constructor() {
     super('Application Runtime already has an active owner.');
@@ -64,6 +71,7 @@ export class ApplicationRuntimeService {
     phase: 'stopped',
   });
   private readonly retries = new Subject<void>();
+  private readonly stalls = new Subject<ApplicationStartupRecovery>();
   private activeStop: Subject<void> | null = null;
   private attempt = 0;
 
@@ -140,11 +148,21 @@ export class ApplicationRuntimeService {
   /**
    * Run the blocked failure's recovery, or `choice` when it is that recovery or the declared
    * secondary one. Any other choice is refused: a caller cannot invent a recovery.
+   *
+   * While an attempt is still starting, a retry or account removal first ends it as the
+   * watchdog would, so recovery runs through the same blocked path and never beside it.
    */
   recover(
     choice?: ApplicationStartupRecovery,
   ): Observable<ApplicationRecoveryOutcome> {
     return defer(() => {
+      const stalledChoice = choice ?? 'retry-startup';
+      if (
+        this.runtimeState().phase === 'starting' &&
+        STALLED_RECOVERIES.includes(stalledChoice)
+      ) {
+        this.stalls.next(stalledChoice);
+      }
       const state = this.runtimeState();
       if (state.phase !== 'blocked') {
         return of({ kind: 'unavailable', reason: 'not-blocked' } as const);
@@ -269,6 +287,12 @@ export class ApplicationRuntimeService {
           first: APPLICATION_STARTUP_WATCHDOG_BUDGET_MS,
           with: () => of(this.watchdogFailure(attempt)),
         }),
+        raceWith(
+          this.stalls.pipe(
+            take(1),
+            map((recovery) => this.stalledFailure(attempt, recovery)),
+          ),
+        ),
         catchError(() => of(this.unknownFailure(attempt))),
       );
     });
@@ -281,6 +305,25 @@ export class ApplicationRuntimeService {
         this.runtimeState(),
         'application-startup-watchdog-expired',
       ),
+    );
+  }
+
+  private stalledFailure(
+    attempt: number,
+    recovery: ApplicationStartupRecovery,
+  ): ApplicationStartOutcome {
+    const outcome = startupFailureOutcome(
+      attempt,
+      this.runtimeState(),
+      'application-startup-stalled',
+    );
+    return this.publishFailure(
+      recovery === 'reauthenticate'
+        ? {
+            ...outcome,
+            failure: { ...outcome.failure, secondaryRecovery: recovery },
+          }
+        : outcome,
     );
   }
 
