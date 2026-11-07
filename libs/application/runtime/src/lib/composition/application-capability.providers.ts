@@ -221,6 +221,8 @@ export function applicationCapabilityProviders(
         const mentionIndex = inject(MentionIndexService);
         return {
           forgetPushHandoff: (accountId) => handoff.forget(accountId),
+          forgetOtherPushHandoffs: (keepAccountId) =>
+            handoff.forgetAllBut(keepAccountId),
           registerNotifications: () => push.register(),
           unregisterNotifications: (accountId) => push.unregister(accountId),
           revokeProviderSession: (session) => {

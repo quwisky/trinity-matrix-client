@@ -275,10 +275,10 @@ it('never asks for consent where the keychain works', async () => {
   expect(test.consent.confirm).not.toHaveBeenCalled();
 });
 
-it('empties the push handoff once the new Account is ready, before replacing the live Accounts', async () => {
+it('empties the push handoff of the other Accounts only once the new one is active', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   const order: string[] = [];
-  vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(
     defer(() => {
       order.push('forget-handoff');
       return of(void 0);
@@ -314,13 +314,16 @@ it('empties the push handoff once the new Account is ready, before replacing the
     ),
   );
 
-  expect(lifecycle.forgetPushHandoff).toHaveBeenCalledWith();
+  expect(lifecycle.forgetOtherPushHandoffs).toHaveBeenCalledExactlyOnceWith(
+    session.userId,
+  );
+  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
   expect(order).toEqual([
     'persist',
     'start',
-    'forget-handoff',
     'unregister',
     'activate',
+    'forget-handoff',
   ]);
 });
 
@@ -339,7 +342,7 @@ it("keeps the live Accounts' pushers when saving the replacing Account fails", a
     ),
   ).resolves.toMatchObject({ kind: 'failed' });
 
-  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
   expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
   expect(lifecycle.releaseSharedCaches).not.toHaveBeenCalled();
 });
@@ -388,11 +391,14 @@ it("registers the live Accounts' pushers again when placing the replacing Accoun
   expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
   expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
   expect(matrix.activateAccount).not.toHaveBeenCalled();
+  // The live accounts' handoff entries stay as they were.
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
+  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
 });
 
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
-  vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(
     throwError(() => new Error('keychain locked')),
   );
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
@@ -417,7 +423,7 @@ it('still signs in and tears pushers down when emptying the push handoff never s
   vi.useFakeTimers();
   try {
     const { adapter, matrix, storage, lifecycle } = setup();
-    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(NEVER);
+    vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(NEVER);
     vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
     vi.mocked(matrix.restorePersisted).mockReturnValue(
       of({ kind: 'ready' as const }),

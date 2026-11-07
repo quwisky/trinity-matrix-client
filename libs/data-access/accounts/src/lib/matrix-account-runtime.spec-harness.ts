@@ -64,6 +64,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
   };
   const lifecycle: AccountLifecyclePort = {
     forgetPushHandoff: vi.fn(() => of(void 0)),
+    forgetOtherPushHandoffs: vi.fn(() => of(void 0)),
     registerNotifications: vi.fn(() => of(void 0)),
     unregisterNotifications: vi.fn(() => of(void 0)),
     revokeProviderSession: vi.fn(() => of(void 0)),

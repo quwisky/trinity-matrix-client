@@ -212,15 +212,18 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
-              // Best effort: a refused or stalled handoff write must neither fail nor block
-              // the sign-in, nor skip the pusher teardown.
-              return this.lifecycle.forgetPushHandoff().pipe(
-                timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
-                catchError(() => of(void 0)),
-                switchMap(() => this.lifecycle.unregisterNotifications()),
-              );
+              return this.lifecycle.unregisterNotifications();
             })
           : of(void 0);
+      // Only once the new account is active, so a failed placement leaves the live accounts'
+      // entries as they were. Best effort: a refused or stalled handoff write must neither
+      // fail nor block the sign-in.
+      const forgetReplacedHandoffs$ = defer(() =>
+        this.lifecycle.forgetOtherPushHandoffs(session.userId),
+      ).pipe(
+        timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
+        catchError(() => of(void 0)),
+      );
 
       return persisted$.pipe(
         map((stored) => ({ kind: 'persisted' as const, stored })),
@@ -294,13 +297,16 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             this.pendingNewAccounts.delete(session.userId);
           }
         }),
-        switchMap((outcome) =>
-          outcome.kind === 'ready' &&
-          intent.placement === 'active' &&
-          intent.liveAccounts === 'keep'
-            ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
-            : of(outcome),
-        ),
+        switchMap((outcome) => {
+          if (outcome.kind !== 'ready' || intent.placement !== 'active') {
+            return of(outcome);
+          }
+          return (
+            intent.liveAccounts === 'keep'
+              ? this.lifecycle.registerNotifications()
+              : forgetReplacedHandoffs$
+          ).pipe(map(() => outcome));
+        }),
       );
     });
   }
