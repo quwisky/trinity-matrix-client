@@ -978,6 +978,47 @@ describe('createLogRedactor', () => {
       expect(redactor.redact(text)).toBe(text);
     });
 
+    it.each([
+      'a::b dead::beef cafe::face',
+      'Using cc::add and matrix_sdk::foo',
+      'prefix fe80:: only',
+      'ts 1:2:3:4:5:6:7:8',
+      'at 2026-11-07T12:34:56.789Z',
+    ])('keeps %s, which only looks like an IPv6 address', (text) => {
+      expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(text);
+    });
+
+    it.each([
+      [
+        'connect ECONNREFUSED 198.51.100.7:443',
+        'connect ECONNREFUSED server3:443',
+      ],
+      ['remote=198.51.100.7:443', 'remote=server3:443'],
+      ['ip:198.51.100.7', 'ip:server3'],
+      ['ip_198.51.100.7', 'ip_server3'],
+      [
+        '::ffff:198.51.100.7 and [::ffff:198.51.100.7]:443',
+        'server3 and [server3]:443',
+      ],
+      ['64:ff9b::198.51.100.7', 'server3'],
+      ['::1 loopback', 'server3 loopback'],
+      ['fe80::1%en0', 'server3%en0'],
+    ])('replaces the address in %s', (text, expected) => {
+      expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(expected);
+    });
+
+    it('replaces aliases and user IDs partly URL-encoded before a literal colon', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact(
+          '#a%2Bb:example.org @a%2Bb:example.org https://matrix.to/#/#a%2Bb:example.org',
+        ),
+      ).toBe(
+        '#alias1:server1 @user1:server1 https://server3/#/#alias1:server1',
+      );
+    });
+
     it('replaces IPv6 server names in user IDs', () => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
 
@@ -1579,6 +1620,16 @@ describe('createLogRedactor', () => {
         'a.'.repeat(SIZE / 2) + 'matrix.example.org',
       ],
       ['ipv6 users', '@a:[::1'.repeat(SIZE / 7)],
+      ['double colons', 'a::'.repeat(SIZE / 3)],
+      ['double colons after digits', '1::'.repeat(SIZE / 3)],
+      ['spaced hex groups', ' 1:'.repeat(SIZE / 3)],
+      ['ipv4 runs', '1.'.repeat(SIZE / 2)],
+      ['spaced ipv4 starts', ' 1.1.1'.repeat(SIZE / 6)],
+      ['turn hosts', 'turn:' + 'a.'.repeat(SIZE / 2)],
+      ['alias local parts', '#' + 'é'.repeat(SIZE)],
+      ['alias escapes', '#' + '%2B'.repeat(SIZE / 3)],
+      ['user escapes', '@' + '%2B'.repeat(SIZE / 3)],
+      ['encoded emails', 'a%40'.repeat(SIZE / 4)],
       ['ports run into IDs', '@a:b:12345a'.repeat(SIZE / 11)],
       ['digits after a server', '@a:b:' + '1'.repeat(SIZE)],
       ['url ports run into words', 'https://a:1a'.repeat(SIZE / 12)],

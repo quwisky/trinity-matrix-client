@@ -365,6 +365,22 @@ describe('scrubSecrets', () => {
     );
   });
 
+  it.each([
+    [String.raw`password="a\"b c"`, `password=${REDACTED}`],
+    [String.raw`password='it\'s secret'`, `password=${REDACTED}`],
+    ['password="unterminated value', `password=${REDACTED}`],
+    ['secret="line1\nline2" done', `secret=${REDACTED} done`],
+    ['password = "hunter2"', `password = ${REDACTED}`],
+    ['access_token = hunter2&x=1', `access_token = ${REDACTED}&x=1`],
+    ['if token == null', 'if token == null'],
+    ['username = alice', 'username = alice'],
+  ])(
+    'masks the whole quoted or spaced parameter value in %s',
+    (line, expected) => {
+      expect(scrubSecrets(line)).toBe(expected);
+    },
+  );
+
   it('masks an escaped string through its own closing quote, past quotes escaped deeper', () => {
     expect(
       scrubSecrets(
@@ -507,6 +523,12 @@ describe('scrubSecrets', () => {
       ('%24' + 'aB1'.repeat(14) + '%2F').repeat(1200),
       ('%2521' + 'aB1'.repeat(14) + 'a%3D').repeat(1000),
       ('%2524' + 'aB1'.repeat(14) + '%252F=').repeat(900),
+      'a="'.repeat(21000),
+      'password="'.repeat(6500),
+      'token = '.repeat(8000),
+      'token=\\"'.repeat(8000),
+      `token=\\"${'\\'.repeat(60000)}`,
+      'a = '.repeat(16000),
     ];
 
     for (const input of inputs) {

@@ -50,9 +50,11 @@ const serverName = (port: string): string =>
 const SERVER = serverName(PORT);
 // Historical user IDs may hold any printable ASCII but ":" (Matrix spec, "Historical user
 // IDs"); an alias any character but ":" and NUL. Both stop where a log writes around an ID:
-// whitespace, double quotes, "<>", brackets, "," and an escape or a further sigil.
-const USER_LOCALPART = String.raw`[A-Za-z0-9._=\-/+!$&'*;?^|~]+`;
-const ALIAS_LOCALPART = String.raw`[^\s\0:"<>#%@,;()[\]{}\\\x60]+`;
+// whitespace, double quotes, "<>", brackets, "," and a further sigil. Either may be partly
+// URL-encoded, but an escaped ":" or sigil belongs to the encoded forms (ENCODED_ID).
+const LOCAL_ESCAPE = String.raw`%(?!3[Aa]|40|2[134])[0-9A-Fa-f]{2}`;
+const USER_LOCALPART = String.raw`(?:[A-Za-z0-9._=\-/+!$&'*;?^|~]|${LOCAL_ESCAPE})+`;
+const ALIAS_LOCALPART = String.raw`(?:[^\s\0:"<>#%@,;()[\]{}\\\x60]|${LOCAL_ESCAPE})+`;
 const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
@@ -62,12 +64,25 @@ const URL_HOST = new RegExp(
 );
 // A TURN or STUN URI (RFC 7064, 7065): the host goes, the port stays.
 const TURN_HOST = /\b(turns?|stuns?):(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)/giu;
-// A bare IP address, outside a word or dotted run: `Chrome/141.0.0.0` and `v1.2.3.4` are
-// versions. IPv6 needs all eight groups or a "::" after a group, so times stay.
+// A bare IP address; a port after it stays. IPv4 stands outside a word or dotted run, so
+// `Chrome/141.0.0.0` and `v1.2.3.4` stay versions. IPv6 needs a digit, and all eight groups
+// led by a long one, or "::" with a group after it or two before it (IPv4-mapped too), so
+// times, `fe80::` and Rust paths such as `cc::add` or `matrix_sdk::foo` stay.
 const OCTET = String.raw`(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)`;
-const HEX_GROUP = String.raw`[0-9A-Fa-f]{1,4}`;
+const IPV4 = String.raw`(?:${OCTET}\.){3}${OCTET}`;
+const HEX = String.raw`[0-9A-Fa-f]{1,4}`;
+const IPV6 = [
+  String.raw`(?:(?:${HEX}:){1,6}|:):(?:${HEX}:){0,5}${IPV4}`,
+  String.raw`[0-9A-Fa-f]{3,4}(?::${HEX}){7}`,
+  String.raw`(?:${HEX}:){1,7}(?::${HEX}){1,7}`,
+  String.raw`(?:${HEX}:){2,7}:`,
+  String.raw`:(?::${HEX}){1,7}`,
+].join('|');
 const IP_ADDRESS = new RegExp(
-  String.raw`(?<![\p{L}\p{N}_./:-])(?:(?:${OCTET}\.){3}${OCTET}|(?:${HEX_GROUP}:){7}${HEX_GROUP}|(?:${HEX_GROUP}:){1,7}:(?:${HEX_GROUP}(?::${HEX_GROUP}){0,6})?)(?![\p{L}\p{N}_:-]|\.\p{N})`,
+  [
+    String.raw`(?<![\p{L}\p{N}./-])${IPV4}(?![\p{L}\p{N}_-]|\.\p{N})`,
+    String.raw`(?<![\p{L}\p{N}_./:-])(?=[0-9A-Fa-f:.]*\d)(?:${IPV6})(?![\p{L}\p{N}_:-]|\.\p{N})`,
+  ].join('|'),
   'gu',
 );
 // An email address. The local part starts a run (no ID or URL character before it) and every

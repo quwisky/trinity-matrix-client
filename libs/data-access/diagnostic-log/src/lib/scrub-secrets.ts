@@ -6,8 +6,11 @@ export const MAX_SCRUB_INPUT = 64 * 1024;
 
 const CUT_NOTE = ' [rest dropped before scrubbing]';
 
-/** Characters a token never contains: a cut backs off to the last of these. */
-const SEPARATOR = /[\s"',;{}[\]()<>]/;
+/**
+ * Characters neither a token nor a Matrix ID contains: a cut backs off to the last of these.
+ * Historical user IDs and aliases may hold "'", ";" and brackets.
+ */
+const SEPARATOR = /[\s",<>]/;
 
 /**
  * Names whose value is a credential, key material, a push or TURN secret, or message
@@ -167,11 +170,14 @@ function isReadableFlag(name: string, value: string): boolean {
 }
 
 /**
- * A parameter name and its value; the name may start after any non-alphanumeric character.
- * The value may be a quoted string, its quotes escaped or not, which is masked whole.
+ * A parameter name and its "="; the name may start after any non-alphanumeric character.
+ * Spaces around the "=" are allowed, but "==" is a comparison.
  */
 const PARAM =
-  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})=(\\{0,8}"[^"\n]*"|\\{0,8}'[^'\n]*'|[^&#\s"']*)/g;
+  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})[ \t]{0,8}=(?!=)[ \t]{0,8}/g;
+
+/** Where a bare parameter value ends. */
+const PARAM_VALUE_END = /[&#\s"']/;
 
 /** `code` and `state` values that are diagnostics, not OAuth secrets. */
 const KEPT_OAUTH_VALUE =
@@ -254,14 +260,49 @@ export function scrubSecrets(text: string): string {
   return maskFields(scrubbed, isOAuthName, true);
 }
 
+/**
+ * Masks the value of every secret parameter: a quoted one, its quotes escaped or not, through
+ * its closing quote (a cut-off one to the end), a bare one up to a separator. The value of
+ * any other parameter is read on, so `url="https://…?access_token=…"` is masked too.
+ */
 function maskParams(text: string): string {
-  return text.replace(PARAM, (whole, name: string, value: string) => {
-    if (isSecretParam(name) && !isReadableFlag(name, value)) {
-      return `${name}=${REDACTED}`;
+  const pattern = new RegExp(PARAM);
+  let out = '';
+  let position = 0;
+  for (
+    let match = pattern.exec(text);
+    match !== null;
+    match = pattern.exec(text)
+  ) {
+    if (!isSecretParam(match[1])) {
+      continue;
     }
-    // A quoted value may itself hold parameters: `url="https://…?access_token=…"`.
-    return /^\\*["']/.test(value) ? `${name}=${maskParams(value)}` : whole;
-  });
+    const start = match.index + match[0].length;
+    const end = paramValueEnd(text, start);
+    if (isReadableFlag(match[1], text.slice(start, end))) {
+      continue;
+    }
+    out += text.slice(position, start) + REDACTED;
+    position = end;
+    pattern.lastIndex = end;
+  }
+  return out + text.slice(position);
+}
+
+function paramValueEnd(text: string, start: number): number {
+  let slashes = 0;
+  while (text[start + slashes] === '\\' && slashes < 8) {
+    slashes += 1;
+  }
+  const quote = text[start + slashes];
+  if (quote === '"' || quote === "'") {
+    return readString(text, start, `${'\\'.repeat(slashes)}${quote}`).end;
+  }
+  let end = start;
+  while (end < text.length && !PARAM_VALUE_END.test(text[end])) {
+    end += 1;
+  }
+  return end;
 }
 
 /**

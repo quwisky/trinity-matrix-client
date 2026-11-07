@@ -67,6 +67,14 @@ describe('truncateMessage', () => {
     expect(text.endsWith('… [500 characters truncated]')).toBe(true);
   });
 
+  it('backs off past characters a local part may hold, such as "\'"', () => {
+    const filler = `${'x'.repeat(MAX_MESSAGE_LENGTH - 5)} `;
+
+    expect(truncateMessage(`${filler}@o'neil;x:other.net`)).toBe(
+      `${filler}… [19 characters truncated]`,
+    );
+  });
+
   it('cuts before an identifier the limit runs through, never inside it', () => {
     const filler = `${'x'.repeat(MAX_MESSAGE_LENGTH - 7)} `;
 
