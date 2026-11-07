@@ -99,35 +99,56 @@ function checkoutBusy(command, dir) {
   return null;
 }
 
-/** Command position, after any `VAR=value` or a wrapper such as `time`, `env` or `xargs` and its arguments. */
-const AT_COMMAND = String.raw`(?:^|[;&|(\n]\s*)(?:(?:\w+=\S*|(?:time|command|env|exec|nice|nohup|sudo|xargs)\b[^\n;&|]*?)\s+)*`;
+/**
+ * Command position: the start, a separator or backtick, then any `VAR=value`, `{`, `!` or
+ * wrapper (`time`, `env`, `xargs`, `then`, …) with its arguments.
+ */
+const AT_COMMAND = String.raw`(?:^|[;&|(\n\`]\s*)(?:(?:\w+=\S*|[{!]|(?:command|do|elif|else|env|eval|exec|if|nice|nohup|sudo|then|time|timeout|until|while|xargs)\b[^\n;&|]*?)\s+)*`;
+
+/** `gh` itself, also written `\gh` or as a path. */
+const GH_WORD = String.raw`${AT_COMMAND}(?:\\|\S*/)?gh`;
+
+/** Repository flags, which gh accepts before and after `pr`. */
+const REPO = String.raw`((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)`;
 
 const SHELL_C = new RegExp(
-  String.raw`${AT_COMMAND}(?:ba|da|z)?sh\s+(?:-\w+\s+)*-\w*c\s+("(?:\\.|[^"\\])*"|'[^']*')`,
+  String.raw`${AT_COMMAND}(?:(?:ba|da|z)?sh\s+(?:-\w+\s+)*-\w*c|eval)\s+("(?:\\.|[^"\\])*"|'[^']*')`,
   'g',
 );
 
-/** The command and, recursively, every script it hands to `sh -c`. */
+/** The command and, recursively, every script it hands to `sh -c` or `eval`. */
 const scripts = (command) => [
   command,
-  ...[...command.matchAll(SHELL_C)].flatMap((m) => scripts(m[1].slice(1, -1))),
+  ...[...command.matchAll(SHELL_C)].flatMap(([, quoted]) =>
+    scripts(
+      quoted.startsWith('"')
+        ? quoted.slice(1, -1).replace(/\\(["\\$`])/g, '$1')
+        : quoted.slice(1, -1),
+    ),
+  ),
 ];
 
-const GH = String.raw`${AT_COMMAND}gh\b[^\n;&|]*`;
+const GH = String.raw`${GH_WORD}\b[^\n;&|]*`;
 const GRAPHQL = new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*\bgraphql\b`);
 const GRAPHQL_WRITE =
   /\b(?:mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|(?:create|update|delete)RepositoryRuleset)\b/;
 
 /** A GraphQL merge, approval or ruleset write; the query sits in quotes, so read it raw. */
-const graphqlWrite = (script) =>
-  GRAPHQL.test(unquoted(script)) &&
-  (GRAPHQL_WRITE.test(script) ||
-    (/\b(?:add|submit)PullRequestReview\b/.test(script) &&
-      /\bAPPROVE\b/.test(script)));
+function graphqlWrite(script) {
+  if (!GRAPHQL.test(unquoted(script))) return false;
+  const call = script.slice(GRAPHQL.exec(script)?.index ?? 0);
+  return (
+    GRAPHQL_WRITE.test(call) ||
+    (/\b(?:add|submit)PullRequestReview\b/.test(call) &&
+      /\bAPPROVE\b/.test(call))
+  );
+}
 
 const MAINTAINER_ONLY = [
-  new RegExp(String.raw`${GH}\bpr\s+merge\b`),
-  new RegExp(String.raw`${GH}\bpr\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`),
+  new RegExp(String.raw`${GH}\bpr${REPO}\s+merge\b`),
+  new RegExp(
+    String.raw`${GH}\bpr${REPO}\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`,
+  ),
   new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*/pulls/\d+/merge\b`),
   new RegExp(
     String.raw`${GH}\bapi\b[^\n;&|]*/reviews\b[^\n;&|]*\bevent=APPROVE\b`,
@@ -282,12 +303,12 @@ function pushTypecheck(command, dir) {
 }
 
 /**
- * `gh pr create|ready` in command position (not quoted text), with any global `-R/--repo`
- * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments,
+ * `gh pr create|ready` in command position (not quoted text), with any `-R/--repo` given
+ * before or after `pr`. Groups 1 and 2: the repo flags, 3: the subcommand, 4: its arguments,
  * which run on through a `>&` redirection such as `2>&1` so that `words` drops it whole.
  */
 const GH_PR = new RegExp(
-  String.raw`${AT_COMMAND}gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b((?:>&|[^\n;&|])*)`,
+  String.raw`${GH_WORD}${REPO}\s+pr${REPO}\s+(create|ready)\b((?:>&|[^\n;&|])*)`,
   'g',
 );
 
@@ -307,14 +328,14 @@ function draftPullRequest(command, dir) {
     [...script.matchAll(GH_PR)].map((pr) => [pr, script]),
   );
   for (const [pr, script] of matches) {
-    const repo = words(pr[1]);
-    if (pr[2] === 'create') {
+    const repo = words(`${pr[1]} ${pr[2]}`);
+    if (pr[3] === 'create') {
       // Look past the first `&`, `;` or newline: a multi-line --body may come before --draft.
       const rest = unquoted(script.slice(pr.index));
       if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(rest)) continue;
       return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
     }
-    const args = [...words(pr[3]), ...repo];
+    const args = [...words(pr[4]), ...repo];
     if (args.includes('--undo')) continue;
     const checks = run('gh', ['pr', 'checks', ...args], dir, 30_000);
     if (checks.status === 0) continue;

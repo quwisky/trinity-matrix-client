@@ -134,6 +134,12 @@ describe('agent-guard PreToolUse hook', () => {
     expect(
       hook('gh pr ready 1 2>&1 && gh pr ready 2', repo, fakeGh(1)).status,
     ).toBe(2);
+    expect(hook('gh pr -R owner/repo ready 12', repo, fakeGh(0)).status).toBe(
+      0,
+    );
+    expect(readFileSync(join(repo, 'gh-args'), 'utf8').trim()).toBe(
+      'pr checks 12 -R owner/repo',
+    );
   });
 
   it.each([
@@ -194,6 +200,17 @@ describe('agent-guard PreToolUse hook', () => {
     'bash -c "gh pr merge 5"',
     "sh -c 'gh pr review 5 --approve'",
     'zsh -lc "cd x && gh pr merge 5"',
+    'echo `gh pr merge 5`',
+    'if true; then gh pr merge 5; fi',
+    '{ gh pr merge 5; }',
+    '! gh pr merge 5',
+    'eval gh pr merge 5',
+    'eval "gh pr merge 5"',
+    'timeout 60 gh pr merge 5',
+    '\\gh pr merge 5',
+    '/usr/bin/gh pr merge 5',
+    'sh -c "sh -c \\"gh pr merge 5\\""',
+    'gh pr -R o/r merge 5',
   ])('finds gh behind a command prefix: %s', (command) => {
     expect(hook(command).status).toBe(2);
   });
@@ -217,6 +234,11 @@ describe('agent-guard PreToolUse hook', () => {
       ).status,
     ).toBe(0);
     expect(hook('grep -rn mergePullRequest scripts').status).toBe(0);
+    expect(
+      hook(
+        `rg -n "mergePullRequest" scripts && gh api graphql -f query='query{viewer{login}}'`,
+      ).status,
+    ).toBe(0);
     expect(hook(`grep -rn 'bash -c "gh pr merge 5"' docs`).status).toBe(0);
   });
 
