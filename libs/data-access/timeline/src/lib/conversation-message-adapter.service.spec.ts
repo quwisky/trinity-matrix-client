@@ -33,6 +33,7 @@ function setup(
     readonly privateReceipt?: boolean;
     readonly policy?: ConversationMessagePolicy;
     readonly rejectWith?: unknown;
+    readonly withNewer?: boolean;
   } = {},
 ) {
   const event = fakeEvent({
@@ -40,6 +41,7 @@ function setup(
     sender: KEY.accountId,
     status: options.eventStatus ?? undefined,
   });
+  const newer = fakeEvent({ id: '$newer', sender: KEY.accountId });
   const reactions: Record<string, ReturnType<typeof fakeRelations>> = {};
   if (options.existingReaction) {
     reactions['$message'] = fakeRelations([
@@ -55,7 +57,7 @@ function setup(
     ]);
   }
   const room = {
-    ...fakeRoom([event], reactions),
+    ...fakeRoom(options.withNewer ? [event, newer] : [event], reactions),
     roomId: KEY.roomId,
   };
   const alternateRoom = { ...room };
@@ -106,11 +108,21 @@ function setup(
     client,
     alternateClient,
     event,
+    newer,
     room,
   };
 }
 
-afterEach(() => TestBed.resetTestingModule());
+afterEach(() => {
+  vi.useRealTimers();
+  TestBed.resetTestingModule();
+});
+
+/** Start a receipt, let the 1 s debounce pass and return its outcome. */
+async function settle<T>(outcome: Promise<T>): Promise<T> {
+  await vi.advanceTimersByTimeAsync(1_000);
+  return outcome;
+}
 
 describe('MatrixConversationMessageAdapter', () => {
   it('keeps reaction commands cold and resolves the exact Account client', async () => {
@@ -276,10 +288,15 @@ describe('MatrixConversationMessageAdapter', () => {
   });
 
   it('sends privacy-aware receipts and the persisted read marker together', async () => {
+    vi.useFakeTimers();
     const { adapter, client, event } = setup({ privateReceipt: true });
 
     await expect(
-      firstValueFrom(adapter.acknowledge({ key: KEY, messageId: '$message' })),
+      settle(
+        firstValueFrom(
+          adapter.acknowledge({ key: KEY, messageId: '$message' }),
+        ),
+      ),
     ).resolves.toMatchObject({ kind: 'applied', operation: 'receipt' });
     expect(client.sendReadReceipt).toHaveBeenCalledWith(
       event,
@@ -291,7 +308,105 @@ describe('MatrixConversationMessageAdapter', () => {
     );
   });
 
+  describe('read receipt debounce', () => {
+    it('sends one receipt for the newest message after a burst', async () => {
+      vi.useFakeTimers();
+      const { adapter, client, newer } = setup({ withNewer: true });
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      await vi.advanceTimersByTimeAsync(400);
+      adapter.acknowledge({ key: KEY, messageId: '$newer' }).subscribe();
+      await vi.advanceTimersByTimeAsync(900);
+      expect(client.sendReadReceipt).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(1);
+      expect(client.sendReadReceipt).toHaveBeenCalledWith(
+        newer,
+        ReceiptType.Read,
+      );
+      expect(client.setRoomReadMarkers).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the room and thread receipts separate', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup({ withNewer: true });
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      adapter
+        .acknowledge({
+          key: KEY,
+          messageId: '$newer',
+          threadRootId: '$thread-root',
+        })
+        .subscribe();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(2);
+      expect(client.setRoomReadMarkers).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes a waiting receipt when the room closes', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup();
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.sendReadReceipt).not.toHaveBeenCalled();
+      adapter.flushReceipts();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes a waiting receipt when the tab goes hidden', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup();
+      const hidden = vi.spyOn(document, 'visibilityState', 'get');
+      hidden.mockReturnValue('hidden');
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.sendReadReceipt).not.toHaveBeenCalled();
+      document.dispatchEvent(new Event('visibilitychange'));
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(1);
+      hidden.mockRestore();
+    });
+
+    it('flushes a waiting receipt when the injector is destroyed', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup();
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(client.sendReadReceipt).not.toHaveBeenCalled();
+      TestBed.resetTestingModule();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(1);
+    });
+
+    it('flushes a waiting receipt of another room when a different room acknowledges', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup({ withNewer: true });
+
+      adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
+      adapter
+        .acknowledge({
+          key: { ...KEY, roomId: '!other:hs' },
+          messageId: '$newer',
+        })
+        .subscribe();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(client.sendReadReceipt).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('uses thread-scoped SDK overloads and does not move the room read marker', async () => {
+    vi.useFakeTimers();
     const { adapter, client, event } = setup();
 
     await firstValueFrom(
@@ -309,12 +424,14 @@ describe('MatrixConversationMessageAdapter', () => {
         messageId: '$message',
       }),
     );
-    await firstValueFrom(
-      adapter.acknowledge({
-        key: KEY,
-        threadRootId: '$thread-root',
-        messageId: '$message',
-      }),
+    await settle(
+      firstValueFrom(
+        adapter.acknowledge({
+          key: KEY,
+          threadRootId: '$thread-root',
+          messageId: '$message',
+        }),
+      ),
     );
 
     expect(client.sendEvent).toHaveBeenCalledWith(

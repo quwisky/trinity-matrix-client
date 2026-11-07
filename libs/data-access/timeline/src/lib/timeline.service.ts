@@ -611,6 +611,7 @@ export class TimelineService {
     this.readReceiptSubscription?.unsubscribe();
     this.readReceiptSubscription = null;
     this.readReceiptInFlightId = null;
+    this.messageAdapter.flushReceipts();
     // Stop typing on the client this room was OPENED on, like the listener detach below.
     // `setTyping` resolves via `openContext()`/`matrix.instance`, but close is deferred
     // through the URL-driven open effect, so after an account switch that is already the

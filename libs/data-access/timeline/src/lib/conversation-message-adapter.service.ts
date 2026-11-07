@@ -1,4 +1,5 @@
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
+import { DOCUMENT } from '@angular/common';
 import {
   EventStatus,
   EventType,
@@ -13,6 +14,8 @@ import {
   from,
   map,
   of,
+  ReplaySubject,
+  take,
   type Observable,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -65,11 +68,37 @@ export const CONVERSATION_MESSAGE_POLICY =
     { providedIn: 'root', factory: () => unavailablePolicy },
   );
 
+/** How long a read receipt waits for a newer one; 0 sends at once (specs that assert the send). */
+export const READ_RECEIPT_DEBOUNCE_MS = new InjectionToken<number>(
+  'conversation-runtime.read-receipt-debounce-ms',
+  { providedIn: 'root', factory: () => 1_000 },
+);
+
+interface PendingReceipt {
+  readonly request: ConversationMessageActionRequest;
+  readonly outcome: ReplaySubject<ConversationMessageOutcome>;
+  readonly timer: ReturnType<typeof setTimeout>;
+}
+
 @Injectable({ providedIn: 'root' })
 class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
   private readonly policy = inject(CONVERSATION_MESSAGE_POLICY);
+  private readonly receiptDebounceMs = inject(READ_RECEIPT_DEBOUNCE_MS);
+  private readonly pendingReceipts = new Map<string, PendingReceipt>();
+
+  constructor() {
+    const doc = inject(DOCUMENT);
+    const onVisibility = (): void => {
+      if (doc.visibilityState === 'hidden') this.flushReceipts();
+    };
+    doc.addEventListener('visibilitychange', onVisibility);
+    inject(DestroyRef).onDestroy(() => {
+      doc.removeEventListener('visibilitychange', onVisibility);
+      this.flushReceipts();
+    });
+  }
 
   toggleReaction(
     request: ConversationReactionRequest,
@@ -196,7 +225,57 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
     });
   }
 
+  /**
+   * Debounced: scrolling past several messages sends one receipt, for the newest. A waiting
+   * receipt belongs to the adapter, so unsubscribing does not cancel it.
+   */
   acknowledge(
+    request: ConversationMessageActionRequest,
+  ): Observable<ConversationMessageOutcome> {
+    if (this.receiptDebounceMs <= 0) return this.sendReceipt(request);
+    return defer(() => {
+      const key = [
+        request.key.accountId,
+        request.key.roomId,
+        request.threadRootId ?? '',
+      ].join('\n');
+      for (const [other, pending] of this.pendingReceipts) {
+        if (pending.request.key.roomId !== request.key.roomId) {
+          this.flushReceipt(other);
+        }
+      }
+      const superseded = this.pendingReceipts.get(key);
+      if (superseded) {
+        clearTimeout(superseded.timer);
+        superseded.outcome.next(this.applied('receipt'));
+        superseded.outcome.complete();
+      }
+      const outcome = new ReplaySubject<ConversationMessageOutcome>(1);
+      this.pendingReceipts.set(key, {
+        request,
+        outcome,
+        timer: setTimeout(() => this.flushReceipt(key), this.receiptDebounceMs),
+      });
+      return outcome.pipe(take(1));
+    });
+  }
+
+  flushReceipts(): void {
+    for (const key of [...this.pendingReceipts.keys()]) this.flushReceipt(key);
+  }
+
+  private flushReceipt(key: string): void {
+    const pending = this.pendingReceipts.get(key);
+    if (!pending) return;
+    this.pendingReceipts.delete(key);
+    clearTimeout(pending.timer);
+    this.sendReceipt(pending.request).subscribe((result) => {
+      pending.outcome.next(result);
+      pending.outcome.complete();
+    });
+  }
+
+  private sendReceipt(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome> {
     return defer(() => {

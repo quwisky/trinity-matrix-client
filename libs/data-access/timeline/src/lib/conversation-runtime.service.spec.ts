@@ -118,6 +118,7 @@ function setup(
     retry: vi.fn(() => applied('retry')),
     cancel: vi.fn(() => applied('cancel')),
     acknowledge: vi.fn(() => applied('receipt')),
+    flushReceipts: vi.fn(),
   };
   const factory: ConversationTimelineFactory = {
     create: vi.fn((key) => {
@@ -392,7 +393,10 @@ describe('ConversationRuntime', () => {
             },
           },
           { provide: MediaPipeline, useValue: {} },
-          { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+          {
+            provide: CONVERSATION_MESSAGE_ADAPTER,
+            useValue: { flushReceipts: vi.fn() },
+          },
         ],
       });
       const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
@@ -547,7 +551,10 @@ describe('ConversationRuntime', () => {
       providers: [
         { provide: MatrixClientService, useValue: { clientFor: () => ({}) } },
         { provide: MediaPipeline, useValue: {} },
-        { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: {} },
+        {
+          provide: CONVERSATION_MESSAGE_ADAPTER,
+          useValue: { flushReceipts: vi.fn() },
+        },
       ],
     });
     const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({

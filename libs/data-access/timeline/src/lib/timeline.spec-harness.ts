@@ -11,7 +11,10 @@ import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { ConversationActionContextService } from './conversation-action-context.service';
-import { CONVERSATION_MESSAGE_POLICY } from './conversation-message-adapter.service';
+import {
+  CONVERSATION_MESSAGE_POLICY,
+  READ_RECEIPT_DEBOUNCE_MS,
+} from './conversation-message-adapter.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
@@ -20,10 +23,14 @@ import {
 } from '@trinity/platform-native';
 
 /** A PrivacySettingsService mock with a fixed send-read-receipts preference. */
-export function privacyProvider(sendReadReceipts: boolean) {
-  return MockProvider(PrivacySettingsService, {
-    sendReadReceipts: signal(sendReadReceipts).asReadonly(),
-  });
+export function privacyProvider(sendReadReceipts: boolean): Provider[] {
+  return [
+    MockProvider(PrivacySettingsService, {
+      sendReadReceipts: signal(sendReadReceipts).asReadonly(),
+    }),
+    // Timeline specs assert the receipt synchronously; the debounce has its own spec.
+    { provide: READ_RECEIPT_DEBOUNCE_MS, useValue: 0 },
+  ];
 }
 
 /**

@@ -67,6 +67,8 @@ export interface ConversationMessageAdapter {
   acknowledge(
     request: ConversationMessageActionRequest,
   ): Observable<ConversationMessageOutcome>;
+  /** Send every receipt still waiting out its debounce now. */
+  flushReceipts(): void;
 }
 
 export type ConversationRedactionDecision =
