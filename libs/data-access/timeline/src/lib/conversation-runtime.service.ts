@@ -137,6 +137,8 @@ export class ConversationRuntime {
   private readonly retiredHandles = signal(0);
   private readonly lastAttachDurationMs = signal<number | null>(null);
   private focusOrder = 0;
+  /** What the message list last reported to {@link ConversationTimeline.setLiveView}. */
+  private listView: string | null = null;
   /** How many {@link trimFocusedWhileHidden} lifetimes are running. */
   private readonly hiddenWindows = signal(0);
 
@@ -209,6 +211,8 @@ export class ConversationRuntime {
     entry.lastFocused = ++this.focusOrder;
     entry.state.set('focused');
     entry.controller.setVisible(true);
+    // The list reports only changes, and showing the same room again may change nothing.
+    entry.handle.timeline.setLiveView(this.listView);
     this.focusedHandle.set(entry.handle);
     return entry.handle;
   }
@@ -583,8 +587,10 @@ export class ConversationRuntime {
         ),
       loadEvent: (eventId) =>
         defer(() => focused()?.timeline.loadEvent(eventId) ?? of(false)),
-      setLiveView: (oldestShownId) =>
-        focused()?.timeline.setLiveView(oldestShownId),
+      setLiveView: (oldestShownId) => {
+        this.listView = oldestShownId;
+        focused()?.timeline.setLiveView(oldestShownId);
+      },
       setTyping: (typing, owner) =>
         focused()?.timeline.setTyping(typing, owner),
       rawEvent: (roomId, eventId) =>

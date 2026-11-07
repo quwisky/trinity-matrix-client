@@ -58,9 +58,10 @@ const REFILL_PAGE = 30;
  *
  * It also rewinds rooms after the person unblocks someone; see {@link rewind}.
  *
- * Not bounded: a focused room scrolled back, or whose composer replies to or edits an
- * event, keeps what it holds from there on, until the person returns to the newest
- * messages, moves to another room and its handle retires, or the app restarts.
+ * Not bounded: a focused room whose view is scrolled back keeps what it holds until the view
+ * returns to the newest messages, the person moves to another room and its handle retires,
+ * or the app restarts. A trim also keeps the event the composer replies to or edits, and
+ * everything after it.
  */
 @Injectable({ providedIn: 'root' })
 export class LiveTimelineTrimmer {

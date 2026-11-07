@@ -618,8 +618,8 @@ export class TimelineService {
    * What a trim of this room must keep so its view looks the same afterwards, or null when
    * it must not be trimmed: the view is scrolled back, older history is being paged in, or
    * the view shows events the live timeline does not hold. Keeps what the view shows and,
-   * like the read receipt, the messages its rows quote and the event the "New messages"
-   * divider was drawn after.
+   * like the read receipt, the messages its rows quote and, while the "New messages"
+   * divider is drawn, the event it follows.
    */
   liveTrimGuard(): TrimGuard | null {
     const from = this.liveViewFrom;
@@ -632,7 +632,10 @@ export class TimelineService {
       .slice(start)
       .map((event) => event.replyEventId)
       .filter((eventId): eventId is string => !!eventId);
-    return { marked: [this._readMarker(), ...quoted], kept: [from] };
+    // The marker is from when the room opened: once nothing after it is unread, keeping it
+    // would keep everything received since.
+    const divider = this._firstUnreadId() ? [this._readMarker()] : [];
+    return { marked: [...divider, ...quoted], kept: [from] };
   }
 
   /** Toggle foreground-only effects without detaching the warm timeline projection. */

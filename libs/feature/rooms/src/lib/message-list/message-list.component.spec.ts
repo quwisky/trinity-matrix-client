@@ -1041,6 +1041,26 @@ describe('MessageListComponent', () => {
     });
   });
 
+  it('forgets the heights of rows trimmed away while a new message arrives', async () => {
+    const { fixture, container } = await renderList({ messages: many(200) });
+    const scroll = container.querySelector('.scroll') as HTMLElement;
+    const rows = [...scroll.querySelectorAll('[data-mid]')];
+    rowObserver().emit(rows.map((row) => resizeEntry(row, 120)));
+    const measured = (
+      fixture.componentInstance as unknown as { measured: Map<string, number> }
+    ).measured;
+    const trimmed = [...measured.keys()].filter(
+      (id) => Number(id.slice(1)) < 197,
+    );
+    expect(trimmed.length).toBeGreaterThan(0);
+
+    fixture.componentRef.setInput('messages', many(201).slice(197));
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(trimmed.filter((id) => measured.has(id))).toEqual([]);
+  });
+
   // Fire the (controllable) ResizeObserver so onRowsResized actually runs.
   describe('height measurement (ResizeObserver fires)', () => {
     it('measures a row and re-sticks to the bottom while pinned', async () => {

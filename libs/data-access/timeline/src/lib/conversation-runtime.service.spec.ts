@@ -833,6 +833,21 @@ describe('ConversationRuntime', () => {
       expect(trim).toHaveBeenCalledOnce();
     });
 
+    it("tells a room shown again where the list's view is, which may not change", () => {
+      const { runtime, controller } = setup();
+      runtime.focus(A);
+      runtime.timeline.setLiveView('$shown');
+      runtime.blur();
+
+      runtime.focus(A);
+
+      // Hidden, the timeline forgot it; the list reports only changes.
+      expect(controller(A.roomId).timeline.setLiveView).toHaveBeenNthCalledWith(
+        2,
+        '$shown',
+      );
+    });
+
     it('leaves the room alone while a thread is open beside it', () => {
       const { runtime, controller } = setup();
       runtime.focus(A);

@@ -1478,6 +1478,34 @@ describe('TimelineService', () => {
       expect(svc.liveSettled()).toBe(true);
     });
 
+    it('protects the read marker from a trim only while the divider is drawn', () => {
+      const read = (marker: string, events: ReturnType<typeof fakeEvent>[]) => {
+        TestBed.resetTestingModule();
+        TestBed.configureTestingModule({
+          providers: [privacyProvider(true), mediaProvider()],
+        });
+        const svc = openTimeline(
+          clientFor(fakeRoom(events, {}, false, [], marker)),
+        );
+        svc.setLiveView('$1');
+        return svc.liveTrimGuard()?.marked ?? [];
+      };
+
+      // Read up to the end while open: no divider, so nothing after it stays for it.
+      expect(
+        read('$2', [
+          fakeEvent({ id: '$1', sender: '@a:hs' }),
+          fakeEvent({ id: '$2', sender: '@a:hs' }),
+        ]),
+      ).not.toContain('$2');
+      expect(
+        read('$1', [
+          fakeEvent({ id: '$1', sender: '@a:hs' }),
+          fakeEvent({ id: '$2', sender: '@a:hs' }),
+        ]),
+      ).toContain('$1');
+    });
+
     it('unsettles when the view scrolls back, the room is hidden or closed', () => {
       const svc = setup([fakeEvent({ id: '$1', sender: '@a:hs' })]);
       const settle = () => {
