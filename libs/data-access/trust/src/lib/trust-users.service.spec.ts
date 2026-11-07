@@ -1108,6 +1108,44 @@ describe('TrustUsersService', () => {
       },
     );
 
+    it("does not publish the old account's re-read after a switch", async () => {
+      let finish: () => void = () => undefined;
+      const clientA = fakeClient(async () => status(true, true));
+      clientA.pinCurrentUserIdentity.mockImplementation(
+        () =>
+          new Promise<undefined>(
+            (resolve) => (finish = () => resolve(undefined)),
+          ),
+      );
+      const { svc, matrix } = setup(clientA);
+      const lifetime = svc.runProjection().subscribe();
+      const trust = svc.userTrust(ALICE);
+      await settle();
+      const done = firstValueFrom(svc.acknowledgeIdentity(ALICE), {
+        defaultValue: undefined,
+      });
+
+      const clientB = fakeClient(async () => status(false, false));
+      ngMocks.stubMember(
+        matrix,
+        'instance',
+        clientB as unknown as MatrixClient,
+      );
+      activeUserId.set('@b:hs');
+      TestBed.inject(ApplicationRef).tick();
+      await settle();
+      expect(trust()).toBe('unverified');
+
+      clientA.getUserVerificationStatus.mockClear();
+      finish();
+      await done;
+      await settle();
+
+      expect(clientA.getUserVerificationStatus).not.toHaveBeenCalled();
+      expect(trust()).toBe('unverified');
+      lifetime.unsubscribe();
+    });
+
     it('is cold: nothing runs until subscribed', () => {
       const client = fakeClient();
       const { svc } = setup(client);
