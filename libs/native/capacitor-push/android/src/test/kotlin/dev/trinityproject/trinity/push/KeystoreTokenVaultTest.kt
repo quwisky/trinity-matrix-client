@@ -65,6 +65,34 @@ class KeystoreTokenVaultTest {
     }
 
     @Test
+    fun aReplacementThatCannotBeOpenedEitherIsUnavailableNeverAbsent() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String {
+                vault.write(user, R0.copy(accessToken = "a1"))
+                throw AEADBadTagException("Tag mismatch")
+            }
+        }
+
+        assertEquals(TokenVaultRead.Unavailable, KeystoreTokenVault(preferences, replacedKey).read(user))
+
+        assertTrue(preferences.contains("tokens:$user"))
+    }
+
+    @Test
+    fun aRecordRemovedDuringTheBadTagReadIsAbsent() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String {
+                assertTrue(vault.remove(user))
+                throw AEADBadTagException("Tag mismatch")
+            }
+        }
+
+        assertEquals(TokenVaultRead.Absent, KeystoreTokenVault(preferences, replacedKey).read(user))
+    }
+
+    @Test
     fun aFaultReadingThePreferencesIsUnavailable() {
         val faulty = object : SharedPreferences by preferences {
             override fun getString(key: String, defValue: String?): String? = throw ClassCastException()
