@@ -80,10 +80,7 @@ export class SignInRedirectService {
       // SINGLE slash after the scheme. `//sso-callback` parses the callback as the
       // authority with an empty path, which providers that enforce the rule reject at
       // dynamic registration ("must not have an authority") before login can start.
-      const callback = this.handoff.callback({
-        webUrl: `${window.location.origin}/sso-callback`,
-        appUrl: 'dev.trinityproject.trinity:/sso-callback',
-      });
+      const callback = this.oidcCallback();
       const redirectUri = callback.url;
       return this.auth
         .buildOidcAuthorizationRequest({
@@ -118,6 +115,21 @@ export class SignInRedirectService {
           ),
         );
     }).pipe(switchMap((url) => this.redirect({ url })));
+  }
+
+  /**
+   * Whether the callback comes back as a deep link, which any app can send, so a forged
+   * one may land before the genuine one.
+   */
+  callbackIsDeepLink(): boolean {
+    return this.oidcCallback().applicationType === 'native';
+  }
+
+  private oidcCallback() {
+    return this.handoff.callback({
+      webUrl: `${window.location.origin}/sso-callback`,
+      appUrl: 'dev.trinityproject.trinity:/sso-callback',
+    });
   }
 
   private redirect(request: {

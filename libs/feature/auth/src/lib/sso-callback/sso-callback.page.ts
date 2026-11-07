@@ -9,11 +9,13 @@ import {
 import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, type ParamMap } from '@angular/router';
+import { timer } from 'rxjs';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   AuthService,
   OidcStateStore,
+  SignInRedirectService,
   SsoStateStore,
   type OidcGrantContext,
 } from '@trinity/data-access/auth';
@@ -23,6 +25,9 @@ import {
   accountEstablishmentError,
   signInDestination,
 } from '../account-establishment-outcome';
+
+/** How long a web callback that matches no live stash waits for one that does. */
+export const UNMATCHED_CALLBACK_WAIT_MS = 2_000;
 
 /**
  * Landing route for the auth redirect, for both login flows: legacy SSO returns
@@ -49,6 +54,7 @@ export class SsoCallbackPage implements OnInit {
   private readonly location = inject(Location);
   private readonly ssoState = inject(SsoStateStore);
   private readonly oidcState = inject(OidcStateStore);
+  private readonly signInRedirect = inject(SignInRedirectService);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly error = signal<string | null>(null);
@@ -118,7 +124,8 @@ export class SsoCallbackPage implements OnInit {
     this.claimed = true;
     // A genuine callback is in charge: drop any message an earlier straggler left.
     this.error.set(null);
-    await this.ssoState.clear();
+    // Best effort: the state is verified and claimed, so a failed clear must not strand it.
+    await this.ssoState.clear().catch(() => undefined);
 
     if (!loginToken || !stash.baseUrl) {
       this.error.set(
@@ -168,7 +175,8 @@ export class SsoCallbackPage implements OnInit {
     this.claimed = true;
     // A genuine callback is in charge: drop any message an earlier straggler left.
     this.error.set(null);
-    await this.oidcState.clear();
+    // Best effort: the state is verified and claimed, so a failed clear must not strand it.
+    await this.oidcState.clear().catch(() => undefined);
 
     if (authError) {
       this.error.set(
@@ -239,16 +247,25 @@ export class SsoCallbackPage implements OnInit {
   }
 
   /**
-   * Report a callback whose state we couldn't verify. A mismatch against a live stash is a
-   * forged callback: stay silent so the genuine one can still complete; report only when
-   * nothing is pending.
+   * Report a callback whose state we couldn't verify. A deep link that mismatches a live
+   * stash may be forged: stay silent so the genuine one can still complete. A web page load
+   * is the only callback that will come, so it is reported after a short wait.
    */
   private reportUnverified(pendingState: string | null): void {
-    if (!pendingState) {
+    const report = () =>
       this.error.set(
         'This sign-in could not be verified. Please sign in again.',
       );
+    if (!pendingState) {
+      report();
+      return;
     }
+    if (this.signInRedirect.callbackIsDeepLink()) return;
+    timer(UNMATCHED_CALLBACK_WAIT_MS)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        if (!this.claimed) report();
+      });
   }
 
   private messageOf(err: unknown): string {
@@ -256,13 +273,12 @@ export class SsoCallbackPage implements OnInit {
   }
 
   back(): void {
-    // Someone adding an account beside a live one isn't sent to another account's re-auth.
-    const target = this.matrix.activeUserId()
-      ? undefined
-      : this.matrix.reauthTargets()[0];
-    this.router.navigateByUrl(
-      target ? `/login?reauth=${encodeURIComponent(target)}` : '/login',
-      { replaceUrl: true },
-    );
+    // Someone adding an account beside a live one keeps adding, and isn't sent to another
+    // account's re-auth.
+    const target = this.matrix.reauthTargets()[0];
+    let url = '/login';
+    if (this.matrix.activeUserId()) url = '/login?add';
+    else if (target) url = `/login?reauth=${encodeURIComponent(target)}`;
+    this.router.navigateByUrl(url, { replaceUrl: true });
   }
 }
