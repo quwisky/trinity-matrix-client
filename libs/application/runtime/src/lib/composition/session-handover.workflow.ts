@@ -60,7 +60,14 @@ export class SessionHandoverWorkflow {
   run(): Observable<never> {
     return this.sessionLock.handoverRequests.pipe(
       exhaustMap(() =>
-        this.afterDestructiveWork().pipe(switchMap(() => this.handOver())),
+        this.afterDestructiveWork().pipe(
+          switchMap(() => this.handOver()),
+          catchError((error: unknown) => {
+            this.errors.handleError(error);
+            this.sessionLock.declineHandover();
+            return EMPTY;
+          }),
+        ),
       ),
       ignoreElements(),
     );
@@ -70,7 +77,8 @@ export class SessionHandoverWorkflow {
    * Emits once no sign-out, Account removal, installation reset or Account restore
    * is running in this tab, so a handover never cuts into one. At once when none is. Completes
    * without emitting, so this request goes unanswered and the other tab offers "Try again", when
-   * one is still running after the requester's own timeout, or when the erase it waited for
+   * one is still running after the requester's own timeout (this tab then declines, to answer
+   * the next request), or when the erase it waited for
    * succeeded: that erase restarts the app itself, and this tab must not stop, write or reload on
    * top of it.
    */
@@ -84,7 +92,13 @@ export class SessionHandoverWorkflow {
       return timer(DRAIN_POLL_MS, DRAIN_POLL_MS).pipe(
         filter(() => !busy()),
         take(1),
-        timeout({ first: SESSION_HANDOVER_TIMEOUT_MS, with: () => EMPTY }),
+        timeout({
+          first: SESSION_HANDOVER_TIMEOUT_MS,
+          with: () => {
+            this.sessionLock.declineHandover();
+            return EMPTY;
+          },
+        }),
         filter(() => !this.erasedInstallation()),
         map((): void => undefined),
       );
@@ -138,6 +152,8 @@ export class SessionHandoverWorkflow {
         this.appRestart.restart();
       } catch (error: unknown) {
         this.errors.handleError(error);
+        // Still holding the lock: let a later "Use here" try the reload again.
+        this.sessionLock.declineHandover();
       }
     }
   }

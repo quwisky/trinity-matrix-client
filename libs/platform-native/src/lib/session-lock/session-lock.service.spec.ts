@@ -386,6 +386,32 @@ describe('SessionLockService', () => {
     expect(owner.state()).toBe('releasing');
   });
 
+  it('holds again after declining a handover, and hears the next request', async () => {
+    const { channels, openTab } = setup();
+    const owner = openTab();
+    const requester = openTab();
+    await firstValueFrom(owner.acquire());
+    await firstValueFrom(requester.acquire());
+    const heard = vi.fn();
+    owner.handoverRequests.subscribe(heard);
+    requester.requestHandover();
+    await settle();
+    expect(owner.state()).toBe('releasing');
+
+    owner.declineHandover();
+    expect(owner.state()).toBe('held');
+    // Only a releasing holder declines.
+    requester.declineHandover();
+    expect(requester.state()).toBe('taking-over');
+
+    // "Try again" from the requester.
+    channels.broadcast({ type: 'handover-request', id: 'again' });
+    await settle();
+
+    expect(heard).toHaveBeenCalledTimes(2);
+    expect(owner.state()).toBe('releasing');
+  });
+
   it('emits granted when the lock is free at once, and not where it is not required', async () => {
     const { openTab } = setup();
     const tab = openTab();

@@ -38,7 +38,7 @@ export class SessionLockService {
   readonly state = this.lockState.asReadonly();
   /**
    * Another tab's "Use here". Emits only in the holding tab, which is then `releasing` until
-   * its restart unloads the page and so frees the lock.
+   * its restart unloads the page and so frees the lock, or until it calls `declineHandover()`.
    */
   readonly handoverRequests: Observable<void> = this.requests.asObservable();
 
@@ -118,6 +118,11 @@ export class SessionLockService {
         this.lockState.set('handover-timed-out');
       }
     }, SESSION_HANDOVER_TIMEOUT_MS);
+  }
+
+  /** The holder will not hand over after all: it keeps the session and hears the next request. */
+  declineHandover(): void {
+    if (this.lockState() === 'releasing') this.lockState.set('held');
   }
 
   private async tryAcquire(): Promise<SessionLockAcquisition> {
