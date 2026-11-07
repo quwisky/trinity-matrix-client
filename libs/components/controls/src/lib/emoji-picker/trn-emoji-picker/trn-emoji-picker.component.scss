@@ -34,18 +34,13 @@
 
     // Only the idle and hover states are ours to paint: the vendor inline-styles the anchor
     // bar and the selected anchor from its `color` input, so a rule for either is outranked.
-    // On touch, :hover stays on whatever was tapped last, so the hover paint is pointer-only
-    // and the vendor's own hover rules are cancelled.
+    // On touch, :hover stays on whatever was tapped last, so the hover paint is pointer-only.
     .emoji-mart-anchor {
       color: var(--muted-foreground);
 
-      &:hover {
-        @media (hover: hover) {
+      @media (hover: hover) {
+        &:hover {
           color: var(--trinity-link);
-        }
-
-        @media (hover: none) {
-          color: var(--muted-foreground);
         }
       }
     }
