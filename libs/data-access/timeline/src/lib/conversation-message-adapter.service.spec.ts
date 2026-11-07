@@ -1,14 +1,24 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { EventStatus, MatrixError, ReceiptType } from 'matrix-js-sdk';
+import {
+  ConnectionError,
+  EventStatus,
+  MatrixError,
+  MatrixEvent,
+  ReceiptType,
+} from 'matrix-js-sdk';
 import { firstValueFrom } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   CONVERSATION_MESSAGE_ADAPTER,
   CONVERSATION_MESSAGE_POLICY,
 } from './conversation-message-adapter.service';
+import { conversationDraftKey } from './conversation-draft-key';
 import type {
   ConversationMessagePolicy,
   ConversationRedactionDecision,
@@ -34,13 +44,17 @@ function setup(
     readonly policy?: ConversationMessagePolicy;
     readonly rejectWith?: unknown;
     readonly withNewer?: boolean;
+    /** A real SDK echo in place of the fake `$message`. */
+    readonly echo?: MatrixEvent;
   } = {},
 ) {
-  const event = fakeEvent({
-    id: '$message',
-    sender: KEY.accountId,
-    status: options.eventStatus ?? undefined,
-  });
+  const event =
+    (options.echo as unknown as ReturnType<typeof fakeEvent>) ??
+    fakeEvent({
+      id: '$message',
+      sender: KEY.accountId,
+      status: options.eventStatus ?? undefined,
+    });
   const newer = fakeEvent({ id: '$newer', sender: KEY.accountId });
   const reactions: Record<string, ReturnType<typeof fakeRelations>> = {};
   if (options.existingReaction) {
@@ -80,6 +94,7 @@ function setup(
     getRoom: vi.fn(() => alternateRoom),
     sendEvent: vi.fn(action),
   };
+  const drafts = { holdWaiting: vi.fn(), releaseWaiting: vi.fn() };
   const policy: ConversationMessagePolicy = options.policy ?? {
     canRedactOthers: () => true,
     canSendMessages: () => true,
@@ -101,11 +116,13 @@ function setup(
         },
       },
       { provide: CONVERSATION_MESSAGE_POLICY, useValue: policy },
+      { provide: DraftStoreService, useValue: drafts },
     ],
   });
   return {
     adapter: TestBed.inject(CONVERSATION_MESSAGE_ADAPTER),
     client,
+    drafts,
     alternateClient,
     event,
     newer,
@@ -248,6 +265,35 @@ describe('MatrixConversationMessageAdapter', () => {
       failure: 'event-not-retryable',
       retryable: false,
     });
+  });
+
+  // A refused send's Retry, offline: the SDK marks the row waiting and the next sync resends it,
+  // so putting its text back in the composer would let Send post it twice.
+  it('counts a retry that fails offline as sent, keeping its text while it waits', async () => {
+    const echo = new MatrixEvent({
+      event_id: '~!shared:hs:txn-1',
+      type: 'm.room.message',
+      content: { msgtype: 'm.emote', body: 'waves' },
+    });
+    echo.setTxnId('txn-1');
+    echo.setStatus(EventStatus.NOT_SENT);
+    const { adapter, client, drafts } = setup({ echo });
+    client.resendEvent.mockImplementation(() => {
+      echo.error = new ConnectionError('offline') as never;
+      echo.setStatus(EventStatus.NOT_SENT);
+      return Promise.reject(echo.error);
+    });
+
+    await expect(
+      firstValueFrom(
+        adapter.retry({ key: KEY, messageId: '~!shared:hs:txn-1' }),
+      ),
+    ).resolves.toEqual({ kind: 'applied', operation: 'retry' });
+    expect(drafts.holdWaiting).toHaveBeenCalledWith(
+      conversationDraftKey(KEY),
+      'txn-1',
+      '/me waves',
+    );
   });
 
   // #1868: the SDK keeps a resent echo where it was first added, but the server stamps it with
