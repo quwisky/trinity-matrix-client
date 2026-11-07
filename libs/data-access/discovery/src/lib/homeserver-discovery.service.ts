@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { AutoDiscovery } from 'matrix-js-sdk';
 import { Observable, defer, from, map } from 'rxjs';
 import { HostNetworkPolicyService } from '@trinity/platform-native';
+import { serverNameOfInput } from '@trinity/util/matrix';
 
 /** Discovery result for a user-entered Matrix homeserver or MXID. */
 export interface HomeserverDiscoveryResult {
@@ -72,7 +73,7 @@ export class HomeserverDiscoveryService {
     input: string,
     { allowOrigins = true }: { readonly allowOrigins?: boolean } = {},
   ): Observable<HomeserverDiscoveryResult> {
-    const domain = extractDomain(input);
+    const domain = serverNameOfInput(input);
     return defer(() => {
       if (allowOrigins) this.hostNetworkPolicy.allowOrigin(`https://${domain}`);
       return from(AutoDiscovery.findClientConfig(domain));
@@ -98,11 +99,4 @@ export class HomeserverDiscoveryService {
       }),
     );
   }
-}
-
-/** Accept `@user:server.org`, `user:server.org`, or a bare `server.org`. */
-function extractDomain(input: string): string {
-  const trimmed = input.trim().replace(/^@/, '');
-  const colon = trimmed.indexOf(':');
-  return colon >= 0 ? trimmed.slice(colon + 1) : trimmed;
 }

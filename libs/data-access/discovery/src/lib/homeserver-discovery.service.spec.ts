@@ -65,6 +65,19 @@ describe('HomeserverDiscoveryService', () => {
     expect(result.baseUrl).toBe('https://example.org');
   });
 
+  it('reads a server typed with its port as that server, not the port', async () => {
+    findClientConfig.mockResolvedValue(
+      homeserver(AutoDiscovery.SUCCESS, undefined),
+    );
+
+    const result = await firstValueFrom(
+      TestBed.inject(HomeserverDiscoveryService).discover('example.org:8448'),
+    );
+
+    expect(findClientConfig).toHaveBeenCalledWith('example.org:8448');
+    expect(result.baseUrl).toBe('https://example.org:8448');
+  });
+
   it('fails when the SDK cannot discover a homeserver', async () => {
     findClientConfig.mockResolvedValue(homeserver(AutoDiscovery.FAIL_PROMPT));
 
