@@ -371,6 +371,28 @@ export function accountDatabases(userId: string): Promise<string[]> {
 const PROVIDER_CONTINUE =
   '//android.widget.Button[@text="Continue" or @content-desc="Continue"]';
 
+/**
+ * Wait for the provider page's Continue in the accessibility tree. A Custom Tab opened right
+ * after another can show the whole page while Chrome's tree stays partial, without Continue,
+ * for good; reloading the page (F5 is Chrome's shortcut) builds a new tree.
+ */
+async function waitForProviderPage(): Promise<void> {
+  const button = $(PROVIDER_CONTINUE);
+  let misses = 0;
+  await browser.waitUntil(
+    async () => {
+      if (await button.isExisting()) return true;
+      if (++misses % 5 === 0) await shell('input', ['keyevent', 'KEYCODE_F5']);
+      return false;
+    },
+    {
+      timeout: 60_000,
+      interval: 2_000,
+      timeoutMsg: 'the provider page never exposed Continue',
+    },
+  );
+}
+
 /** Tap the provider page's Continue, swiping up to it on a screen too short to show it. */
 async function tapProviderContinue(): Promise<void> {
   const button = $(PROVIDER_CONTINUE);
@@ -400,7 +422,7 @@ export async function signInOnProviderPage(account: MasAccount): Promise<void> {
   await expect(start).toBeDisplayed({ wait: 30_000 });
   await start.click();
   await native();
-  await $(PROVIDER_CONTINUE).waitForExist({ timeout: 60_000 });
+  await waitForProviderPage();
   const username = $('//android.widget.EditText[@password="false"]');
   if (await username.isExisting()) {
     await username.addValue(account.user);
