@@ -1,15 +1,21 @@
 import { Location } from '@angular/common';
 import {
+  Component,
   EnvironmentInjector,
   createEnvironmentInjector,
+  inject,
   signal,
+  type Type,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideLocationMocks } from '@angular/common/testing';
 import {
   NavigationError,
   Router,
+  provideRouter,
   type Event as RouterEvent,
 } from '@angular/router';
+import { authGuard } from '../auth.guard';
 import { SwUpdate } from '@angular/service-worker';
 import { NavigationFocusService } from '../navigation-focus.service';
 import { CapabilityHealthService } from '../capability-health.service';
@@ -31,6 +37,7 @@ import {
   AccountRuntimeService,
   type AccountRestoreOutcome,
   type AccountRestoreResult,
+  type AccountRuntimeState,
   type NewDeviceEstablishment,
 } from '@trinity/data-access/accounts';
 import { GifSettingsService } from '@trinity/data-access/gif';
@@ -113,6 +120,13 @@ import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
 import { UnprotectedStorageNotice } from './unprotected-storage.presenter';
 import { WorkspaceApplicationSurfacePresenterAdapter } from './workspace-application-surface.presenter';
 import { WorkspaceRoutedSurfaceAdapter } from './workspace-routed-surface.adapter';
+import { TrinityApplicationSessionAdapter } from './trinity-application-session.adapter';
+import { AccountStartupHealthService } from './account-startup-health.service';
+import { PreferenceStartupHealthService } from './preference-startup-health.service';
+import { PreferenceEffectHealthService } from './preference-effect-health.service';
+import { RoomOrderHealthService } from './room-order-health.service';
+import { TrinityPreferenceStartupSources } from './trinity-preference-startup-sources';
+import { HostSessionHealthService } from './host-session-health.service';
 
 describe('TrinityApplicationRuntimeAdapter', () => {
   let events: Subject<RouterEvent>;
@@ -1001,6 +1015,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     expect(navigateByUrl).toHaveBeenNthCalledWith(1, '/', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
 
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
@@ -1020,12 +1035,15 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(navigateByUrl).toHaveBeenCalledTimes(4);
     expect(navigateByUrl).toHaveBeenNthCalledWith(2, '/rooms', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
     expect(navigateByUrl).toHaveBeenNthCalledWith(3, '/rooms', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
     expect(navigateByUrl).toHaveBeenNthCalledWith(4, '/', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
   });
 
@@ -1063,7 +1081,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(restoration).resolves.toEqual({
       kind: 'ready',
     });
-    expect(navigateByUrl).toHaveBeenCalledWith('/', { replaceUrl: true });
+    expect(navigateByUrl).toHaveBeenCalledWith('/', {
+      replaceUrl: true,
+      onSameUrlNavigation: 'reload',
+    });
   });
 
   it('executes typed recovery commands before startup is retried', async () => {
@@ -1294,5 +1315,197 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(appearanceSession.observed).toBe(true);
     second.unsubscribe();
     expect(appearanceSession.observed).toBe(false);
+  });
+});
+
+describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real router', () => {
+  @Component({ template: '' })
+  class RoutedPage {}
+
+  const blocked = {
+    kind: 'blocked',
+    recovery: 'retry-startup',
+    diagnostic: { code: 'workspace-navigation-failed' },
+  } as const;
+  let breakGuard: boolean;
+  let breakLoad: boolean;
+  let allowRoot: boolean;
+  const signedIn = signal(false);
+
+  afterEach(() => vi.useRealTimers());
+
+  function setUp(startUrl: string): {
+    adapter: TrinityApplicationRuntimeAdapter;
+    router: Router;
+    health: CapabilityHealthService;
+  } {
+    breakGuard = false;
+    breakLoad = false;
+    allowRoot = true;
+    signedIn.set(false);
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { path: 'login', component: RoutedPage },
+          {
+            path: 'broken',
+            canActivate: [() => breakLoad || inject(Router).parseUrl('/login')],
+            loadComponent: () =>
+              Promise.reject(new Error('chunk failed to load')),
+          },
+          {
+            path: '',
+            canActivate: [
+              () => {
+                if (breakGuard) throw new Error('guard failed');
+                return allowRoot;
+              },
+              authGuard,
+            ],
+            component: RoutedPage,
+          },
+        ]),
+        provideLocationMocks(),
+        MockProvider(AccountRuntimeService, {
+          hasActiveAccount: signedIn.asReadonly(),
+          state: signal<AccountRuntimeState>({
+            phase: 'settled',
+            result: { kind: 'no-accounts', accounts: [] },
+          }).asReadonly(),
+        }),
+        MockProvider(MatrixClientService, {
+          reauthTargets: signal<readonly string[]>([]).asReadonly(),
+        }),
+        ...[
+          HostCapabilitiesService,
+          TrinityApplicationSessionAdapter,
+          DraftStoreService,
+          RetiredPushGatewayCleanup,
+          AppConfigService,
+          StoragePersistenceService,
+          AccountStartupHealthService,
+          PreferenceStartupHealthService,
+          PreferenceEffectHealthService,
+          MentionIndexService,
+          RoomOrderHealthService,
+          TrinityPreferenceStartupSources,
+          HostSessionHealthService,
+          SessionLockService,
+          AppearanceEffects,
+        ].map((service: Type<unknown>) => MockProvider(service)),
+        { provide: SESSION_LOCK_REQUIRED, useValue: false },
+      ],
+    });
+    TestBed.inject(Location).go(startUrl);
+    return {
+      adapter: TestBed.inject(TrinityApplicationRuntimeAdapter),
+      router: TestBed.inject(Router),
+      health: TestBed.inject(CapabilityHealthService),
+    };
+  }
+
+  it('ends a first start with no account on the sign-in page', async () => {
+    const { adapter, router } = setUp('/');
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/login');
+  });
+
+  it('ends a retried start with no account on the sign-in page', async () => {
+    const { adapter, router, health } = setUp('/');
+    await firstValueFrom(adapter.restoreWorkspace());
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/login');
+    expect(health.incidents()).toEqual([]);
+  });
+
+  it('retries a start that was already on the sign-in page', async () => {
+    const { adapter, router } = setUp('/login');
+    await firstValueFrom(adapter.restoreWorkspace());
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/login');
+  });
+
+  it('still blocks a retry whose guard throws on every Workspace route', async () => {
+    const { adapter } = setUp('/');
+    await firstValueFrom(adapter.restoreWorkspace());
+    breakGuard = true;
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual(
+      blocked,
+    );
+  });
+
+  it('falls back to the safe root when a retried route fails to load', async () => {
+    const { adapter, router, health } = setUp('/broken');
+    await firstValueFrom(adapter.restoreWorkspace());
+    breakLoad = true;
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/login');
+    expect(health.incidents()).toContainEqual(
+      expect.objectContaining({ code: 'workspace-safe-root-fallback' }),
+    );
+  });
+
+  it('does not report a retry ready while a guard still refuses the Workspace', async () => {
+    vi.useFakeTimers();
+    const { adapter, router } = setUp('/');
+    allowRoot = false;
+    const first = firstValueFrom(adapter.restoreWorkspace());
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+    );
+    await expect(first).resolves.toEqual(blocked);
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual(
+      blocked,
+    );
+    expect(router.routerState.snapshot.root.firstChild).toBeNull();
+  });
+
+  it('activates the Workspace when a retry finds the guard now allows it', async () => {
+    vi.useFakeTimers();
+    const { adapter, router } = setUp('/');
+    signedIn.set(true);
+    allowRoot = false;
+    const first = firstValueFrom(adapter.restoreWorkspace());
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+    );
+    await expect(first).resolves.toEqual(blocked);
+    allowRoot = true;
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.routerState.snapshot.root.firstChild?.component).toBe(
+      RoutedPage,
+    );
+  });
+
+  it('keeps the activated Workspace when a signed-in retry reloads the URL it shows', async () => {
+    const { adapter, router, health } = setUp('/');
+    signedIn.set(true);
+    await firstValueFrom(adapter.restoreWorkspace());
+    const shown = router.routerState.root.firstChild;
+    expect(shown?.component).toBe(RoutedPage);
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/');
+    expect(router.routerState.root.firstChild).toBe(shown);
+    expect(health.incidents()).toEqual([]);
   });
 });
