@@ -6,10 +6,13 @@ import {
   InjectionToken,
   Signal,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { EMPTY, Observable, defer, of } from 'rxjs';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   MediaPipeline,
   type MediaTransferEvent,
@@ -126,6 +129,7 @@ export class ConversationRuntime {
     0,
     inject(CONVERSATION_RETENTION_LIMIT),
   );
+  private readonly matrix = inject(MatrixClientService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly errors = inject(ErrorHandler);
   private readonly entries = new Map<string, Map<string, ConversationEntry>>();
@@ -144,6 +148,10 @@ export class ConversationRuntime {
 
   constructor() {
     this.destroyRef.onDestroy(() => this.retireAll());
+    effect(() => {
+      this.matrix.accountIds();
+      untracked(() => this.retireDetached());
+    });
   }
 
   readonly focused = this.focusedHandle.asReadonly();
@@ -198,9 +206,9 @@ export class ConversationRuntime {
 
   focus(key: ConversationKey): ConversationHandle {
     const outlived = this.entry(key);
-    if (outlived?.controller.clientReplaced()) {
-      this.retire(outlived);
-      this.composeSnapshots.delete(conversationDraftKey(key));
+    // Kept while the account has no client: a fresh open would throw.
+    if (outlived?.controller.clientStatus() === 'replaced') {
+      this.retireOutlived(outlived);
     }
     const existing = this.entry(key);
     if (existing?.handle === this.focusedHandle()) {
@@ -334,6 +342,25 @@ export class ConversationRuntime {
     if (failures.length > 1) {
       throw new AggregateError(failures, 'Conversation retirement failed.');
     }
+  }
+
+  /** Retire handles whose account signed out or has another client: they hold the old one. */
+  private retireDetached(): void {
+    for (const account of [...this.entries.values()]) {
+      for (const entry of [...account.values()]) {
+        if (entry.controller.clientStatus() === 'attached') continue;
+        try {
+          this.retireOutlived(entry);
+        } catch (error: unknown) {
+          this.errors.handleError(error);
+        }
+      }
+    }
+  }
+
+  private retireOutlived(entry: ConversationEntry): void {
+    this.composeSnapshots.delete(conversationDraftKey(entry.handle.key));
+    this.retire(entry);
   }
 
   private create(key: ConversationKey): ConversationEntry {
