@@ -27,6 +27,20 @@ export interface Mention {
   display: string;
 }
 
+/** A character that would continue a display name, so `@Al` before it is part of `@Alice`. */
+const NAME_CHAR = /[\p{L}\p{N}\p{M}_]/u;
+
+/**
+ * Where `display` occurs in `text` as a whole mention (not the start of a longer name), or -1.
+ */
+export function findMention(text: string, display: string): number {
+  let at = text.indexOf(display);
+  while (at !== -1 && NAME_CHAR.test(text.charAt(at + display.length))) {
+    at = text.indexOf(display, at + 1);
+  }
+  return at;
+}
+
 /**
  * `@room` as a word, matching the boundary of the legacy `.m.rule.roomnotif` (`(?<=^|\W)`
  * and `(?=\W|$)`).
@@ -94,7 +108,7 @@ function placeMentionPill(doc: Document, mention: Mention): void {
   const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
-    const at = (node.nodeValue ?? '').indexOf(mention.display);
+    const at = findMention(node.nodeValue ?? '', mention.display);
     if (at !== -1 && !node.parentElement?.closest('a, code, pre')) {
       const target = node as Text;
       const rest = target.splitText(at);

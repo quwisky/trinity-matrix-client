@@ -1,5 +1,5 @@
 import { computed, signal, type Signal } from '@angular/core';
-import { type Mention } from '@trinity/util/matrix';
+import { findMention, type Mention } from '@trinity/util/matrix';
 import { type CaretReplacement } from './caret-replacement';
 
 /** A room member offered by the @-mention autocomplete. */
@@ -89,7 +89,11 @@ export class MentionAutocomplete {
     const trigger = MENTION_TRIGGER.exec(text.slice(0, caret));
     const display = `@${member.roomDisplayName}`;
     const start = trigger ? caret - trigger[1].length - 1 : caret; // drop "@query"
-    this.chosen.update((list) => [...list, { userId: member.userId, display }]);
+    // The newest pick owns its text: an earlier, deleted pick with the same name must not ride along.
+    this.chosen.update((list) => [
+      ...list.filter((mention) => mention.display !== display),
+      { userId: member.userId, display },
+    ]);
     return { start, end: caret, insert: `${display} ` };
   }
 
@@ -109,7 +113,10 @@ export class MentionAutocomplete {
     const seen = new Set<string>();
     const out: Mention[] = [];
     for (const mention of this.chosen()) {
-      if (text.includes(mention.display) && !seen.has(mention.userId)) {
+      if (
+        findMention(text, mention.display) !== -1 &&
+        !seen.has(mention.userId)
+      ) {
         seen.add(mention.userId);
         out.push(mention);
       }

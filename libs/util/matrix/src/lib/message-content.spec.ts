@@ -477,6 +477,30 @@ describe('mentions in content builders', () => {
     expect(content['formatted_body']).toContain('matrix.to/#/@bob:hs');
   });
 
+  it('pills a shorter name on its own text, not inside a longer one', () => {
+    const text = 'hi @Alice and @Al';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@al:hs', display: '@Al' },
+      ALICE,
+    ]) as Record<string, unknown>;
+
+    expect(content['formatted_body']).toContain(
+      'hi <a href="https://matrix.to/#/@alice:hs">@Alice</a> and <a href="https://matrix.to/#/@al:hs">@Al</a>',
+    );
+  });
+
+  it('leaves a shorter name unpilled when only a longer one is in the text', () => {
+    const text = 'hi @Alice';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@al:hs', display: '@Al' },
+      ALICE,
+    ]) as Record<string, unknown>;
+
+    expect(content['formatted_body']).toContain(
+      'hi <a href="https://matrix.to/#/@alice:hs">@Alice</a>',
+    );
+  });
+
   it('HTML-escapes a mention display in the pill', () => {
     const text = 'hi @A&B';
     const content = textMessageContent(text, renderMarkdown(text), [
