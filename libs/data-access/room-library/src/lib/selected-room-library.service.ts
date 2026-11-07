@@ -250,12 +250,16 @@ export class SelectedRoomLibraryService {
           childRoomIdsByAccount: previous.spaceChildRoomIdsByAccount,
         };
 
-    this._view.set({
+    const next: SelectedRoomLibraryView = {
       accountIds,
       mode,
       rooms: domains.has('rooms')
-        ? projectSelectedRooms(sources, activeAccountId, (accountId, roomId) =>
-            this.sources.learnEncryption(accountId, roomId),
+        ? projectSelectedRooms(
+            sources,
+            activeAccountId,
+            (accountId, roomId) =>
+              this.sources.learnEncryption(accountId, roomId),
+            previous.rooms,
           )
         : previous.rooms,
       spaces: spaces.spaces,
@@ -263,6 +267,8 @@ export class SelectedRoomLibraryService {
       invitations: domains.has('invitations')
         ? projectSelectedInvitations(sources)
         : previous.invitations,
-    });
+    };
+    const keys = Object.keys(next) as (keyof SelectedRoomLibraryView)[];
+    if (keys.some((key) => next[key] !== previous[key])) this._view.set(next);
   }
 }

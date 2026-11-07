@@ -227,6 +227,46 @@ export function buildRoomSummary(
 }
 
 /**
+ * `next`, or `previous` when it describes the room identically.
+ *
+ * Every sync rebuilds every joined room's summary. Handing back the previous object for a room
+ * the sync didn't change keeps its OnPush sidebar row from re-rendering, and lets
+ * {@link sameRooms} keep the whole list when no room changed at all.
+ */
+export function reuseUnchanged(
+  previous: RoomSummary | undefined,
+  next: RoomSummary,
+): RoomSummary {
+  if (!previous) return next;
+  for (const key of Object.keys(next) as (keyof RoomSummary)[]) {
+    const a = previous[key];
+    const b = next[key];
+    if (a === b) continue;
+    if (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => item === b[i])
+    ) {
+      continue;
+    }
+    return next;
+  }
+  // A key the previous summary had and this one dropped (an optional field cleared).
+  return Object.keys(previous).length === Object.keys(next).length
+    ? previous
+    : next;
+}
+
+/** Same rooms, in the same order, as the same objects: nothing for a consumer to redo. */
+export function sameRooms(
+  a: readonly RoomSummary[],
+  b: readonly RoomSummary[],
+): boolean {
+  return a.length === b.length && a.every((room, i) => room === b[i]);
+}
+
+/**
  * Favourite-first, low-priority-last, then most recently active, then name: the room list
  * ordering.
  *

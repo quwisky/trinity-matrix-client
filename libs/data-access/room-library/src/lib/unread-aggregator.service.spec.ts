@@ -304,6 +304,34 @@ describe('UnreadAggregatorService', () => {
     expect(reads).toBe(0);
   });
 
+  it("recounts only the account whose client fired, keeping the other's count", async () => {
+    const { svc, accountIds, clients, flush } = harness();
+    const room = fakeRoom(2);
+    const a = fakeClient([room]);
+    const b = fakeClient([fakeRoom(4)]);
+    clients.set('@a:hs', a);
+    clients.set('@b:hs', b);
+    accountIds.set(['@a:hs', '@b:hs']);
+    await flush();
+    const readB = vi.spyOn(b, 'getRooms');
+
+    room.unread = 5;
+    a.emit(ClientEvent.Sync);
+    await flush();
+
+    expect(readB).not.toHaveBeenCalled();
+    expect(svc.unreadByAccount()).toEqual(
+      new Map([
+        ['@a:hs', 5],
+        ['@b:hs', 4],
+      ]),
+    );
+    expect(svc.unreadRooms().map((r) => r.accountId)).toEqual([
+      '@a:hs',
+      '@b:hs',
+    ]);
+  });
+
   it('attaches to an account added later and drops one signed out', async () => {
     const { svc, accountIds, clients, flush } = harness();
     const a = fakeClient([fakeRoom(3)]);

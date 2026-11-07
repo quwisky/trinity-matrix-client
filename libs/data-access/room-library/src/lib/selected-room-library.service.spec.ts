@@ -5,6 +5,7 @@ import {
   MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
+  RoomStateEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
@@ -708,7 +709,8 @@ describe('SelectedRoomLibraryService', () => {
 
   it('coalesces domain events and structurally shares unaffected projections', async () => {
     vi.useFakeTimers();
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
+    const read = { unread: 1 };
+    const a = fakeClient('@a:hs', [fakeRoom('!a:hs', read)]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     const harness = setup({
       selected: new Set(['@a:hs', '@b:hs']),
@@ -722,6 +724,7 @@ describe('SelectedRoomLibraryService', () => {
     const before = harness.service.view();
     a.getRooms.mockClear();
 
+    read.unread = 0;
     a.emit(RoomEvent.Receipt);
     a.emit(RoomEvent.Receipt);
     a.emit(RoomEvent.Receipt);
@@ -735,6 +738,92 @@ describe('SelectedRoomLibraryService', () => {
       before.spaceChildRoomIdsByAccount,
     );
     expect(after.invitations).toBe(before.invitations);
+  });
+
+  describe('with 2 Accounts of 200 rooms each', () => {
+    function large() {
+      const unread = { unread: 0 };
+      const roomsOf = (prefix: string) =>
+        Array.from({ length: 200 }, (_, i) =>
+          fakeRoom(
+            `!${prefix}-${i}:hs`,
+            `${prefix}${i}` === 'a1' ? unread : {},
+          ),
+        );
+      const a = fakeClient('@a:hs', roomsOf('a'), ['!a-0:hs']);
+      const b = fakeClient('@b:hs', roomsOf('b'), ['!b-0:hs']);
+      const harness = setup({
+        selected: new Set(['@a:hs', '@b:hs']),
+        live: ['@a:hs', '@b:hs'],
+        clients: new Map([
+          ['@a:hs', a],
+          ['@b:hs', b],
+        ]),
+      });
+      TestBed.tick(); // the selection effect's first projection
+      let publishes = -1;
+      const published = computed(() => {
+        harness.service.view();
+        return ++publishes;
+      });
+      published();
+      const before = harness.service.view().rooms;
+      a.getRooms.mockClear();
+      const measure = () => {
+        published();
+        const kept = new Set(before);
+        return {
+          rowsReplaced: harness.service
+            .view()
+            .rooms.filter((row) => !kept.has(row)).length,
+          publishes,
+        };
+      };
+      return { a, unread, measure };
+    }
+
+    it('replaces only the row an incoming message changed', async () => {
+      vi.useFakeTimers();
+      const { a, unread, measure } = large();
+
+      unread.unread = 1;
+      a.emit(ClientEvent.Sync);
+      await flushProjection();
+
+      expect(measure()).toEqual({ rowsReplaced: 1, publishes: 1 });
+    });
+
+    it('does not publish for an event that changes no row', async () => {
+      vi.useFakeTimers();
+      const { a, measure } = large();
+
+      a.emit(RoomEvent.Receipt);
+      await flushProjection();
+
+      expect(a.getRooms).toHaveBeenCalledOnce();
+      expect(measure()).toEqual({ rowsReplaced: 0, publishes: 0 });
+    });
+
+    it('does not publish for a member event outside a DM', async () => {
+      vi.useFakeTimers();
+      const { a, measure } = large();
+
+      a.emit(RoomStateEvent.Members, {}, {}, { userId: '@stranger:hs' });
+      await flushProjection();
+
+      expect(a.getRooms).not.toHaveBeenCalled();
+      expect(measure()).toEqual({ rowsReplaced: 0, publishes: 0 });
+    });
+
+    it('re-projects for a member event of a DM peer', async () => {
+      vi.useFakeTimers();
+      const { a } = large();
+
+      a.emit(RoomStateEvent.Members, {}, {}, { userId: '@peer:hs' });
+      await flushProjection();
+
+      expect(a.getRooms).toHaveBeenCalledOnce();
+    });
   });
 
   describe('with the coalescing window', () => {
@@ -797,7 +886,8 @@ describe('SelectedRoomLibraryService', () => {
 
   it('rebuilds the mixed list when a cancelled edit changes a preview', async () => {
     vi.useFakeTimers();
-    const a = fakeClient('@a:hs', [fakeRoom('!a:hs')]);
+    const preview = { message: 'edited' };
+    const a = fakeClient('@a:hs', [fakeRoom('!a:hs', preview)]);
     const b = fakeClient('@b:hs', [fakeRoom('!b:hs')]);
     const harness = setup({
       selected: new Set(['@a:hs', '@b:hs']),
@@ -809,6 +899,7 @@ describe('SelectedRoomLibraryService', () => {
     });
     const before = harness.service.view();
 
+    preview.message = 'original';
     a.emit(MatrixEventEvent.Replaced);
     await flushProjection();
 

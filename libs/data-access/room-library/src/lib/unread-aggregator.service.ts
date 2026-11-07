@@ -92,6 +92,9 @@ export class UnreadAggregatorService {
   readonly unreadRooms = this._unreadRooms.asReadonly();
 
   private readonly listeners = new Map<string, AccountListener>();
+  /** Each account's last counted unread rooms; only accounts in {@link stale} are recounted. */
+  private readonly unreadByUser = new Map<string, UnreadRoom[]>();
+  private readonly stale = new Set<string>();
 
   constructor() {
     inject(DestroyRef).onDestroy(() => this.flusher.cancel());
@@ -105,6 +108,7 @@ export class UnreadAggregatorService {
       if (!live.has(userId)) {
         this.detach(listener);
         this.listeners.delete(userId);
+        this.unreadByUser.delete(userId);
       }
     }
     for (const userId of ids) {
@@ -122,21 +126,26 @@ export class UnreadAggregatorService {
       if (!client) {
         continue; // not fully started yet; a later accountIds tick re-checks it
       }
+      const schedule = () => {
+        this.stale.add(userId);
+        this.flusher.schedule();
+      };
       const listener: AccountListener = {
         client,
-        handler: () => this.flusher.schedule(),
+        handler: schedule,
         onSync: () => {
-          this.flusher.schedule();
+          schedule();
           this.flusher.flush();
         },
         // Encrypted rooms count a message only once it decrypts, after its Sync; the client
         // re-emits Decrypted then. History decrypting on a scroll-back changes no count.
         onDecrypted: (event) => {
-          if (decryptionChangesRow(client, event)) this.flusher.schedule();
+          if (decryptionChangesRow(client, event)) schedule();
         },
       };
       this.attach(listener);
       this.listeners.set(userId, listener);
+      this.stale.add(userId);
     }
     this.flusher.schedule();
   }
@@ -153,7 +162,11 @@ export class UnreadAggregatorService {
     const counts = new Map<string, number>();
     const rooms: UnreadRoom[] = [];
     for (const userId of this.listeners.keys()) {
-      const unread = this.unreadRoomsFor(userId);
+      let unread = this.unreadByUser.get(userId);
+      if (!unread || this.stale.has(userId)) {
+        unread = this.unreadRoomsFor(userId);
+        this.unreadByUser.set(userId, unread);
+      }
       // A room flagged to come back to counts as one although the server's count is zero: the
       // flag is the only sign it wants attention, and ignoring it would leave it visible only
       // in the sidebar row.
@@ -163,6 +176,7 @@ export class UnreadAggregatorService {
       );
       rooms.push(...unread);
     }
+    this.stale.clear();
     this._unreadByAccount.set(counts);
     this._unreadRooms.set(rooms);
   }
