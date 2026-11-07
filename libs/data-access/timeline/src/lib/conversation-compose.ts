@@ -3,7 +3,7 @@ import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
 import { type ConversationState } from './conversation-runtime.service';
 import { type ConversationKey } from './conversation-messages';
-import { appendDraft, withoutSent } from './draft-text';
+import { appendDraft, putBackDraft, withoutSent } from './draft-text';
 
 export type ConversationComposeIntent =
   | { readonly kind: 'message' }
@@ -76,6 +76,8 @@ interface ConversationComposePorts {
   persistDraft(draft: string): void;
   /** The persisted draft, which still holds a message in flight that the box no longer shows. */
   readDraft(): string;
+  /** Put a failed message back once this handle is retired: into a newer live one, or storage. */
+  putBackRetired(failed: string): void;
   persistSnapshot(snapshot: ConversationComposeSnapshot | null): void;
   setTyping(typing: boolean): void;
   send(request: ConversationTextSendRequest): ConversationTextSendOperation;
@@ -140,6 +142,13 @@ export class ConversationComposeController {
   keepMessageDraft(text: string): void {
     this.messageDraftState.set(appendDraft(this.messageDraftState(), text));
     this.ports.persistDraft(appendDraft(this.ports.readDraft(), text));
+  }
+
+  /** Put a failed message back in front of the message draft. Not a user edit either. */
+  putBack(failed: string): void {
+    const restored = putBackDraft(this.messageDraftState(), failed);
+    this.messageDraftState.set(restored);
+    this.ports.persistDraft(restored);
   }
 
   private setDraft(draft: string): void {
@@ -279,12 +288,12 @@ export class ConversationComposeController {
   ): void {
     if (intent.kind === 'edit') return;
     // Never skipped: text typed or kept since the send goes after the failed one. A retired
-    // handle's box is empty; what was kept for it waits in storage behind the failed text.
-    const since =
-      this.messageDraftState() || withoutSent(this.ports.readDraft(), draft);
-    const restored = appendDraft(draft, since);
-    this.messageDraftState.set(restored);
-    this.ports.persistDraft(restored);
+    // handle's box is gone, and a newer one for the room would overwrite its storage write.
+    if (this.ports.state() === 'retired') {
+      this.ports.putBackRetired(draft);
+      return;
+    }
+    this.putBack(draft);
     if (this.revision === revision && this.intentState().kind === 'message') {
       this.intentState.set(intent);
     }

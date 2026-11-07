@@ -241,6 +241,43 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
       expect(TestBed.inject(DraftStoreService).get('!r:hs')).toBe('');
     });
 
+    it('keeps a lost caption in the message draft when an edit began in the same room', async () => {
+      const kept: [unknown, string][] = [];
+      const runtime = {
+        compose: { draft: signal('') },
+        keepDraft: (key: unknown, text: string) => kept.push([key, text]),
+      };
+      const { fixture } = await renderComposer(
+        { ...A, conversationDraft: true },
+        [
+          { provide: ConversationRuntime, useValue: runtime },
+          MockProvider(MatrixClientService, {
+            accountIds: signal(['@a:hs']),
+            softLoggedOut: signal([]),
+          }),
+        ],
+      );
+      const cmp = fixture.componentInstance;
+      const finish: (() => void)[] = [];
+      cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+        finish.push(() =>
+          onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+        );
+      });
+      pickFiles(cmp, [png('one.png')]);
+      cmp.text.set('for the room');
+      cmp.submit();
+
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'the edited body');
+      fixture.detectChanges();
+      finish[0]?.();
+
+      expect(kept).toEqual([[A, 'for the room']]);
+      expect(cmp.text()).toBe('the edited body');
+    });
+
     it('writes nothing back for an account signed out before the upload settled', async () => {
       const { settle, accountIds, kept } = await sendThenSwitch();
       accountIds.set(['@b:hs']); // sign-out cleared every draft

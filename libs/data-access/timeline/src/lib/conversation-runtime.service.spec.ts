@@ -1088,6 +1088,30 @@ describe('ConversationRuntime', () => {
       });
     });
 
+    it('puts a failed send back in front of a newer handle’s text after its own handle retired', async () => {
+      const { runtime, sends, drafts } = setup();
+      const old = runtime.focus(KEY);
+      old.compose.setDraft('failed text');
+      const outcome = firstValueFrom(old.compose.submit());
+      old.compose.setDraft(''); // the box clears on send
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+      runtime.retireRetained();
+      const fresh = runtime.focus(KEY);
+      fresh.compose.setDraft('new text');
+
+      sends.next({ kind: 'rejected', retryable: true });
+      await outcome;
+
+      expect(fresh.compose.draft()).toBe('failed text\n\nnew text');
+      expect(drafts.get(conversationDraftKey(KEY))).toBe(
+        'failed text\n\nnew text',
+      );
+      fresh.compose.setDraft('failed text\n\nnew text!');
+      expect(drafts.get(conversationDraftKey(KEY))).toBe(
+        'failed text\n\nnew text!',
+      );
+    });
+
     it('does not keep a reply open after its send succeeds', async () => {
       const { runtime, sends } = setup(2, undefined, [message('$target')]);
       const held = runtime.focus(KEY);

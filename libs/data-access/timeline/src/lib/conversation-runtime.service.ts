@@ -49,7 +49,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
-import { appendDraft } from './draft-text';
+import { appendDraft, putBackDraft } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -360,6 +360,16 @@ export class ConversationRuntime {
       initialSnapshot: this.composeSnapshots.get(draftKey),
       persistDraft: (draft) => this.drafts.set(draftKey, draft),
       readDraft: () => this.drafts.get(draftKey),
+      putBackRetired: (failed) => {
+        const live = this.entry(immutableKey);
+        if (live) live.composeController.putBack(failed);
+        else {
+          this.drafts.set(
+            draftKey,
+            putBackDraft(this.drafts.get(draftKey), failed),
+          );
+        }
+      },
       persistSnapshot: (snapshot) =>
         this.persistComposeSnapshot(draftKey, snapshot),
       setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),

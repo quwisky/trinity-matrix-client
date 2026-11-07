@@ -7,6 +7,11 @@ export function appendDraft(draft: string, text: string): string {
   return draft.trim() ? `${draft.trimEnd()}\n\n${text}` : text;
 }
 
+/** `draft` with a `failed` message back in front of it, unless it already leads the draft. */
+export function putBackDraft(draft: string, failed: string): string {
+  return appendDraft(failed, withoutSent(draft, failed));
+}
+
 /**
  * `draft` without a `sent` message that was the whole draft when it was sent, so it leads the
  * draft; whatever was added after it stays. A draft that does not start with it is left alone.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendDraft, withoutSent } from './draft-text';
+import { appendDraft, putBackDraft, withoutSent } from './draft-text';
 
 describe('appendDraft', () => {
   it('adds text as its own paragraph after a draft', () => {
@@ -14,6 +14,14 @@ describe('appendDraft', () => {
 
   it('keeps a paragraph the draft already holds', () => {
     expect(appendDraft('ok', 'ok')).toBe('ok\n\nok');
+  });
+});
+
+describe('putBackDraft', () => {
+  it('puts a failed message in front of the draft, once', () => {
+    expect(putBackDraft('typed', 'failed')).toBe('failed\n\ntyped');
+    expect(putBackDraft('', 'failed')).toBe('failed');
+    expect(putBackDraft('failed\n\ntyped', 'failed')).toBe('failed\n\ntyped');
   });
 });
 
