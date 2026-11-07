@@ -340,6 +340,18 @@ describe('PushService', () => {
       expect(svc.backgroundDelivery()).toBe('app');
     });
 
+    it('needs background sync on Android until push delivers, never on iOS', async () => {
+      h.state.platform = 'android';
+      const android = setup().svc;
+      expect(android.notifiesFromBackgroundSync()).toBe(true);
+      await registerWithToken(android);
+      expect(android.notifiesFromBackgroundSync()).toBe(false);
+
+      TestBed.resetTestingModule();
+      h.state.platform = 'ios';
+      expect(setup().svc.notifiesFromBackgroundSync()).toBe(false);
+    });
+
     it('leaves web with the app', async () => {
       h.state.platform = 'web';
       const { svc } = setup();

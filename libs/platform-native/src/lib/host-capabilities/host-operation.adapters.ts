@@ -369,6 +369,9 @@ export class HostFileExportAdapter implements HostFileExportOperation {
 export class DocumentHostLifecycleAdapter implements HostLifecycleOperation {
   private readonly document = inject(DOCUMENT);
 
+  /** The Capacitor apps' WebView reports the app's own pause and resume as visibility. */
+  readonly suspendedInBackground = Capacitor.isNativePlatform();
+
   readonly events = defer(() =>
     fromEvent(this.document, 'visibilitychange').pipe(
       map(() =>

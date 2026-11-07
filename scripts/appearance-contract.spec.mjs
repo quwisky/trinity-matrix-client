@@ -213,12 +213,19 @@ describe('Appearance contraction', () => {
     // The iOS keyboard inset is layout, not Appearance; the native adapter writes only that.
     const keyboardInsetWriter =
       'libs/platform-native/src/lib/native-keyboard-inset.adapter.ts';
+    // Pausing animations in a hidden window is not Appearance; it writes only that mark.
+    const hiddenWindowWriter =
+      'libs/application/runtime/src/lib/composition/hidden-window-animations.service.ts';
     expect(filesContaining('documentElement')).toEqual([
       adapter,
+      hiddenWindowWriter,
       themeReader,
       keyboardInsetWriter,
       viewportReader,
     ]);
+    expect(read(hiddenWindowWriter)).not.toMatch(
+      /'font-size'|classList|\.style\s*(?:\.|\[)|setAttribute\(/u,
+    );
     expect(read(keyboardInsetWriter)).not.toMatch(
       /'font-size'|classList|setAttribute\(/u,
     );

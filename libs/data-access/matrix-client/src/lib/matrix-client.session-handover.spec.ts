@@ -9,7 +9,19 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
-import { SESSION, fakeClient, setup } from './matrix-client.spec-harness';
+import {
+  SESSION,
+  SESSION_B,
+  fakeClient,
+  setup,
+} from './matrix-client.spec-harness';
+import { resumeClientSync } from './outgoing-work';
+
+// The real restart is covered against the SDK in outgoing-work.spec.ts.
+vi.mock('./outgoing-work', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./outgoing-work')>()),
+  resumeClientSync: vi.fn(),
+}));
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
@@ -566,5 +578,99 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     } finally {
       client.stopClient();
     }
+  });
+});
+
+describe('MatrixClientService background sync', () => {
+  beforeEach(() => {
+    vi.mocked(createClient).mockReset();
+    vi.mocked(resumeClientSync).mockReset();
+    storeMock.startup.mockReset().mockResolvedValue(undefined);
+    storeMock.destroy.mockReset().mockResolvedValue(undefined);
+  });
+
+  function syncingClient(baseUrl?: string) {
+    return { ...fakeClient(baseUrl), syncApi: { stop: vi.fn() } };
+  }
+
+  /** Two live accounts, `b` active. */
+  async function twoAccounts() {
+    const a = syncingClient();
+    const b = syncingClient('https://other.example');
+    const { svc } = setup(a, b);
+    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(svc.add(SESSION_B));
+    return { svc, a, b };
+  }
+
+  it('stops every account syncing in the background', async () => {
+    const { svc, a, b } = await twoAccounts();
+
+    svc.suspendSync();
+
+    expect(a.syncApi.stop).toHaveBeenCalledOnce();
+    expect(b.syncApi.stop).toHaveBeenCalledOnce();
+    expect(a.stopClient).not.toHaveBeenCalled();
+    expect(b.stopClient).not.toHaveBeenCalled();
+  });
+
+  it('restarts every account in the foreground, the active one first', async () => {
+    const { svc, a, b } = await twoAccounts();
+    svc.suspendSync();
+
+    svc.resumeSync();
+
+    expect(vi.mocked(resumeClientSync).mock.calls.map(([c]) => c)).toEqual([
+      b,
+      a,
+    ]);
+  });
+
+  it('ends rapid background and foreground switches in the last state', async () => {
+    const { svc, a } = await twoAccounts();
+
+    svc.suspendSync();
+    svc.resumeSync();
+    svc.suspendSync();
+
+    expect(a.syncApi.stop).toHaveBeenCalledTimes(2);
+    expect(resumeClientSync).toHaveBeenCalledTimes(2);
+    vi.mocked(resumeClientSync).mockClear();
+
+    svc.resumeSync();
+    expect(resumeClientSync).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a handover pause when the app returns to the foreground', async () => {
+    const { svc } = await twoAccounts();
+
+    svc.pauseSync();
+    svc.suspendSync();
+    svc.resumeSync();
+
+    expect(resumeClientSync).not.toHaveBeenCalled();
+  });
+
+  it('pauses an account that finishes starting in the background', async () => {
+    const a = syncingClient();
+    const { svc } = setup(a);
+    svc.suspendSync();
+
+    await firstValueFrom(svc.init(SESSION));
+
+    expect(a.syncApi.stop).toHaveBeenCalledOnce();
+    svc.resumeSync();
+    expect(resumeClientSync).toHaveBeenCalledWith(a);
+  });
+
+  it('does not restart an account removed while in the background', async () => {
+    const { svc, a, b } = await twoAccounts();
+    svc.suspendSync();
+
+    await firstValueFrom(svc.remove(SESSION.userId));
+    svc.resumeSync();
+
+    expect(vi.mocked(resumeClientSync).mock.calls.map(([c]) => c)).toEqual([b]);
+    expect(a.stopClient).toHaveBeenCalled();
   });
 });

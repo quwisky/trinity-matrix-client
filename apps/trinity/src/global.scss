@@ -463,6 +463,14 @@
     }
   }
 
+  /* A hidden desktop window keeps rendering (HiddenWindowAnimations); paused animations carry
+   * on from where they were once it is shown. */
+  :root[data-window-hidden] *,
+  :root[data-window-hidden] *::before,
+  :root[data-window-hidden] *::after {
+    animation-play-state: paused !important;
+  }
+
   /* Reduced motion: transitions are removed, not shortened; see the reduced-motion note in
      theme-foundation's variables.scss. */
   @media (prefers-reduced-motion: reduce) {

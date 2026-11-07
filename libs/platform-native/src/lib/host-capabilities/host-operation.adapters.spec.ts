@@ -346,6 +346,20 @@ describe('file, lifecycle and update host operation contracts', () => {
     await expect(background).resolves.toEqual({ kind: 'background' });
   });
 
+  it.each([
+    [true, true],
+    [false, false],
+  ])(
+    'says the app is suspended in the background when native is %s',
+    (native, suspended) => {
+      cap.native = native;
+
+      expect(
+        TestBed.inject(DocumentHostLifecycleAdapter).suspendedInBackground,
+      ).toBe(suspended);
+    },
+  );
+
   describe('on the desktop shell', () => {
     const visibility: { emit: (value: 'visible' | 'hidden') => void } = {
       emit: () => undefined,

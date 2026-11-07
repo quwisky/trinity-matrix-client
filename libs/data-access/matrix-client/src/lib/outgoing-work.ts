@@ -9,6 +9,7 @@ import {
   EventType,
   MsgType,
   RelationType,
+  SyncState,
   type EventTimeline,
   type IContent,
   type MatrixClient,
@@ -43,7 +44,64 @@ export interface PendingTextMessage {
 
 /** matrix-js-sdk keeps its sync loop on the protected `MatrixClient.syncApi`. */
 interface SyncLoopOwner {
-  readonly syncApi?: { stop(): void };
+  readonly syncApi?: PausableSyncLoop;
+}
+
+/** The private `SyncApi` members a pause watches the stopped loop's exit through. */
+interface PausableSyncLoop {
+  stop(): void;
+  readonly running?: boolean;
+  syncState?: SyncState | null;
+  readonly connectionReturnedResolvers?: unknown;
+  readonly savedSyncPromise?: Promise<void>;
+  updateSyncState?(state: SyncState, data?: unknown): void;
+  startKeepAlives?(): Promise<boolean>;
+}
+
+/** States a stopped loop reports on its way out; they describe no connection anyone has. */
+const LATE_STATES: ReadonlySet<SyncState> = new Set([
+  SyncState.Stopped,
+  SyncState.Error,
+  SyncState.Reconnecting,
+  SyncState.Catchup,
+]);
+
+/**
+ * How long a resume waits for the paused loop to report its exit. A loop that dies on a failed
+ * store write never reports it, and it is already stopped, so after this the resume goes ahead.
+ */
+export const PAUSED_LOOP_EXIT_TIMEOUT_MS = 5_000;
+
+/** Settles once each paused loop can no longer process or request anything. */
+const exits = new WeakMap<PausableSyncLoop, Promise<void>>();
+
+/** Whether a client's loop should run once its paused one has exited. */
+const wanted = new WeakMap<MatrixClient, boolean>();
+
+/** Resumes waiting for a paused loop's exit, so a second resume joins the first. */
+const resuming = new WeakSet<MatrixClient>();
+
+/**
+ * The loop's exit, with its late state reports dropped: a resume must not hear "stopped" from a
+ * loop already replaced. It exits through `updateSyncState(Stopped)`, after the response it was
+ * processing and any saved-sync replay; a loop in, or entering, a keep-alive never syncs again.
+ */
+function watchExit(loop: PausableSyncLoop): Promise<void> {
+  if (!loop.running || typeof loop.updateSyncState !== 'function') {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const report = loop.updateSyncState!.bind(loop);
+    loop.updateSyncState = (state, data) => {
+      if (state === SyncState.Stopped) resolve();
+      if (!LATE_STATES.has(state)) report(state, data);
+    };
+    loop.startKeepAlives = () => {
+      resolve();
+      return new Promise<boolean>(() => undefined);
+    };
+    if (loop.connectionReturnedResolvers) resolve();
+  });
 }
 
 /**
@@ -63,8 +121,115 @@ interface PendingEchoOwner {
  * nothing while the client is still starting, before `startClient()` has created the member.
  */
 export function pauseClientSync(client: MatrixClient): void {
+  wanted.set(client, false);
   const loop = (client as unknown as SyncLoopOwner).syncApi;
-  if (typeof loop?.stop === 'function') loop.stop();
+  if (typeof loop?.stop !== 'function') return;
+  if (!exits.has(loop)) exits.set(loop, watchExit(loop));
+  loop.stop();
+  // Connecting again from here on, as the paused loop's own stop report is dropped.
+  if (loop.syncState) loop.syncState = SyncState.Catchup;
+}
+
+/** The protected and private matrix-js-sdk members {@link resumeClientSync} restarts a loop with. */
+interface ResumableClient {
+  readonly clientRunning: boolean;
+  readonly clientOpts?: object;
+  syncApi?: ResumableSyncLoop;
+  buildSyncApiOptions(): object;
+}
+
+interface ResumableSyncLoop extends PausableSyncLoop {
+  running: boolean;
+  abortController?: AbortController;
+  syncState: SyncState | null;
+  syncStateData: unknown;
+  readonly onOnline: () => void;
+  getPushRules(): Promise<void>;
+  prepareSyncFilterLazyLoading(): void;
+  prepareSyncFilterUserProfiles(): Promise<void>;
+  getFilter(): Promise<{
+    readonly filterId?: string;
+    readonly filter?: object;
+  }>;
+  doSync(options: {
+    readonly filter?: string;
+    readonly hasSyncedBefore?: boolean;
+  }): Promise<void>;
+}
+
+/**
+ * Restart a loop {@link pauseClientSync} stopped, from the sync token the client holds. The SDK
+ * has no public resume, and its `sync()` would first replay the saved sync into the live rooms,
+ * so this runs `sync()`'s steps without that replay on a new loop object, once the stopped one
+ * has exited: it may still be processing a response or replaying the saved sync. Does nothing
+ * while the loop runs, before the client has one, or once `stopClient()` ended it; a pause
+ * before the old loop exits cancels it.
+ */
+export function resumeClientSync(client: MatrixClient): void {
+  const owner = client as unknown as ResumableClient;
+  const paused = owner.syncApi;
+  const exited = paused && exits.get(paused);
+  if (!owner.clientRunning || !paused || !exited) return;
+  wanted.set(client, true);
+  if (resuming.has(client)) return;
+  resuming.add(client);
+  // Timed from the resume: a phone frozen in the background lets the old loop finish on thaw.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  void Promise.race([
+    exited,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, PAUSED_LOOP_EXIT_TIMEOUT_MS);
+    }),
+  ])
+    .then(() => {
+      clearTimeout(timer);
+      return paused.savedSyncPromise;
+    })
+    .then(() => {
+      resuming.delete(client);
+      return wanted.get(client) &&
+        owner.clientRunning &&
+        owner.syncApi === paused
+        ? runResumedLoop(client, owner, paused)
+        : undefined;
+    })
+    .catch((error: unknown) => {
+      console.warn("Couldn't resume syncing.", error);
+    });
+}
+
+async function runResumedLoop(
+  client: MatrixClient,
+  owner: ResumableClient,
+  paused: ResumableSyncLoop,
+): Promise<void> {
+  const Loop = paused.constructor as new (
+    ...args: unknown[]
+  ) => ResumableSyncLoop;
+  const loop = new Loop(client, owner.clientOpts, owner.buildSyncApiOptions());
+  // Catching up: the first request returns at once, and a conversation waiting for its room
+  // keeps waiting. A never-synced client stays null, which still means "never synced".
+  loop.syncState = paused.syncState === null ? null : SyncState.Catchup;
+  loop.running = true;
+  loop.abortController = new AbortController();
+  owner.syncApi = loop;
+  globalThis.window?.addEventListener?.('online', loop.onOnline, false);
+  try {
+    // Rules a pause cut off before they loaded would leave notifications unevaluated.
+    await loop.getPushRules();
+    loop.prepareSyncFilterLazyLoading();
+    await loop.prepareSyncFilterUserProfiles();
+    const { filterId, filter } = await loop.getFilter();
+    if (!filter) return;
+    await loop.doSync({
+      filter: filterId,
+      // Only a client that never synced still owes its Prepared.
+      hasSyncedBefore: client.store.getSyncToken() !== null,
+    });
+  } catch (error: unknown) {
+    // A pause during a keep-alive rejects it; that loop was meant to end.
+    if (loop.running) throw error;
+  }
 }
 
 /**
