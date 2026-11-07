@@ -3,6 +3,7 @@ import type { UIAuthCallback } from 'matrix-js-sdk';
 import {
   decodeRecoveryKey,
   deriveRecoveryKeyFromPassphrase,
+  type GeneratedSecretStorageKey,
 } from 'matrix-js-sdk/lib/crypto-api';
 import type {
   SecretStorageKeyDescriptionAesV1,
@@ -52,6 +53,9 @@ export type {
 
 const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 
+const PARTIAL_SETUP_MESSAGE =
+  'Encryption setup didn’t finish. Save this recovery key now, because your account may already use it. Then try again to finish setting up key backup.';
+
 /**
  * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
  * bootstraps cross-signing, secret storage (4S) and key backup, exposes readiness as
@@ -63,6 +67,14 @@ export class TrustService {
   private readonly cryptoPort = inject(TrustCryptoPort);
   private readonly providerRecovery = inject(TRUST_PROVIDER_RECOVERY);
   private readonly healthRuntime = inject(TrustHealthService);
+  /**
+   * The key a partly failed setup minted and showed, so a retry reuses it instead of
+   * minting a second one, and is not refused over the pointer that setup itself wrote.
+   */
+  private unfinishedSetup: {
+    readonly userId: string;
+    readonly key: GeneratedSecretStorageKey;
+  } | null = null;
 
   /** Atomic Trust state; no caller can observe a status assembled across generations. */
   readonly health = this.healthRuntime.health;
@@ -121,9 +133,14 @@ export class TrustService {
           const client = context.client;
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
-          await assertNoRecoveryOnAccount(client);
+          const unfinished =
+            this.unfinishedSetup?.userId === userId
+              ? this.unfinishedSetup.key
+              : null;
+          await assertNoRecoveryOnAccount(client, unfinished?.privateKey);
           const identity = await assertNoIdentityElsewhere(client, crypto);
-          const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+          const recoveryKey =
+            unfinished ?? (await crypto.createRecoveryKeyFromPassphrase());
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
               promptPassword,
@@ -134,10 +151,28 @@ export class TrustService {
             // no identity, so new keys replace nothing.
             ...(identity === 'unpublished' && { setupNewCrossSigning: true }),
           });
-          await crypto.bootstrapSecretStorage({
-            setupNewKeyBackup: true,
-            createSecretStorageKey: async () => recoveryKey,
-          });
+          try {
+            // On a retry the SDK finds the default key the first try wrote and does not
+            // call createSecretStorageKey; it only stores what is missing and the backup.
+            await crypto.bootstrapSecretStorage({
+              setupNewKeyBackup: true,
+              createSecretStorageKey: async () => recoveryKey,
+            });
+          } catch {
+            // The SDK makes the key the account default before the backup, its last and
+            // most failure-prone step, so the key may be in use: the user must see it.
+            this.unfinishedSetup = { userId, key: recoveryKey };
+            await this.healthRuntime.reconcile();
+            throw new TrustOperationError(
+              'setup',
+              'partial-update',
+              'retry',
+              PARTIAL_SETUP_MESSAGE,
+              true,
+              encodedRecoveryKey(recoveryKey),
+            );
+          }
+          this.unfinishedSetup = null;
           await this.healthRuntime.reconcile();
           return encodedRecoveryKey(recoveryKey);
         })(),

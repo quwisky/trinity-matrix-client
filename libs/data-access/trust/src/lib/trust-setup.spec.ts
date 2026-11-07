@@ -498,15 +498,73 @@ describe('setUp', () => {
 });
 
 describe('setUp failures', () => {
-  it('propagates a bootstrap failure to the caller', async () => {
+  it('propagates a cross-signing failure without a key, since none is in use yet', async () => {
     const { svc, crypto } = setup({});
-    crypto.bootstrapSecretStorage.mockRejectedValue(new Error('boom'));
+    crypto.bootstrapCrossSigning.mockRejectedValue(new Error('boom'));
     await expect(
       firstValueFrom(svc.setUp(async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'setup',
       kind: 'server-failure',
       recovery: 'retry',
+      recoveryKey: null,
     });
+  });
+
+  it('hands over the recovery key when secret storage fails partway', async () => {
+    // The SDK makes the new key the account default before it creates the backup, so a
+    // backup failure leaves an account that uses a key nobody was shown.
+    const { svc, crypto } = setup({});
+    crypto.bootstrapSecretStorage.mockRejectedValue(new Error('502'));
+
+    await expect(
+      firstValueFrom(svc.setUp(async () => 'pw')),
+    ).rejects.toMatchObject({
+      operation: 'setup',
+      kind: 'partial-update',
+      recovery: 'retry',
+      partial: true,
+      recoveryKey: 'EsTRecoveryKey',
+      message: expect.stringMatching(/save this recovery key/i),
+    });
+  });
+
+  it('finishes on a retry with the same key, over the pointer the first try wrote', async () => {
+    const firstKey = {
+      encodedPrivateKey: 'EsTFirst',
+      privateKey: new Uint8Array(32).fill(1),
+    };
+    const { svc, crypto, client, secretStorage } = setup({
+      recoveryKey: firstKey,
+    });
+    crypto.bootstrapSecretStorage.mockRejectedValueOnce(new Error('502'));
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow();
+    client.http.authedRequest.mockResolvedValue({ key: 'mine' });
+    secretStorage.getKey.mockResolvedValue(['mine', {}]);
+
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).resolves.toBe(
+      'EsTFirst',
+    );
+
+    expect(crypto.createRecoveryKeyFromPassphrase).toHaveBeenCalledOnce();
+    expect(secretStorage.checkKey).toHaveBeenCalledWith(
+      firstKey.privateKey,
+      {},
+    );
+    expect(crypto.bootstrapSecretStorage).toHaveBeenCalledTimes(2);
+  });
+
+  it('still refuses a retry when the account’s key is not the one it made', async () => {
+    const { svc, crypto, client, secretStorage } = setup({});
+    crypto.bootstrapSecretStorage.mockRejectedValueOnce(new Error('502'));
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow();
+    client.http.authedRequest.mockResolvedValue({ key: 'someone-else' });
+    secretStorage.getKey.mockResolvedValue(['someone-else', {}]);
+    secretStorage.checkKey.mockResolvedValue(false);
+
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow(
+      /already has a recovery key/i,
+    );
+    expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
   });
 });

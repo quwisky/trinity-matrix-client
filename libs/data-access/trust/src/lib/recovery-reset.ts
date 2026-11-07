@@ -47,12 +47,19 @@ const RESTORE_TIMEOUT_MS = 20_000;
 const PARTIAL_RESET_MESSAGE =
   'The homeserver stopped responding while the reset was being finished, so it may have completed only partly. Check Settings → Security to see whether recovery is set up before starting another reset.';
 
-/** The irreversible tail started, so callers must offer inspection rather than blind retry. */
+/** Said instead when the tail had already minted the new key, which the user must save. */
+const PARTIAL_RESET_WITH_KEY_MESSAGE =
+  'Your identity was reset, but the homeserver stopped responding before recovery was fully set up. Save this recovery key now, because your account may already use it. Then check Settings → Security to see whether recovery is set up before starting another reset.';
+
+/**
+ * The irreversible tail started, so callers must offer inspection rather than blind retry.
+ * Carries the new recovery key when one was minted: the account may already use it.
+ */
 export class PartialRecoveryResetError extends Error {
   override readonly name = 'PartialRecoveryResetError';
 
-  constructor() {
-    super(PARTIAL_RESET_MESSAGE);
+  constructor(readonly recoveryKey: string | null = null) {
+    super(recoveryKey ? PARTIAL_RESET_WITH_KEY_MESSAGE : PARTIAL_RESET_MESSAGE);
   }
 }
 
@@ -179,9 +186,11 @@ export async function runRecoveryReset(
   // Past the point of no return: the new identity is published. Failing from here cannot
   // be undone, but it must not also leave the UI describing an account that no longer
   // exists — so the status is recomputed either way.
+  let shownKey: string | null = null;
   try {
     await deleteDehydratedDevice(client);
     const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+    shownKey = encodedRecoveryKey(recoveryKey);
     // The biggest, most hang-prone writes of the reset: ~6 echo-waiting account-data writes
     // (`addKey`, `setDefaultKeyId`, three `m.cross_signing.*` stores) plus
     // `deleteAllKeyBackupVersions`. Single requests have the client's 30-second deadline;
@@ -195,13 +204,12 @@ export async function runRecoveryReset(
       new PartialRecoveryResetError(),
     );
     await dropStaleKeyDescription(storage, previousKeyId);
-    return encodedRecoveryKey(recoveryKey);
-  } catch (cause) {
+    return shownKey;
+  } catch {
     // The identity is already published. Every failure from here is necessarily partial,
     // whether it is a timeout, key generation/encoding failure, or an ordinary SDK error.
-    throw cause instanceof PartialRecoveryResetError
-      ? cause
-      : new PartialRecoveryResetError();
+    // A key minted before the failure may already be the account's, so it goes with it.
+    throw new PartialRecoveryResetError(shownKey);
   } finally {
     await ctx.refreshStatus();
   }

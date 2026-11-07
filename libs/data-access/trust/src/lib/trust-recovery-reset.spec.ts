@@ -239,9 +239,25 @@ describe('resetRecovery', () => {
       kind: 'partial-update',
       recovery: 'review-security-settings',
       partial: true,
+      // The status reads ready, so this is the only place the new key can still reach the user.
+      recoveryKey: 'EsTRecoveryKey',
+      message: expect.stringMatching(/save this recovery key/i),
     });
 
     expect(svc.status()).toBe('ready'); // recomputed, not left stale at 'unknown'
+  });
+
+  it('has no key to hand over when the tail fails before minting one', async () => {
+    const { svc, crypto } = setup({ defaultKeyId: 'old-key' });
+    crypto.createRecoveryKeyFromPassphrase.mockRejectedValue(new Error('boom'));
+
+    await expect(
+      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+    ).rejects.toMatchObject({
+      kind: 'partial-update',
+      partial: true,
+      recoveryKey: null,
+    });
   });
 
   it('repairs the account it started on, not whichever is active now', async () => {

@@ -29,11 +29,17 @@ import {
  * **Fails open on purpose.** Only a pointer the server positively reports stops the setup;
  * an unreachable or unhappy server does not. This exists to block a known-destructive
  * action, not to become a new way for genuine first-run setup to fail.
+ *
+ * `ownKey` is the key an earlier, partly failed setup on this device minted and showed.
+ * When the server's pointer is that key, finishing the setup replaces nothing the user
+ * does not already hold.
  */
 export async function assertNoRecoveryOnAccount(
   client: TrustMatrixClient,
+  ownKey: Uint8Array | null = null,
 ): Promise<void> {
-  if (!(await readServerDefaultKeyId(client))) {
+  const keyId = await readServerDefaultKeyId(client);
+  if (!keyId || (ownKey && (await isKeyFor(client, keyId, ownKey)))) {
     return;
   }
   throw new TrustOperationError(
@@ -140,6 +146,22 @@ export async function assertNoIdentityElsewhere(
         'verify-another-device',
         IDENTITY_ELSEWHERE_MESSAGE,
       );
+}
+
+/** Whether `privateKey` opens the 4S key `keyId`; any failed read is a no. */
+async function isKeyFor(
+  client: TrustMatrixClient,
+  keyId: string,
+  privateKey: Uint8Array,
+): Promise<boolean> {
+  try {
+    const stored = await client.secretStorage.getKey(keyId);
+    return (
+      !!stored && (await client.secretStorage.checkKey(privateKey, stored[1]))
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
