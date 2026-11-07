@@ -232,6 +232,14 @@ test.describe('Earlier messages for invited members', () => {
       { timeout: 30_000 },
     );
     await inviteAndJoin(page, bobPage, bob.userId, roomName);
+    // Alice's room key goes only to members she has seen join. Synapse can sync Bob's join with
+    // a stale `state_after` that still says invited (CI runs 42337805791, 42348806667), which the
+    // room's next event corrects: Bob's message is that event, the member list shows the result.
+    await sendComposerLines(bobPage, [`hello ${runId}`]);
+    await page.getByTestId('toggle-members').click();
+    await expect(
+      page.getByTestId('member-row').filter({ hasText: `hist-bob-${runId}` }),
+    ).toBeVisible({ timeout: 30_000 });
 
     const after = `after ${runId}`;
     await sendComposerLines(page, [after]);
