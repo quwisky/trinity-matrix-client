@@ -724,12 +724,14 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, threadId } = ctx;
-      const art = replyTextArt(text);
+      const render = (value: string) =>
+        renderMarkdown(value, this.packs.emoticons());
+      const art = replyTextArt(text, render);
       const content = replyMessageContent(
         room,
         messageId,
         art?.text ?? text,
-        renderMarkdown(art?.markdown ?? text, this.packs.emoticons()),
+        art?.md ?? render(text),
         mentions,
         undefined,
         shownContent,

@@ -170,12 +170,12 @@ class MatrixConversationTextSender implements ConversationTextSender {
           textMessageContent(request.body, render(request.body), mentions)
         );
       case 'reply': {
-        const art = replyTextArt(request.body);
+        const art = replyTextArt(request.body, render);
         return replyMessageContent(
           room,
           request.intent.eventId,
           art?.text ?? request.body,
-          render(art?.markdown ?? request.body),
+          art?.md ?? render(request.body),
           mentions,
           target,
           shownContent,

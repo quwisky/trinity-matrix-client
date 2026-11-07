@@ -34,13 +34,13 @@ export function composerPreview(
   if (!text) {
     return { html: '', rich: false };
   }
-  const art = context === 'reply' ? replyTextArt(text) : null;
+  const art = context === 'reply' ? replyTextArt(text, renderMarkdown) : null;
   const content = ((context === 'message'
     ? slashCommandContent(text, renderMarkdown, mentions)
     : null) ??
     textMessageContent(
       art?.text ?? text,
-      renderMarkdown(art?.markdown ?? text),
+      art?.md ?? renderMarkdown(text),
       mentions,
     )) as {
     formatted_body?: string;

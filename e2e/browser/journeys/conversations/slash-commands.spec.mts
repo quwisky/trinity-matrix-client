@@ -71,8 +71,8 @@ test.describe('Slash commands', () => {
     });
     await expect(flipped).toBeVisible({ timeout: 20_000 });
 
-    // A reply applies the text art, the shrug's `\_` and `_` kept literal in its rich body,
-    // and offers only those commands.
+    // A reply applies the text art and offers only those commands. Its message has
+    // formatting, so the reply is rich: the shrug's `\_` and `_` must stay literal there.
     await expect(async () => {
       await flipped.hover();
       await flipped.getByRole('button', { name: 'Reply', exact: true }).click({
@@ -85,7 +85,7 @@ test.describe('Slash commands', () => {
     await composer.fill('/');
     const replyMenu = page.getByTestId('slash-autocomplete');
     await expect(replyMenu.getByRole('option')).toHaveCount(4);
-    await composer.fill('/shrug calm down');
+    await composer.fill('/shrug **calm** down');
     await sendDraft();
     await expect(
       page.locator('.msg__text', { hasText: 'calm down ¯\\_(ツ)_/¯' }),

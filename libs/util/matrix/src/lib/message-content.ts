@@ -264,23 +264,39 @@ export function parseSlashCommand(
 }
 
 /**
- * A reply's text with a leading text-art command applied, or null when there is none. A reply
- * is always rich, so `markdown` is what to render: the text with the art's markdown escaped,
- * else the shrug's `\_` and `_` would turn into emphasis.
+ * A reply's text with a leading text-art command applied, and what to render for it, or null
+ * when there is none. A reply is rich whenever its message has formatting, so the art goes into
+ * the rendered HTML as escaped text after the message has been rendered: run through markdown
+ * itself, the shrug's `\_` and `_` read as emphasis, and inside a code block the message ended
+ * in, any escape shows as a backslash.
  */
 export function replyTextArt(
   text: string,
-): { text: string; markdown: string } | null {
+  render: (markdown: string) => RenderedMarkdown,
+): { text: string; md: RenderedMarkdown } | null {
   const parsed = parseSlashCommand(text);
   const art = parsed && TEXT_ART[parsed.command];
   if (!parsed || !art) {
     return null;
   }
-  // CommonMark lets any ASCII punctuation be backslash-escaped to a literal.
-  const literal = art.replace(/[!-/:-@[-`{-~]/g, '\\$&');
-  return parsed.arg
-    ? { text: `${parsed.arg} ${art}`, markdown: `${parsed.arg} ${literal}` }
-    : { text: art, markdown: literal };
+  const full = parsed.arg ? `${parsed.arg} ${art}` : art;
+  const md = parsed.arg ? render(parsed.arg) : null;
+  if (!md?.formatted) {
+    // Plain: the reply escapes the whole text itself.
+    return { text: full, md: { formatted: false, html: '' } };
+  }
+  // On the message's last line when that is a paragraph; on a line of its own after a block.
+  const html = md.html.trimEnd();
+  const tail = escapeHtml(art);
+  return {
+    text: full,
+    md: {
+      formatted: true,
+      html: html.endsWith('</p>')
+        ? `${html.slice(0, -'</p>'.length)} ${tail}</p>`
+        : `${html}<p>${tail}</p>`,
+    },
+  };
 }
 
 /** `m.emote` content (`/me`), rich when the markdown adds formatting. */
@@ -353,24 +369,22 @@ export function slashCommandContent(
     return null;
   }
   const { command, arg } = parsed;
+  const art = TEXT_ART[command];
+  if (art) {
+    // Plain text with no HTML twin: the art's `\_` and `_` must not read as markdown. Like
+    // the commands below, it needs the `m.mentions` marker an ordinary message carries.
+    return {
+      msgtype: MsgType.Text,
+      body: arg ? `${arg} ${art}` : art,
+      ...mentionsBlock([], mentionsRoom(arg)),
+    };
+  }
   switch (command) {
     case 'me':
       // `/me` carries @-mentions (pills + `m.mentions`) so `/me waves at @bob` notifies Bob.
       return arg ? emoteMessageContent(arg, renderHtml(arg), mentions) : null;
     // The remaining commands emit a body the sender authored, so they need the same
     // `m.mentions` marker as an ordinary message (else `/plain > @room …` re-pings the room).
-    case 'shrug':
-    case 'tableflip':
-    case 'unflip':
-    case 'lenny': {
-      // Plain text with no HTML twin: the art's `\_` and `_` must not read as markdown.
-      const art = TEXT_ART[command];
-      return {
-        msgtype: MsgType.Text,
-        body: arg ? `${arg} ${art}` : art,
-        ...mentionsBlock([], mentionsRoom(arg)),
-      };
-    }
     case 'plain':
       return arg
         ? {

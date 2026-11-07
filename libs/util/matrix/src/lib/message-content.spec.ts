@@ -89,26 +89,35 @@ describe('slashCommandsFor', () => {
 });
 
 describe('replyTextArt', () => {
-  it('appends the art, with markdown that renders it literally', () => {
-    const art = replyTextArt('/shrug **oh** well');
+  const html = (text: string) => replyTextArt(text, renderMarkdown)?.md.html;
+
+  it('appends the art to a formatted message, on its last line and literal', () => {
+    const art = replyTextArt('/shrug **oh** well', renderMarkdown);
 
     expect(art?.text).toBe('**oh** well ¯\\_(ツ)_/¯');
-    expect(renderMarkdown(art!.markdown).html.trim()).toBe(
-      '<p><strong>oh</strong> well ¯\\_(ツ)_/¯</p>',
+    expect(art?.md.html).toBe('<p><strong>oh</strong> well ¯\\_(ツ)_/¯</p>');
+  });
+
+  it('puts the art after a code block the message ends in, never inside it', () => {
+    expect(html('/unflip a\n\n    code')).toMatch(
+      /<\/pre><p>┬──┬ ノ\( ゜-゜ノ\)<\/p>$/u,
     );
   });
 
-  it('sends the art alone with no message', () => {
-    expect(replyTextArt('/lenny')?.text).toBe('( ͡° ͜ʖ ͡°)');
-    expect(renderMarkdown(replyTextArt('/unflip')!.markdown).html.trim()).toBe(
-      '<p>┬──┬ ノ( ゜-゜ノ)</p>',
+  it('leaves a plain message and the art alone to the reply, which escapes them whole', () => {
+    expect(replyTextArt('/lenny', renderMarkdown)).toEqual({
+      text: '( ͡° ͜ʖ ͡°)',
+      md: { formatted: false, html: '' },
+    });
+    expect(replyTextArt('/shrug oh well', renderMarkdown)?.md.formatted).toBe(
+      false,
     );
   });
 
   it('leaves the other commands and plain text alone', () => {
-    expect(replyTextArt('/me waves')).toBeNull();
-    expect(replyTextArt('/spoiler x')).toBeNull();
-    expect(replyTextArt('just text')).toBeNull();
+    expect(replyTextArt('/me waves', renderMarkdown)).toBeNull();
+    expect(replyTextArt('/spoiler x', renderMarkdown)).toBeNull();
+    expect(replyTextArt('just text', renderMarkdown)).toBeNull();
   });
 });
 
