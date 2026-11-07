@@ -424,12 +424,15 @@ export class ComposerAttachmentsService {
       return;
     }
     this.gifDownloading.set(true);
+    const conversationAtStart = this.conversation();
     this.gifs
       .download(gif)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (file) => {
           this.gifDownloading.set(false);
+          // Picked for the conversation it was chosen in; another one never gets it.
+          if (this.conversation() !== conversationAtStart) return;
           this.host.closePicker();
           // A media send carries no reply relation; end any active reply so its banner doesn't
           // linger over the next message.

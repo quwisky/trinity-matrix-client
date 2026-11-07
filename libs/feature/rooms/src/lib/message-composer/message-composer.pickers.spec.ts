@@ -7,7 +7,7 @@ import {
 } from './message-composer.spec-harness';
 import { ApplicationRef, signal, type Provider } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NEVER, of, throwError } from 'rxjs';
+import { NEVER, of, Subject, throwError } from 'rxjs';
 import {
   afterEach,
   beforeEach,
@@ -456,6 +456,31 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     expect(emitted?.items[0]?.file.type).toBe('image/gif');
     expect(emitted?.caption).toBe('');
     expect(cmp.pickerOpen()).toBe(false);
+    expect(cmp['attachments'].gifDownloading()).toBe(false);
+  });
+
+  it('drops a GIF whose download finishes after the conversation changed', async () => {
+    const arrived = new Subject<File>();
+    const { fixture } = await renderComposer(
+      { accountId: '@a:hs', roomId: '!a:hs' },
+      gifProviders(() => arrived),
+    );
+    const cmp = fixture.componentInstance;
+    const sent: string[] = [];
+    cmp.submitMedia.subscribe((e) =>
+      sent.push(...e.items.map((i) => i.file.name)),
+    );
+
+    cmp.onGifSelect(gifResult);
+    // The same room id under another account is another conversation.
+    fixture.componentRef.setInput('accountId', '@b:hs');
+    fixture.detectChanges();
+    arrived.next(
+      new File([new Uint8Array([1])], 'happy-cat.gif', { type: 'image/gif' }),
+    );
+
+    expect(sent).toEqual([]);
+    expect(cmp['attachments'].staged()).toEqual([]);
     expect(cmp['attachments'].gifDownloading()).toBe(false);
   });
 
