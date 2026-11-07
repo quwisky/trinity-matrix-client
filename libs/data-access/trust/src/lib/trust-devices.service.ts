@@ -151,7 +151,8 @@ export class TrustDevicesService {
           lastSeenTs: d.last_seen_ts ?? null,
           lastSeenIp: d.last_seen_ip ?? null,
           isCurrent: d.device_id === currentId,
-          isVerified: status?.isVerified() ?? false,
+          // Not isVerified(): an emoji check's local trust outlives the owner's identity.
+          isVerified: status?.crossSigningVerified ?? false,
         };
       }),
     );

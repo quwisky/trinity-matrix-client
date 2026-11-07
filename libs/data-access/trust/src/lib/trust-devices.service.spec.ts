@@ -27,7 +27,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
     getDeviceId: vi.fn(() => 'A'),
     getCrypto: vi.fn(() => ({
       getDeviceVerificationStatus: vi.fn(async (_uid: string, did: string) => ({
-        isVerified: () => did === 'A',
+        crossSigningVerified: did === 'A',
       })),
     })),
     getDevices: vi.fn().mockResolvedValue({
@@ -188,7 +188,7 @@ describe('TrustDevicesService', () => {
             if (did === 'A') {
               throw new Error('transient store error');
             }
-            return { isVerified: () => false };
+            return { crossSigningVerified: false };
           },
         ),
       })),
@@ -198,6 +198,21 @@ describe('TrustDevicesService', () => {
 
     expect(devices).toHaveLength(2); // one status threw, list still resolves
     expect(devices.find((d) => d.id === 'A')?.isVerified).toBe(false);
+  });
+
+  it('shows a device trusted only locally as unverified', async () => {
+    const { svc } = setup({
+      getCrypto: vi.fn(() => ({
+        getDeviceVerificationStatus: vi.fn(async () => ({
+          isVerified: () => true,
+          crossSigningVerified: false,
+        })),
+      })),
+    });
+
+    const devices = await firstValueFrom(svc.list());
+
+    expect(devices.every((d) => !d.isVerified)).toBe(true);
   });
 
   it('propagates a non-UIA delete failure without prompting', async () => {
@@ -327,7 +342,7 @@ describe('TrustDevicesService', () => {
   ) {
     const crypto = {
       getDeviceVerificationStatus: vi.fn(async () => ({
-        isVerified: () => true,
+        crossSigningVerified: true,
       })),
       getCrossSigningStatus: vi.fn(async () => ({
         publicKeysOnDevice: true,
