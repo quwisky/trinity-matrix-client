@@ -11,7 +11,12 @@ import {
 import { computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ConversationRuntime } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  conversationDraftKey,
+} from '@trinity/data-access/timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MockProvider } from 'ng-mocks';
 import { DraftStoreService } from '@trinity/platform-native';
 import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 import { type ComposerSubmit } from './message-composer.component';
@@ -195,39 +200,99 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(cmp.text()).toBe('');
   });
 
-  it('keeps a lost caption as the draft of its own account’s conversation', async () => {
-    const composeA = new ConversationComposeStub();
-    const composeB = new ConversationComposeStub();
-    const focused = signal({ compose: composeA });
-    const runtime = {
-      focused,
-      compose: { draft: computed(() => focused().compose.draft()) },
-    };
-    const { fixture } = await renderComposer(
-      { accountId: '@a:hs', roomId: '!r:hs', conversationDraft: true },
-      [{ provide: ConversationRuntime, useValue: runtime }],
-    );
-    const cmp = fixture.componentInstance;
-    const finish: (() => void)[] = [];
-    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
-      finish.push(() =>
-        onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+  describe('a caption left behind in a Conversation-owned draft', () => {
+    const A = { accountId: '@a:hs', roomId: '!r:hs' };
+
+    /** Account A sends one file that will fail, then account B opens the same room. */
+    async function sendThenSwitch(held: Map<string, ConversationComposeStub>) {
+      const focused = signal<ConversationComposeStub | null>(
+        held.get('@a:hs') ?? null,
       );
+      const accountIds = signal<readonly string[]>(['@a:hs', '@b:hs']);
+      const runtime = {
+        focused: computed(() => {
+          const compose = focused();
+          return compose ? { compose } : null;
+        }),
+        compose: { draft: computed(() => focused()?.draft() ?? '') },
+        heldCompose: (key: { accountId: string }) =>
+          held.get(key.accountId) ?? null,
+      };
+      const { fixture } = await renderComposer(
+        { ...A, conversationDraft: true },
+        [
+          { provide: ConversationRuntime, useValue: runtime },
+          MockProvider(MatrixClientService, { accountIds }),
+        ],
+      );
+      const cmp = fixture.componentInstance;
+      const finish: (() => void)[] = [];
+      cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+        finish.push(() =>
+          onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+        );
+      });
+      pickFiles(cmp, [png('one.png')]);
+      cmp.text.set('for the room');
+      cmp.submit();
+
+      focused.set(held.get('@b:hs') ?? null);
+      fixture.componentRef.setInput('accountId', '@b:hs');
+      fixture.detectChanges();
+      return { settle: () => finish[0]?.(), accountIds };
+    }
+
+    const stored = (key: string) => TestBed.inject(DraftStoreService).get(key);
+
+    it('keeps it as the draft of its own account’s conversation', async () => {
+      const composeA = new ConversationComposeStub();
+      const composeB = new ConversationComposeStub();
+      const held = new Map([
+        ['@a:hs', composeA],
+        ['@b:hs', composeB],
+      ]);
+      const { settle } = await sendThenSwitch(held);
+      settle();
+
+      expect(composeA.draft()).toBe('for the room');
+      expect(composeB.draft()).toBe('');
+      // Not under the bare room id, which any account opening the room would claim.
+      expect(stored('!r:hs')).toBe('');
     });
-    pickFiles(cmp, [png('one.png')]);
-    cmp.text.set('for the room');
-    cmp.submit();
 
-    // Another account opens the same room.
-    focused.set({ compose: composeB });
-    fixture.componentRef.setInput('accountId', '@b:hs');
-    fixture.detectChanges();
-    finish[0]?.();
+    it('stores it for the next handle when no handle holds the conversation', async () => {
+      const { settle } = await sendThenSwitch(new Map());
 
-    expect(composeA.draft()).toBe('for the room');
-    expect(composeB.draft()).toBe('');
-    // Not under the bare room id, which any account opening the room would claim.
-    expect(TestBed.inject(DraftStoreService).get('!r:hs')).toBe('');
+      settle();
+
+      expect(stored(conversationDraftKey(A))).toBe('for the room');
+    });
+
+    it('gives it to the handle holding the conversation when the upload settles', async () => {
+      const retired = new ConversationComposeStub();
+      const held = new Map([['@a:hs', retired]]);
+      const { settle } = await sendThenSwitch(held);
+      const replacement = new ConversationComposeStub();
+      held.set('@a:hs', replacement);
+
+      settle();
+
+      expect(replacement.draft()).toBe('for the room');
+      expect(retired.draft()).toBe('');
+    });
+
+    it('writes nothing back for an account signed out before the upload settled', async () => {
+      const composeA = new ConversationComposeStub();
+      const { settle, accountIds } = await sendThenSwitch(
+        new Map([['@a:hs', composeA]]),
+      );
+      accountIds.set(['@b:hs']); // sign-out cleared every draft
+
+      settle();
+
+      expect(composeA.draft()).toBe('');
+      expect(stored(conversationDraftKey(A))).toBe('');
+    });
   });
 
   it('does not let Escape clear rows the batch is still reporting on', async () => {

@@ -242,6 +242,11 @@ export class ConversationRuntime {
     }
   }
 
+  /** The compose state of the focused or retained handle for the room, if one holds it. */
+  heldCompose(key: ConversationKey): ConversationCompose | null {
+    return this.entry(key)?.handle.compose ?? null;
+  }
+
   /** Whether the Account has a focused or retained handle for the room. */
   holds(accountId: string, roomId: string): boolean {
     return this.entries.get(accountId)?.has(roomId) ?? false;

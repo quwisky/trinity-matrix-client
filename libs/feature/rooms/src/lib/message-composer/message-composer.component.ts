@@ -75,7 +75,9 @@ import {
 import {
   ComposerExpressionTabPreference,
   ConversationRuntime,
+  conversationDraftKey,
 } from '@trinity/data-access/timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /** A room member offered by the @-mention autocomplete; the shape of the `members` input. */
@@ -365,6 +367,7 @@ export class MessageComposerComponent {
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
   private readonly drafts = inject(DraftStoreService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly runtime = inject(ConversationRuntime, { optional: true });
   private readonly managedDraft = computed(() =>
     this.conversationDraft()
@@ -413,27 +416,38 @@ export class MessageComposerComponent {
     this.justSent.set(true);
     this.justSentTimer = setTimeout(() => this.justSent.set(false), 1000);
   }
-  /** Where a caption goes if its conversation is left before its upload settles. */
+  /**
+   * Where a caption goes if its conversation is left before its upload settles. Resolved when
+   * it settles, by Account and Room: the handle open at Send may since have been retired and
+   * replaced, and the Account signed out, its drafts cleared.
+   */
   private captionDraft(): CaptionDraft | null {
-    if (this.conversationDraft()) {
-      const compose = this.runtime?.focused()?.compose;
-      return compose
-        ? {
-            get: () => compose.draft(),
-            // An edit's draft is that message's new body, not a place for a caption.
-            set: (text) => {
-              if (compose.intent().kind !== 'edit') compose.setDraft(text);
-            },
-          }
-        : null;
-    }
     const roomId = this.roomId();
-    return roomId == null
-      ? null
-      : {
-          get: () => this.drafts.get(roomId),
-          set: (text) => this.drafts.set(roomId, text),
-        };
+    const accountId = this.accountId();
+    if (roomId == null) return null;
+    const signedIn = () =>
+      accountId == null || this.matrix.accountIds().includes(accountId);
+    if (!this.conversationDraft()) {
+      return {
+        get: () => this.drafts.get(roomId),
+        set: (text) => {
+          if (signedIn()) this.drafts.set(roomId, text);
+        },
+      };
+    }
+    if (accountId == null) return null;
+    const key = { accountId, roomId };
+    const held = () => this.runtime?.heldCompose(key) ?? null;
+    return {
+      get: () => held()?.draft() ?? this.drafts.get(conversationDraftKey(key)),
+      set: (text) => {
+        if (!signedIn()) return;
+        const compose = held();
+        if (!compose) this.drafts.set(conversationDraftKey(key), text);
+        // An edit's draft is that message's new body, not a place for a caption.
+        else if (compose.intent().kind !== 'edit') compose.setDraft(text);
+      },
+    };
   }
   protected openFormatSheet(): void {
     this.formatMenu()?.openMobileSheet();
