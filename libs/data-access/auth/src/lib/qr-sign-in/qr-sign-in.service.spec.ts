@@ -149,6 +149,7 @@ function setup(configure: (flow: FakeFlow) => void = () => undefined) {
       return of(signedIn);
     }),
     importLinkedSecrets: vi.fn(() => of(true)),
+    revokeDeviceGrant: vi.fn(() => of(undefined)),
   };
   const identity = { holdsPublishedIdentity: vi.fn(() => of(true)) };
   const discovery = {
@@ -596,6 +597,27 @@ describe('QrSignInService.signInByShowingCode', () => {
 
       expect(call.left).toHaveBeenCalled();
       expect(run.kinds()).not.toContain('done');
+    });
+
+    it('revokes tokens the provider grants after the user cancelled', async () => {
+      const { service, completion, flows } = setup((flow) =>
+        flow.hang.add('completeLoginOnNewDevice'),
+      );
+      const run = record(service.signInByShowingCode('https://hs', 'hs'));
+      await settle();
+      expect(run.kinds().at(-1)).toBe('waiting-for-approval');
+
+      run.subscription.unsubscribe();
+      flows[0].release('completeLoginOnNewDevice');
+      await settle();
+
+      expect(completion.revokeDeviceGrant).toHaveBeenCalledExactlyOnceWith(
+        tokens,
+        'client-id',
+        metadata,
+        'https://hs',
+      );
+      expect(completion.completeDeviceGrant).not.toHaveBeenCalled();
     });
 
     it('stops importing the secrets', async () => {

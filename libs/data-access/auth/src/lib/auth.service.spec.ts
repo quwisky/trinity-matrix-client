@@ -1105,6 +1105,24 @@ describe('AuthService', () => {
       );
     });
 
+    it('revokes late device-grant tokens at the endpoint the issuer confirms', async () => {
+      await firstValueFrom(
+        auth.revokeDeviceGrant(
+          tokens,
+          'qr-client',
+          AUTH_METADATA,
+          'https://hs',
+        ),
+      );
+
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledExactlyOnceWith('https://hs', pinned, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
+      });
+    });
+
     it('does not revoke the tokens once the sign-in succeeded', async () => {
       await complete();
 
