@@ -291,8 +291,9 @@ export class LoginPage {
               ? of(null)
               : this.storage.reusableDeviceId(record);
             return reusable.pipe(
-              // With no device to reuse, whatever signs in next gets a new one.
-              catchError(() => of(null)),
+              // A read that fails proves nothing, so the device is kept, as an unreachable
+              // key is: only a key known to be gone moves the account to a new device.
+              catchError(() => of(record.deviceId)),
               switchMap((deviceId) => {
                 this.reauthDeviceId = deviceId;
                 this.reauthMovesDevice.set(deviceId === null);
