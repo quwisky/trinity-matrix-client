@@ -443,6 +443,35 @@ describe('scrubSecrets', () => {
     },
   );
 
+  it.each([
+    [
+      'GET https://evil.org/cb?code=AbCdEfGh1234567890IjKlMnOpQrStUvWx%2BsecretTail%2Fmore%3D%3D&state=x',
+      `GET https://evil.org/cb?code=${REDACTED}&state=${REDACTED}`,
+    ],
+    [
+      'GET https://evil.org/cb?access_token=AbCdEfGh1234567890IjKlMnOpQrStUvWx%2Bp4rt2%2F9q%3D',
+      `GET https://evil.org/cb?access_token=${REDACTED}`,
+    ],
+    [
+      'refresh_token=syr_YWxpY2U_abcdefghij%2Bmore&x=1',
+      `refresh_token=${REDACTED}&x=1`,
+    ],
+    [
+      'https://accounts.example.com/o/oauth2/token?code=4/0AfJohXabcdefGHIJKLmnop1234567890QRSTuvwx-yz%2Fabc&scope=x',
+      `https://accounts.example.com/o/oauth2/token?code=${REDACTED}&scope=x`,
+    ],
+    [
+      'client_secret=AbCdEfGh1234567890IjKlMnOpQrStUvWx.yz9&grant_type=x',
+      `client_secret=${REDACTED}&grant_type=x`,
+    ],
+    ['state=0123456789abcdef0123456789abcdef.tail', `state=${REDACTED}`],
+  ])(
+    'masks the rest of a parameter value whose start a token rule masked: %s',
+    (line, expected) => {
+      expect(scrubSecrets(line)).toBe(expected);
+    },
+  );
+
   it('leaves an already masked parameter as it is when scrubbed again', () => {
     const once = scrubSecrets('password="hunter2","x" y');
 

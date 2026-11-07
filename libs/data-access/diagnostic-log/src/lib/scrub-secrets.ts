@@ -307,10 +307,15 @@ function maskParams(text: string): string {
       continue;
     }
     const start = match.index + match[0].length;
-    if (text.startsWith(REDACTED, start)) {
+    // A value a token rule masked the start of goes on through the token's characters; what
+    // follows a whole masked value (`password=<redacted>,"x"` on a second pass) stays.
+    const masked = text.startsWith(REDACTED, start);
+    const end = masked
+      ? maskedValueEnd(text, start + REDACTED.length)
+      : paramValueEnd(text, start, spaced, isOpen);
+    if (masked && end === start + REDACTED.length) {
       continue;
     }
-    const end = paramValueEnd(text, start, spaced, isOpen);
     if (isReadableFlag(match[1], text.slice(start, end))) {
       continue;
     }
@@ -351,6 +356,17 @@ function paramValueEnd(
   const valueEnd = spaced ? SPACED_PARAM_VALUE_END : PARAM_VALUE_END;
   let end = start;
   while (end < text.length && !valueEnd.test(text[end])) {
+    end += 1;
+  }
+  return end;
+}
+
+/** Characters a token value goes on with, escapes included. */
+const TOKEN_TAIL = /[\w.~%+/=-]/;
+
+function maskedValueEnd(text: string, from: number): number {
+  let end = from;
+  while (end < text.length && TOKEN_TAIL.test(text[end])) {
     end += 1;
   }
   return end;
