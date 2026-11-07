@@ -15,14 +15,16 @@ export interface NativeChromeAppearance {
   readonly color: string | null;
 }
 
-/** Resolve policy only; browser and native APIs stay behind adapters. */
+/** Resolve policy only; browser and native APIs stay behind adapters. True black needs dark. */
 export function resolveAppearance(
   committed: AppearanceValue,
   systemMode: ResolvedThemeMode,
 ): ResolvedAppearance {
+  const mode = committed.mode === 'system' ? systemMode : committed.mode;
   return Object.freeze({
     ...committed,
-    mode: committed.mode === 'system' ? systemMode : committed.mode,
+    mode,
+    trueBlack: committed.trueBlack && mode === 'dark',
   });
 }
 
@@ -66,7 +68,7 @@ export function surfaceMode(hex: string): ResolvedThemeMode {
     : 'light';
 }
 
-/** Compare all seven resolved axes without serializing the value. */
+/** Compare all eight resolved axes without serializing the value. */
 export function sameResolvedAppearance(
   left: ResolvedAppearance,
   right: ResolvedAppearance,
@@ -78,6 +80,7 @@ export function sameResolvedAppearance(
     left.density === right.density &&
     left.roomList === right.roomList &&
     left.codeSize === right.codeSize &&
-    left.codeLinePresentation === right.codeLinePresentation
+    left.codeLinePresentation === right.codeLinePresentation &&
+    left.trueBlack === right.trueBlack
   );
 }

@@ -3,6 +3,7 @@ import {
   AA_NORMAL_TEXT,
   measureContrast,
 } from '../../browser/support/contrast.mts';
+import { THEME_CATALOG } from '@trinity/theme-foundation';
 import {
   STORYBOOK_THEME_PREVIEWS,
   expectStorybookThemeRoot,
@@ -99,6 +100,45 @@ test.describe('Storybook preview theme surface', () => {
       });
       const contrast = await measureContrast(page, 'storybook-body-copy');
       expect(contrast.ratio).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+    });
+  }
+
+  for (const theme of THEME_CATALOG.themes) {
+    test(`${theme.id} true black paints a black canvas and keeps fills on it visible`, async ({
+      page,
+    }) => {
+      const globals = encodeURIComponent(
+        `mode:dark;theme:${theme.id};trueBlack:on`,
+      );
+      await page.goto(
+        `/iframe.html?id=components-empty-state--canonical-layouts&viewMode=story&globals=${globals}`,
+      );
+      await expect(page.locator('html')).toHaveAttribute('data-true-black', '');
+
+      const paint = await page.evaluate(() => {
+        const opaque = (colour: string): string => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 1;
+          const context = canvas.getContext('2d', { willReadFrequently: true });
+          if (!context) throw new Error('true black: no 2d canvas context');
+          context.fillStyle = colour;
+          context.fillRect(0, 0, 1, 1);
+          return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)].join(
+            ',',
+          );
+        };
+        const badge = document.querySelector(
+          '[data-testid=empty-hero] .rounded-full',
+        );
+        if (!badge) throw new Error('true black: empty-state badge missing');
+        return {
+          body: opaque(getComputedStyle(document.body).backgroundColor),
+          badge: opaque(getComputedStyle(badge).backgroundColor),
+        };
+      });
+
+      expect(paint.body).toBe('0,0,0');
+      expect(paint.badge).not.toBe('0,0,0');
     });
   }
 });

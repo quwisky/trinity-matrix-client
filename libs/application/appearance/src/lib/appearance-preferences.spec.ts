@@ -20,6 +20,7 @@ import {
   ROOM_LIST_PREFERENCE,
   MODE_PREFERENCE,
   THEME_PREFERENCE,
+  TRUE_BLACK_PREFERENCE,
 } from './design-system-appearance-preferences';
 
 describe('Design System Appearance preference descriptors', () => {
@@ -100,7 +101,38 @@ describe('Design System Appearance preference descriptors', () => {
           testId: 'room-list-select',
         }),
       }),
+      expect.objectContaining({
+        id: 'design-system.appearance.true-black',
+        owner: 'design-system',
+        section: 'appearance',
+        order: 60,
+        scope: 'installation',
+        defaultValue: false,
+        sensitivity: 'public',
+        storage: 'device-preferences',
+        export: 'portable',
+        editor: expect.objectContaining({
+          kind: 'toggle',
+          label: 'True black backgrounds',
+          testId: 'true-black',
+        }),
+      }),
     ]);
+  });
+
+  it('accepts only a boolean true black choice, also from storage', () => {
+    expect(TRUE_BLACK_PREFERENCE.validate(true)).toEqual({
+      kind: 'accepted',
+      value: true,
+    });
+    expect(TRUE_BLACK_PREFERENCE.validate('true').kind).toBe('rejected');
+    const { migrate } = TRUE_BLACK_PREFERENCE.persistence.migration;
+    expect(migrate({ version: 1, value: true })).toEqual({
+      kind: 'accepted',
+      value: true,
+    });
+    expect(migrate({ version: 1, value: 'yes' }).kind).toBe('rejected');
+    expect(migrate({ version: 2, value: true }).kind).toBe('rejected');
   });
 
   it('offers rich and compact room lists, rich by default', () => {
@@ -189,12 +221,17 @@ describe('Design System Appearance preference descriptors', () => {
         legacyKeys: undefined,
         version: 1,
       },
+      {
+        key: 'trinity.appearance.true-black',
+        legacyKeys: undefined,
+        version: 1,
+      },
     ]);
   });
 });
 
 describe('AppearancePreferences', () => {
-  it('composes seven independently persisted axes and one recoverable warning', async () => {
+  it('composes eight independently persisted axes and one recoverable warning', async () => {
     const read = vi.fn<PreferenceStorageAdapter['read']>((request) => {
       if (request.key === THEME_PREFERENCE.persistence.key) {
         return of({
@@ -229,13 +266,14 @@ describe('AppearancePreferences', () => {
       'roomList',
       'codeSize',
       'codeLinePresentation',
+      'trueBlack',
     ]);
 
     const outcome = await firstValueFrom(appearance.hydrate());
 
     expect(outcome).toEqual({
       kind: 'partial',
-      hydrated: 6,
+      hydrated: 7,
       failures: [
         {
           preferenceId: THEME_PREFERENCE.id,
@@ -266,6 +304,7 @@ describe('AppearancePreferences', () => {
       roomList: 'rich',
       codeSize: 'larger',
       codeLinePresentation: 'auto',
+      trueBlack: false,
     });
     expect(write).toHaveBeenCalledOnce();
     expect(write.mock.calls[0]?.[0]).toEqual(
@@ -302,7 +341,7 @@ describe('AppearancePreferences', () => {
 
       await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
         kind: 'ready',
-        hydrated: 7,
+        hydrated: 8,
       });
       expect(appearance.axes.theme.state()).toEqual({
         kind: 'ready',
@@ -317,7 +356,7 @@ describe('AppearancePreferences', () => {
     },
   );
 
-  it('contributes all seven descriptors once and returns no warning when ready', async () => {
+  it('contributes all eight descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {
       read: () => of({ kind: 'missing' }),
       write: () => of({ kind: 'completed' }),
@@ -332,12 +371,12 @@ describe('AppearancePreferences', () => {
 
     await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 7,
+      hydrated: 8,
     });
     expect([
       ...DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
       ...CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
-    ]).toHaveLength(7);
+    ]).toHaveLength(8);
   });
 
   it('exposes descriptor editors and commits an axis only after persistence succeeds', async () => {
@@ -418,7 +457,7 @@ describe('AppearancePreferences', () => {
 
     await expect(
       firstValueFrom(appearance.recoverHydration(outcome.failures)),
-    ).resolves.toEqual({ kind: 'ready', hydrated: 7 });
+    ).resolves.toEqual({ kind: 'ready', hydrated: 8 });
     expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
     expect(appearance.axes.mode.value()).toBe('light');
   });

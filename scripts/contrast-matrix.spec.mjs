@@ -68,6 +68,9 @@ const SYNTHETIC_THEME_CSS = `
 
 const source = `${productionSource}\n${SYNTHETIC_THEME_CSS}`;
 
+/** `true-black` is dark Mode with the `data-true-black` carrier; it is measured as its own mode. */
+const MODES = ['light', 'dark', 'true-black'];
+
 /** WCAG AA for body text. Large text may use 3:1; nothing here is guaranteed large. */
 const AA = 4.5;
 
@@ -441,7 +444,7 @@ const themes = [...productionThemes.map(({ id }) => id), SYNTHETIC_THEME.id];
 /** Every (theme, mode, text, surface) pair that is measurable. */
 function* pairs() {
   for (const theme of themes) {
-    for (const mode of ['light', 'dark']) {
+    for (const mode of MODES) {
       const check = (text, surface) => {
         const fg = toRgb(resolve(text, theme, mode));
         const bg = toRgb(resolve(surface, theme, mode));
@@ -467,7 +470,7 @@ const measured = [...pairs()];
 
 function* nonTextPairs() {
   for (const theme of themes) {
-    for (const mode of ['light', 'dark']) {
+    for (const mode of MODES) {
       for (const role of NON_TEXT_ROLES) {
         for (const surface of role.on) {
           const foreground = toRgb(resolve(role.foreground, theme, mode));
@@ -492,7 +495,7 @@ const measuredNonText = [...nonTextPairs()];
 describe('contrast matrix', () => {
   it('measures text and control pairs on the overlay and its footer for every Theme and mode', () => {
     for (const theme of themes) {
-      for (const mode of ['light', 'dark']) {
+      for (const mode of MODES) {
         for (const text of [
           '--trinity-text',
           '--trinity-text-muted',
@@ -583,6 +586,7 @@ describe('contrast matrix', () => {
     const themeSelectors = new Set([
       ':root',
       ':root.dark',
+      ':root.dark[data-true-black]',
       ...themes.flatMap((theme) =>
         theme === 'trinity'
           ? []
@@ -649,6 +653,51 @@ describe('contrast matrix', () => {
     expect([...new Set(residueHues)].sort()).toEqual([]);
   });
 
+  it('turns only the grounds black, and only in true black', () => {
+    const black = 'oklch(0% 0 0deg)';
+    const grounds = [
+      '--trinity-surface-app',
+      '--trinity-surface-sidebar',
+      '--trinity-surface-pane',
+      '--trinity-surface-canvas',
+      '--trinity-surface-panel',
+      '--trinity-surface-navigation-header',
+      '--trinity-chat',
+    ];
+    // Fills drawn ON a ground (code blocks, table headers, the voice pill, the sticker
+    // skeleton, the empty-state badge, link previews, floating toolbars, the scrollbar thumb)
+    // and the elevated surfaces keep the Theme's stop, so they never vanish into the black.
+    const fills = [
+      '--trinity-rail',
+      '--trinity-sidebar',
+      '--trinity-surface',
+      '--trinity-surface-floating',
+      '--trinity-scrollbar-thumb',
+      '--trinity-surface-raised',
+      '--trinity-surface-overlay',
+    ];
+    for (const theme of themes) {
+      for (const ground of grounds) {
+        expect(resolve(ground, theme, 'true-black'), `${theme} ${ground}`).toBe(
+          black,
+        );
+        expect(resolve(ground, theme, 'dark'), `${theme} ${ground}`).not.toBe(
+          black,
+        );
+      }
+      for (const fill of fills) {
+        expect(resolve(fill, theme, 'true-black'), `${theme} ${fill}`).toBe(
+          resolve(fill, theme, 'dark'),
+        );
+      }
+      // A dialog footer must not become a black band across a grey dialog.
+      expect(
+        resolve('--trinity-surface-overlay-footer', theme, 'true-black'),
+        `${theme} overlay footer`,
+      ).not.toBe(black);
+    }
+  });
+
   it('measures something, so an empty matrix cannot pass as a clean one', () => {
     // A parser change that stopped matching the theme blocks would otherwise report every
     // combination compliant.
@@ -678,7 +727,7 @@ describe('contrast matrix', () => {
     // difference between "these all pass" and "these all pass, as far as I could tell".
     const unmeasurable = [];
     for (const theme of themes) {
-      for (const mode of ['light', 'dark']) {
+      for (const mode of MODES) {
         for (const role of [...ROLES, ...HELM_ROLES]) {
           for (const token of [role.text, ...role.on]) {
             const value = resolve(token, theme, mode);
@@ -696,19 +745,21 @@ describe('contrast matrix', () => {
   });
 
   it('keeps the tooltip surface dark in every dark theme', () => {
-    const failures = themes.flatMap((theme) => {
-      const value = resolve('--trinity-tooltip-surface', theme, 'dark');
-      const colour = toRgb(value);
-      if (!value || !colour) {
-        return [`${theme}/dark: tooltip surface is not measurable`];
-      }
-      const level = luminance(colour);
-      return level < 0.2
-        ? []
-        : [
-            `${theme}/dark: --trinity-tooltip-surface = ${value} (${level.toFixed(3)} luminance)`,
-          ];
-    });
+    const failures = themes.flatMap((theme) =>
+      ['dark', 'true-black'].flatMap((mode) => {
+        const value = resolve('--trinity-tooltip-surface', theme, mode);
+        const colour = toRgb(value);
+        if (!value || !colour) {
+          return [`${theme}/${mode}: tooltip surface is not measurable`];
+        }
+        const level = luminance(colour);
+        return level < 0.2
+          ? []
+          : [
+              `${theme}/${mode}: --trinity-tooltip-surface = ${value} (${level.toFixed(3)} luminance)`,
+            ];
+      }),
+    );
 
     expect(failures).toEqual([]);
   });
@@ -728,7 +779,7 @@ describe('contrast matrix', () => {
   it('keeps essential graphics and focus above the non-text contrast floor', () => {
     expect(measuredNonText.length).toBe(
       themes.length *
-        2 *
+        MODES.length *
         NON_TEXT_ROLES.reduce((total, role) => total + role.on.length, 0),
     );
     const failures = measuredNonText
@@ -746,7 +797,7 @@ describe('contrast matrix', () => {
     // Decorative: the label names the action, so the floor is a visible shape, not 3:1.
     const failures = [];
     for (const theme of themes) {
-      for (const mode of ['light', 'dark']) {
+      for (const mode of MODES) {
         for (const fill of [
           '--trinity-neutral-fill-surface',
           '--trinity-neutral-fill-hover-surface',

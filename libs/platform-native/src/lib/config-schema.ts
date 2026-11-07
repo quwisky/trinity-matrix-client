@@ -66,6 +66,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     key: 'trinity.appearance.room-list',
     owner: 'application/appearance',
   },
+  {
+    disposition: 'exported',
+    key: 'trinity.appearance.true-black',
+    owner: 'application/appearance',
+  },
 
   // — data-access/timeline —
   {

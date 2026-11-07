@@ -18,6 +18,7 @@ const THEME_ATTRIBUTE = 'data-theme';
 const DENSITY_ATTRIBUTE = 'data-density';
 const ROOM_LIST_ATTRIBUTE = 'data-room-list';
 const CODE_LINE_ATTRIBUTE = 'data-code-lines';
+const TRUE_BLACK_ATTRIBUTE = 'data-true-black';
 const CODE_SIZE_PROPERTY = '--trinity-code-scale';
 /** iOS body text at its default Large Dynamic Type size. */
 const IOS_DEFAULT_BODY_PX = 17;
@@ -91,6 +92,7 @@ export class BrowserAppearanceDocumentAdapter implements AppearanceDocumentAdapt
     this.applyRoomList(appearance);
     this.applyCodeSize(appearance);
     this.applyCodeLines(appearance);
+    this.applyAttribute(TRUE_BLACK_ATTRIBUTE, appearance.trueBlack ? '' : null);
   }
 
   private reapply(): void {

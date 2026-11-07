@@ -5,6 +5,7 @@ import {
 } from '@trinity/data-access/timeline';
 import {
   choiceSetting,
+  flagSetting,
   provideConfigEntries,
   type ConfigEntry,
 } from '@trinity/platform-native';
@@ -20,9 +21,10 @@ import {
   TEXT_SIZE_PREFERENCE,
   THEME_PREFERENCE,
   THEME_RENAMES,
+  TRUE_BLACK_PREFERENCE,
 } from './design-system-appearance-preferences';
 
-/** Register the seven portable Appearance axes under one descriptor-backed config group. */
+/** Register the eight portable Appearance axes under one descriptor-backed config group. */
 export function provideAppearanceConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const appearance = inject(AppearancePreferences);
@@ -59,6 +61,15 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         CODE_LINE_PRESENTATION_PREFERENCE,
         appearance.axes.codeLinePresentation,
       ),
+      {
+        path: 'appearance.trueBlack',
+        key: TRUE_BLACK_PREFERENCE.persistence.key,
+        description: appearance.axes.trueBlack.editor.description,
+        read: appearance.axes.trueBlack.value,
+        reset: () =>
+          appearance.axes.trueBlack.set(TRUE_BLACK_PREFERENCE.defaultValue),
+        ...flagSetting((on) => appearance.axes.trueBlack.set(on)),
+      },
     ];
   });
 }

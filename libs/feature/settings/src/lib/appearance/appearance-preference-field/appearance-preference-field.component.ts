@@ -17,7 +17,7 @@ import {
 import { SaveFailureComponent } from '../save-failure/save-failure.component';
 
 export interface AppearancePreferenceField {
-  readonly axis: AppearanceAxisKey;
+  readonly axis: Exclude<AppearanceAxisKey, 'trueBlack'>;
   readonly headingId: string;
   readonly testId: string;
   readonly optionTestIdPrefix: string;

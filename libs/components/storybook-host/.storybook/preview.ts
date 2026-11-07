@@ -33,6 +33,7 @@ function applyAppearance(
   themeId: ThemeId,
   modeId: ResolvedThemeMode,
   density: 'cosy' | 'compact' | 'spacious',
+  trueBlack: 'off' | 'on',
 ): void {
   const theme = THEME_CATALOG.themes.find(({ id }) => id === themeId);
   const mode = previewModes.find(({ id }) => id === modeId);
@@ -53,15 +54,21 @@ function applyAppearance(
   } else {
     root.setAttribute('data-density', density);
   }
+  // Appearance stamps true black only while dark Mode is in effect.
+  root.toggleAttribute(
+    'data-true-black',
+    trueBlack === 'on' && mode.previewClass === 'dark',
+  );
 }
 
 const withTheme: Decorator = (story, context) => {
-  const { theme, mode, density } = context.globals as {
+  const { theme, mode, density, trueBlack } = context.globals as {
     theme: ThemeId;
     mode: ResolvedThemeMode;
     density: 'cosy' | 'compact' | 'spacious';
+    trueBlack: 'off' | 'on';
   };
-  applyAppearance(theme, mode, density);
+  applyAppearance(theme, mode, density, trueBlack);
   // `global-styles.scss` paints these tokens on the preview body. This decorator only changes
   // which values they resolve to, keeping theme state separate from canvas presentation.
   return story();
@@ -103,6 +110,18 @@ const preview: Preview = {
           { value: 'cosy', title: 'Cosy' },
           { value: 'compact', title: 'Compact' },
           { value: 'spacious', title: 'Spacious' },
+        ],
+        dynamicTitle: true,
+      },
+    },
+    trueBlack: {
+      description: 'True black backgrounds (dark Mode only)',
+      defaultValue: 'off',
+      toolbar: {
+        icon: 'circle',
+        items: [
+          { value: 'off', title: 'Theme backgrounds' },
+          { value: 'on', title: 'True black' },
         ],
         dynamicTitle: true,
       },

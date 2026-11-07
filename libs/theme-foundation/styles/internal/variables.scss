@@ -832,6 +832,30 @@
     --trinity-surface-drop-overlay: oklch(22% 0.022 300deg / 82%);
   }
 
+  // =============================================================================
+  // True black — an Appearance choice that applies on top of whichever Theme is dark. The
+  // carrier `data-true-black` is only stamped while dark Mode is in effect.
+  // =============================================================================
+  // Only the column and page grounds go to #000. `--trinity-rail` and `--trinity-sidebar` are
+  // not grounds any more: code blocks, table headers, the voice pill, badges, link previews,
+  // floating toolbars and the scrollbar thumb fill with them, so they keep the Theme's stop,
+  // as do raised, overlay, control and state surfaces. Text roles only gain contrast.
+  // `:root.dark[data-true-black]` (0,3,0) ties a Theme's dark block, so it must stay after them.
+  :root.dark[data-true-black] {
+    --trinity-surface-app: oklch(0% 0 0deg);
+    --trinity-surface-sidebar: oklch(0% 0 0deg);
+    --trinity-surface-pane: oklch(0% 0 0deg);
+    --trinity-surface-canvas: oklch(0% 0 0deg);
+    --trinity-sidebar-header: oklch(0% 0 0deg);
+    --trinity-members: oklch(0% 0 0deg);
+    --trinity-chat: oklch(0% 0 0deg);
+    --trinity-surface-drop-overlay: oklch(0% 0 0deg / 82%);
+
+    // A dialog footer was a step darker than its dialog; the sidebar stop keeps that step
+    // instead of a black band.
+    --trinity-surface-overlay-footer: var(--trinity-sidebar);
+  }
+
   // -----------------------------------------------------------------------------
   // Reduced motion — collapse the vocabulary rather than police each call site
   // -----------------------------------------------------------------------------

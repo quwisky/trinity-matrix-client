@@ -52,6 +52,7 @@ describe('AppearanceSettingsComponent', () => {
       roomList: 'rich',
       codeSize: 'default',
       codeLinePresentation: 'auto',
+      trueBlack: false,
     });
     storageRead = vi.fn(() => of({ kind: 'missing' }));
     storageWrite = vi.fn(() => of({ kind: 'completed' }));
@@ -194,6 +195,50 @@ describe('AppearanceSettingsComponent', () => {
     expect(
       container.querySelector('[data-testid=appearance-preview]'),
     ).toBeNull();
+  });
+
+  it('offers true black under Mode, off by default, and saves the choice', async () => {
+    const { container, fixture } = await renderPage();
+
+    const row = container.querySelector(
+      '[data-testid=appearance-mode-theme] [data-testid=true-black]',
+    );
+    expect(row?.textContent).toContain('True black backgrounds');
+    expect(row?.textContent).toContain(
+      'Pure black in dark mode saves battery on OLED screens.',
+    );
+    const toggle = switchFor(fixture, 'true-black')!;
+    expect(toggle.checked()).toBe(false);
+
+    toggle.checkedChange.emit(true);
+    await fixture.whenStable();
+
+    expect(TestBed.inject(AppearancePreferences).axes.trueBlack.value()).toBe(
+      true,
+    );
+    expect(storageWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'trinity.appearance.true-black',
+        payload: JSON.stringify({ version: 1, value: true }),
+      }),
+    );
+    expect(toggle.checked()).toBe(true);
+  });
+
+  it('says true black waits for dark mode while light mode shows, and stays enabled', async () => {
+    resolved.update((value) => value && { ...value, mode: 'light' });
+    const { container, fixture } = await renderPage();
+
+    expect(
+      container.querySelector('#true-black-switch-description')?.textContent,
+    ).toContain('Takes effect in dark mode.');
+    expect(switchFor(fixture, 'true-black')!.disabled()).toBe(false);
+
+    resolved.update((value) => value && { ...value, mode: 'dark' });
+    await fixture.whenStable();
+    expect(
+      container.querySelector('#true-black-switch-description')?.textContent,
+    ).not.toContain('Takes effect in dark mode.');
   });
 
   it('applies the chosen Mode on change', async () => {

@@ -15,8 +15,8 @@ pnpm storybook
 ```
 
 The equivalent resolved Nx task is `pnpm nx storybook components-storybook-host`. Use the
-local URL printed by Storybook. Theme, light/dark Mode and Cosy/Compact density are toolbar
-controls; change them while reviewing each story's examples, control states and empty/error
+local URL printed by Storybook. Theme, light/dark Mode, Cosy/Compact density and true black backgrounds (dark Mode only) are
+toolbar controls; change them while reviewing each story's examples, control states and empty/error
 states. The Theme and Mode choices come from Theme Foundation's catalog.
 
 The toolbar previews resolved light/dark Mode. It does not run the application's system-Mode
@@ -57,7 +57,7 @@ Keep this composition aligned with the application rather than styling the previ
 visual product.
 
 The [preview decorator](.storybook/preview.ts) applies resolved Mode through `.dark`, Theme
-through `data-theme` and Compact density through `data-density`. Default Theme and Cosy density
+through `data-theme` and Compact density through `data-density` and true black through `data-true-black` (only with `.dark`). Default Theme and Cosy density
 remove their attributes. It changes token carriers; the canvas stylesheet paints their values.
 Do not add an unlayered override to make a story pass when the same component would fail in the
 application cascade.

@@ -53,7 +53,7 @@ async function setup() {
 }
 
 describe('Appearance config entries', () => {
-  it('derives seven portable paths, keys, choices, and defaults from descriptors', async () => {
+  it('derives eight portable paths, keys, choices, and defaults from descriptors', async () => {
     const { config } = await setup();
     const descriptorKeys = APPEARANCE_PREFERENCE_DESCRIPTORS.map(
       ({ persistence }) => persistence.key,
@@ -67,6 +67,7 @@ describe('Appearance config entries', () => {
       'appearance.roomList',
       'appearance.textSize',
       'appearance.theme',
+      'appearance.trueBlack',
     ]);
     expect(config.entries.map(({ key }) => key).sort()).toEqual(descriptorKeys);
     expect(configSchemaDrift(config.entries)).toEqual([]);
@@ -90,6 +91,7 @@ describe('Appearance config entries', () => {
         roomList: 'rich',
         textSize: 'default',
         theme: 'trinity',
+        trueBlack: false,
       },
     });
     expect(config.exportJson()).not.toContain('palette');
@@ -108,6 +110,7 @@ describe('Appearance config entries', () => {
           roomList: 'compact',
           codeSize: 'larger',
           codeLinePresentation: 'always',
+          trueBlack: true,
         },
       },
     });
@@ -124,6 +127,7 @@ describe('Appearance config entries', () => {
       roomList: 'compact',
       codeSize: 'larger',
       codeLinePresentation: 'always',
+      trueBlack: true,
     });
     expect(write.mock.calls.map(([request]) => request.key).sort()).toEqual(
       APPEARANCE_PREFERENCE_DESCRIPTORS.map(
@@ -176,6 +180,7 @@ describe('Appearance config entries', () => {
       roomList: 'rich',
       codeSize: 'larger',
       codeLinePresentation: 'always',
+      trueBlack: false,
     });
   });
 
@@ -204,6 +209,20 @@ describe('Appearance config entries', () => {
     expect(plan.ok).toBe(false);
     expect(plan.ok === false && plan.problems).toEqual([
       "appearance.theme: 'removed-theme' is not a supported theme (expected trinity, classic, midnight or amethyst)",
+    ]);
+  });
+
+  it('rejects a true black value that is not a boolean', async () => {
+    const { config } = await setup();
+
+    const plan = config.validate({
+      version: CONFIG_EXPORT_VERSION,
+      settings: { appearance: { trueBlack: 'yes' } },
+    });
+
+    expect(plan.ok).toBe(false);
+    expect(plan.ok === false && plan.problems).toEqual([
+      "appearance.trueBlack: 'yes' is not true or false",
     ]);
   });
 });
