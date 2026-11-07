@@ -113,7 +113,7 @@ describe('ApplicationRootComponent', () => {
       of({ kind: 'accepted' }),
     );
     const prompt = vi.fn(() => of<string | null>(null));
-    const confirm = vi.fn(() => of(true));
+    const confirm = vi.fn((_options: object) => of<boolean>(true));
     const showToast = vi.fn();
     const openReport = vi.fn();
     const lockState = signal<SessionLockState>(lock);
@@ -347,7 +347,7 @@ describe('ApplicationRootComponent', () => {
       ).toContain('Still starting…');
       const actions = within(screen.getByTestId('app-startup-stalled'));
       expect(
-        actions.getByRole('button', { name: 'Try again' }),
+        actions.getByRole('button', { name: 'Retry startup' }),
       ).toBeInTheDocument();
       expect(
         actions.getByRole('button', { name: 'System status' }),
@@ -414,26 +414,33 @@ describe('ApplicationRootComponent', () => {
       expect(queryByTestId('app-startup-blocked')).not.toBeNull();
     });
 
-    it('retries through the startup recovery', async () => {
+    it('retries through the startup recovery and keeps focus in the startup status', async () => {
       vi.useFakeTimers(TIMERS);
       const { fixture, recover } = await setup(starting('readiness'));
       await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
       fixture.detectChanges();
 
-      screen.getByRole('button', { name: 'Try again' }).click();
+      const retry = screen.getByRole('button', { name: 'Retry startup' });
+      retry.focus();
+      retry.click();
 
       expect(recover).toHaveBeenCalledExactlyOnceWith('retry-startup');
+      // The button goes with the stall notice; focus stays in the startup screen.
+      expect(document.activeElement).toBe(
+        screen.getByTestId('app-startup-status'),
+      );
     });
 
-    it('removes a restored account behind its confirm', async () => {
+    it('removes a restored account behind its confirm, then says so instead of the blocked page', async () => {
       vi.useFakeTimers(TIMERS);
-      const { fixture, recover, confirm } = await setup(
+      const { fixture, state, recover, confirm } = await setup(
         starting('readiness'),
         [],
         'held',
         false,
         true,
       );
+      recover.mockReturnValue(NEVER);
       await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
       fixture.detectChanges();
 
@@ -444,6 +451,53 @@ describe('ApplicationRootComponent', () => {
         expect.objectContaining({ header: 'Remove account and sign in again' }),
       );
       expect(recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+
+      // The runtime ended the stalled attempt and is removing the account.
+      state.set(
+        blocked({
+          stage: 'readiness',
+          recovery: 'retry-startup',
+          secondaryRecovery: 'reauthenticate',
+          diagnostic: { code: 'application-startup-stalled' },
+        }),
+      );
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(screen.queryByTestId('app-startup-blocked')).toBeNull();
+      expect(screen.getByTestId('app-startup-status').textContent).toContain(
+        'Removing account…',
+      );
+      expect(document.activeElement).toBe(
+        screen.getByTestId('app-startup-status'),
+      );
+    });
+
+    it('withdraws the removal confirm once the stall notice goes away', async () => {
+      vi.useFakeTimers(TIMERS);
+      const { fixture, state, confirm } = await setup(
+        starting('readiness'),
+        [],
+        'held',
+        false,
+        true,
+      );
+      confirm.mockReturnValue(NEVER);
+      await vi.advanceTimersByTimeAsync(STARTUP_STALL_NOTICE_MS);
+      fixture.detectChanges();
+      screen.getByRole('button', { name: 'Remove account' }).click();
+      await vi.advanceTimersByTimeAsync(0);
+      const { closeWhen } = confirm.mock.calls[0][0] as {
+        closeWhen?: Observable<unknown>;
+      };
+      const withdrawn = vi.fn();
+      closeWhen?.subscribe(withdrawn);
+
+      state.set(READY);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(withdrawn).toHaveBeenCalledOnce();
     });
   });
 
@@ -909,7 +963,7 @@ describe('ApplicationRootComponent', () => {
       }),
     ).toBeInTheDocument();
     expect(queryByTestId('app-startup-blocked')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Retry startup' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(
       screen.getByRole('button', { name: 'System status' }),
     ).toBeInTheDocument();

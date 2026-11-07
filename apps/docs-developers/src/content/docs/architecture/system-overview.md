@@ -30,7 +30,7 @@ The main parts have distinct responsibilities:
 
 Application Runtime owns ordered startup: negotiate the host, take the session lock (web and PWA), hydrate preferences, restore accounts, prepare session capabilities, restore Workspace, then open readiness and ongoing session streams. A feature does not start a parallel application lifetime.
 
-The startup watchdog allows the sum of each stage's longest producer budget, which is minutes. So the startup screen does not wait that long in silence: after 15 seconds without a stage advancing, it shows "Still starting…" with "Try again", "Remove account" (once an account is restored) and "System status". Both recoveries end the current attempt the way the watchdog would and run the ordinary blocked-startup recovery, so no second attempt runs beside it.
+The startup watchdog allows the sum of each stage's longest producer budget, which is minutes. So the startup screen does not wait that long in silence: after 15 seconds without a stage advancing, it shows "Still starting…" with "Retry startup", "Remove account" (once an account is restored) and "System status". Both recoveries end the current attempt the way the watchdog would and run the ordinary blocked-startup recovery, so no second attempt runs beside it. A removal starts again from account restoration, so nothing of the removed account carries over.
 
 After startup, capability services project authoritative Matrix or host events into read-only signals. Feature components render those signals and invoke finite commands. The result of a command normally returns through the same event projection rather than a second hand-maintained application store.
 

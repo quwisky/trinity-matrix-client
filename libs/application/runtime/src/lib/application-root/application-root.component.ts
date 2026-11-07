@@ -2,14 +2,21 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  Injector,
   computed,
   effect,
   inject,
+  viewChild,
+  type ElementRef,
   signal,
   untracked,
   type WritableSignal,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
 import {
   NavigationEnd,
   PRIMARY_OUTLET,
@@ -30,10 +37,11 @@ import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { SessionLockService } from '@trinity/platform-native';
 import { markRoutedPage } from '@trinity/util/ui';
-import { filter, map, take } from 'rxjs';
+import { filter, finalize, map, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
 import {
   APPLICATION_STARTUP_STAGES,
+  APPLICATION_STARTUP_STALLED_CODE,
   type ApplicationStartupRecovery,
   type ApplicationStartupStage,
 } from '../application-runtime.models';
@@ -81,6 +89,7 @@ export const STARTUP_STALL_NOTICE_MS = 15_000;
 export class ApplicationRootComponent {
   private readonly runtime = inject(ApplicationRuntimeService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
   private readonly recovery = inject(ApplicationRecoveryPresenter);
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly router = inject(Router);
@@ -89,6 +98,9 @@ export class ApplicationRootComponent {
   private readonly showStartupDetail = signal(false);
   private readonly waitingNoticeDue = signal(false);
   private readonly stallDue = signal(false);
+  private readonly removingStalledAccount = signal(false);
+  private readonly startupStatus =
+    viewChild<ElementRef<HTMLElement>>('startupStatus');
   private readonly hasActiveAccount = inject(AccountRuntimeService)
     .hasActiveAccount;
   private readonly routeUrl = toSignal(
@@ -121,6 +133,15 @@ export class ApplicationRootComponent {
   readonly stalled = computed(
     () => this.state().phase === 'starting' && this.stallDue(),
   );
+  /** A stalled attempt ended for account removal: say so, not "could not finish starting". */
+  readonly removingAccount = computed(() => {
+    const state = this.state();
+    return (
+      this.removingStalledAccount() &&
+      state.phase === 'blocked' &&
+      state.failure.diagnostic.code === APPLICATION_STARTUP_STALLED_CODE
+    );
+  });
   /** Only a restored account can be removed; before that there is nothing to remove. */
   readonly stalledAccountRemovable = computed(() => {
     const state = this.state();
@@ -185,6 +206,10 @@ export class ApplicationRootComponent {
       this.stallDue,
     );
     this.presentSystemStatus();
+    // The removal began from the stall notice, whose button is gone: keep focus on the screen.
+    effect(() => {
+      if (this.removingAccount()) this.startupStatus()?.nativeElement.focus();
+    });
   }
 
   dismissSummary(): void {
@@ -200,6 +225,29 @@ export class ApplicationRootComponent {
     this.recovery
       .confirmAndRecover(recovery)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
+      .subscribe((outcome) => this.recovery.present(outcome));
+  }
+
+  retryStalled(): void {
+    this.recover('retry-startup');
+    // Its button goes with the stall notice; keep keyboard and screen-reader users in place.
+    this.startupStatus()?.nativeElement.focus();
+  }
+
+  removeStalledAccount(): void {
+    this.removingStalledAccount.set(true);
+    this.recovery
+      .confirmAndRecover(
+        'reauthenticate',
+        toObservable(this.stalled, { injector: this.injector }).pipe(
+          filter((stalled) => !stalled),
+        ),
+      )
+      .pipe(
+        take(1),
+        finalize(() => this.removingStalledAccount.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe((outcome) => this.recovery.present(outcome));
   }
 

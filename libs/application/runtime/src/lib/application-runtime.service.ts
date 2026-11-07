@@ -35,6 +35,7 @@ import { startupFailureOutcome } from './application-startup-failure';
 import { ApplicationStartupStageWorkflow } from './application-startup-stage.workflow';
 import {
   APPLICATION_STARTUP_STAGES,
+  APPLICATION_STARTUP_STALLED_CODE,
   SESSION_LOCK_UNAVAILABLE_CODE,
   type ApplicationRecoveryOutcome,
   type ApplicationRuntimeState,
@@ -70,7 +71,7 @@ export class ApplicationRuntimeService {
   private readonly runtimeState = signal<ApplicationRuntimeState>({
     phase: 'stopped',
   });
-  private readonly retries = new Subject<void>();
+  private readonly retries = new Subject<ApplicationStartupRecovery>();
   private readonly stalls = new Subject<ApplicationStartupRecovery>();
   private activeStop: Subject<void> | null = null;
   private attempt = 0;
@@ -195,7 +196,7 @@ export class ApplicationRuntimeService {
           ) {
             return { kind: 'unavailable', reason: 'transition-in-progress' };
           }
-          this.retries.next();
+          this.retries.next(recovery);
           return { kind: 'accepted' };
         }),
       );
@@ -250,8 +251,16 @@ export class ApplicationRuntimeService {
               of(outcome),
               this.retries.pipe(
                 take(1),
-                switchMap(() => {
-                  const resumeIndex = recoveryStartIndex(outcome.failure.stage);
+                switchMap((recovery) => {
+                  const resumeIndex = Math.min(
+                    recoveryStartIndex(outcome.failure.stage),
+                    // A removed account's session and workspace must not carry over.
+                    recovery === 'reauthenticate'
+                      ? APPLICATION_STARTUP_STAGES.indexOf(
+                          'account-restoration',
+                        )
+                      : Infinity,
+                  );
                   return this.attemptUntilReady(
                     onPreferencesHydrated,
                     resumeIndex,
@@ -315,7 +324,7 @@ export class ApplicationRuntimeService {
     const outcome = startupFailureOutcome(
       attempt,
       this.runtimeState(),
-      'application-startup-stalled',
+      APPLICATION_STARTUP_STALLED_CODE,
     );
     return this.publishFailure(
       recovery === 'reauthenticate'

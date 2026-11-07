@@ -484,6 +484,12 @@ describe('ApplicationRuntimeService', () => {
       firstValueFrom(runtime.recover('reauthenticate')),
     ).resolves.toEqual({ kind: 'accepted' });
     expect(adapter.recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+    // The removed account's session and workspace never carry over: restoration runs again.
+    expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.restoreWorkspace).toHaveBeenCalledTimes(2);
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 });
     lifetime.unsubscribe();
   });
 
