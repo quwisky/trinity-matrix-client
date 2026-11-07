@@ -771,6 +771,42 @@ describe('ConversationRuntime', () => {
       expect(factory.create).toHaveBeenCalledTimes(2);
     });
 
+    it("reopens the room on screen on its account's new client", () => {
+      const { runtime, controller, accountIds } = setup();
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      const shown = runtime.focus(x);
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      accountIds.set([BOB, ALICE]);
+      TestBed.tick();
+
+      expect(runtime.focused()).not.toBe(shown);
+      expect(runtime.focused()?.key).toEqual(x);
+      expect(controller('!x:example.org').released()).toBe(true);
+      expect(controller('!x:example.org', 1).visible()).toBe(true);
+    });
+
+    it('keeps the room on screen while its account has no client', () => {
+      const { runtime, controller, accountIds } = setup();
+      const shown = runtime.focus({
+        accountId: ALICE,
+        roomId: '!x:example.org',
+      });
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'removed',
+      );
+
+      accountIds.set([BOB]);
+      TestBed.tick();
+
+      expect(runtime.focused()).toBe(shown);
+      expect(controller('!x:example.org').released()).toBe(false);
+    });
+
     it('retires the warm rooms of an account that signed out or has another client', () => {
       const { runtime, controller, accountIds } = setup();
       runtime.focus({ accountId: ALICE, roomId: '!x:example.org' });

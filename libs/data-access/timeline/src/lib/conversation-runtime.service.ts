@@ -348,9 +348,15 @@ export class ConversationRuntime {
   private retireDetached(): void {
     for (const account of [...this.entries.values()]) {
       for (const entry of [...account.values()]) {
-        if (entry.controller.clientStatus() === 'attached') continue;
+        const status = entry.controller.clientStatus();
+        const focused = entry.handle === this.focusedHandle();
+        // The room on screen stays until navigation when there is no client to reopen it on.
+        if (status === 'attached' || (focused && status === 'removed')) {
+          continue;
+        }
         try {
           this.retireOutlived(entry);
+          if (focused) this.focus(entry.handle.key);
         } catch (error: unknown) {
           this.errors.handleError(error);
         }
