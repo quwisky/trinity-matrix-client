@@ -27,6 +27,9 @@ import {
 } from '@trinity/components/overlay';
 import { Subject, takeUntil } from 'rxjs';
 
+/** How long a written toggle waits for its sync echo before the synced value shows again. */
+const SYNC_ECHO_LIMIT_MS = 10_000;
+
 /**
  * Notifications settings sub-page: account-level toggles for which events notify,
  * backed by the homeserver's predefined push rules (via {@link PushRulesService}). Each
@@ -63,7 +66,10 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
    * Written values the synced rules don't show yet, by rule id. The SDK updates its local
    * rules only from the sync echo, so an earlier sync would otherwise flip the toggle back.
    */
-  private readonly awaitingSync = new Map<string, boolean>();
+  private readonly awaitingSync = new Map<
+    string,
+    { readonly value: boolean; readonly timer: ReturnType<typeof setTimeout> }
+  >();
   private accountId: string | null | undefined;
   /** Emits on an account switch; releases the previous account's writes. */
   private readonly accountSwitches = new Subject<void>();
@@ -88,23 +94,13 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
         if (switched) {
           this.accountSwitches.next();
           this.pending.set(new Set());
-          this.awaitingSync.clear();
+          this.forgetAllSyncs();
         }
         this.accountId = accountId;
-        const pending = this.pending();
-        const next = new Map(switched ? [] : this.state());
-        for (const toggle of this.toggles) {
-          if (pending.has(toggle.id)) continue;
-          const synced = this.push.isOn(toggle);
-          const written = this.awaitingSync.get(toggle.id);
-          if (written === undefined || written === synced) {
-            this.awaitingSync.delete(toggle.id);
-            next.set(toggle.id, synced);
-          }
-        }
-        this.state.set(next);
+        this.readToggles(switched);
       });
     });
+    this.destroyRef.onDestroy(() => this.forgetAllSyncs());
   }
 
   ngOnInit(): void {
@@ -238,13 +234,18 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
       .subscribe({
         next: () => {
           if (this.isCurrentAccount(accountId)) {
-            this.awaitingSync.set(toggle.id, on);
+            // Unless already synced; an earlier write's echo still due may undo even that.
+            if (
+              this.awaitingSync.has(toggle.id) ||
+              this.push.isOn(toggle) !== on
+            ) {
+              this.awaitSync(toggle.id, on);
+            }
             this.setPending(toggle.id, false);
           }
         },
         error: () => {
           if (this.isCurrentAccount(accountId)) {
-            this.awaitingSync.delete(toggle.id);
             this.setState(toggle.id, !on); // revert the optimistic flip
             this.setPending(toggle.id, false);
             this.toast.show('Could not update your notification settings.', {
@@ -254,6 +255,40 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
           }
         },
       });
+  }
+
+  /** Show each rule toggle as synced, unless it has a write in flight or awaiting its echo. */
+  private readToggles(fresh: boolean): void {
+    const pending = this.pending();
+    const next = new Map(fresh ? [] : this.state());
+    for (const toggle of this.toggles) {
+      if (pending.has(toggle.id)) continue;
+      const synced = this.push.isOn(toggle);
+      const written = this.awaitingSync.get(toggle.id);
+      if (!written || written.value === synced) {
+        this.forgetSync(toggle.id);
+        next.set(toggle.id, synced);
+      }
+    }
+    this.state.set(next);
+  }
+
+  private awaitSync(id: string, value: boolean): void {
+    this.forgetSync(id);
+    const timer = setTimeout(() => {
+      this.awaitingSync.delete(id);
+      this.readToggles(false);
+    }, SYNC_ECHO_LIMIT_MS);
+    this.awaitingSync.set(id, { value, timer });
+  }
+
+  private forgetSync(id: string): void {
+    clearTimeout(this.awaitingSync.get(id)?.timer);
+    this.awaitingSync.delete(id);
+  }
+
+  private forgetAllSyncs(): void {
+    for (const id of [...this.awaitingSync.keys()]) this.forgetSync(id);
   }
 
   private setState(id: string, on: boolean): void {

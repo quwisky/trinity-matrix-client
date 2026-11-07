@@ -343,11 +343,56 @@ describe('NotificationsSectionComponent', () => {
   it('forgets an unsynced write on an account switch', async () => {
     const { cmp, fixture } = await build();
 
-    cmp.toggle(TOGGLES[1], true);
+    cmp.toggle(TOGGLES[0], false); // the new account's master toggle reads on
     activeAccount.set('@other:hs');
     fixture.detectChanges();
 
+    expect(cmp.checked(TOGGLES[0])).toBe(true);
+  });
+
+  it('expects no sync when the echo arrived before the write resolved', async () => {
+    const write = new Subject<void>();
+    const { cmp, fixture, isOn } = await build({ setOn: vi.fn(() => write) });
+
+    cmp.toggle(TOGGLES[1], true);
+    isOn.mockImplementation(() => true);
+    write.next();
+    write.complete();
+    isOn.mockImplementation(() => false); // another device turns it off again
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
     expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('shows the synced value once a write’s echo is overdue', async () => {
+    const { cmp } = await build();
+    vi.useFakeTimers();
+    try {
+      cmp.toggle(TOGGLES[1], true);
+      expect(cmp.checked(TOGGLES[1])).toBe(true);
+
+      vi.advanceTimersByTime(10_000);
+
+      expect(cmp.checked(TOGGLES[1])).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the last successful write when a later one fails', async () => {
+    const setOn = vi
+      .fn()
+      .mockReturnValueOnce(of(undefined))
+      .mockReturnValueOnce(throwError(() => new Error('nope')));
+    const { cmp, fixture } = await build({ setOn });
+
+    cmp.toggle(TOGGLES[1], true);
+    cmp.toggle(TOGGLES[1], false);
+    pushRevision.update((n) => n + 1); // still the rules from before the first write
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
   });
 
   it('does not let the previous account’s failed toggle write touch the new account', async () => {
