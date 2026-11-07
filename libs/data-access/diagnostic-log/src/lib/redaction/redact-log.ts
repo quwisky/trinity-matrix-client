@@ -80,11 +80,13 @@ const IPV6 = [
 ].join('|');
 const IP_ADDRESS = new RegExp(
   [
-    String.raw`(?<![\p{L}\p{N}./-])${IPV4}(?![\p{L}\p{N}_-]|\.\p{N})`,
+    String.raw`(?<![\p{L}\p{N}./-]|\bver(?:sion)?[\s:=]{1,3})${IPV4}(?![\p{L}\p{N}_-]|\.\p{N})`,
     String.raw`(?<![\p{L}\p{N}_./:-])(?=[0-9A-Fa-f:.]*\d)(?:${IPV6})(?![\p{L}\p{N}_:-]|\.\p{N})`,
   ].join('|'),
   'gu',
 );
+// Loopback, unspecified and netmask values identify no one and help to read a log.
+const NOBODYS_ADDRESS = /^(?:127\.|0\.0\.0\.0$|255\.|::1?$)/;
 // An email address. The local part starts a run (no ID or URL character before it) and every
 // part is bounded, so a long run of address characters cannot make the scan quadratic. A
 // Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
@@ -378,7 +380,9 @@ class IdentifierRedactor implements LogRedactor {
     text = this.redactIdentifiers(text);
     // After the IDs, whose server may be an address. An IPv6 one is keyed as in an ID.
     text = text.replace(IP_ADDRESS, (ip) =>
-      this.server(ip.includes(':') ? `[${ip}]` : ip),
+      NOBODYS_ADDRESS.test(ip)
+        ? ip
+        : this.server(ip.includes(':') ? `[${ip}]` : ip),
     );
     text = this.redactServerNames(text);
     return this.redactDevices(text);

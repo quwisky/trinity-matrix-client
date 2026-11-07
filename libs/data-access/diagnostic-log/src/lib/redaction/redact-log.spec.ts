@@ -984,7 +984,10 @@ describe('createLogRedactor', () => {
       'prefix fe80:: only',
       'ts 1:2:3:4:5:6:7:8',
       'at 2026-11-07T12:34:56.789Z',
-    ])('keeps %s, which only looks like an IPv6 address', (text) => {
+      'listen on 127.0.0.1:8008 and 0.0.0.0, mask 255.255.255.0',
+      'loopback ::1 and ::',
+      'lib version 1.2.3.4',
+    ])('keeps %s, which names no one', (text) => {
       expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(text);
     });
 
@@ -1001,8 +1004,8 @@ describe('createLogRedactor', () => {
         'server3 and [server3]:443',
       ],
       ['64:ff9b::198.51.100.7', 'server3'],
-      ['::1 loopback', 'server3 loopback'],
       ['fe80::1%en0', 'server3%en0'],
+      ['[fe80::1%25en0]:8448', '[server3%25en0]:8448'],
     ])('replaces the address in %s', (text, expected) => {
       expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(expected);
     });

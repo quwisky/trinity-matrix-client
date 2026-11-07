@@ -374,8 +374,41 @@ describe('scrubSecrets', () => {
     ['access_token = hunter2&x=1', `access_token = ${REDACTED}&x=1`],
     ['if token == null', 'if token == null'],
     ['username = alice', 'username = alice'],
+    ['sync state = SYNCING', 'sync state = SYNCING'],
+    ['code = 429 too many', 'code = 429 too many'],
+    ['if (key = null) retry', 'if (key = null) retry'],
+    ['if (token = abc) retry', `if (token = ${REDACTED}) retry`],
+    ['recovery_key = EsTc', `recovery_key = ${REDACTED}`],
   ])(
     'masks the whole quoted or spaced parameter value in %s',
+    (line, expected) => {
+      expect(scrubSecrets(line)).toBe(expected);
+    },
+  );
+
+  it.each([
+    [
+      '{"url":"https://x/?code=","password":"hunter2"}',
+      `{"url":"https://x/?code=${REDACTED}","password":"${REDACTED}"}`,
+    ],
+    [
+      '{"url":"https://x/?token=","recovery_passphrase":"open sesame","n":1}',
+      `{"url":"https://x/?token=${REDACTED}","recovery_passphrase":"${REDACTED}","n":1}`,
+    ],
+    [
+      '{"url":"https://x/cb?state=&code=","body":"hello secret message"}',
+      `{"url":"https://x/cb?state=${REDACTED}&code=${REDACTED}","body":"${REDACTED}"}`,
+    ],
+    [
+      "{'url': 'https://x/?code=', 'password': 'hunter2'}",
+      `{'url': 'https://x/?code=${REDACTED}', 'password': '${REDACTED}'}`,
+    ],
+    [
+      String.raw`{"m":"{\"url\":\"https://x/?code=\",\"password\":\"hunter2\"}"}`,
+      String.raw`{"m":"{\"url\":\"https://x/?code=${REDACTED}\",\"password\":\"${REDACTED}\"}"}`,
+    ],
+  ])(
+    'reads an empty parameter value at the end of a string as empty: %s',
     (line, expected) => {
       expect(scrubSecrets(line)).toBe(expected);
     },
@@ -529,6 +562,8 @@ describe('scrubSecrets', () => {
       'token=\\"'.repeat(8000),
       `token=\\"${'\\'.repeat(60000)}`,
       'a = '.repeat(16000),
+      '{"u":"?code=",'.repeat(4500),
+      'token = ('.repeat(7000),
     ];
 
     for (const input of inputs) {

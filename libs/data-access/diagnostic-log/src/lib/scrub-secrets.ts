@@ -174,10 +174,27 @@ function isReadableFlag(name: string, value: string): boolean {
  * Spaces around the "=" are allowed, but "==" is a comparison.
  */
 const PARAM =
-  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})[ \t]{0,8}=(?!=)[ \t]{0,8}/g;
+  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})([ \t]{0,8}=(?!=)[ \t]{0,8})/g;
 
-/** Where a bare parameter value ends. */
+/** Where a bare parameter value ends; a spaced one (`if (token = x)`) also ends at ")". */
 const PARAM_VALUE_END = /[&#\s"']/;
+const SPACED_PARAM_VALUE_END = /[&#\s"')]/;
+
+/** After a quote, what shows it closes the string around a parameter: `"?code=","next":…`. */
+const AFTER_CLOSING_QUOTE = /^(?:[,:}\])]|$)/;
+
+/**
+ * A name whose spaced assignment (`password = x`) holds a secret: one with a secret word in
+ * it. Short names such as `state`, `code`, `key` or `body` are ordinary words in prose and
+ * code (`state = SYNCING`), so they count only when written as a parameter, without spaces.
+ */
+function isSpacedSecretName(name: string): boolean {
+  const normalized = normalizeName(name);
+  return (
+    !PUBLIC_NAMES.has(normalized) &&
+    SECRET_WORDS.some((word) => normalized.includes(word))
+  );
+}
 
 /** `code` and `state` values that are diagnostics, not OAuth secrets. */
 const KEPT_OAUTH_VALUE =
@@ -249,15 +266,16 @@ export function scrubSecrets(text: string): string {
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
-  // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
-  scrubbed = maskParams(scrubbed);
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
   scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
-  return maskFields(scrubbed, isOAuthName, true);
+  scrubbed = maskFields(scrubbed, isOAuthName, true);
+  // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
+  // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
+  // After the fields, so a parameter value can never run over a field and hide it from them.
+  return maskParams(scrubbed);
 }
 
 /**
@@ -274,11 +292,12 @@ function maskParams(text: string): string {
     match !== null;
     match = pattern.exec(text)
   ) {
-    if (!isSecretParam(match[1])) {
+    const spaced = match[2] !== '=';
+    if (!isSecretParam(match[1]) || (spaced && !isSpacedSecretName(match[1]))) {
       continue;
     }
     const start = match.index + match[0].length;
-    const end = paramValueEnd(text, start);
+    const end = paramValueEnd(text, start, spaced);
     if (isReadableFlag(match[1], text.slice(start, end))) {
       continue;
     }
@@ -289,17 +308,24 @@ function maskParams(text: string): string {
   return out + text.slice(position);
 }
 
-function paramValueEnd(text: string, start: number): number {
+function paramValueEnd(text: string, start: number, spaced: boolean): number {
   let slashes = 0;
   while (text[start + slashes] === '\\' && slashes < 8) {
     slashes += 1;
   }
   const quote = text[start + slashes];
   if (quote === '"' || quote === "'") {
-    return readString(text, start, `${'\\'.repeat(slashes)}${quote}`).end;
+    // A quote that closes the string around the parameter leaves its value empty: read as
+    // an opener, it would swallow the next field's name, which then escapes `maskFields`.
+    return AFTER_CLOSING_QUOTE.test(
+      text.slice(start + slashes + 1, start + slashes + 2),
+    )
+      ? start
+      : readString(text, start, `${'\\'.repeat(slashes)}${quote}`).end;
   }
+  const valueEnd = spaced ? SPACED_PARAM_VALUE_END : PARAM_VALUE_END;
   let end = start;
-  while (end < text.length && !PARAM_VALUE_END.test(text[end])) {
+  while (end < text.length && !valueEnd.test(text[end])) {
     end += 1;
   }
   return end;
