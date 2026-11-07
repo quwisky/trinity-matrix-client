@@ -10,6 +10,10 @@
   .trn-emoji-picker {
     display: block;
 
+    trn-emoji-picker-panel {
+      display: block;
+    }
+
     // Stands in for the medium picker (302 x 358 px) while its chunk loads, so the overlay
     // around it keeps its size. Painted like `.emoji-mart` below so the swap is invisible.
     .trn-emoji-picker__placeholder {
@@ -34,11 +38,37 @@
 
     // Only the idle and hover states are ours to paint: the vendor inline-styles the anchor
     // bar and the selected anchor from its `color` input, so a rule for either is outranked.
+    // The vendor's 12px around an 18px icon makes a 42px tab; a finger gets the 44px floor,
+    // with the icon kept in the middle.
     .emoji-mart-anchor {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: var(--trinity-interaction-target-min-size);
+      border: 0;
+      background: none;
       color: var(--muted-foreground);
+      cursor: pointer;
 
-      &:hover {
-        color: var(--trinity-link);
+      // The tabs are buttons (see patches/@ctrl__ngx-emoji-mart), and the vendor sets
+      // `outline: 0` on them, so a keyboard user would see no focus at all. Inset: the
+      // picker clips its overflow.
+      &:focus-visible {
+        outline: 2px solid var(--trinity-accent);
+        outline-offset: -2px;
+      }
+
+      // Preflight makes an svg a block, which ignores the vendor's `text-align: center`; a
+      // tab wider than its icon then leaves the icon at its left edge, off its underline.
+      svg {
+        margin-inline: auto;
+      }
+
+      // On touch, :hover stays on whatever was tapped last, so the hover paint is pointer-only.
+      @media (hover: hover) {
+        &:hover {
+          color: var(--trinity-link);
+        }
       }
     }
 
@@ -79,6 +109,10 @@
 
     .emoji-mart-category .emoji-mart-emoji:hover::before {
       background-color: var(--muted);
+
+      @media (hover: none) {
+        content: none;
+      }
     }
 
     .emoji-mart-no-results {
@@ -124,10 +158,35 @@
         padding: var(--trn-emoji-cell-padding);
       }
 
-      // The vendor promotes its scroll area to a layer (`will-change: transform`); filling,
-      // that left a hairline of stale paint under the sticky headings in Chromium.
+      // A flex column from the host down to the list, so a host that is itself a flex item
+      // with a height to give (a sheet's body) passes it to the list: the list grows into a
+      // full-height sheet, and shrinks to fit one capped below its content, or the keyboard.
+      // Anywhere else the column is as tall as its content, and the list keeps the vendor's
+      // 270px.
+      &,
+      trn-emoji-picker-panel,
+      emoji-mart,
+      .emoji-mart {
+        display: flex;
+        flex-direction: column;
+      }
+
+      trn-emoji-picker-panel,
+      emoji-mart,
+      .emoji-mart {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
+      // The list takes the height that is left. The vendor also promotes it to a layer
+      // (`will-change: transform`); filling, that left a hairline of stale paint under the
+      // sticky headings in Chromium.
+      // It never shrinks below about two rows of touch cells: on a phone held sideways the
+      // sheet scrolls instead, rather than leave a list too short to use.
       .emoji-mart-scroll {
         will-change: auto;
+        flex: 1 1 auto;
+        min-height: 100px;
       }
     }
 

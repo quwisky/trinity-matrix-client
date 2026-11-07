@@ -92,6 +92,16 @@ test.describe('Full emoji reaction picker', () => {
     // The trigger has to agree with what is on screen, which is the half that desynced.
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
+    // A keyboard reaches the category tabs (Shift+Tab back from the search, which follows
+    // them), sees which is current, and Enter jumps.
+    await picker.locator('.emoji-mart-search input').click();
+    await page.keyboard.press('Shift+Tab');
+    const tab = picker.locator('.emoji-mart-anchors button:focus');
+    await expect(tab).toHaveCount(1);
+    await page.keyboard.press('Enter');
+    await expect(tab).toHaveAttribute('aria-current', 'true');
+    await expect(tab).toHaveCSS('outline-style', 'solid');
+
     await trigger.click();
     await expect(picker).toBeHidden({ timeout: 10_000 });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');

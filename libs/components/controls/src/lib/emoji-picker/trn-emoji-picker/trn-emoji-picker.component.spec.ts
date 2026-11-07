@@ -4,7 +4,7 @@ import { Component, signal } from '@angular/core';
 import type { ComponentFixture } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
-import { render } from '@trinity/testing';
+import { render, within } from '@trinity/testing';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TrnEmojiPick } from '../trn-emoji.model';
 import { TrnEmojiPickerComponent } from './trn-emoji-picker.component';
@@ -294,6 +294,32 @@ describe('TrnEmojiPickerComponent', () => {
     const vendor = vendorOf(fixture);
 
     expect(vendor.componentInstance.useButton).toBe(true);
+  });
+
+  // patches/@ctrl__ngx-emoji-mart@9.3.0.patch: the vendor draws its tabs as clickable spans.
+  it('renders the category tabs as buttons named for their category, marking the current one', async () => {
+    const { fixture } = await renderLoaded(TrnEmojiPickerComponent);
+    const bar = within(
+      (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+        '.emoji-mart-anchors',
+      )!,
+    );
+
+    const tabs = bar.getAllByRole('button');
+    expect(tabs.length).toBeGreaterThan(1);
+    expect(tabs.every((tab) => tab.getAttribute('type') === 'button')).toBe(
+      true,
+    );
+    expect(
+      bar
+        .getByRole('button', { name: 'Frequently Used' })
+        .getAttribute('aria-current'),
+    ).toBe('true');
+    expect(
+      bar
+        .getByRole('button', { name: 'Food & Drink' })
+        .hasAttribute('aria-current'),
+    ).toBe(false);
   });
 
   it('maps an ordinal Trinity size to the private vendor glyph measurement', async () => {

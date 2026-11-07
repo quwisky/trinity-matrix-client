@@ -1,0 +1,128 @@
+diff --git a/esm2022/anchors.component.mjs b/esm2022/anchors.component.mjs
+index 5d9218a6ec5e5ed12ed59199ef0c62b9e10c5d02..6f6ee463df41d3ed1c2aeebe54f17349c8f789bc 100644
+--- a/esm2022/anchors.component.mjs
++++ b/esm2022/anchors.component.mjs
+@@ -28,21 +28,24 @@ class AnchorsComponent {
+         let-idx="index"
+         [ngForTrackBy]="trackByFn"
+       >
+-        <span
++        <button
++          type="button"
+           *ngIf="category.anchor !== false"
+           [attr.title]="i18n.categories[category.id]"
++          [attr.aria-label]="i18n.categories[category.id]"
++          [attr.aria-current]="category.name === selected ? 'true' : null"
+           (click)="this.handleClick($event, idx)"
+           class="emoji-mart-anchor"
+           [class.emoji-mart-anchor-selected]="category.name === selected"
+           [style.color]="category.name === selected ? color : null"
+         >
+-          <div>
+-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
++          <span class="emoji-mart-anchor-icon">
++            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+               <path [attr.d]="icons[category.id]" />
+             </svg>
+-          </div>
++          </span>
+           <span class="emoji-mart-anchor-bar" [style.background-color]="color"></span>
+-        </span>
++        </button>
+       </ng-template>
+     </div>
+   `, isInline: true, dependencies: [{ kind: "ngmodule", type: CommonModule }, { kind: "directive", type: i1.NgForOf, selector: "[ngFor][ngForOf]", inputs: ["ngForOf", "ngForTrackBy", "ngForTemplate"] }, { kind: "directive", type: i1.NgIf, selector: "[ngIf]", inputs: ["ngIf", "ngIfThen", "ngIfElse"] }], changeDetection: i0.ChangeDetectionStrategy.OnPush });
+@@ -61,21 +64,24 @@ i0.ɵɵngDeclareClassMetadata({ minVersion: "12.0.0", version: "16.0.5", ngImpor
+         let-idx="index"
+         [ngForTrackBy]="trackByFn"
+       >
+-        <span
++        <button
++          type="button"
+           *ngIf="category.anchor !== false"
+           [attr.title]="i18n.categories[category.id]"
++          [attr.aria-label]="i18n.categories[category.id]"
++          [attr.aria-current]="category.name === selected ? 'true' : null"
+           (click)="this.handleClick($event, idx)"
+           class="emoji-mart-anchor"
+           [class.emoji-mart-anchor-selected]="category.name === selected"
+           [style.color]="category.name === selected ? color : null"
+         >
+-          <div>
+-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
++          <span class="emoji-mart-anchor-icon">
++            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+               <path [attr.d]="icons[category.id]" />
+             </svg>
+-          </div>
++          </span>
+           <span class="emoji-mart-anchor-bar" [style.background-color]="color"></span>
+-        </span>
++        </button>
+       </ng-template>
+     </div>
+   `,
+diff --git a/fesm2022/ctrl-ngx-emoji-mart.mjs b/fesm2022/ctrl-ngx-emoji-mart.mjs
+index 9d9eab9eea67c5ecd375255453a7d9079852862e..ed256fb437932f5fb8d9f51f9e51858532ab6632 100644
+--- a/fesm2022/ctrl-ngx-emoji-mart.mjs
++++ b/fesm2022/ctrl-ngx-emoji-mart.mjs
+@@ -34,21 +34,24 @@ class AnchorsComponent {
+         let-idx="index"
+         [ngForTrackBy]="trackByFn"
+       >
+-        <span
++        <button
++          type="button"
+           *ngIf="category.anchor !== false"
+           [attr.title]="i18n.categories[category.id]"
++          [attr.aria-label]="i18n.categories[category.id]"
++          [attr.aria-current]="category.name === selected ? 'true' : null"
+           (click)="this.handleClick($event, idx)"
+           class="emoji-mart-anchor"
+           [class.emoji-mart-anchor-selected]="category.name === selected"
+           [style.color]="category.name === selected ? color : null"
+         >
+-          <div>
+-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
++          <span class="emoji-mart-anchor-icon">
++            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+               <path [attr.d]="icons[category.id]" />
+             </svg>
+-          </div>
++          </span>
+           <span class="emoji-mart-anchor-bar" [style.background-color]="color"></span>
+-        </span>
++        </button>
+       </ng-template>
+     </div>
+   `, isInline: true, dependencies: [{ kind: "ngmodule", type: CommonModule }, { kind: "directive", type: i2.NgForOf, selector: "[ngFor][ngForOf]", inputs: ["ngForOf", "ngForTrackBy", "ngForTemplate"] }, { kind: "directive", type: i2.NgIf, selector: "[ngIf]", inputs: ["ngIf", "ngIfThen", "ngIfElse"] }], changeDetection: i0.ChangeDetectionStrategy.OnPush });
+@@ -66,21 +69,24 @@ i0.ɵɵngDeclareClassMetadata({ minVersion: "12.0.0", version: "16.0.5", ngImpor
+         let-idx="index"
+         [ngForTrackBy]="trackByFn"
+       >
+-        <span
++        <button
++          type="button"
+           *ngIf="category.anchor !== false"
+           [attr.title]="i18n.categories[category.id]"
++          [attr.aria-label]="i18n.categories[category.id]"
++          [attr.aria-current]="category.name === selected ? 'true' : null"
+           (click)="this.handleClick($event, idx)"
+           class="emoji-mart-anchor"
+           [class.emoji-mart-anchor-selected]="category.name === selected"
+           [style.color]="category.name === selected ? color : null"
+         >
+-          <div>
+-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
++          <span class="emoji-mart-anchor-icon">
++            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+               <path [attr.d]="icons[category.id]" />
+             </svg>
+-          </div>
++          </span>
+           <span class="emoji-mart-anchor-bar" [style.background-color]="color"></span>
+-        </span>
++        </button>
+       </ng-template>
+     </div>
+   `,

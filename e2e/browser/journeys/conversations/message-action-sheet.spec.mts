@@ -371,6 +371,74 @@ test.describe('Message actions on a phone', () => {
     );
   });
 
+  test('"More reactions…" fills the sheet and leaves the keyboard down', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'm');
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    const grid = dialog.locator('.emoji-mart');
+    await longPress(page, rowSel);
+    await page.getByTestId('sheet-react-more').click();
+    await expect(grid).toBeVisible({ timeout: 20_000 });
+    await sheetAtRest(dialog.getByTestId('dialog-surface'));
+
+    // The picker spans the sheet's padded width, not the vendor's fixed 302px.
+    const [gridBox, sheetBox] = await Promise.all([
+      grid.boundingBox(),
+      dialog.getByTestId('dialog-surface').boundingBox(),
+    ]);
+    expect(gridBox!.width).toBeGreaterThan(sheetBox!.width - 48);
+    // A full-height sheet: the list grows past the vendor's fixed 270px to fill it, and the
+    // sheet's body has nothing left to scroll around the grid's own scroller.
+    const fit = await dialog.evaluate((sheet) => {
+      const body = sheet.querySelector('.dialog-shell__body')!;
+      return {
+        list: sheet.querySelector('.emoji-mart-scroll')!.getBoundingClientRect()
+          .height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThan(300);
+    expect(fit.bodyOverflow).toBeLessThanOrEqual(1);
+    // Each category tab is a finger-sized target with its icon centred over its underline.
+    const tabs = await dialog
+      .locator('.emoji-mart-anchor')
+      .evaluateAll((anchors) =>
+        anchors.map((anchor) => {
+          const tab = anchor.getBoundingClientRect();
+          const icon = anchor.querySelector('svg')!.getBoundingClientRect();
+          return {
+            height: tab.height,
+            offCentre: Math.abs(
+              icon.x + icon.width / 2 - (tab.x + tab.width / 2),
+            ),
+          };
+        }),
+      );
+    expect(tabs.length).toBeGreaterThan(0);
+    for (const tab of tabs) {
+      expect(tab.height).toBeGreaterThanOrEqual(44);
+      expect(tab.offCentre).toBeLessThan(1);
+    }
+    // A focused search raises a phone's keyboard over the grid, so the sheet focuses itself.
+    // Asserted positively: the grid draws late enough that "search not focused" would pass
+    // even with focus on the wrong control.
+    await expect(dialog).toBeFocused();
+
+    // The tabs are buttons (patches/@ctrl__ngx-emoji-mart): one jumps to its category.
+    await dialog.getByRole('button', { name: 'Food & Drink' }).click();
+    await expect(
+      dialog.getByRole('button', { name: 'Food & Drink' }),
+    ).toHaveAttribute('aria-current', 'true');
+
+    await dialog.getByRole('button', { name: '😂' }).first().click();
+    await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(
+      '😂',
+      { timeout: 15_000 },
+    );
+  });
+
   test('groups the actions into cards under a row of reaction tiles', async ({
     page,
     request,
@@ -736,5 +804,71 @@ test.describe('Message actions on a phone', () => {
 
     await expect(sheet).toHaveCount(0);
     await expectScrollerPositionRestored(threadRow, targetTopBefore);
+  });
+});
+
+test.describe('Emoji pickers on a phone held sideways', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+  test.describe.configure({ timeout: 90_000 });
+  // Pixel 5 landscape. Too short for the title, tabs, search and Cancel plus the vendor's
+  // 270px list: the list gives way down to about two rows before the sheet has to scroll.
+  test.use({ viewport: { width: 851, height: 393 } });
+
+  test('shrinks the emoji list to fit, but not past two rows', async ({
+    page,
+    request,
+  }) => {
+    const rowSel = await openRoomWithMessage(page, request, 'l');
+    await longPress(page, rowSel);
+    await page.getByTestId('sheet-react-more').click();
+    const dialog = page.getByRole('dialog', { name: 'Pick a reaction' });
+    await expect(dialog.locator('.emoji-mart')).toBeVisible({
+      timeout: 20_000,
+    });
+    await sheetAtRest(dialog.getByTestId('dialog-surface'));
+
+    const fit = await dialog.evaluate((sheet) => {
+      const body = sheet.querySelector('.dialog-shell__body')!;
+      return {
+        list: sheet.querySelector('.emoji-mart-scroll')!.getBoundingClientRect()
+          .height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThanOrEqual(99);
+    expect(fit.list).toBeLessThan(270);
+    // The fixed list left the body scrolling about 250px around it.
+    expect(fit.bodyOverflow).toBeLessThan(100);
+  });
+
+  test("the composer's emoji sheet shrinks its list the same way", async ({
+    page,
+    request,
+  }) => {
+    await openRoomWithMessage(page, request, 'c');
+    await page
+      .getByRole('button', { name: 'Emoji, GIFs and stickers' })
+      .click();
+    const sheet = page.getByRole('dialog', {
+      name: 'Emoji, GIFs and stickers',
+    });
+    await expect(sheet.locator('.emoji-mart')).toBeVisible({
+      timeout: 20_000,
+    });
+    await sheetAtRest(sheet.getByTestId('dialog-surface'));
+
+    const fit = await sheet.evaluate((surface) => {
+      const body = surface.querySelector('.dialog-shell__body')!;
+      return {
+        list: surface
+          .querySelector('.emoji-mart-scroll')!
+          .getBoundingClientRect().height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThanOrEqual(99);
+    expect(fit.list).toBeLessThan(270);
+    // The fixed list left the sheet scrolling about 180px around it.
+    expect(fit.bodyOverflow).toBeLessThan(60);
   });
 });

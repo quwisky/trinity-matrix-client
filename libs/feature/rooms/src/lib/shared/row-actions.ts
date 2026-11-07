@@ -36,7 +36,7 @@ export interface SharedRowActionContext {
   readonly destroyRef: DestroyRef;
   readonly dialog: Pick<
     TrnSurfaceService,
-    'open' | 'openAndWait$' | 'openActions'
+    'open' | 'openAndWait$' | 'openActions' | 'prefersSheet'
   >;
   readonly timeline: Pick<
     ConversationRuntime['timeline'],
@@ -270,6 +270,12 @@ export function dispatchSharedRowAction(
       defer(() =>
         ctx.dialog.openAndWait$<string, ReactionPickerComponent>(
           ReactionPickerComponent,
+          // A sheet's first tabbable is the search, and focusing it raises a phone's keyboard
+          // over the grid. Wider, the search keeps focus so a keyboard user can type at once.
+          // Full height, so the grid has a height to fill and shrinks above the keyboard.
+          ctx.dialog.prefersSheet()
+            ? { autoFocus: 'dialog', detents: ['large'] }
+            : {},
         ),
       )
         .pipe(

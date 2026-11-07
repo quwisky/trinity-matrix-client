@@ -47,7 +47,6 @@ const MAX_VENDOR_PER_LINE = 16;
   imports: [PickerComponent],
   templateUrl: './trn-emoji-picker-panel.component.html',
   host: {
-    style: 'display: block',
     '[style.--trn-emoji-cell-padding]': 'cellPadding()',
   },
 })
