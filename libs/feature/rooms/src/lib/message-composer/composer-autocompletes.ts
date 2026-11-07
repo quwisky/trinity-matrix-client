@@ -1,6 +1,10 @@
-import { computed, type Signal } from '@angular/core';
+import { type Signal } from '@angular/core';
 import { type TrnEmojiIndex } from '@trinity/components/controls';
-import { type Mention } from '@trinity/util/matrix';
+import {
+  slashCommandsFor,
+  type Mention,
+  type SlashCommandContext,
+} from '@trinity/util/matrix';
 import { EmojiAutocomplete } from './emoji-autocomplete';
 import {
   MentionAutocomplete,
@@ -21,15 +25,14 @@ export interface ComposerAutocompletePorts {
   /** Insert a bare character at the cursor (the emoji fallback path). */
   readonly insertAtCursor: (text: string) => void;
   /**
-   * Whether a leading slash is READ as a command on the way out.
+   * Which leading slash commands are READ on the way out.
    *
-   * A port because it is a fact about the composer's MODE: only ordinary Conversation and
-   * exact-thread sends run `slashCommandContent`, while a reply, an edit and an attachment
-   * caption route through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`,
-   * none of which look at a leading slash. Offering a command there completes text that then
+   * A port because it is a fact about the composer's MODE: ordinary Conversation and
+   * exact-thread sends read every command, a reply only the text art, and an edit and an
+   * attachment caption none. Offering a command that is not read completes text that then
    * sends literally.
    */
-  readonly commandsParsed: Signal<boolean>;
+  readonly commandContext: Signal<SlashCommandContext>;
 }
 
 /**
@@ -47,7 +50,7 @@ export interface ComposerAutocompletePorts {
 export class ComposerAutocompletes {
   private readonly emoji: EmojiAutocomplete;
   private readonly mention: MentionAutocomplete;
-  private readonly slash = new SlashAutocomplete();
+  private readonly slash: SlashAutocomplete;
 
   /** The `:shortcode` fragment under the caret, or null when the menu is closed. */
   readonly emojiQuery: EmojiAutocomplete['query'];
@@ -79,6 +82,10 @@ export class ComposerAutocompletes {
   ) {
     this.emoji = new EmojiAutocomplete(emojiIndex);
     this.mention = new MentionAutocomplete(members);
+    // Only the commands this mode reads: see `commandContext`.
+    this.slash = new SlashAutocomplete(() =>
+      slashCommandsFor(this.ports.commandContext()),
+    );
     this.emojiQuery = this.emoji.query;
     this.emojiMatches = this.emoji.matches;
     this.emojiOpen = this.emoji.open;
@@ -88,12 +95,7 @@ export class ComposerAutocompletes {
     this.mentionOpen = this.mention.open;
     this.mentionActiveIndex = this.mention.activeIndex;
     this.slashMatches = this.slash.matches;
-    // Gated, not just "has matches": see `commandsParsed`. The engine still tracks its query;
-    // this decides only whether the menu shows and whether the key ladders hand it Enter, Tab
-    // and the arrows.
-    this.slashOpen = computed(
-      () => this.ports.commandsParsed() && this.slash.open(),
-    );
+    this.slashOpen = this.slash.open;
     this.slashActiveIndex = this.slash.activeIndex;
   }
 

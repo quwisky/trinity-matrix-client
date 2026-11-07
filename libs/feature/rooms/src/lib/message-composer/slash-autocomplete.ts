@@ -1,4 +1,4 @@
-import { computed, signal } from '@angular/core';
+import { computed, linkedSignal, signal } from '@angular/core';
 import { SLASH_COMMANDS, type SlashCommand } from '@trinity/util/matrix';
 import { type CaretReplacement } from './caret-replacement';
 
@@ -19,9 +19,15 @@ const SLASH_TRIGGER = /^\/([a-z]*)$/i;
  * acceptance resolves to: everything except the textarea.
  *
  * The command list is the one the send path parses against, so a command renamed there stops
- * being offered here instead of being offered under a name that no longer works.
+ * being offered here instead of being offered under a name that no longer works. `commands`
+ * narrows it to what the composer's mode reads (a reply reads only the text art).
  */
 export class SlashAutocomplete {
+  constructor(
+    private readonly commands: () => readonly SlashCommand[] = () =>
+      SLASH_COMMANDS,
+  ) {}
+
   /** The command fragment after the leading slash, or null when the menu is closed. */
   readonly query = signal<string | null>(null);
 
@@ -31,22 +37,25 @@ export class SlashAutocomplete {
     if (q === null) {
       return [];
     }
-    return SLASH_COMMANDS.filter((command) => command.name.startsWith(q));
+    return this.commands().filter((command) => command.name.startsWith(q));
   });
 
   /** The menu is shown only when a query yields at least one command. */
   readonly open = computed(() => this.matches().length > 0);
 
   /**
-   * Index of the highlighted command.
+   * Index of the highlighted command, back to the top whenever the list changes.
    *
-   * Reset in {@link sync} rather than by an effect on `matches`, as the composer does for the
-   * emoji and mention engines, deliberately: `matches` is a pure function of `query` over a
-   * module constant, so the highlight can survive a re-sync the user did not ask for (a caret
-   * move, a format edit further along). Mention's list can change under an unchanged query
-   * (members arrive), so it cannot make that promise and resets on every change instead.
+   * A re-sync the user did not ask for (a caret move, a format edit further along) leaves
+   * `query` and so `matches` unchanged, and the highlight survives it. A new fragment, or a
+   * reply starting under an open menu, is a different list: a stale index can point past its
+   * end, and then `accept` returns null while the menu is open, so Enter is swallowed and
+   * nothing sends.
    */
-  readonly activeIndex = signal(0);
+  readonly activeIndex = linkedSignal({
+    source: this.matches,
+    computation: () => 0,
+  });
 
   /**
    * Recompute the menu from the text before the caret.
@@ -61,9 +70,6 @@ export class SlashAutocomplete {
       return; // same fragment, same list — leave the highlight where the user put it
     }
     this.query.set(next);
-    // A different fragment is a different list; a stale index can point past the end, and then
-    // `accept` returns null while the menu is open: Enter is swallowed and nothing sends.
-    this.activeIndex.set(0);
   }
 
   /**

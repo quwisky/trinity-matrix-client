@@ -8,7 +8,9 @@ import {
   messagePreview,
   parseSlashCommand,
   replyMessageContent,
+  replyTextArt,
   slashCommandContent,
+  slashCommandsFor,
   textMessageContent,
   type Mention,
 } from './message-content';
@@ -67,6 +69,58 @@ describe('parseSlashCommand', () => {
   });
 });
 
+describe('slashCommandsFor', () => {
+  it('reads every command in a message, the text art in a reply, none in an edit', () => {
+    const names = (context: Parameters<typeof slashCommandsFor>[0]) =>
+      slashCommandsFor(context).map((command) => command.name);
+
+    expect(names('message')).toEqual([
+      'me',
+      'shrug',
+      'tableflip',
+      'unflip',
+      'lenny',
+      'plain',
+      'spoiler',
+    ]);
+    expect(names('reply')).toEqual(['shrug', 'tableflip', 'unflip', 'lenny']);
+    expect(names('none')).toEqual([]);
+  });
+});
+
+describe('replyTextArt', () => {
+  const html = (text: string) => replyTextArt(text, renderMarkdown)?.md.html;
+
+  it('appends the art to a formatted message, on its last line and literal', () => {
+    const art = replyTextArt('/shrug **oh** well', renderMarkdown);
+
+    expect(art?.text).toBe('**oh** well ¯\\_(ツ)_/¯');
+    expect(art?.md.html).toBe('<p><strong>oh</strong> well ¯\\_(ツ)_/¯</p>');
+  });
+
+  it('puts the art after a code block the message ends in, never inside it', () => {
+    expect(html('/unflip a\n\n    code')).toMatch(
+      /<\/pre><p>┬──┬ ノ\( ゜-゜ノ\)<\/p>$/u,
+    );
+  });
+
+  it('leaves a plain message and the art alone to the reply, which escapes them whole', () => {
+    expect(replyTextArt('/lenny', renderMarkdown)).toEqual({
+      text: '( ͡° ͜ʖ ͡°)',
+      md: { formatted: false, html: '( ͡° ͜ʖ ͡°)' },
+    });
+    expect(replyTextArt('/shrug oh well', renderMarkdown)?.md.formatted).toBe(
+      false,
+    );
+  });
+
+  it('leaves the other commands and plain text alone', () => {
+    expect(replyTextArt('/me waves', renderMarkdown)).toBeNull();
+    expect(replyTextArt('/spoiler x', renderMarkdown)).toBeNull();
+    expect(replyTextArt('just text', renderMarkdown)).toBeNull();
+  });
+});
+
 describe('slashCommandContent', () => {
   const plain: RenderedMarkdown = { formatted: false, html: '' };
   const render = () => plain;
@@ -101,6 +155,23 @@ describe('slashCommandContent', () => {
     expect(
       (slashCommandContent('/shrug oh well', render) as { body: string }).body,
     ).toBe('oh well ¯\\_(ツ)_/¯');
+  });
+
+  it.each([
+    ['tableflip', '(╯°□°）╯︵ ┻━┻'],
+    ['unflip', '┬──┬ ノ( ゜-゜ノ)'],
+    ['lenny', '( ͡° ͜ʖ ͡°)'],
+  ])('appends its art for /%s, as plain text', (command, art) => {
+    expect(slashCommandContent(`/${command}`, render)).toEqual({
+      msgtype: 'm.text',
+      body: art,
+      'm.mentions': {},
+    });
+    expect(slashCommandContent(`/${command} ugh @room`, render)).toEqual({
+      msgtype: 'm.text',
+      body: `ugh @room ${art}`,
+      'm.mentions': { room: true },
+    });
   });
 
   it('sends /plain as plain text (no formatting)', () => {

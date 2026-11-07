@@ -2,10 +2,12 @@ import {
   escapeHtml,
   linkifyMessageText,
   renderMarkdown,
+  replyTextArt,
   sanitizeMatrixHtml,
   slashCommandContent,
   textMessageContent,
   type Mention,
+  type SlashCommandContext,
 } from '@trinity/util/matrix';
 
 /**
@@ -18,24 +20,29 @@ import {
  * the spoiler class the reveal directive needs, the code-block language caption and syntax
  * highlighting.
  *
- * `parsesCommands` is whether a leading slash is read as a command on the way out. Only
- * ordinary Conversation and exact-thread sends are: a reply, an edit and an attachment
- * caption route through `replyMessageContent` / `editMessageContent` / `mediaCaptionFields`,
- * none of which look at a leading slash, so previewing `/spoiler x` concealed while replying
+ * `context` is which leading slash commands are read on the way out. Ordinary Conversation and
+ * exact-thread sends read them all; a reply applies only the text art (`replyTextArt`); an
+ * edit and an attachment caption read none. Previewing `/spoiler x` concealed while replying
  * would promise a spoiler and send the literal text.
  */
 export function composerPreview(
   rawText: string,
   mentions: Mention[],
-  parsesCommands: boolean,
+  context: SlashCommandContext,
 ): { html: string; rich: boolean } {
   const text = rawText.trim();
   if (!text) {
     return { html: '', rich: false };
   }
-  const content = ((parsesCommands
+  const art = context === 'reply' ? replyTextArt(text, renderMarkdown) : null;
+  const content = ((context === 'message'
     ? slashCommandContent(text, renderMarkdown, mentions)
-    : null) ?? textMessageContent(text, renderMarkdown(text), mentions)) as {
+    : null) ??
+    textMessageContent(
+      art?.text ?? text,
+      art?.md ?? renderMarkdown(text),
+      mentions,
+    )) as {
     formatted_body?: string;
     body?: string;
   };
