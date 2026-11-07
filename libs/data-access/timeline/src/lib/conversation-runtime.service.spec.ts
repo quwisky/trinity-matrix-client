@@ -24,7 +24,10 @@ import {
   type ConversationTimelineController,
   type ConversationTimelineFactory,
 } from './conversation-timeline-factory';
-import type { ConversationTextSendOutcome } from './conversation-compose';
+import type {
+  ConversationTextDelivery,
+  ConversationTextSendOutcome,
+} from './conversation-compose';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { conversationDraftKey } from './conversation-draft-key';
 import type {
@@ -1148,6 +1151,110 @@ describe('ConversationRuntime', () => {
         expect(fresh.compose.draft()).toBe('hi there');
         expect(drafts.get(conversationDraftKey(KEY))).toBe('hi there');
       });
+    });
+
+    describe('sends that settle after their handle retired', () => {
+      /** Send `text` from a fresh handle for the room, then retire it. */
+      function sendAndRetire(
+        fixture: ReturnType<typeof setup>,
+        text: string,
+      ): Promise<unknown> {
+        const handle = fixture.runtime.focus(KEY);
+        handle.compose.setDraft(text);
+        const outcome = firstValueFrom(handle.compose.submit());
+        fixture.runtime.focus({
+          accountId: ALICE,
+          roomId: '!other:example.org',
+        });
+        fixture.runtime.retireRetained();
+        return outcome;
+      }
+
+      /** One sender per send, so each can settle on its own. */
+      function twoSends() {
+        const first = new Subject<ConversationTextDelivery>();
+        const second = new Subject<ConversationTextDelivery>();
+        const outcomes = [first, second];
+        const sender: ConversationTextSender = {
+          send: vi.fn(() => ({
+            outcome:
+              outcomes.shift() ?? new Subject<ConversationTextDelivery>(),
+            cancel: () => false,
+          })),
+        };
+        return { fixture: setup(2, sender), first, second };
+      }
+
+      const stored = (fixture: ReturnType<typeof setup>) =>
+        fixture.drafts.get(conversationDraftKey(KEY));
+
+      it('puts back and drops from storage alone when no handle holds the room', async () => {
+        const failing = setup();
+        const failed = sendAndRetire(failing, 'x');
+        failing.sends.next({ kind: 'rejected', retryable: true });
+        await failed;
+        expect(stored(failing)).toBe('x');
+
+        TestBed.resetTestingModule();
+        const sending = setup();
+        const sent = sendAndRetire(sending, 'y');
+        sending.sends.next({ kind: 'accepted', eventId: '$y' });
+        await sent;
+        expect(stored(sending)).toBe('');
+      });
+
+      it('puts a failed send into the message draft of a handle that is editing', async () => {
+        const fixture = setup(2, undefined, [message('$edit')]);
+        const outcome = sendAndRetire(fixture, 'x');
+        const live = fixture.runtime.focus(KEY);
+        live.compose.setDraft('mine');
+        live.messages.beginEdit('$edit', 'edit body');
+
+        fixture.sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(live.compose.draft()).toBe('edit body');
+        expect(stored(fixture)).toBe('x\n\nmine');
+        live.compose.cancelIntent();
+        expect(live.compose.draft()).toBe('x\n\nmine');
+      });
+
+      it('keeps the message of a handle that is itself sending when another fails', async () => {
+        const { fixture, first, second } = twoSends();
+        const failed = sendAndRetire(fixture, 'x');
+        const live = fixture.runtime.focus(KEY);
+        live.compose.setDraft('y');
+        const sent = firstValueFrom(live.compose.submit());
+
+        first.next({ kind: 'rejected', retryable: true });
+        await failed;
+        expect(stored(fixture)).toBe('x\n\ny'); // y is still sending; a reload keeps it
+
+        second.next({ kind: 'accepted', eventId: '$y' });
+        await sent;
+        expect(live.compose.draft()).toBe('x');
+        expect(stored(fixture)).toBe('x');
+      });
+
+      for (const failFirst of [true, false]) {
+        it(`leaves only the failed text when two retired sends settle, ${failFirst ? 'failure' : 'success'} first`, async () => {
+          const { fixture, first, second } = twoSends();
+          const failed = sendAndRetire(fixture, 'x');
+          const sent = sendAndRetire(fixture, 'y');
+          const live = fixture.runtime.focus(KEY);
+
+          const settle = [
+            () => first.next({ kind: 'rejected', retryable: true }),
+            () => second.next({ kind: 'accepted', eventId: '$y' }),
+          ];
+          if (!failFirst) settle.reverse();
+          settle.forEach((step) => step());
+          await Promise.all([failed, sent]);
+
+          expect(live.compose.draft()).toBe('x');
+          expect(stored(fixture)).toBe('x');
+        });
+      }
     });
 
     it('does not keep a reply open after its send succeeds', async () => {

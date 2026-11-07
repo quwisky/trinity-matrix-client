@@ -158,9 +158,9 @@ export class ConversationComposeController {
 
   /** Put a failed message back in front of the message draft. Not a user edit either. */
   putBack(failed: string): void {
-    const restored = putBackDraft(this.messageDraftState(), failed);
-    this.messageDraftState.set(restored);
-    this.ports.persistDraft(restored);
+    // Storage, not the box: while this handle's own send is in flight only storage holds it.
+    this.messageDraftState.set(putBackDraft(this.messageDraftState(), failed));
+    this.ports.persistDraft(putBackDraft(this.ports.readDraft(), failed));
   }
 
   private setDraft(draft: string): void {

@@ -257,6 +257,11 @@ export class ConversationRuntime {
     this.drafts.set(draftKey, appendDraft(this.drafts.get(draftKey), text));
   }
 
+  /** The focused or retained handle for the room, if one holds it. */
+  held(key: ConversationKey): ConversationHandle | null {
+    return this.entry(key)?.handle ?? null;
+  }
+
   /** Whether the Account has a focused or retained handle for the room. */
   holds(accountId: string, roomId: string): boolean {
     return this.entries.get(accountId)?.has(roomId) ?? false;

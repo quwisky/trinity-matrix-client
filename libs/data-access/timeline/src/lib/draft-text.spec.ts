@@ -22,6 +22,7 @@ describe('putBackDraft', () => {
     expect(putBackDraft('typed', 'failed')).toBe('failed\n\ntyped');
     expect(putBackDraft('', 'failed')).toBe('failed');
     expect(putBackDraft('failed\n\ntyped', 'failed')).toBe('failed\n\ntyped');
+    expect(putBackDraft('typed\n\nfailed', 'failed')).toBe('failed\n\ntyped');
   });
 });
 
@@ -36,9 +37,14 @@ describe('withoutSent', () => {
     expect(withoutSent('ok\n\nok', 'ok')).toBe('ok');
   });
 
-  it('leaves a draft that does not start with the sent message alone', () => {
+  it('removes the sent message wherever it sits, once', () => {
+    expect(withoutSent('failed\n\nhi', 'hi')).toBe('failed');
+    expect(withoutSent('x\n\na\n\nb\n\ny', 'a\n\nb')).toBe('x\n\ny');
+  });
+
+  it('leaves a draft that does not hold the sent message alone', () => {
     expect(withoutSent('typed since', 'hi')).toBe('typed since');
-    expect(withoutSent('caption\n\nhi', 'hi')).toBe('caption\n\nhi');
     expect(withoutSent('hi there', 'hi')).toBe('hi there');
+    expect(withoutSent('a\n\nx\n\nb', 'a\n\nb')).toBe('a\n\nx\n\nb');
   });
 });

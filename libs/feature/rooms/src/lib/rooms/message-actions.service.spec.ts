@@ -124,6 +124,8 @@ describe('MessageActionsService', () => {
   };
   // The runtime's `focused()` follows the room the person is in; tests move it to another room.
   let focusedConversation: unknown = conversation;
+  // The handle the runtime holds for a room; null follows `focused()`.
+  let heldConversation: unknown = null;
   const currentCompose = () =>
     (focusedConversation as typeof conversation).compose;
   let roomEncrypted = false;
@@ -146,6 +148,7 @@ describe('MessageActionsService', () => {
       useFactory: () => ({
         timeline: inject(ConversationTimelineStub),
         focused: () => focusedConversation,
+        held: () => heldConversation ?? focusedConversation,
         // Like the runtime's proxy, it follows whichever room is focused.
         compose: {
           draft: () => currentCompose().draft(),
@@ -239,6 +242,7 @@ describe('MessageActionsService', () => {
     retry.mockReset().mockImplementation(() => applied('retry'));
     roomEncrypted = false;
     focusedConversation = conversation;
+    heldConversation = null;
     draft.set('');
     timelineMessages.set([]);
     intent.set({ kind: 'message' });
@@ -505,6 +509,37 @@ describe('MessageActionsService', () => {
       actions.onRetry('$1');
 
       expect(setDraft).toHaveBeenCalledWith('');
+    });
+
+    it('pairs text put back into a newer handle for the room, so Retry takes it out there', () => {
+      const { actions } = build();
+      const liveDraft = signal('');
+      const live = {
+        ...conversation,
+        compose: {
+          ...compose,
+          draft: liveDraft,
+          setDraft: (text: string) => liveDraft.set(text),
+        },
+      };
+      heldConversation = live;
+      // The send's own handle retired; the runtime put the text in front of the newer one's.
+      submitText.mockImplementationOnce(() => {
+        liveDraft.set('hello\n\ntyped since');
+        timelineMessages.update((rows) => [...rows, failedRow('$1')]);
+        return of({
+          kind: 'rejected',
+          failure: 'send-rejected',
+          retryable: true,
+        } satisfies ConversationTextSendOutcome);
+      });
+      actions.onSend({ body: 'hello', mentions: [] });
+      focusedConversation = live;
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+
+      actions.onRetry('$1');
+
+      expect(liveDraft()).toBe('typed since');
     });
 
     it('leaves the box alone when the person has edited the restored text', () => {
