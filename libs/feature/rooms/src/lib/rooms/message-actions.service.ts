@@ -11,7 +11,7 @@ import {
   TimelineActionsService,
   withoutSent,
 } from '@trinity/data-access/timeline';
-import { DraftStoreService, holdsText } from '@trinity/platform-native';
+import { DraftStoreService } from '@trinity/platform-native';
 import { type Mention } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
@@ -318,8 +318,12 @@ export class MessageActionsService {
   ): void {
     // A send that settles after its handle retired goes back into the newer one for the room.
     const live = (handle && this.conversations.held(handle.key)) ?? handle;
-    // Put back in front of text typed or kept since, so it is one paragraph of the draft.
-    if (!live || !holdsText(live.compose.draft(), body)) return;
+    if (!live) return;
+    const intent = live.compose.intent();
+    // Put back in front of text typed or kept since. During an edit `draft()` is the edit's
+    // body and the runtime put it into the message draft, which shows when the edit ends.
+    const draft = live.compose.draft();
+    if (intent.kind !== 'edit' && withoutSent(draft, body) === draft) return;
     const known = this.restored.get(live) ?? new Map<string, Restored>();
     const echo = live.timeline
       .messages()
@@ -328,7 +332,6 @@ export class MessageActionsService {
       )
       .at(-1);
     if (!echo) return;
-    const intent = live.compose.intent();
     known.set(echo.id, {
       text: body,
       replyTo: intent.kind === 'reply' ? intent.eventId : null,
@@ -475,13 +478,17 @@ export class MessageActionsService {
       restored &&
       draftKey &&
       compose.intent().kind !== 'edit' &&
-      holdsText(before, restored.text)
+      left !== before
     ) {
       // A reload drops the failed row, and with it the only other copy of the text, so the saved
       // drafts keep it (as for a message waiting offline) while this retry is in flight.
       this.drafts.holdWaiting(draftKey, messageId, restored.text);
       compose.setDraft(left);
-      if (compose.intent().kind === 'reply') compose.cancelIntent();
+      // Only the reply the failed message had; one started since is the person's.
+      const intent = compose.intent();
+      if (intent.kind === 'reply' && intent.eventId === restored.replyTo) {
+        compose.cancelIntent();
+      }
       cleared = true;
     }
     const undo = () => {

@@ -542,6 +542,69 @@ describe('MessageActionsService', () => {
       expect(liveDraft()).toBe('typed since');
     });
 
+    it('takes a failed message of several paragraphs out of the box on Retry', () => {
+      const { actions } = build();
+      failSend(actions, 'one\n\ntwo', {
+        restored: 'one\n\ntwo\n\ntyped since',
+      });
+      setDraft.mockImplementation((text: string) => draft.set(text));
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+
+      actions.onRetry('$1');
+
+      expect(draft()).toBe('typed since');
+    });
+
+    it('pairs a failure that lands during an edit, so Retry clears it once the edit ends', () => {
+      const { actions } = build();
+      const liveDraft = signal('the edit body');
+      const liveIntent = signal<ReturnType<typeof intent>>({
+        kind: 'edit',
+        eventId: '$edited',
+      });
+      const live = {
+        ...conversation,
+        compose: {
+          ...compose,
+          draft: liveDraft,
+          intent: liveIntent,
+          setDraft: (text: string) => liveDraft.set(text),
+        },
+      };
+      heldConversation = live;
+      // The send's own handle retired; the runtime put the text into the newer handle's message
+      // draft, behind the edit it has open.
+      submitText.mockImplementationOnce(() => {
+        timelineMessages.update((rows) => [...rows, failedRow('$1')]);
+        return of({
+          kind: 'rejected',
+          failure: 'send-rejected',
+          retryable: true,
+        } satisfies ConversationTextSendOutcome);
+      });
+      actions.onSend({ body: 'hello', mentions: [] });
+      // The edit ends; the message draft shows.
+      liveIntent.set({ kind: 'message' });
+      liveDraft.set('hello');
+      focusedConversation = live;
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+
+      actions.onRetry('$1');
+
+      expect(liveDraft()).toBe('');
+    });
+
+    it('keeps a reply the person started after the failure', () => {
+      const { actions } = build();
+      failSend(actions, 'hello');
+      intent.set({ kind: 'reply', eventId: '$new-parent' });
+      retry.mockReturnValueOnce(new Subject<ConversationMessageOutcome>());
+
+      actions.onRetry('$1');
+
+      expect(cancelIntent).not.toHaveBeenCalled();
+    });
+
     it('leaves the box alone when the person has edited the restored text', () => {
       const { actions } = build();
       failSend(actions, 'hello');

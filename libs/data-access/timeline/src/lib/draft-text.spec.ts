@@ -42,6 +42,18 @@ describe('withoutSent', () => {
     expect(withoutSent('x\n\na\n\nb\n\ny', 'a\n\nb')).toBe('x\n\ny');
   });
 
+  it('leaves code blocks and indentation around it byte for byte', () => {
+    const code =
+      '```python\ndef f():\n    a = 1\n\n\n    b = 2\n   \n    return a\n```';
+    expect(withoutSent(`sent\n\n${code}`, 'sent')).toBe(code);
+    expect(withoutSent(`${code}\n\nsent`, 'sent')).toBe(code);
+    const indented = '    x = 1\n\n\n    y = 2';
+    expect(withoutSent(`${indented}\n\nsent`, 'sent')).toBe(indented);
+    expect(putBackDraft(`${indented}\n\nfailed`, 'failed')).toBe(
+      `failed\n\n${indented}`,
+    );
+  });
+
   it('leaves a draft that does not hold the sent message alone', () => {
     expect(withoutSent('typed since', 'hi')).toBe('typed since');
     expect(withoutSent('hi there', 'hi')).toBe('hi there');
