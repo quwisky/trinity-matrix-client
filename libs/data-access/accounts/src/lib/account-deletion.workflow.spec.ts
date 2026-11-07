@@ -166,6 +166,52 @@ describe('AccountDeletionWorkflow', () => {
     }
   });
 
+  describe('when the account is taken over while a transition holds the removal back', () => {
+    async function heldBack(
+      takeOver: (test: ReturnType<typeof setup>) => void,
+    ) {
+      vi.useFakeTimers();
+      try {
+        const test = setup();
+        vi.mocked(test.accounts.removeDeletedAccount).mockReturnValue(
+          of({
+            kind: 'transition-in-progress',
+            accountId: ALICE,
+            operation: 'establishing-account',
+          }),
+        );
+        const results: unknown[] = [];
+        test.workflow.delete(request(test.stages)).subscribe((result) => {
+          results.push(result);
+        });
+        await vi.advanceTimersByTimeAsync(0);
+
+        takeOver(test);
+        await vi.advanceTimersByTimeAsync(5_000);
+
+        expect(test.accounts.removeDeletedAccount).toHaveBeenCalledOnce();
+        expect(results).toEqual([
+          { kind: 'kept', accountId: ALICE, reason: 'signed-out' },
+        ]);
+        return test;
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    it('leaves an account signed in again alone', async () => {
+      const test = await heldBack(({ matrix }) => {
+        vi.mocked(matrix.clientFor).mockReturnValue({} as never);
+      });
+
+      expect(test.release).toHaveBeenCalledWith({ deleted: false });
+    });
+
+    it('stops once the account left the device another way', async () => {
+      await heldBack(({ wipeHolds }) => wipeHolds());
+    });
+  });
+
   it('passes erase false through', async () => {
     const test = setup();
 

@@ -288,7 +288,10 @@ describe('AccountDeletionLauncherAdapter', () => {
       test.tokenDies();
       await Promise.resolve();
 
-      expect(test.workflow.removeDeleted).toHaveBeenCalledWith(ALICE);
+      expect(test.workflow.removeDeleted).toHaveBeenCalledWith(
+        ALICE,
+        expect.anything(),
+      );
       expect(test.toast.show).toHaveBeenCalledOnce();
       expect(test.release).toHaveBeenCalledWith({ deleted: true });
     });
