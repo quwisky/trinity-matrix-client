@@ -2,6 +2,9 @@ import { Injectable } from '@angular/core';
 import { type PreloadingStrategy, type Route } from '@angular/router';
 import { Observable, switchMap } from 'rxjs';
 
+/** A busy main thread (Matrix sync) cannot push preloading back further than this. */
+const IDLE_TIMEOUT_MS = 2_000;
+
 /** Safari has no `requestIdleCallback`; a short timeout stands in for it. */
 function idle(): Observable<void> {
   return new Observable<void>((subscriber) => {
@@ -10,7 +13,9 @@ function idle(): Observable<void> {
       subscriber.complete();
     };
     if (typeof requestIdleCallback === 'function') {
-      const handle = requestIdleCallback(done);
+      const handle = requestIdleCallback(done, {
+        timeout: IDLE_TIMEOUT_MS,
+      });
       return () => cancelIdleCallback(handle);
     }
     const handle = setTimeout(done, 200);
