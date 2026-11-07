@@ -50,6 +50,7 @@ import { HostSessionHealthService } from './host-session-health.service';
 import { NotificationSessionService } from './notification-session.service';
 import { BackgroundMemoryRelease } from './background-memory-release.service';
 import { BackgroundSync } from './background-sync.service';
+import { HiddenWindowAnimations } from './hidden-window-animations.service';
 import { DeviceConfirmationCoordinator } from './device-confirmation.coordinator';
 import { TrinityHostNavigationAdapter } from './trinity-host-navigation.adapter';
 import { WhatsNewLauncherAdapter } from './whats-new-launcher.adapter';
@@ -64,6 +65,7 @@ export class TrinityApplicationSessionAdapter {
   private readonly hostLifecycle = inject(HostLifecycleService);
   private readonly memoryRelease = inject(BackgroundMemoryRelease);
   private readonly backgroundSync = inject(BackgroundSync);
+  private readonly hiddenAnimations = inject(HiddenWindowAnimations);
   private readonly timelineTrimmer = inject(LiveTimelineTrimmer);
   private readonly hostHealth = inject(HostSessionHealthService);
   private readonly navigationFocus = inject(NavigationFocusService);
@@ -248,6 +250,7 @@ export class TrinityApplicationSessionAdapter {
       this.unprotectedStorage.runPendingNotice(),
       this.memoryRelease.run(),
       this.backgroundSync.run(),
+      this.hiddenAnimations.run(),
       this.timelineTrimmer.run(),
     );
   }

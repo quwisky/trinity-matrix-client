@@ -288,6 +288,7 @@ describe('cascade layer contract', () => {
       '@media (prefers-reduced-motion: no-preference) > .cdk-overlay-dark-backdrop',
       '@media (forced-colors: active)',
       '@media (forced-colors: active) > :focus-visible',
+      ':root[data-window-hidden] *, :root[data-window-hidden] *::before, :root[data-window-hidden] *::after',
       '@media (prefers-reduced-motion: reduce)',
       '@media (prefers-reduced-motion: reduce) > *, *::before, *::after',
       '@media (pointer: coarse)',
@@ -429,6 +430,8 @@ describe('cascade layer contract', () => {
       // CDK's runtime `@layer cdk-overlay` scrim out-ranks every declared layer.
       'apps/trinity/src/global.scss:background:var(--trinity-overlay-scrim) !important',
       'apps/trinity/src/global.scss:transition:opacity var(--trinity-duration-overlay) ease-out !important',
+      // A hidden desktop window pauses every animation, component and library ones included.
+      'apps/trinity/src/global.scss:animation-play-state:paused !important',
       'apps/trinity/src/global.scss:animation-duration:0.01ms !important',
       'apps/trinity/src/global.scss:animation-iteration-count:1 !important',
       'apps/trinity/src/global.scss:transition-property:none !important',
