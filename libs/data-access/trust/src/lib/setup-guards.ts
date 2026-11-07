@@ -55,7 +55,7 @@ export async function assertNoRecoveryOnAccount(
       'setup',
       'invalid-secret',
       'review-security-settings',
-      'This account now has a different recovery key, set up from another device. Don’t use the key shown here. Unlock this device with the account’s recovery key instead.',
+      'This account now has a different recovery key, set up from another device. Don’t use the key shown earlier. Unlock this device with the account’s recovery key instead.',
     );
   }
   throw new TrustOperationError(
