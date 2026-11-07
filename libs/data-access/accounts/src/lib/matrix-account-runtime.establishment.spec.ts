@@ -350,7 +350,7 @@ it("keeps the live Accounts' pushers when the replacing Account does not start",
   vi.mocked(matrix.restorePersisted).mockReturnValue(
     of({
       kind: 'failed' as const,
-      failure: 'local-state-unavailable' as const,
+      failure: 'transient-network' as const,
     }),
   );
 
