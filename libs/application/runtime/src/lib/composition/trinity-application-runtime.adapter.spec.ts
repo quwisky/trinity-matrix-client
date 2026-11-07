@@ -1015,6 +1015,7 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     );
     expect(navigateByUrl).toHaveBeenNthCalledWith(1, '/', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
 
     await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
@@ -1034,12 +1035,15 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     expect(navigateByUrl).toHaveBeenCalledTimes(4);
     expect(navigateByUrl).toHaveBeenNthCalledWith(2, '/rooms', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
     expect(navigateByUrl).toHaveBeenNthCalledWith(3, '/rooms', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
     expect(navigateByUrl).toHaveBeenNthCalledWith(4, '/', {
       replaceUrl: true,
+      onSameUrlNavigation: 'reload',
     });
   });
 
@@ -1077,7 +1081,10 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     await expect(restoration).resolves.toEqual({
       kind: 'ready',
     });
-    expect(navigateByUrl).toHaveBeenCalledWith('/', { replaceUrl: true });
+    expect(navigateByUrl).toHaveBeenCalledWith('/', {
+      replaceUrl: true,
+      onSameUrlNavigation: 'reload',
+    });
   });
 
   it('executes typed recovery commands before startup is retried', async () => {
@@ -1322,6 +1329,10 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
   } as const;
   let breakGuard: boolean;
   let breakLoad: boolean;
+  let allowRoot: boolean;
+  const signedIn = signal(false);
+
+  afterEach(() => vi.useRealTimers());
 
   function setUp(startUrl: string): {
     adapter: TrinityApplicationRuntimeAdapter;
@@ -1330,6 +1341,8 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
   } {
     breakGuard = false;
     breakLoad = false;
+    allowRoot = true;
+    signedIn.set(false);
     TestBed.configureTestingModule({
       providers: [
         provideRouter([
@@ -1345,7 +1358,7 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
             canActivate: [
               () => {
                 if (breakGuard) throw new Error('guard failed');
-                return true;
+                return allowRoot;
               },
               authGuard,
             ],
@@ -1354,7 +1367,7 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
         ]),
         provideLocationMocks(),
         MockProvider(AccountRuntimeService, {
-          hasActiveAccount: signal(false).asReadonly(),
+          hasActiveAccount: signedIn.asReadonly(),
           state: signal<AccountRuntimeState>({
             phase: 'settled',
             result: { kind: 'no-accounts', accounts: [] },
@@ -1443,5 +1456,56 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
     expect(health.incidents()).toContainEqual(
       expect.objectContaining({ code: 'workspace-safe-root-fallback' }),
     );
+  });
+
+  it('does not report a retry ready while a guard still refuses the Workspace', async () => {
+    vi.useFakeTimers();
+    const { adapter, router } = setUp('/');
+    allowRoot = false;
+    const first = firstValueFrom(adapter.restoreWorkspace());
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+    );
+    await expect(first).resolves.toEqual(blocked);
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual(
+      blocked,
+    );
+    expect(router.routerState.snapshot.root.firstChild).toBeNull();
+  });
+
+  it('activates the Workspace when a retry finds the guard now allows it', async () => {
+    vi.useFakeTimers();
+    const { adapter, router } = setUp('/');
+    signedIn.set(true);
+    allowRoot = false;
+    const first = firstValueFrom(adapter.restoreWorkspace());
+    await vi.advanceTimersByTimeAsync(
+      APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
+    );
+    await expect(first).resolves.toEqual(blocked);
+    allowRoot = true;
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.routerState.snapshot.root.firstChild?.component).toBe(
+      RoutedPage,
+    );
+  });
+
+  it('keeps the activated Workspace when a signed-in retry reloads the URL it shows', async () => {
+    const { adapter, router, health } = setUp('/');
+    signedIn.set(true);
+    await firstValueFrom(adapter.restoreWorkspace());
+    const shown = router.routerState.root.firstChild;
+    expect(shown?.component).toBe(RoutedPage);
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/');
+    expect(router.routerState.root.firstChild).toBe(shown);
+    expect(health.incidents()).toEqual([]);
   });
 });

@@ -51,7 +51,6 @@ import {
   defaultIfEmpty,
   defer,
   filter,
-  finalize,
   forkJoin,
   from,
   ignoreElements,
@@ -635,18 +634,15 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   }
 
   private navigateWorkspace(url: string): Observable<boolean> {
-    return defer(() => {
-      // A retry often lands on the URL it already shows (`/` redirected to `/login`): the
-      // router skips that navigation and resolves `false`, but the Workspace is in place.
-      let skipped = false;
-      const events = this.router.events.subscribe(
-        (event) => (skipped = event instanceof NavigationSkipped),
-      );
-      return from(this.router.navigateByUrl(url, { replaceUrl: true })).pipe(
-        map((navigated) => navigated || skipped),
-        finalize(() => events.unsubscribe()),
-      );
-    }).pipe(
+    // Reload: a retry often targets the URL already shown, which the router would skip.
+    return defer(() =>
+      from(
+        this.router.navigateByUrl(url, {
+          replaceUrl: true,
+          onSameUrlNavigation: 'reload',
+        }),
+      ),
+    ).pipe(
       timeout({
         first: APPLICATION_STARTUP_PRODUCER_POLICIES.workspace.attemptBudgetMs,
         with: () => of(false),

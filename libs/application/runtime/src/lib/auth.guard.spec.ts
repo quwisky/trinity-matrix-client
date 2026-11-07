@@ -1,6 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router, UrlTree } from '@angular/router';
+import { RedirectCommand, Router, UrlTree } from '@angular/router';
 import { MockProvider } from 'ng-mocks';
 import { Observable, defer, firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,9 +12,12 @@ import {
 } from '@trinity/data-access/accounts';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 
-function run(): Observable<boolean | UrlTree> {
+function run(): Observable<boolean | RedirectCommand> {
   return TestBed.runInInjectionContext(
-    () => authGuard({} as never, {} as never) as Observable<boolean | UrlTree>,
+    () =>
+      authGuard({} as never, {} as never) as Observable<
+        boolean | RedirectCommand
+      >,
   );
 }
 
@@ -48,6 +51,15 @@ describe('authGuard', () => {
     vi.mocked(router.createUrlTree).mockReturnValue(loginTree);
   });
 
+  // Reload, so a retried startup that already shows /login still ends its navigation.
+  function expectLogin(redirect: boolean | RedirectCommand): void {
+    expect(redirect).toBeInstanceOf(RedirectCommand);
+    expect(redirect).toMatchObject({
+      redirectTo: loginTree,
+      navigationBehaviorOptions: { onSameUrlNavigation: 'reload' },
+    });
+  }
+
   it('allows navigation when an Active Account is already ready', async () => {
     hasActiveAccount.set(true);
     expect(await firstValueFrom(run())).toBe(true);
@@ -66,7 +78,7 @@ describe('authGuard', () => {
     vi.mocked(accounts.restoreSavedAccounts).mockReturnValue(
       of(result('no-accounts')),
     );
-    expect(await firstValueFrom(run())).toBe(loginTree);
+    expectLogin(await firstValueFrom(run()));
   });
 
   describe('with a signed-out OAuth account', () => {
@@ -80,7 +92,7 @@ describe('authGuard', () => {
       reauthTargets.set(['@first:hs', '@second:hs']);
       runtimeState.set({ phase: 'settled', result: result('no-accounts') });
 
-      expect(await firstValueFrom(run())).toBe(loginTree);
+      expectLogin(await firstValueFrom(run()));
       expectPrefilledReauth();
     });
 
@@ -93,7 +105,7 @@ describe('authGuard', () => {
         }),
       );
 
-      expect(await firstValueFrom(run())).toBe(loginTree);
+      expectLogin(await firstValueFrom(run()));
       expectPrefilledReauth();
     });
 
@@ -103,7 +115,7 @@ describe('authGuard', () => {
         throwError(() => new Error('restore failed')),
       );
 
-      expect(await firstValueFrom(run())).toBe(loginTree);
+      expectLogin(await firstValueFrom(run()));
       expectPrefilledReauth();
     });
   });
@@ -119,7 +131,7 @@ describe('authGuard', () => {
   it('does not repeat a settled Application Runtime restoration', async () => {
     runtimeState.set({ phase: 'settled', result: result('no-accounts') });
 
-    expect(await firstValueFrom(run())).toBe(loginTree);
+    expectLogin(await firstValueFrom(run()));
     expect(accounts.restoreSavedAccounts).not.toHaveBeenCalled();
   });
 
@@ -127,7 +139,7 @@ describe('authGuard', () => {
     vi.mocked(accounts.restoreSavedAccounts).mockReturnValue(
       throwError(() => new Error('restore boom')),
     );
-    expect(await firstValueFrom(run())).toBe(loginTree);
+    expectLogin(await firstValueFrom(run()));
   });
 });
 
