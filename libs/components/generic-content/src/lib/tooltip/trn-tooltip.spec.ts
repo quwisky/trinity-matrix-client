@@ -102,6 +102,13 @@ describe('TrnTooltip', () => {
       document.dispatchEvent(new Event('touchstart', { bubbles: true }));
     }
 
+    function mousePress() {
+      // CDK takes a press with no buttons or click count for a screen reader's synthetic one.
+      document.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true, buttons: 1, detail: 1 }),
+      );
+    }
+
     function pointer(
       button: HTMLElement,
       type: 'pointerenter' | 'pointerleave',
@@ -155,6 +162,46 @@ describe('TrnTooltip', () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab' }));
         }),
       ).not.toBeNull();
+    });
+
+    it('does not open when focus-visible focus is restored after a mouse press', async () => {
+      // Chromium carries :focus-visible over from a focused input to the opener a closing
+      // panel hands focus back to, though the panel was opened and closed with the mouse.
+      expect(await focusWith(true, mousePress)).toBeNull();
+    });
+
+    it('opens on focus-visible focus once a key is pressed after a mouse press', async () => {
+      // Escape closing a panel the mouse opened: the restored focus is keyboard intent.
+      expect(
+        await focusWith(true, () => {
+          mousePress();
+          document.dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape' }),
+          );
+        }),
+      ).not.toBeNull();
+    });
+
+    it('closes a hover tooltip on leave when focus was restored after a mouse press', async () => {
+      // The opener still under the pointer when its panel closes: focus must not pin the
+      // tooltip open over the neighbouring actions once the pointer moves on.
+      vi.useFakeTimers();
+      const { container } = await render(HostComponent);
+      const button = container.querySelector('button') as HTMLButtonElement;
+      stubFocusVisible(button, true);
+      mousePress();
+      await vi.advanceTimersByTimeAsync(700);
+      pointer(button, 'pointerenter');
+      button.focus();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+
+      pointer(button, 'pointerleave');
+      await vi.advanceTimersByTimeAsync(500);
+
+      expect(
+        document.querySelector('[role="tooltip"][data-state="open"]'),
+      ).toBeNull();
     });
   });
 });

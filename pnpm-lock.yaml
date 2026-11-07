@@ -164,7 +164,7 @@ settings:
 
 patchedDependencies:
   '@capacitor/privacy-screen@2.0.1': 895d821e62e80deee12f2e83515a60ebb6c4727b1cd86079c4b909f531ca3f7e
-  '@spartan-ng/brain@1.9.0': 3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8
+  '@spartan-ng/brain@1.9.0': b3685ff7d1273af1894c9805d711a68ea4c372fafde0171d0753e3ff62575ea7
   matrix-js-sdk@45.0.0: 782b62e66bf03e983e0b102e89c7731427d0c65e8532b00ecefe0f05857e9d77
   matrix-widget-api@1.20.0: 91cea261f6205a2447b8841d35ae12e99d438546e56e4aeffe6bf8d7acd1a79c
   pagefind@1.5.2: f9b8a0c9dfa656ac64bbbe9bfa2144b3bd8e195a65de0ce4fca0758fbce8f64f
@@ -298,7 +298,7 @@ importers:
         version: 3.2.1
       '@spartan-ng/brain':
         specifier: 1.9.0
-        version: 1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(45b21427c012e74b958bbd778f9df0d0)
+        version: 1.9.0(patch_hash=b3685ff7d1273af1894c9805d711a68ea4c372fafde0171d0753e3ff62575ea7)(45b21427c012e74b958bbd778f9df0d0)
       '@trinity/capacitor-app-lock':
         specifier: workspace:*
         version: link:libs/native/capacitor-app-lock
@@ -13656,7 +13656,7 @@ snapshots:
       color: 5.0.3
       text-hex: 1.0.0
 
-  '@spartan-ng/brain@1.9.0(patch_hash=3da5a2b2d330712d7041667ddd52382367a242bab70b0ba76452c17f8a7d90b8)(45b21427c012e74b958bbd778f9df0d0)':
+  '@spartan-ng/brain@1.9.0(patch_hash=b3685ff7d1273af1894c9805d711a68ea4c372fafde0171d0753e3ff62575ea7)(45b21427c012e74b958bbd778f9df0d0)':
     dependencies:
       '@angular/cdk': 22.2.5(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(@angular/forms@22.2.4(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(@angular/platform-browser@22.2.4(@angular/animations@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.4(@angular/animations@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@angular/common': 22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2)

@@ -1,5 +1,5 @@
 diff --git a/fesm2022/spartan-ng-brain-overlay.mjs b/fesm2022/spartan-ng-brain-overlay.mjs
-index 9beaf0ac87d44f1e9b2c38375e69929c8be99295..9ac6f84db971807a1f37bcacc0fd95a47b572b75 100644
+index 69a13d8d8cfb3fd71f5cb71a81d5b43b899d0c1c..fced709dd4ede00b8f89d98c1f419ceaaed570f4 100644
 --- a/fesm2022/spartan-ng-brain-overlay.mjs
 +++ b/fesm2022/spartan-ng-brain-overlay.mjs
 @@ -8,8 +8,8 @@ import { cssClassesToArray, waitForAnimations, getActiveElementAnimations, provi
@@ -13,7 +13,7 @@ index 9beaf0ac87d44f1e9b2c38375e69929c8be99295..9ac6f84db971807a1f37bcacc0fd95a4
  
  const createDefaultOptions = () => ({
      attachPositions: [],
-@@ -388,7 +388,11 @@ class BrnOverlayService {
+@@ -395,7 +395,11 @@ class BrnOverlayService {
          }
      }
      _connectDismissalEvents(ref, overlayRef, destroyed) {
@@ -27,7 +27,7 @@ index 9beaf0ac87d44f1e9b2c38375e69929c8be99295..9ac6f84db971807a1f37bcacc0fd95a4
              .subscribe(({ event, reason }) => this._requestDismissal(ref, overlayRef, reason, event));
      }
 diff --git a/fesm2022/spartan-ng-brain-tooltip.mjs b/fesm2022/spartan-ng-brain-tooltip.mjs
-index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65d0675453 100644
+index d7084022c40c64252859d0d19dc4bc8f4ead6dee..134d27e7abe69089ba99e9a69891fd9b353f435c 100644
 --- a/fesm2022/spartan-ng-brain-tooltip.mjs
 +++ b/fesm2022/spartan-ng-brain-tooltip.mjs
 @@ -1,3 +1,4 @@
@@ -35,7 +35,7 @@ index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65
  import { Overlay, OverlayPositionBuilder } from '@angular/cdk/overlay';
  import { ComponentPortal } from '@angular/cdk/portal';
  import { DOCUMENT } from '@angular/common';
-@@ -288,6 +289,9 @@ class BrnTooltip {
+@@ -297,6 +298,9 @@ class BrnTooltip {
      _dir = inject(Directionality);
      _group = inject(BrnTooltipGroup, { optional: true });
      _tooltipHovered = false;
@@ -45,7 +45,7 @@ index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65
      _listenersRefs = [];
      _delaySubject = undefined;
      _componentRef = undefined;
-@@ -388,7 +392,9 @@ class BrnTooltip {
+@@ -395,7 +399,9 @@ class BrnTooltip {
                  if (!this._isHoverPointer(event))
                      return;
                  this._tooltipHovered = false;
@@ -56,7 +56,7 @@ index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65
              }),
          ];
          return overlayRef;
-@@ -469,6 +475,22 @@ class BrnTooltip {
+@@ -486,6 +492,25 @@ class BrnTooltip {
       * `_isHoverPointer`; use a popover when touch users need to see the content.
       */
      _initHoverListeners() {
@@ -67,8 +67,11 @@ index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65
 +            .subscribe((origin) => {
 +                // CDK reports focus moved by script after a touch elsewhere, e.g. restored when a
 +                // sheet closes, as 'program'. Until the next key or mouse press, that is not keyboard intent.
-+                const afterTouch = origin === 'program' && this._inputModality.mostRecentModality === 'touch';
-+                this._focusVisible = origin === 'keyboard' || (origin === 'program' && !afterTouch);
++                const modality = this._inputModality.mostRecentModality;
++                const afterTouch = origin === 'program' && modality === 'touch';
++                // Nor after a mouse press, e.g. focus a closing panel hands back to its opener: kept
++                // open by focus, its tooltip would outlive pointerleave and cover the next control.
++                this._focusVisible = origin === 'keyboard' || (origin === 'program' && !afterTouch && modality !== 'mouse');
 +                if (this._focusVisible)
 +                    this._requestShow();
 +                else if (origin === 'touch' || afterTouch)
@@ -79,7 +82,7 @@ index 8a12680444aed66639fc5842fde09b4099e6a66f..012649c52a4c7b0d274c5c1e41f75b65
          this._listenersRefs = [
              ...this._listenersRefs,
              this._renderer.listen(this._elementRef.nativeElement, 'pointerenter', (event) => {
-@@ -476,11 +498,16 @@ class BrnTooltip {
+@@ -493,11 +518,16 @@ class BrnTooltip {
                      this._requestShow();
              }),
              this._renderer.listen(this._elementRef.nativeElement, 'pointerleave', (event) => {
