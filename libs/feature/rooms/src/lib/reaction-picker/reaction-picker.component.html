@@ -4,9 +4,14 @@
   `TAttributes` over the directive's `hostAttrs`). The dialog is addressable by its
   accessible name instead.
 -->
-<trn-dialog-shell title="Pick a reaction" bodyClass="p-0">
+<!-- A phone's sheet already draws the card: the grid fills it with 44px touch cells, as the
+     composer's expression sheet does. -->
+<trn-dialog-shell title="Pick a reaction" [bodyClass]="sheet ? '' : 'p-0'">
   <trn-emoji-picker
     class="reaction-picker"
+    [framed]="!sheet"
+    [layout]="sheet ? 'fill' : 'fixed'"
+    [size]="sheet ? 'lg' : 'md'"
     [recent]="recent()"
     (picked)="onSelect($event)"
   />
