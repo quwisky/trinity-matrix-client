@@ -9,6 +9,11 @@ export function relaySyncStoreCommands(
   post: (message: unknown) => void,
 ): (event: MessageEvent<{ seq?: number }>) => void {
   return (event) => {
+    // The SDK ignores a failed setup; thrown, it reaches the worker's error event instead.
+    if ((event.data as { command?: unknown }).command === 'setupWorker') {
+      store.onMessage(event);
+      return;
+    }
     try {
       store.onMessage(event);
     } catch (error) {

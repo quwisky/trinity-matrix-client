@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { relaySyncStoreCommands } from './sync-store-relay';
 import {
-  SYNC_STORE_STARTUP_TIMEOUT_MS,
+  SYNC_STORE_REQUEST_TIMEOUT_MS,
   syncStore,
   syncStoreWorkerFactory,
 } from './sync-store-worker';
@@ -141,7 +141,7 @@ describe('syncStore', () => {
 
     const started = store.startup();
     const settled = expect(started).rejects.toThrow('no IndexedDB here');
-    await vi.advanceTimersByTimeAsync(SYNC_STORE_STARTUP_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS);
 
     await settled;
     expect(store.backend).toBeInstanceOf(LocalIndexedDBStoreBackend);
@@ -155,7 +155,7 @@ describe('syncStore', () => {
 
     const started = store.startup();
     const settled = expect(started).rejects.toThrow('no IndexedDB here');
-    await vi.advanceTimersByTimeAsync(SYNC_STORE_STARTUP_TIMEOUT_MS);
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS);
 
     await settled;
     expect(store.backend).toBeInstanceOf(LocalIndexedDBStoreBackend);
@@ -216,6 +216,83 @@ describe('syncStore', () => {
     expect(degraded).toHaveBeenCalled();
   });
 
+  it('falls back when the worker stops while presence loads', async () => {
+    const worker = new FakeWorker(healthy('getUserPresenceEvents'));
+    const store = storeWith(worker);
+
+    const started = store.startup();
+    await vi.waitFor(() =>
+      expect(worker.sent.map((m) => m.command)).toContain(
+        'getUserPresenceEvents',
+      ),
+    );
+    worker.crash();
+
+    await expect(started).rejects.toThrow('no IndexedDB here');
+    expect(store.backend).toBeInstanceOf(LocalIndexedDBStoreBackend);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it('stops a worker that never answers a request after startup (killed silently)', async () => {
+    vi.useFakeTimers();
+    const worker = new FakeWorker(healthy('getSavedSync', 'syncToDatabase'));
+    const store = storeWith(worker);
+    await store.startup();
+
+    const pending = store.backend.syncToDatabase([]);
+    const loaded = store.getSavedSync();
+    const failed = expect(pending).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS);
+
+    await failed;
+    await expect(loaded).resolves.toBeNull();
+    expect(worker.terminated).toBe(true);
+  });
+
+  it('switches to the in-memory store once when the worker dies', async () => {
+    const worker = new FakeWorker(healthy('syncToDatabase'));
+    const store = storeWith(worker);
+    await store.startup();
+    const degraded = vi.fn();
+    store.on('degraded', degraded);
+    const saved = store.save(true);
+    await Promise.resolve();
+    worker.crash();
+    await saved;
+
+    for (let i = 0; i < 3; i++) {
+      await store.setSyncData({ next_batch: `s${i}` } as never);
+      await store.save(true);
+    }
+
+    expect(degraded).toHaveBeenCalledTimes(1);
+    expect(store.wantsSave()).toBe(false);
+    const inFlight = (store.backend as unknown as { inFlight: object })
+      .inFlight;
+    expect(Object.keys(inFlight)).toHaveLength(0);
+  });
+
+  it('does not reopen the database on the main thread once destroyed during startup', async () => {
+    vi.useFakeTimers();
+    const open = vi.fn(() => {
+      throw new Error('no IndexedDB here');
+    });
+    const worker = new FakeWorker(() => NO_REPLY);
+    const store = syncStore(
+      { open } as unknown as IDBFactory,
+      'test',
+      () => worker as unknown as Worker,
+    );
+
+    void store.startup().catch(() => undefined);
+    await Promise.resolve();
+    await store.destroy();
+    await vi.advanceTimersByTimeAsync(SYNC_STORE_REQUEST_TIMEOUT_MS * 2);
+
+    expect(open).not.toHaveBeenCalled();
+    expect(worker.terminated).toBe(true);
+  });
+
   it('clears and closes the database through the worker', async () => {
     const worker = new FakeWorker(healthy());
     const store = storeWith(worker);
@@ -231,6 +308,27 @@ describe('syncStore', () => {
 
 describe('relaySyncStoreCommands', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it('lets a setupWorker throw reach the worker error event', () => {
+    const posted: unknown[] = [];
+    const relay = relaySyncStoreCommands(
+      {
+        onMessage: () => {
+          throw new Error('boom');
+        },
+      } as unknown as IndexedDBStoreWorker,
+      (message) => void posted.push(message),
+    );
+
+    expect(() =>
+      relay(
+        new MessageEvent('message', {
+          data: { command: 'setupWorker', seq: 0, args: ['test'] },
+        }),
+      ),
+    ).toThrow('boom');
+    expect(posted).toEqual([]);
+  });
 
   it('answers a command that throws inside the worker with cmd_fail', async () => {
     vi.stubGlobal('indexedDB', {
