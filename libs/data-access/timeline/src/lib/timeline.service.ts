@@ -62,6 +62,7 @@ import {
   shieldKey,
   shieldsToCheck,
   shownShield,
+  TrustRechecks,
   shownSubject,
   unencryptedShieldFor,
 } from './shields';
@@ -487,14 +488,8 @@ export class TimelineService {
   /** Whether the open room counts as encrypted: its state, or else its crypto store. */
   private encryption = new RoomEncryptionFlags();
 
-  /**
-   * Senders whose shields a trust change may have flipped, `'all'` after a key change, or null
-   * when nothing waits. Kept while the room is hidden and checked once it is shown.
-   */
-  private trustPending: Set<string> | 'all' | null = null;
-  /** The forced pass in flight, so a newer pass covers what it had left, and its token. */
-  private trustActive: Set<string> | 'all' | null = null;
-  private trustPass = 0;
+  /** Trust changes waiting for, or running as, a coalesced shield pass (see `TrustRechecks`). */
+  private readonly trust = new TrustRechecks();
 
   private readonly trustCoalescer = coalesce(() => this.flushTrust());
 
@@ -502,12 +497,7 @@ export class TimelineService {
   // senders' events (all of them without names), bypassing the per-event skip a refresh uses.
   private noteTrust(userIds?: readonly string[]): void {
     if (!this.room) return;
-    if (!userIds?.length || this.trustPending === 'all') {
-      this.trustPending = 'all';
-    } else {
-      this.trustPending ??= new Set();
-      userIds.forEach((id) => (this.trustPending as Set<string>).add(id));
-    }
+    this.trust.note(userIds, this.connectedClient?.getUserId() ?? null);
     this.trustCoalescer.schedule();
   }
 
@@ -519,23 +509,16 @@ export class TimelineService {
 
   private flushTrust(): void {
     const room = this.room;
-    if (!room || !this.visible || !this.trustPending) return;
-    let senders = this.trustPending;
-    this.trustPending = null;
-    // A pass this one supersedes may be mid-way: take over its senders too.
-    const active = this.trustActive;
-    if (active === 'all' || senders === 'all') {
-      senders = 'all';
-    } else if (active) {
-      senders = new Set([...senders, ...active]);
-    }
-    this.trustActive = senders;
-    const pass = ++this.trustPass;
-    void this.resolveShields(room, undefined, true, senders, pass).finally(
-      () => {
-        if (pass === this.trustPass) this.trustActive = null;
-      },
-    );
+    if (!room || !this.visible) return;
+    const next = this.trust.take();
+    if (!next) return;
+    void this.resolveShields(
+      room,
+      undefined,
+      true,
+      next.senders,
+      next.pass,
+    ).finally(() => this.trust.settle(next.pass));
   }
 
   /** Start projecting a room on one fixed Account client; attaches live + decryption listeners. */
@@ -631,7 +614,7 @@ export class TimelineService {
     // so showing it again re-projects only what changed meanwhile.
     this.refresh();
     this.refreshTyping();
-    if (visible && this.trustPending) this.trustCoalescer.schedule();
+    if (visible && this.trust.waiting) this.trustCoalescer.schedule();
   }
 
   /** Deterministic diagnostics for the bounded Conversation Runtime retention policy. */
@@ -694,9 +677,7 @@ export class TimelineService {
     this.projectedEncryption = '';
     this.shieldsChecked = false;
     this.trustCoalescer.cancel();
-    this.trustPending = null;
-    this.trustActive = null;
-    this.trustPass++;
+    this.trust.reset();
     this.encryption = new RoomEncryptionFlags();
     this._messages.set([]);
     this._typingNames.set([]);
@@ -1325,16 +1306,20 @@ export class TimelineService {
         this.refresh();
       }
     });
+    // The first check after opening asks for every row, whatever the sender filter says.
+    const fresh = !this.shieldsChecked;
+    this.shieldsChecked = true;
+    const everyone = fresh || senders === 'all';
     const encrypted = events
       .filter(
         (e) =>
           isDisplayableMessage(e) &&
           !isThreadReply(e) &&
-          (senders === 'all' || senders.has(e.getSender() ?? '')),
+          (everyone || senders.has(e.getSender() ?? '')),
       )
       .flatMap(shieldsToCheck);
-    const fresh = !this.shieldsChecked;
-    this.shieldsChecked = true;
+    // An ordinary check must not overwrite what a trust pass began since has re-checked.
+    const began = this.trust.pass;
     const changed = await resolveShieldsInto(
       crypto,
       encrypted,
@@ -1342,7 +1327,9 @@ export class TimelineService {
       {
         force: force || fresh,
         isStale: () =>
-          this.roomId !== room.roomId || (pass > 0 && pass !== this.trustPass),
+          this.roomId !== room.roomId ||
+          (pass > 0 && !this.trust.isCurrent(pass)),
+        canWrite: (e) => this.trust.mayWrite(e, pass, began),
       },
     );
     if (changed && this.roomId === room.roomId) {

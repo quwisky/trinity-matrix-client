@@ -37,6 +37,7 @@ import {
   ImagePackEditorService,
   MediaPipeline,
 } from '@trinity/data-access/media';
+import { coalesce } from '@trinity/data-access/matrix-client';
 import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import {
   collectMessageSenders,
@@ -48,6 +49,7 @@ import {
   resolvedShields,
   shieldKey,
   shieldsToCheck,
+  TrustRechecks,
   shownContent,
   shownShield,
   shownSubject,
@@ -248,13 +250,38 @@ export class ThreadsService {
     { rev: string; view: MessageView }
   >();
 
-  // Trust changed: a thread message's shield may flip, so force a full re-resolve of the
-  // opened thread's shields (mirrors TimelineService).
-  private readonly onThreadTrust = (): void => {
-    if (this.threadRoom) {
-      void this.resolveThreadShields(this.threadRoom, true);
-    }
-  };
+  /** Trust changes waiting for, or running as, a coalesced thread shield pass. */
+  private readonly threadTrust = new TrustRechecks();
+  private readonly threadTrustCoalescer = coalesce(() =>
+    this.flushThreadTrust(),
+  );
+
+  // Trust changed: a thread message's shield may flip, so re-resolve the opened thread's
+  // shields for the named senders (mirrors TimelineService).
+  private noteThreadTrust(userIds?: readonly string[]): void {
+    if (!this.threadRoom) return;
+    this.threadTrust.note(userIds, this.threadClient?.getUserId() ?? null);
+    this.threadTrustCoalescer.schedule();
+  }
+
+  private readonly onThreadDevicesUpdated = (userIds?: string[]): void =>
+    this.noteThreadTrust(userIds);
+  private readonly onThreadUserTrust = (userId?: string): void =>
+    this.noteThreadTrust(userId ? [userId] : undefined);
+  private readonly onThreadKeysChanged = (): void => this.noteThreadTrust();
+
+  private flushThreadTrust(): void {
+    const room = this.threadRoom;
+    const next = room ? this.threadTrust.take() : null;
+    if (!room || !next) return;
+    void this.resolveThreadShields(
+      room,
+      true,
+      undefined,
+      next.senders,
+      next.pass,
+    ).finally(() => this.threadTrust.settle(next.pass));
+  }
 
   private readonly onThreadChanged = (): void => this.refreshThread();
   private readonly onThreadEventChanged = (event: MatrixEvent): void => {
@@ -432,9 +459,9 @@ export class ThreadsService {
     client.on(MatrixEventEvent.Decrypted, this.onThreadEventChanged);
     // A cancelled echo or a redaction re-aggregates without a thread event of its own to follow.
     client.on(MatrixEventEvent.Replaced, this.onThreadEventChanged);
-    client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
-    client.on(CryptoEvent.DevicesUpdated, this.onThreadTrust);
-    client.on(CryptoEvent.KeysChanged, this.onThreadTrust);
+    client.on(CryptoEvent.UserTrustStatusChanged, this.onThreadUserTrust);
+    client.on(CryptoEvent.DevicesUpdated, this.onThreadDevicesUpdated);
+    client.on(CryptoEvent.KeysChanged, this.onThreadKeysChanged);
     this.stopThreadFocusListener = onWindowFocus(this.onThreadFocus);
     this.refreshThread();
   }
@@ -460,9 +487,9 @@ export class ThreadsService {
     if (client) {
       client.off(MatrixEventEvent.Decrypted, this.onThreadEventChanged);
       client.off(MatrixEventEvent.Replaced, this.onThreadEventChanged);
-      client.off(CryptoEvent.UserTrustStatusChanged, this.onThreadTrust);
-      client.off(CryptoEvent.DevicesUpdated, this.onThreadTrust);
-      client.off(CryptoEvent.KeysChanged, this.onThreadTrust);
+      client.off(CryptoEvent.UserTrustStatusChanged, this.onThreadUserTrust);
+      client.off(CryptoEvent.DevicesUpdated, this.onThreadDevicesUpdated);
+      client.off(CryptoEvent.KeysChanged, this.onThreadKeysChanged);
     }
     this.threadClient = null;
     this.thread = null;
@@ -478,6 +505,8 @@ export class ThreadsService {
     this.lastReadEventId = null;
     this.threadRelevantSenders.clear();
     this.threadShieldsChecked = false;
+    this.threadTrustCoalescer.cancel();
+    this.threadTrust.reset();
     this.threadEncryption = new RoomEncryptionFlags();
     this.threadViewCache.clear();
     this._openThreadRootId.set(null);
@@ -910,6 +939,8 @@ export class ThreadsService {
     room: Room,
     force: boolean,
     events?: readonly MatrixEvent[],
+    senders: ReadonlySet<string> | 'all' = 'all',
+    pass = 0,
   ): Promise<void> {
     const rootEventId = this._openThreadRootId();
     const crypto = this.threadClient?.getCrypto?.() ?? null;
@@ -925,16 +956,24 @@ export class ThreadsService {
         }
       });
     const ordered = events ?? this.orderedThreadEvents(room, rootEventId);
-    const encrypted = ordered.flatMap(shieldsToCheck);
     const fresh = !this.threadShieldsChecked;
     this.threadShieldsChecked = true;
+    const everyone = fresh || senders === 'all';
+    const encrypted = ordered
+      .filter((e) => everyone || senders.has(e.getSender() ?? ''))
+      .flatMap(shieldsToCheck);
+    // An ordinary check must not overwrite what a trust pass began since has re-checked.
+    const began = this.threadTrust.pass;
     const changed = await resolveShieldsInto(
       crypto,
       encrypted,
       resolvedShields,
       {
         force: force || fresh,
-        isStale: () => this.threadRoomId !== room.roomId,
+        isStale: () =>
+          this.threadRoomId !== room.roomId ||
+          (pass > 0 && !this.threadTrust.isCurrent(pass)),
+        canWrite: (e) => this.threadTrust.mayWrite(e, pass, began),
       },
     );
     if (changed && this.threadRoomId === room.roomId) {

@@ -1,3 +1,4 @@
+import { type EventEmitter } from 'node:events';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
@@ -925,6 +926,111 @@ describe('ThreadsService', () => {
       ).toBe('grey'),
     );
     expect(getInfo).toHaveBeenCalled();
+  });
+
+  describe('trust-change re-checks', () => {
+    const info = {
+      shieldColour: EventShieldColour.GREY,
+      shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+    };
+
+    async function openThread(getInfo: Mock) {
+      const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+      const replies = ['a', 'b'].map((n) =>
+        fakeEvent({
+          id: `$${n}`,
+          sender: `@${n}:hs`,
+          body: n,
+          encrypted: true,
+        }),
+      );
+      const { svc, client } = setup(
+        [fakeThread({ id: '$root', rootEvent: root, events: replies })],
+        [],
+        {},
+        [],
+        true,
+        getInfo,
+      );
+      svc.attachThreadRoot('$root');
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() =>
+        expect(
+          svc.threadMessages().find((m) => m.id === '$b')?.shield?.level,
+        ).toBe('grey'),
+      );
+      getInfo.mockClear();
+      return { svc, client: client as unknown as MatrixClient };
+    }
+
+    const probed = (getInfo: Mock): string[] =>
+      getInfo.mock.calls.map(([e]) => e.getSender()).sort();
+
+    it('runs one pass for a burst, only for the named senders', async () => {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const { client } = await openThread(getInfo);
+      for (let i = 0; i < 5; i++) {
+        client.emit(CryptoEvent.DevicesUpdated, ['@b:hs'], false);
+      }
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalled());
+      await new Promise((r) => setTimeout(r, 10));
+      expect(probed(getInfo)).toEqual(['@b:hs']);
+    });
+
+    it('re-checks everyone for a key change or the own user', async () => {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const { client } = await openThread(getInfo);
+      (client as unknown as EventEmitter).emit(CryptoEvent.KeysChanged);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+      await new Promise((r) => setTimeout(r, 10));
+      getInfo.mockClear();
+      (client as unknown as EventEmitter).emit(
+        CryptoEvent.UserTrustStatusChanged,
+        '@me:hs',
+      );
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+    });
+
+    it('does not let an older pass overwrite a newer one', async () => {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const { svc, client } = await openThread(getInfo);
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      let held = false;
+      getInfo.mockImplementation(async (e: { getSender: () => string }) => {
+        if (e.getSender() === '@a:hs' && !held) {
+          held = true;
+          await gate;
+          return info;
+        }
+        return {
+          shieldColour: EventShieldColour.RED,
+          shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+        };
+      });
+      client.emit(CryptoEvent.DevicesUpdated, ['@a:hs'], false);
+      await vi.waitFor(() => expect(held).toBe(true));
+      client.emit(CryptoEvent.DevicesUpdated, ['@b:hs'], false);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(3));
+      release();
+      await vi.waitFor(() =>
+        expect(
+          svc
+            .threadMessages()
+            .filter((m) => m.id !== '$root')
+            .map((m) => m.shield?.level),
+        ).toEqual(['red', 'red']),
+      );
+    });
+
+    it('runs no probe for a trust event followed by closeThread in the same tick', async () => {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const { svc, client } = await openThread(getInfo);
+      client.emit(CryptoEvent.DevicesUpdated, ['@a:hs'], false);
+      svc.closeThread();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(getInfo).not.toHaveBeenCalled();
+    });
   });
 
   describe('in a room with encryption enabled', () => {

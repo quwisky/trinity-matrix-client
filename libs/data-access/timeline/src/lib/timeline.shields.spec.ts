@@ -466,5 +466,120 @@ describe('per-message authenticity shields', () => {
       await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
       expect(sendersProbed(getInfo)).toEqual(['@a:hs', '@b:hs']);
     });
+
+    it('re-checks everyone when the own user is named', async () => {
+      const { handlers, getInfo } = await openTwoSenders();
+      handlers.get('client:crypto.devicesUpdated')?.(['@me:hs']);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(2));
+    });
+
+    it('lets a newer pass take over from one still waiting on a probe', async () => {
+      const { svc, handlers, getInfo } = await openTwoSenders();
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const red = {
+        shieldColour: EventShieldColour.RED,
+        shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+      };
+      let held = false;
+      getInfo.mockImplementation(async (e: { getSender: () => string }) => {
+        if (e.getSender() === '@a:hs' && !held) {
+          held = true;
+          await gate;
+        }
+        return red;
+      });
+      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      await vi.waitFor(() => expect(held).toBe(true));
+      handlers.get('client:crypto.devicesUpdated')?.(['@b:hs']);
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(3));
+      release();
+      await vi.waitFor(() =>
+        expect(svc.messages().map((m) => m.shield?.level)).toEqual([
+          'red',
+          'red',
+        ]),
+      );
+      expect(sendersProbed(getInfo)).toEqual(['@a:hs', '@a:hs', '@b:hs']);
+    });
+
+    it('runs no probe for a trust event followed by close in the same tick', async () => {
+      const { svc, handlers, getInfo } = await openTwoSenders();
+      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      svc.close();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(getInfo).not.toHaveBeenCalled();
+    });
+
+    it('shows the new shield when a trust event flips a row from none to red', async () => {
+      const getInfo = vi
+        .fn()
+        .mockResolvedValueOnce({
+          shieldColour: EventShieldColour.NONE,
+          shieldReason: null,
+        })
+        .mockResolvedValue({
+          shieldColour: EventShieldColour.RED,
+          shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+        });
+      const { svc, handlers } = openWithEvents(
+        getInfo,
+        [fakeEvent({ id: '$a', sender: '@a:hs', body: 'a', encrypted: true })],
+        false,
+      );
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
+      expect(svc.messages()[0].shield ?? null).toBeNull();
+      handlers.get('client:userTrustStatusChanged')?.('@a:hs');
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('red'),
+      );
+    });
+
+    it('does not let an ordinary check overwrite a newer trust-pass result', async () => {
+      let release!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const getInfo = vi
+        .fn()
+        .mockImplementationOnce(async () => {
+          await gate;
+          return {
+            shieldColour: EventShieldColour.GREY,
+            shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+          };
+        })
+        .mockResolvedValue({
+          shieldColour: EventShieldColour.RED,
+          shieldReason: EventShieldReason.UNSIGNED_DEVICE,
+        });
+      const { svc, handlers } = openWithEvents(
+        getInfo,
+        [fakeEvent({ id: '$a', sender: '@a:hs', body: 'a', encrypted: true })],
+        false,
+      );
+      await vi.waitFor(() => expect(getInfo).toHaveBeenCalledTimes(1));
+      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      await vi.waitFor(() =>
+        expect(svc.messages()[0].shield?.level).toBe('red'),
+      );
+      release();
+      await new Promise((r) => setTimeout(r, 10));
+      expect(svc.messages()[0].shield?.level).toBe('red');
+    });
+
+    it('checks every sender on a fresh check whatever the filter says', async () => {
+      const getInfo = vi.fn().mockResolvedValue(info);
+      const events = [
+        fakeEvent({ id: '$a', sender: '@a:hs', body: 'a', encrypted: true }),
+        fakeEvent({ id: '$b', sender: '@b:hs', body: 'b', encrypted: true }),
+      ];
+      const { handlers } = openWithEvents(getInfo, events, false);
+      handlers.get('client:crypto.devicesUpdated')?.(['@a:hs']);
+      await vi.waitFor(() =>
+        expect(getInfo.mock.calls.length).toBeGreaterThan(1),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      expect(sendersProbed(getInfo)).toContain('@b:hs');
+    });
   });
 });
