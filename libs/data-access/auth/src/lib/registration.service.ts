@@ -228,6 +228,10 @@ export class RegistrationService {
 
   /** Invalidate callbacks from the current route and discard unpersisted UIA state. */
   cancel(): void {
+    // A created session kept only for Retry: leaving means nothing will use it.
+    if (this.stageState().kind === 'session-error') {
+      this.handBackDeclinedSession();
+    }
     this.token = this.attempt.next();
     this.emailInput?.complete();
     this.emailInput = undefined;

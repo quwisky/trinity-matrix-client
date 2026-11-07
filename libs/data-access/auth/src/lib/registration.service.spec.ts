@@ -380,6 +380,30 @@ describe('RegistrationService', () => {
     expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledTimes(2);
   });
 
+  it('signs the created session out when registration is left after local setup failed', async () => {
+    const logout = vi.fn().mockResolvedValue({});
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(
+      client({ registerRequest, logout }) as never,
+    );
+    vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValue(
+      throwError(() => new Error('storage failed')),
+    );
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+    expect(service.stage()).toMatchObject({ kind: 'session-error' });
+
+    service.cancel();
+
+    expect(createClientMock).toHaveBeenLastCalledWith({
+      baseUrl: 'https://hs',
+      accessToken: 'access',
+    });
+    expect(logout).toHaveBeenCalledExactlyOnceWith(true);
+    expect(service.stage().kind).toBe('idle');
+  });
+
   it('does not retry a registration response that omitted its login tokens', async () => {
     const registerRequest = vi.fn().mockResolvedValue({ user_id: '@new:hs' });
     createClientMock.mockReturnValue(client({ registerRequest }) as never);
