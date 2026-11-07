@@ -985,14 +985,104 @@ describe('ConversationRuntime', () => {
       expect(held.compose.draft()).toBe('caption');
     });
 
-    it('leaves a draft that already holds text alone', () => {
+    it('adds it after text already in the draft, once', () => {
       const { runtime } = setup();
       const held = runtime.focus(KEY);
       held.compose.setDraft('typed since');
 
       runtime.keepDraft(KEY, 'caption');
+      runtime.keepDraft(KEY, 'caption');
 
-      expect(held.compose.draft()).toBe('typed since');
+      expect(held.compose.draft()).toBe('typed since\n\ncaption');
+    });
+
+    describe('while a text send is in flight', () => {
+      function sending(retire = false) {
+        const fixture = setup(2, undefined, [message('$target')]);
+        const held = fixture.runtime.focus(KEY);
+        held.compose.setDraft('text');
+        const outcome = firstValueFrom(held.compose.submit());
+        if (retire) {
+          fixture.runtime.focus({
+            accountId: ALICE,
+            roomId: '!other:example.org',
+          });
+          fixture.runtime.retireRetained();
+        }
+        fixture.runtime.keepDraft(KEY, 'caption');
+        return {
+          ...fixture,
+          held,
+          outcome,
+          stored: () => fixture.drafts.get(conversationDraftKey(KEY)),
+        };
+      }
+
+      it('keeps the failed text beside the caption, in the box and in storage', async () => {
+        const { held, sends, outcome, stored } = sending();
+        sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(held.compose.draft()).toBe('text\n\ncaption');
+        expect(stored()).toBe('text\n\ncaption');
+      });
+
+      it('keeps only the caption once the text is sent', async () => {
+        const { held, sends, outcome, stored } = sending();
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(held.compose.draft()).toBe('caption');
+        expect(stored()).toBe('caption');
+      });
+
+      it('merges into the stored draft of a retired handle, and removes only the sent text', async () => {
+        const { sends, outcome, stored } = sending(true);
+        expect(stored()).toBe('text\n\ncaption');
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(stored()).toBe('caption');
+      });
+
+      it('lets a retired handle restore the failed text beside the caption', async () => {
+        const { sends, outcome, stored } = sending(true);
+        sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(stored()).toBe('text\n\ncaption');
+      });
+    });
+
+    it('does not keep a reply open after its send succeeds', async () => {
+      const { runtime, sends } = setup(2, undefined, [message('$target')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginReply('$target');
+      held.compose.setDraft('reply');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      runtime.keepDraft(KEY, 'caption');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(held.compose.intent()).toEqual({ kind: 'message' });
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('does not keep an edit open after it is saved', async () => {
+      const { runtime, sends } = setup(2, undefined, [message('$target')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginEdit('$target', 'original');
+      held.compose.setDraft('edited');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      runtime.keepDraft(KEY, 'caption');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(held.compose.intent()).toEqual({ kind: 'message' });
+      expect(held.compose.draft()).toBe('caption');
     });
 
     it('stores it for the next handle when none holds the conversation', () => {

@@ -5,6 +5,14 @@ import {
   type WritableSignal,
 } from '@angular/core';
 
+/** One string per Account and Room (or thread): the same room under two accounts differs. */
+export function conversationOf(
+  accountId: string | null,
+  roomId: string | null,
+): string {
+  return `${accountId ?? ''}\u0000${roomId ?? ''}`;
+}
+
 /** What the drafts need from the composer around them. */
 export interface ComposerDraftsPorts {
   readonly roomId: Signal<string | null>;
@@ -70,7 +78,7 @@ export class ComposerDrafts {
     // the next one.
     effect(() => {
       const id = roomId();
-      const conversation = `${accountId() ?? ''}\u0000${id ?? ''}`;
+      const conversation = conversationOf(accountId(), id);
       if (conversation !== this.wasConversation) {
         const prev = this.wasRoomId;
         this.wasRoomId = id;

@@ -53,7 +53,7 @@ import {
 import { ComposerTextField } from './composer-text-field';
 import { type KeepCaption, ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
-import { ComposerDrafts } from './composer-drafts';
+import { ComposerDrafts, conversationOf } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
 import { composerPreview } from './composer-preview';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -72,6 +72,7 @@ import {
 import {
   ComposerExpressionTabPreference,
   ConversationRuntime,
+  mergeDrafts,
 } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
@@ -428,8 +429,11 @@ export class MessageComposerComponent {
       this.matrix.softLoggedOut().includes(accountId);
     if (!this.conversationDraft()) {
       return (caption) => {
-        if (signedIn() && !this.drafts.get(roomId)) {
-          this.drafts.set(roomId, caption);
+        if (signedIn()) {
+          this.drafts.set(
+            roomId,
+            mergeDrafts(this.drafts.get(roomId), caption),
+          );
         }
       };
     }
@@ -467,8 +471,8 @@ export class MessageComposerComponent {
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
       blocked: this.cannotSend,
-      conversation: computed(
-        () => `${this.accountId() ?? ''}\u0000${this.roomId() ?? ''}`,
+      conversation: computed(() =>
+        conversationOf(this.accountId(), this.roomId()),
       ),
       text: this.text,
       send: (event) => this.submitMedia.emit(event),

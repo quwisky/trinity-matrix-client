@@ -7,6 +7,7 @@ export type { TimelineLoadState } from './lib/conversation-timeline-readiness';
 export { READY_LOAD_STATE } from './lib/conversation-timeline-readiness';
 export { ConversationRuntime } from './lib/conversation-runtime.service';
 export { LiveTimelineTrimmer } from './lib/live-timeline-trimmer.service';
+export { mergeDrafts } from './lib/draft-text';
 export {
   conversationDraftKey,
   threadDraftKey,

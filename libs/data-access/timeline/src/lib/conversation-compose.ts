@@ -3,6 +3,7 @@ import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
 import { type ConversationState } from './conversation-runtime.service';
 import { type ConversationKey } from './conversation-messages';
+import { mergeDrafts, withoutSent } from './draft-text';
 
 export type ConversationComposeIntent =
   | { readonly kind: 'message' }
@@ -73,6 +74,8 @@ interface ConversationComposePorts {
   readonly initialDraft: string;
   readonly initialSnapshot?: ConversationComposeSnapshot;
   persistDraft(draft: string): void;
+  /** The persisted draft, which still holds a message in flight that the box no longer shows. */
+  readDraft(): string;
   persistSnapshot(snapshot: ConversationComposeSnapshot | null): void;
   setTyping(typing: boolean): void;
   send(request: ConversationTextSendRequest): ConversationTextSendOperation;
@@ -130,14 +133,13 @@ export class ConversationComposeController {
   }
 
   /**
-   * Put `text` in the message draft unless it already holds text, even while an edit is in
-   * progress: the edit's end shows it.
+   * Add `text` to the message draft, even while an edit is in progress: the edit's end shows it.
+   * Not a user edit, so it leaves {@link revision} alone: a send in flight still settles as
+   * it would have, and its text stays in the persisted draft until it does.
    */
   keepMessageDraft(text: string): void {
-    if (this.messageDraftState()) return;
-    this.revision += 1;
-    this.messageDraftState.set(text);
-    this.ports.persistDraft(text);
+    this.messageDraftState.set(mergeDrafts(this.messageDraftState(), text));
+    this.ports.persistDraft(mergeDrafts(this.ports.readDraft(), text));
   }
 
   private setDraft(draft: string): void {
@@ -229,7 +231,11 @@ export class ConversationComposeController {
               settled = true;
               if (outcome.kind !== 'rejected') {
                 if (this.revision === revision) {
-                  if (intent.kind !== 'edit') this.ports.persistDraft('');
+                  if (intent.kind !== 'edit') {
+                    this.ports.persistDraft(
+                      withoutSent(this.ports.readDraft(), draft),
+                    );
+                  }
                   this.finishIntent();
                 }
                 subscriber.next(
@@ -271,12 +277,17 @@ export class ConversationComposeController {
     intent: ConversationComposeIntent,
     revision: number,
   ): void {
-    if (this.revision !== revision || intent.kind === 'edit') return;
-    if (!this.messageDraftState()) {
-      this.messageDraftState.set(draft);
-      this.ports.persistDraft(draft);
+    if (intent.kind === 'edit') return;
+    // Merged, never skipped: text typed or kept since the send must not cost the failed one.
+    const restored = mergeDrafts(
+      mergeDrafts(draft, this.ports.readDraft()),
+      this.messageDraftState(),
+    );
+    this.messageDraftState.set(restored);
+    this.ports.persistDraft(restored);
+    if (this.revision === revision && this.intentState().kind === 'message') {
+      this.intentState.set(intent);
     }
-    if (this.intentState().kind === 'message') this.intentState.set(intent);
   }
 
   private rejected(

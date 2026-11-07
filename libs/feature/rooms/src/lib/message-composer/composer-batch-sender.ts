@@ -11,7 +11,7 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 
-/** Keeps a caption as one conversation's draft, unless that draft already holds text. */
+/** Adds a caption to one conversation's draft. */
 export type KeepCaption = (caption: string) => void;
 
 /** What the sender needs from the composer around it. */

@@ -45,6 +45,7 @@ import {
 } from '@trinity/data-access/gif';
 import { MediaPipeline, type MediaHints } from '@trinity/data-access/media';
 import { ComposerVoiceRecording } from './composer-voice-recording';
+import { conversationOf } from './composer-drafts';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 import {
@@ -452,7 +453,7 @@ export class ComposerAttachmentsService {
 
   /** The account and room/thread files are chosen for: a file belongs to both. */
   private conversation(): string {
-    return `${this.host.accountId() ?? ''}\u0000${this.host.roomId() ?? ''}`;
+    return conversationOf(this.host.accountId(), this.host.roomId());
   }
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
