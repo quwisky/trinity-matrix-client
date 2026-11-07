@@ -270,8 +270,8 @@ preferences file `trinity_push_tokens`), readable after first unlock, and native
 them on the entry at every read. The entry never holds a refresh token: the vault does. Neither holds crypto
 keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
-pushes; a push still rendering for it checks the entry again at hand-over and shows only
-"New message". Its vault record goes later, at the registry step of the sign-out, after the token
+pushes; a push still rendering for it checks the entry again at hand-over and shows the
+generic "New message" notification. Its vault record goes later, at the registry step of the sign-out, after the token
 revocation has resolved or been given up, and also when the server ends the session. The store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the

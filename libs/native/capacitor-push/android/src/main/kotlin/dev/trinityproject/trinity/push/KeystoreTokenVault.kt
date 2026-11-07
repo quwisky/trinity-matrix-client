@@ -49,10 +49,13 @@ class KeystoreTokenVault internal constructor(
         }
     }
 
-    override fun write(userId: String, record: TokenRecord): Boolean = try {
-        preferences.edit().putString(key(userId), crypto.encrypt(encode(record).toString())).commit()
-    } catch (error: Exception) {
-        false
+    // Under LOCK so a read discarding an unopenable record cannot remove one written meanwhile.
+    override fun write(userId: String, record: TokenRecord): Boolean = synchronized(LOCK) {
+        try {
+            preferences.edit().putString(key(userId), crypto.encrypt(encode(record).toString())).commit()
+        } catch (error: Exception) {
+            false
+        }
     }
 
     override fun update(userId: String, record: TokenRecord): TokenVaultWrite = synchronized(LOCK) {
