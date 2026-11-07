@@ -69,6 +69,14 @@ function timelineEvent(over: {
   };
 }
 
+/** Wait out the room list's coalescing window (`coalesceMs`); needs fake timers. */
+const windowEnds = () => vi.advanceTimersByTimeAsync(100);
+
+/** The event a `MatrixEventEvent.Decrypted` listener receives, in room `!a:hs`. */
+function decryptedEvent(id: string) {
+  return { getId: () => id, getRoomId: () => '!a:hs', threadRootId: undefined };
+}
+
 // Minimal fakes shaped like the bits of matrix-js-sdk that RoomLibraryService reads.
 function fakeRoom(opts: {
   roomId: string;
@@ -206,9 +214,9 @@ function provideRooms(
   return { svc, matrix, activeUserId };
 }
 
-describe('RoomLibraryService', () => {
-  afterEach(() => vi.useRealTimers());
+afterEach(() => vi.useRealTimers());
 
+describe('RoomLibraryService', () => {
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const client = {
       baseUrl: 'https://hs.example',
@@ -296,6 +304,7 @@ describe('RoomLibraryService', () => {
   });
 
   it("rebuilds the room list when a DM peer's avatar arrives late", async () => {
+    vi.useFakeTimers();
     // The DM row's picture IS the peer's member, so the room list depends on member
     // state now. Those listeners are deliberately kept out of the coalesced rebuild —
     // they drive `memberRevision` alone — which left a DM peer's late-arriving profile
@@ -332,12 +341,12 @@ describe('RoomLibraryService', () => {
     // A member event for someone we have no DM with must NOT rebuild the whole list.
     const callsBefore = getRoomsCalls;
     handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@stranger:hs' });
-    await Promise.resolve();
+    await windowEnds();
     expect(getRoomsCalls).toBe(callsBefore);
 
     peer.avatarMxc = 'mxc://hs/bob';
     handlers.get(RoomStateEvent.Members)?.({}, {}, { userId: '@bob:hs' });
-    await Promise.resolve(); // the rebuild is coalesced into a microtask
+    await windowEnds();
 
     expect(svc.rooms()[0].avatarMxc).toBe('mxc://hs/bob');
   });
@@ -393,6 +402,7 @@ describe('RoomLibraryService', () => {
   });
 
   it('re-reads a room once history pages into a live timeline replaced since its row was built', async () => {
+    vi.useFakeTimers();
     const handlers = new Map<string, (...args: unknown[]) => void>();
     const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
     const { getState } = room.getLiveTimeline();
@@ -417,7 +427,7 @@ describe('RoomLibraryService', () => {
     const preview = () => svc.rooms()[0].lastMessage;
     const pageIn = async () => {
       handlers.get(RoomEvent.Timeline)?.({}, room, true);
-      await Promise.resolve(); // the rebuild is coalesced into a microtask
+      await windowEnds();
     };
     expect(preview()).not.toBe('');
 
@@ -795,6 +805,7 @@ describe('RoomLibraryService', () => {
     });
 
     it('rebuilds when the flag changes on another device', async () => {
+      vi.useFakeTimers();
       // Room account data is what carries the flag between devices, and nothing in the
       // app listened to it before this — so a room flagged elsewhere would not have
       // surfaced until some unrelated event happened to rebuild the list.
@@ -816,7 +827,7 @@ describe('RoomLibraryService', () => {
           ? { getContent: () => ({ unread: true }) }
           : undefined;
       handlers.get(RoomEvent.AccountData)?.();
-      await Promise.resolve(); // the rebuild is coalesced into a microtask
+      await windowEnds();
 
       expect(svc.rooms()[0].markedUnread).toBe(true);
     });
@@ -1255,7 +1266,7 @@ describe('RoomLibraryService', () => {
 
     expect(room('!c:hs')?.lastMessage).toBe('');
     // The unanswered room holds the batch only until the cap; the answered one then shows.
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1600);
     expect(room('!p:hs')?.lastMessage).toBe('hello all');
     expect(room('!p:hs')?.encrypted).toBe(false);
     // Unanswered still: no preview yet.
@@ -1273,6 +1284,7 @@ describe('RoomLibraryService', () => {
   });
 
   it('rebuilds once after the crypto store answers for many unanswered rooms', async () => {
+    vi.useFakeTimers();
     const resolvers: ((encrypted: boolean) => void)[] = [];
     const rooms = Array.from({ length: 5 }, (_, i) =>
       fakeRoom({ roomId: `!r${i}:hs`, name: `room ${i}`, activity: i }),
@@ -1293,9 +1305,9 @@ describe('RoomLibraryService', () => {
     // Answers land one at a time, each after the previous rebuild could have run.
     for (const resolve of resolvers) {
       resolve(true);
-      await new Promise((r) => setTimeout(r));
+      await vi.advanceTimersByTimeAsync(0);
     }
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(100);
 
     expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
     expect(getRooms.mock.calls.length - initial).toBe(1);
@@ -1322,17 +1334,18 @@ describe('RoomLibraryService', () => {
     svc.runProjection().subscribe();
     const initial = getRooms.mock.calls.length;
 
-    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(1600);
     expect(svc.rooms().filter((r) => r.encrypted)).toHaveLength(3);
 
     landed[0](true);
-    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(110);
 
     expect(svc.rooms().every((r) => r.encrypted)).toBe(true);
     expect(getRooms.mock.calls.length - initial).toBeLessThanOrEqual(2);
   });
 
   it('schedules no rebuild when the active account switched before the answers landed', async () => {
+    vi.useFakeTimers();
     const landed: ((encrypted: boolean) => void)[] = [];
     const getRoomsA = vi.fn(() => [fakeRoom({ roomId: '!a:hs', name: 'A' })]);
     const clientA = {
@@ -1365,7 +1378,7 @@ describe('RoomLibraryService', () => {
     const before = getRoomsB.mock.calls.length;
 
     landed.forEach((resolve) => resolve(true));
-    await new Promise((r) => setTimeout(r));
+    await vi.advanceTimersByTimeAsync(100);
 
     expect(getRoomsB.mock.calls.length).toBe(before);
   });
@@ -1429,6 +1442,7 @@ describe('RoomLibraryService', () => {
   });
 
   it('keeps the lock the room state gives when the crypto store fails to answer', async () => {
+    vi.useFakeTimers();
     const isEncryptionEnabledInRoom = vi.fn(() =>
       Promise.reject(new Error('store unavailable')),
     );
@@ -1451,7 +1465,8 @@ describe('RoomLibraryService', () => {
     await vi.waitFor(() =>
       expect(isEncryptionEnabledInRoom).toHaveBeenCalledWith('!p:hs'),
     );
-    await new Promise((resolve) => setTimeout(resolve));
+    // Past the probe cap and the coalescing window, so a rebuild the failure caused would land.
+    await vi.advanceTimersByTimeAsync(2000);
     expect(svc.rooms()[0]?.encrypted).toBe(false);
     // Unanswered: the message that arrived in clear shows no preview.
     expect(svc.rooms()[0]?.lastMessage).toBe('');
@@ -1459,6 +1474,7 @@ describe('RoomLibraryService', () => {
   });
 
   it('rebuilds the list once for the crypto store answers, and not at all for rooms whose state already shows the lock', async () => {
+    vi.useFakeTimers();
     const run = async (stateEncrypted: boolean, stored: boolean) => {
       TestBed.resetTestingModule();
       const rooms = Array.from({ length: 20 }, (_, i) =>
@@ -1479,8 +1495,7 @@ describe('RoomLibraryService', () => {
       });
       svc.runProjection().subscribe();
       const initial = getRooms.mock.calls.length;
-      for (let i = 0; i < 5; i++) await Promise.resolve();
-      await new Promise((resolve) => setTimeout(resolve));
+      await vi.advanceTimersByTimeAsync(100);
       expect(
         svc.rooms().every((r) => r.encrypted === (stateEncrypted || stored)),
       ).toBe(true);
@@ -1593,12 +1608,17 @@ describe('RoomLibraryService', () => {
 
   it('refreshes unread on MatrixEventEvent.Decrypted (encrypted message decrypts late)', async () => {
     const unread = { count: 0 };
-    const room = fakeRoom({ roomId: '!a:hs', name: 'a' });
+    const room = {
+      ...fakeRoom({ roomId: '!a:hs', name: 'a' }),
+      hasUserReadEvent: () => false,
+    };
     room.getUnreadNotificationCount = (type?: string) =>
       type === 'highlight' ? 0 : unread.count;
-    const handlers = new Map<string, () => void>();
+    const handlers = new Map<string, (event?: unknown) => void>();
     const client = {
       baseUrl: 'https://hs.example',
+      getUserId: () => '@me:hs',
+      getRoom: () => room,
       getRooms: () => [room],
       on: (event: string, cb: () => void) => handlers.set(event, cb),
       off: vi.fn(),
@@ -1610,13 +1630,101 @@ describe('RoomLibraryService', () => {
     // The count only settles once the ciphertext decrypts, which fires Decrypted
     // (not a fresh Sync) — relying on Sync alone would drop the increment.
     unread.count = 1;
-    handlers.get(MatrixEventEvent.Decrypted)?.();
-    await Promise.resolve();
+    handlers.get(MatrixEventEvent.Decrypted)?.(decryptedEvent('$new'));
+    await vi.waitFor(() => expect(svc.totalUnread()).toBe(1));
+  });
 
-    expect(svc.totalUnread()).toBe(1);
+  describe('when an event decrypts', () => {
+    function decryptionSetup(read: readonly string[]) {
+      vi.useFakeTimers();
+      const events = ['$old', '$older-message', '$latest'].map((id) => ({
+        ...timelineEvent({ body: id }),
+        getId: () => id,
+      }));
+      const room = {
+        ...fakeRoom({ roomId: '!a:hs', name: 'a', events }),
+        hasUserReadEvent: (_userId: string, eventId: string) =>
+          read.includes(eventId),
+        // Every thread here has read everything, so only the room's receipt can say unread.
+        getThread: () => ({ hasUserReadEvent: () => true }),
+      };
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      let builds = 0;
+      const client = {
+        baseUrl: 'https://hs.example',
+        getUserId: () => '@me:hs',
+        getRoom: (id: string) => (id === '!a:hs' ? room : null),
+        getRooms: () => {
+          builds++;
+          return [room];
+        },
+        on: (event: string, cb: (...args: unknown[]) => void) =>
+          handlers.set(event, cb),
+        off: vi.fn(),
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      const decrypt = async (
+        id: string,
+        thread?: { threadRootId: string; isThreadRoot: boolean },
+      ): Promise<number> => {
+        const before = builds;
+        handlers.get(MatrixEventEvent.Decrypted)?.({
+          ...decryptedEvent(id),
+          ...thread,
+        });
+        await vi.advanceTimersByTimeAsync(200);
+        return builds - before;
+      };
+      return { decrypt };
+    }
+
+    it('does not rebuild for a read event older than the preview, as when scrolling back', async () => {
+      const { decrypt } = decryptionSetup([
+        '$old',
+        '$older-message',
+        '$latest',
+      ]);
+      expect(await decrypt('$old')).toBe(0);
+    });
+
+    it('rebuilds for an unread event, whose decryption raises the count', async () => {
+      const { decrypt } = decryptionSetup(['$old']);
+      expect(await decrypt('$older-message')).toBe(1);
+    });
+
+    it('rebuilds for the event the preview shows, even once read', async () => {
+      const { decrypt } = decryptionSetup([
+        '$old',
+        '$older-message',
+        '$latest',
+      ]);
+      expect(await decrypt('$latest')).toBe(1);
+    });
+
+    it("reads a thread root against the room's receipt, as the SDK counts it", async () => {
+      const { decrypt } = decryptionSetup(['$old', '$latest']);
+      expect(
+        await decrypt('$older-message', {
+          threadRootId: '$older-message',
+          isThreadRoot: true,
+        }),
+      ).toBe(1);
+    });
+
+    it("reads a thread reply against its thread's receipt", async () => {
+      const { decrypt } = decryptionSetup(['$old', '$latest']);
+      expect(
+        await decrypt('$older-message', {
+          threadRootId: '$root',
+          isThreadRoot: false,
+        }),
+      ).toBe(0);
+    });
   });
 
   it('rebuilds on MatrixEventEvent.Replaced, which fires once a cancelled edit is unwound', async () => {
+    vi.useFakeTimers();
     const events = [
       timelineEvent({ body: 'server text' }),
       timelineEvent({ body: '* refused text' }),
@@ -1637,12 +1745,13 @@ describe('RoomLibraryService', () => {
 
     events.pop();
     handlers.get(MatrixEventEvent.Replaced)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms()[0]?.lastMessage).toBe('server text');
   });
 
   it('recomputes totalUnread when a room is added to the synced list', async () => {
+    vi.useFakeTimers();
     let currentRooms = [fakeRoom({ roomId: '!a:hs', name: 'a', unread: 2 })];
     const handlers = new Map<string, () => void>();
     const client = {
@@ -1660,7 +1769,7 @@ describe('RoomLibraryService', () => {
       fakeRoom({ roomId: '!b:hs', name: 'b', unread: 5 }),
     ];
     handlers.get(ClientEvent.Room)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
     expect(svc.totalUnread()).toBe(7);
@@ -2114,6 +2223,7 @@ describe('RoomLibraryService setFavourite', () => {
   });
 
   it('restoring a room deletes the m.lowpriority tag and refreshes on resolve', async () => {
+    vi.useFakeTimers();
     const { svc, setRoomTag, deleteRoomTag, setRooms, handlers } = setup(false);
 
     // Get the projection to actually HOLD `true` first. Seeding the post-restore state and
@@ -2123,7 +2233,7 @@ describe('RoomLibraryService setFavourite', () => {
       fakeRoom({ roomId: '!a:hs', name: 'general', lowPriority: true }),
     ]);
     handlers.get(RoomEvent.Tags)?.();
-    await Promise.resolve();
+    await windowEnds();
     expect(svc.rooms()[0].lowPriority).toBe(true);
 
     // Now the tag is gone server-side, and only the post-write refresh can pick that up.
@@ -2138,12 +2248,13 @@ describe('RoomLibraryService setFavourite', () => {
   });
 
   it('rebuilds the list on a RoomEvent.Tags (remote favourite change from another device)', async () => {
+    vi.useFakeTimers();
     const { svc, handlers, setRooms } = setup(false);
     expect(svc.rooms()[0].favourite).toBe(false);
 
     setRooms([fakeRoom({ roomId: '!a:hs', name: 'general', favourite: true })]);
     handlers.get(RoomEvent.Tags)?.();
-    await Promise.resolve();
+    await windowEnds();
 
     expect(svc.rooms()[0].favourite).toBe(true);
   });

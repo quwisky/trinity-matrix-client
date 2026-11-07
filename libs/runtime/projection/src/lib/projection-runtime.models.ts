@@ -25,8 +25,19 @@ export interface ProjectionReconcileContext {
 export interface ProjectionDefinition {
   readonly id: string;
   readonly scope: ProjectionScope;
-  /** Attach invalidation sources and return their teardown. */
-  readonly attach: (invalidate: () => void) => void | (() => void);
+  /**
+   * Attach invalidation sources and return their teardown. `flush` reconciles a pending
+   * invalidation now instead of at the end of the {@link coalesceMs} window.
+   */
+  readonly attach: (
+    invalidate: () => void,
+    flush: () => void,
+  ) => void | (() => void);
+  /**
+   * Hold invalidations for up to this many milliseconds before reconciling, instead of the
+   * default microtask. For projections whose source emits across several tasks per update.
+   */
+  readonly coalesceMs?: number;
   /** Rebuild from the authoritative source; async work is generation-gated. */
   readonly reconcile: (context: ProjectionReconcileContext) => Observable<void>;
   /** Clear every read model value owned by this projection. */

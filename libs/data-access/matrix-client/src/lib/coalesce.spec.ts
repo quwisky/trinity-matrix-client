@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { coalesce } from './coalesce';
 
 /** Drain the microtask queue, which is where a coalesced run lands. */
@@ -72,5 +72,52 @@ describe('coalesce', () => {
     await flush();
 
     expect(c.pending()).toBe(false);
+  });
+
+  describe('with a delay', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('collapses calls spread over several tasks into one run at the end of the delay', async () => {
+      vi.useFakeTimers();
+      const fn = vi.fn();
+      const c = coalesce(fn, 100);
+
+      c.schedule();
+      await vi.advanceTimersByTimeAsync(60);
+      c.schedule();
+      await vi.advanceTimersByTimeAsync(39);
+      expect(fn).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fn).toHaveBeenCalledOnce();
+      expect(c.pending()).toBe(false);
+    });
+
+    it('runs a queued call at once on flush, and only once', async () => {
+      vi.useFakeTimers();
+      const fn = vi.fn();
+      const c = coalesce(fn, 100);
+
+      c.flush(); // nothing queued
+      expect(fn).not.toHaveBeenCalled();
+      c.schedule();
+      c.flush();
+      expect(fn).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('clears the timer when cancelled', async () => {
+      vi.useFakeTimers();
+      const fn = vi.fn();
+      const c = coalesce(fn, 100);
+
+      c.schedule();
+      c.cancel();
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(200);
+      expect(fn).not.toHaveBeenCalled();
+    });
   });
 });

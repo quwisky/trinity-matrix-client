@@ -4,6 +4,7 @@ import {
   RoomEvent,
   RoomStateEvent,
   type MatrixClient,
+  type MatrixEvent,
 } from 'matrix-js-sdk';
 import { type MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RoomEncryptionFlags } from '@trinity/util/matrix';
@@ -11,6 +12,7 @@ import { buildInvite, type PendingInvite } from './invites.service';
 import {
   buildRoomSummary,
   compareRoomSummaries,
+  decryptionChangesRow,
   directMapOf,
   initialOf,
   isJoinedSpace,
@@ -31,7 +33,7 @@ interface AccountSource {
   readonly encryption?: RoomEncryptionFlags;
 }
 
-type Listener = () => void;
+type Listener = (event?: MatrixEvent) => void;
 
 interface RegisteredListener {
   readonly event: string;
@@ -55,14 +57,12 @@ const EVENTS: readonly (readonly [
   string,
   ReadonlySet<SelectedProjectionDomain>,
 ])[] = [
-  [ClientEvent.Sync, ALL_DOMAINS],
   [ClientEvent.Room, ALL_DOMAINS],
   [RoomEvent.Name, ALL_DOMAINS],
   [RoomEvent.MyMembership, ALL_DOMAINS],
   [RoomEvent.Receipt, ROOM_DOMAINS],
   [RoomEvent.Tags, ROOM_DOMAINS],
   [RoomEvent.AccountData, ROOM_DOMAINS],
-  [MatrixEventEvent.Decrypted, ROOM_DOMAINS],
   [MatrixEventEvent.Replaced, ROOM_DOMAINS],
   [RoomStateEvent.Members, ROOM_DOMAINS],
 ];
@@ -72,6 +72,8 @@ const EVENTS: readonly (readonly [
  *
  * Domain projectors receive stable Account/client pairs and never attach listeners. A shared
  * SDK event is registered once per Account and invalidates only the projections it affects.
+ * `ClientEvent.Sync` invalidates every domain and then flushes the coalescing window, and a
+ * decrypted event invalidates the rooms only when it can change a row.
  */
 export class SelectedAccountSourceRegistry {
   private readonly sources = new Map<string, HeldAccountSource>();
@@ -81,6 +83,7 @@ export class SelectedAccountSourceRegistry {
     private readonly invalidate: (
       domains: ReadonlySet<SelectedProjectionDomain>,
     ) => void,
+    private readonly flush: () => void,
   ) {}
 
   /** Reconcile selected, live Accounts and same-id client replacement. */
@@ -153,11 +156,28 @@ export class SelectedAccountSourceRegistry {
 
   private attach(accountId: string, client: MatrixClient): HeldAccountSource {
     const eventSource = client as unknown as EventSource;
-    const listeners = EVENTS.map(([event, domains]) => {
-      const handler = () => this.invalidate(domains);
-      eventSource.on(event, handler);
-      return { event, handler };
-    });
+    const listeners: RegisteredListener[] = [
+      ...EVENTS.map(([event, domains]) => ({
+        event,
+        handler: () => this.invalidate(domains),
+      })),
+      {
+        event: ClientEvent.Sync,
+        handler: () => {
+          this.invalidate(ALL_DOMAINS);
+          this.flush();
+        },
+      },
+      {
+        event: MatrixEventEvent.Decrypted,
+        handler: (event) => {
+          if (event && decryptionChangesRow(client, event)) {
+            this.invalidate(ROOM_DOMAINS);
+          }
+        },
+      },
+    ];
+    for (const { event, handler } of listeners) eventSource.on(event, handler);
     return {
       accountId,
       client,

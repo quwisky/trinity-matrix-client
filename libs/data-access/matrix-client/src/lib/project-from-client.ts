@@ -1,5 +1,9 @@
 import { inject } from '@angular/core';
-import type { EmittedEvents, MatrixClient } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  type EmittedEvents,
+  type MatrixClient,
+} from 'matrix-js-sdk';
 import { Observable, defer, of } from 'rxjs';
 import {
   ownedProjection,
@@ -72,6 +76,13 @@ export interface ProjectFromClientConfig {
   /** Remove whatever {@link bind} attached. */
   unbind?: (client: MatrixClient) => void;
 
+  /**
+   * Hold a rebuild for up to this many milliseconds, and rebuild as soon as the client
+   * emits `ClientEvent.Sync`. The SDK awaits storage between rooms, so one sync's events
+   * span several tasks and a microtask would rebuild several times per sync.
+   */
+  coalesceMs?: number;
+
   /** Clear the read model on disconnect, so a detached service holds no stale projection. */
   reset?: () => void;
 
@@ -107,6 +118,7 @@ export function projectFromClient(
     bind,
     unbind,
     reset,
+    coalesceMs,
     reprojectOnSwitch = true,
   } = config;
   const runtime = inject(ProjectionRuntime);
@@ -116,7 +128,18 @@ export function projectFromClient(
   let lease: ProjectionLease | null = null;
   let lifetimeOwners = 0;
   let invalidate = (): void => undefined;
+  let flush = (): void => undefined;
   const onEvent = (): void => invalidate();
+  // With a window, one Sync listener both invalidates (when asked to) and ends the window.
+  const syncInvalidates = events.includes(ClientEvent.Sync);
+  const onSync = (): void => {
+    if (syncInvalidates) invalidate();
+    flush();
+  };
+  const listened =
+    coalesceMs === undefined
+      ? events
+      : events.filter((event) => event !== ClientEvent.Sync);
 
   const projection: ClientProjection = {
     run(): Observable<void> {
@@ -144,17 +167,26 @@ export function projectFromClient(
       lease = runtime.activate({
         id,
         scope: { kind: 'active-account' },
-        attach: (nextInvalidate) => {
+        coalesceMs,
+        attach: (nextInvalidate, nextFlush) => {
           invalidate = nextInvalidate;
+          flush = nextFlush;
           const client = matrix.instance;
           connectedClient = client;
           const detachClient = (): void => {
             const attachedClient = connectedClient;
             if (!attachedClient) return;
             const failures: unknown[] = [];
-            for (const event of events) {
+            for (const event of listened) {
               try {
                 attachedClient.off(event, onEvent);
+              } catch (error: unknown) {
+                failures.push(error);
+              }
+            }
+            if (coalesceMs !== undefined) {
+              try {
+                attachedClient.off(ClientEvent.Sync, onSync);
               } catch (error: unknown) {
                 failures.push(error);
               }
@@ -166,6 +198,7 @@ export function projectFromClient(
             }
             connectedClient = null;
             invalidate = () => undefined;
+            flush = () => undefined;
             if (failures.length === 1) throw failures[0];
             if (failures.length > 1) {
               throw new AggregateError(
@@ -175,9 +208,10 @@ export function projectFromClient(
             }
           };
           try {
-            for (const event of events) {
+            for (const event of listened) {
               client.on(event, onEvent);
             }
+            if (coalesceMs !== undefined) client.on(ClientEvent.Sync, onSync);
             bind?.(client);
           } catch (error: unknown) {
             try {

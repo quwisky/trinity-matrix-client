@@ -25,6 +25,7 @@ interface ProjectionEntry {
   acknowledgedGeneration: number;
   active: boolean;
   scheduled: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
   reconciliation: ReconciliationAttempt | null;
   detach: () => void;
   failure: { readonly generation: number; readonly error: unknown } | null;
@@ -87,6 +88,7 @@ export class ProjectionRuntime {
       acknowledgedGeneration: 0,
       active: true,
       scheduled: false,
+      timer: undefined,
       reconciliation: null,
       detach: () => undefined,
       failure: null,
@@ -103,7 +105,10 @@ export class ProjectionRuntime {
 
     try {
       entry.detach =
-        definition.attach(() => this.invalidate(entry)) ?? (() => undefined);
+        definition.attach(
+          () => this.invalidate(entry),
+          () => this.flush(entry),
+        ) ?? (() => undefined);
       this.reconcile(entry);
     } catch (error: unknown) {
       this.retireAfterActivationFailure(entry, error);
@@ -254,7 +259,7 @@ export class ProjectionRuntime {
   }
 
   private reattach(entry: ProjectionEntry): void {
-    entry.scheduled = false;
+    this.unschedule(entry);
     this.cancelReconciliation(entry);
     entry.generation = ++this.nextGeneration;
     entry.acknowledgedGeneration = 0;
@@ -264,8 +269,10 @@ export class ProjectionRuntime {
       entry.detach();
       entry.definition.reset();
       entry.detach =
-        entry.definition.attach(() => this.invalidate(entry)) ??
-        (() => undefined);
+        entry.definition.attach(
+          () => this.invalidate(entry),
+          () => this.flush(entry),
+        ) ?? (() => undefined);
       this.reconcile(entry);
     } catch (error: unknown) {
       entry.detach = () => undefined;
@@ -276,11 +283,21 @@ export class ProjectionRuntime {
   private schedule(entry: ProjectionEntry): void {
     if (!entry.active || entry.reconciliation || entry.scheduled) return;
     entry.scheduled = true;
-    queueMicrotask(() => {
-      if (!entry.scheduled) return;
-      entry.scheduled = false;
-      this.reconcile(entry);
-    });
+    const delay = entry.definition.coalesceMs;
+    if (delay === undefined) queueMicrotask(() => this.flush(entry));
+    else entry.timer = setTimeout(() => this.flush(entry), delay);
+  }
+
+  private flush(entry: ProjectionEntry): void {
+    if (!entry.scheduled) return;
+    this.unschedule(entry);
+    this.reconcile(entry);
+  }
+
+  private unschedule(entry: ProjectionEntry): void {
+    entry.scheduled = false;
+    clearTimeout(entry.timer);
+    entry.timer = undefined;
   }
 
   private reconcile(entry: ProjectionEntry): void {
@@ -393,7 +410,7 @@ export class ProjectionRuntime {
 
   private retire(entry: ProjectionEntry, options: RetirementOptions): void {
     entry.active = false;
-    entry.scheduled = false;
+    this.unschedule(entry);
     this.cancelReconciliation(entry);
     if (this.entries.get(entry.key) === entry) {
       this.entries.delete(entry.key);

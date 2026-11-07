@@ -1,10 +1,18 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  DestroyRef,
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+} from '@angular/core';
 import {
   ClientEvent,
   MatrixEventEvent,
   NotificationCountType,
   RoomEvent,
   type MatrixClient,
+  type MatrixEvent,
 } from 'matrix-js-sdk';
 import {
   coalesce,
@@ -12,18 +20,19 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { roomAvatarMxc } from '@trinity/util/matrix';
 import {
+  decryptionChangesRow,
   directMapOf,
   initialOf,
   isMarkedUnread,
   roomActivityTs,
 } from './room-projection';
 
-type UnreadListener = () => void;
-
-/** The client + shared handler attached for one account, kept so we can detach it. */
+/** The client and handlers attached for one account, kept so we can detach them. */
 interface AccountListener {
   readonly client: MatrixClient;
-  readonly handler: UnreadListener;
+  readonly handler: () => void;
+  readonly onSync: () => void;
+  readonly onDecrypted: (event: MatrixEvent) => void;
 }
 
 /** One joined chat with something new in it, on one exact account. */
@@ -46,7 +55,8 @@ export interface UnreadRoom {
  * ACTIVE account's rooms, this sums every signed-in account (app-icon badge). A lightweight
  * listener per account client reads notification counts directly, without a full room
  * projection, and the same pass publishes the per-room {@link unreadRooms} list. Rebuilds are
- * coalesced onto a microtask so a sync burst across accounts rebuilds once.
+ * held for up to 100 ms, and run at the end of each account's sync, so one sync rebuilds once.
+ * A timer, not an animation frame, so the app badge still updates in a hidden window.
  */
 @Injectable({ providedIn: 'root' })
 export class UnreadAggregatorService {
@@ -84,6 +94,7 @@ export class UnreadAggregatorService {
   private readonly listeners = new Map<string, AccountListener>();
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.flusher.cancel());
     // Reconcile per-account listeners against the live account set (startup, add, remove).
     effect(() => this.reconcile(this.matrix.accountIds()));
   }
@@ -92,7 +103,7 @@ export class UnreadAggregatorService {
     const live = new Set(ids);
     for (const [userId, listener] of this.listeners) {
       if (!live.has(userId)) {
-        this.detach(listener.client, listener.handler);
+        this.detach(listener);
         this.listeners.delete(userId);
       }
     }
@@ -105,17 +116,29 @@ export class UnreadAggregatorService {
         if (held.client === client) {
           continue;
         }
-        this.detach(held.client, held.handler);
+        this.detach(held);
         this.listeners.delete(userId);
       }
       if (!client) {
         continue; // not fully started yet; a later accountIds tick re-checks it
       }
-      const handler: UnreadListener = () => this.scheduleFlush();
-      this.attach(client, handler);
-      this.listeners.set(userId, { client, handler });
+      const listener: AccountListener = {
+        client,
+        handler: () => this.flusher.schedule(),
+        onSync: () => {
+          this.flusher.schedule();
+          this.flusher.flush();
+        },
+        // Encrypted rooms count a message only once it decrypts, after its Sync; the client
+        // re-emits Decrypted then. History decrypting on a scroll-back changes no count.
+        onDecrypted: (event) => {
+          if (decryptionChangesRow(client, event)) this.flusher.schedule();
+        },
+      };
+      this.attach(listener);
+      this.listeners.set(userId, listener);
     }
-    this.scheduleFlush();
+    this.flusher.schedule();
   }
 
   /**
@@ -124,11 +147,7 @@ export class UnreadAggregatorService {
    */
   private readonly flusher = coalesce(() => {
     this.flush();
-  });
-
-  private scheduleFlush(): void {
-    this.flusher.schedule();
-  }
+  }, 100);
 
   private flush(): void {
     const counts = new Map<string, number>();
@@ -188,24 +207,32 @@ export class UnreadAggregatorService {
     return unread;
   }
 
-  private attach(client: MatrixClient, handler: UnreadListener): void {
-    client.on(ClientEvent.Sync, handler);
+  private attach({
+    client,
+    handler,
+    onSync,
+    onDecrypted,
+  }: AccountListener): void {
+    client.on(ClientEvent.Sync, onSync);
     client.on(ClientEvent.Room, handler);
     client.on(RoomEvent.MyMembership, handler);
     client.on(RoomEvent.Receipt, handler);
     client.on(RoomEvent.AccountData, handler); // carries the marked-unread flag
-    // Encrypted rooms count a message only once it decrypts, after its Sync; the
-    // client re-emits Decrypted then. Without it the badge waits for the next sync.
-    client.on(MatrixEventEvent.Decrypted, handler);
+    client.on(MatrixEventEvent.Decrypted, onDecrypted);
   }
 
-  private detach(client: MatrixClient, handler: UnreadListener): void {
-    client.off(ClientEvent.Sync, handler);
+  private detach({
+    client,
+    handler,
+    onSync,
+    onDecrypted,
+  }: AccountListener): void {
+    client.off(ClientEvent.Sync, onSync);
     client.off(ClientEvent.Room, handler);
     client.off(RoomEvent.MyMembership, handler);
     client.off(RoomEvent.Receipt, handler);
     client.off(RoomEvent.AccountData, handler);
-    client.off(MatrixEventEvent.Decrypted, handler);
+    client.off(MatrixEventEvent.Decrypted, onDecrypted);
   }
 }
 

@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ClientEvent, RoomEvent } from 'matrix-js-sdk';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { firstValueFrom, Subject } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { projectFromClient } from './project-from-client';
 import type { ProjectFromClientConfig } from './project-from-client';
@@ -244,6 +244,61 @@ describe('projectFromClient', () => {
     await flush();
 
     expect(rebuild).toHaveBeenCalledOnce();
+  });
+
+  describe('with a flush window', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('holds a rebuild across tasks and flushes it when the sync ends', async () => {
+      vi.useFakeTimers();
+      const { projection, client, rebuild } = harness({
+        coalesceMs: 100,
+        events: [RoomEvent.Name],
+      });
+      projection.connect();
+      expect(rebuild).toHaveBeenCalledOnce(); // the first build stays synchronous
+      rebuild.mockClear();
+
+      client.emit(RoomEvent.Name);
+      await vi.advanceTimersByTimeAsync(40);
+      client.emit(RoomEvent.Name);
+      expect(rebuild).not.toHaveBeenCalled();
+
+      client.emit(ClientEvent.Sync);
+      expect(rebuild).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(200);
+      expect(rebuild).toHaveBeenCalledOnce();
+    });
+
+    it('rebuilds at most the window after the first event when no sync ends it', async () => {
+      vi.useFakeTimers();
+      const { projection, client, rebuild } = harness({ coalesceMs: 100 });
+      projection.connect();
+      rebuild.mockClear();
+
+      client.emit(RoomEvent.Name);
+      await vi.advanceTimersByTimeAsync(99);
+      expect(rebuild).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(rebuild).toHaveBeenCalledOnce();
+    });
+
+    it('removes its sync listener and drops the queued rebuild on disconnect', async () => {
+      vi.useFakeTimers();
+      const { projection, client, rebuild } = harness({
+        coalesceMs: 100,
+        events: [RoomEvent.Name],
+      });
+      projection.connect();
+      rebuild.mockClear();
+
+      client.emit(RoomEvent.Name);
+      projection.disconnect();
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(rebuild).not.toHaveBeenCalled();
+      expect(client.count(ClientEvent.Sync)).toBe(0);
+    });
   });
 
   it('unbinds, resets, and drops a queued rebuild on disconnect', async () => {
