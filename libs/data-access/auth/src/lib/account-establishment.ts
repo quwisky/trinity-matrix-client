@@ -141,6 +141,7 @@ export function accountEstablishment(
   response: AuthenticatedSessionResponse,
   mode: LoginMode,
   accountRecord: AccountEstablishmentIntent['accountRecord'],
+  placementWanted?: () => boolean,
 ): {
   readonly grant: AuthenticatedAccountGrant;
   readonly intent: AccountEstablishmentIntent;
@@ -170,6 +171,7 @@ export function accountEstablishment(
       placement: 'active',
       liveAccounts: mode === 'add' ? 'keep' : 'replace',
       accountRecord,
+      ...(placementWanted ? { placementWanted } : {}),
     },
   };
 }

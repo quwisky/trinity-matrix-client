@@ -163,6 +163,7 @@ describe('RegistrationService', () => {
         placement: 'active',
         liveAccounts: 'replace',
         accountRecord: 'new',
+        placementWanted: expect.any(Function),
       },
     );
   });
@@ -482,7 +483,16 @@ describe('RegistrationService', () => {
       );
 
       service.retryEstablishment().subscribe({ error: () => undefined });
+      const intent = vi.mocked(accounts.establishAuthenticatedAccount).mock
+        .lastCall?.[1];
+      expect(intent?.placement === 'active' && intent.placementWanted?.()).toBe(
+        true,
+      );
       service.cancel();
+      // Started, but not placed over the account the person uses now.
+      expect(intent?.placement === 'active' && intent.placementWanted?.()).toBe(
+        false,
+      );
       savedRecord = {
         baseUrl: 'https://hs',
         userId: '@new:hs',

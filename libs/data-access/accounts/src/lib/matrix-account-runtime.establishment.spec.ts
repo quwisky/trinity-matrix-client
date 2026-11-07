@@ -415,6 +415,50 @@ it("registers the live Accounts' pushers again when the replacing sign-in is lef
   expect(matrix.activateAccount).not.toHaveBeenCalled();
 });
 
+it('starts the account without placing it when placement is no longer wanted', async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(AuthenticatedAccountGrant.issue(session), {
+        ...activeIntent,
+        placementWanted: () => false,
+      }),
+    ),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(matrix.restorePersisted).toHaveBeenCalledWith(session, 'background');
+  expect(lifecycle.releaseSharedCaches).not.toHaveBeenCalled();
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.registerNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
+  expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
+});
+
+it("does not register the replaced Accounts' pushers again when left after activation", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(NEVER);
+
+  const attempt = adapter
+    .establishAccount(AuthenticatedAccountGrant.issue(session), activeIntent)
+    .subscribe();
+  await settled();
+  expect(matrix.activateAccount).toHaveBeenCalled();
+  attempt.unsubscribe();
+
+  expect(lifecycle.registerNotifications).not.toHaveBeenCalled();
+});
+
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(

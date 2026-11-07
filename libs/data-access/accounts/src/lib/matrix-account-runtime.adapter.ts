@@ -165,6 +165,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
       let novelty: DeviceNovelty = 'unknown';
+      let placed = false;
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
@@ -250,7 +251,12 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           if (started.kind === 'failed') {
             return of(started);
           }
-          if (intent.placement === 'inactive') {
+          // Read at the last moment: whoever asked may have moved on since, and must not
+          // lose the account they use now to this one.
+          placed =
+            intent.placement === 'active' &&
+            (intent.placementWanted?.() ?? true);
+          if (!placed) {
             this.pendingNewAccounts.delete(session.userId);
             return of({ kind: 'ready' as const });
           }
@@ -303,7 +309,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           }
         }),
         switchMap((outcome) => {
-          if (outcome.kind !== 'ready' || intent.placement !== 'active') {
+          if (outcome.kind !== 'ready' || !placed) {
             return of(outcome);
           }
           return (

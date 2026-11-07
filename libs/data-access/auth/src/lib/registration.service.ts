@@ -432,6 +432,9 @@ export class RegistrationService {
         session,
         this.activeMode,
         'new',
+        // A Retry that ends after the person left starts the account but leaves the one
+        // they use now active.
+        () => this.attempt.isCurrent(token),
       );
       return this.accounts.establishAuthenticatedAccount(
         command.grant,
