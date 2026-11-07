@@ -33,7 +33,6 @@ import { type GifResult } from '@trinity/data-access/gif';
 import type { ImagePack, ImagePackImage } from '@trinity/data-access/media';
 import {
   SHORTCODE_JOINER,
-  type FormatAction,
   type Mention,
   type SlashCommandContext,
 } from '@trinity/util/matrix';
@@ -618,10 +617,6 @@ export class MessageComposerComponent {
 
   insertQuote(block: string): void {
     this.formatting.insertQuote(block);
-  }
-
-  onFormat(action: FormatAction): void {
-    this.formatting.onFormat(action);
   }
 
   onTogglePreview(): void {
