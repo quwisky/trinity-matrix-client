@@ -828,7 +828,7 @@ export class RoomLibraryService {
       let resort = false;
       rooms = previousRooms.map((row) => {
         const room = byId.get(row.id) as Room;
-        if (!this.dirtyRooms.has(row.id) && !unreadMoved(room, row)) return row;
+        if (!this.dirtyRooms.has(row.id) && !countsMoved(room, row)) return row;
         rebuilt.push(room);
         const next = build(room);
         resort ||= next !== row && sortKeyChanged(row, next);
@@ -889,9 +889,13 @@ export class RoomLibraryService {
   }
 }
 
-/** The SDK's unread counts no longer match the row's. */
-function unreadMoved(room: Room, row: RoomSummary): boolean {
+/**
+ * The SDK's unread or member counts no longer match the row's. A sync updates them without an
+ * event naming the room, possibly after this room's row was rebuilt mid-sync.
+ */
+function countsMoved(room: Room, row: RoomSummary): boolean {
   return (
+    room.getJoinedMemberCount() !== row.memberCount ||
     room.getUnreadNotificationCount(NotificationCountType.Total) !==
       row.unreadCount ||
     room.getUnreadNotificationCount(NotificationCountType.Highlight) !==

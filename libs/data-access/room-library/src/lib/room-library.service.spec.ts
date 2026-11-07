@@ -526,6 +526,15 @@ describe('RoomLibraryService', () => {
       expect(svc.totalUnread()).toBe(4);
     });
 
+    it('picks up a member count the SDK changed after the room was rebuilt', async () => {
+      const { svc, room, endSync } = setupMany();
+      const c = room('!c:hs');
+      if (c) c.getJoinedMemberCount = () => 7;
+
+      expect(await endSync()).toEqual(['!c:hs']);
+      expect(svc.rooms().find((r) => r.id === '!c:hs')?.memberCount).toBe(7);
+    });
+
     it('rebuilds every room when account data such as m.direct changes', async () => {
       const { emit, endSync } = setupMany();
 
