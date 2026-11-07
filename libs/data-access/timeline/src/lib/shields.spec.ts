@@ -12,6 +12,7 @@ import {
   shieldReasonText,
   shieldSubject,
   toShield,
+  TrustRechecks,
   unencryptedShieldFor,
 } from './shields';
 
@@ -289,6 +290,136 @@ describe('resolveShieldsInto', () => {
     expect(changed).toBe(false);
     expect(shields.size).toBe(0);
   });
+
+  it('probes in parallel but never more than 8 at once', async () => {
+    let inFlight = 0;
+    let peak = 0;
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 1));
+        inFlight--;
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const events = Array.from({ length: 30 }, (_, i) => event(`$${i}`));
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+
+    await resolveShieldsInto(crypto as never, events, shields, NOT_STALE);
+
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(30);
+    expect(peak).toBe(8);
+    expect(shields.size).toBe(30);
+  });
+
+  it('fails closed for each failing probe in a parallel batch', async () => {
+    const bad = event('$bad');
+    const good = event('$good');
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async (e: MatrixEvent) => {
+        if (e === bad) throw new Error('boom');
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await resolveShieldsInto(crypto as never, [bad, good], shields, NOT_STALE);
+    expect(shields.get(bad)).toMatchObject({ level: 'grey' });
+    expect(shields.get(good)).toMatchObject({ level: 'red' });
+  });
+
+  it('stops probing once stale instead of draining the queue', async () => {
+    let stale = false;
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => {
+        await Promise.resolve();
+        stale = true;
+        return { shieldColour: EventShieldColour.RED, shieldReason: null };
+      }),
+    };
+    const events = Array.from({ length: 40 }, (_, i) => event(`$${i}`));
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await resolveShieldsInto(crypto as never, events, shields, {
+      force: false,
+      isStale: () => stale,
+    });
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(8);
+    expect(shields.size).toBe(0);
+  });
+
+  it('lets an older pass finish after a newer one without overwriting it', async () => {
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    const a = event('$a');
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let token = 1;
+    const older = resolveShieldsInto(
+      {
+        getEncryptionInfoForEvent: async () => {
+          await gate;
+          return { shieldColour: EventShieldColour.GREY, shieldReason: null };
+        },
+      } as never,
+      [a],
+      shields,
+      { force: true, isStale: () => token !== 1 },
+    );
+    token = 2;
+    await resolveShieldsInto(
+      {
+        getEncryptionInfoForEvent: async () => ({
+          shieldColour: EventShieldColour.RED,
+          shieldReason: null,
+        }),
+      } as never,
+      [a],
+      shields,
+      { force: true, isStale: () => token !== 2 },
+    );
+    release();
+    await older;
+    expect(shields.get(a)).toMatchObject({ level: 'red' });
+  });
+
+  it('keeps the rest of the pass going when one event throws outside the probe', async () => {
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn(async () => ({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: null,
+      })),
+    };
+    const events = Array.from({ length: 30 }, (_, i) => event(`$${i}`));
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await expect(
+      resolveShieldsInto(crypto as never, events, shields, {
+        ...NOT_STALE,
+        canWrite: (e) => {
+          if (e === events[0]) throw new Error('unexpected');
+          return true;
+        },
+      }),
+    ).resolves.toBe(true);
+    expect(crypto.getEncryptionInfoForEvent).toHaveBeenCalledTimes(30);
+    expect(shields.size).toBe(29);
+  });
+
+  it('skips writes the caller no longer allows', async () => {
+    const crypto = {
+      getEncryptionInfoForEvent: vi.fn().mockResolvedValue({
+        shieldColour: EventShieldColour.RED,
+        shieldReason: null,
+      }),
+    };
+    const a = event('$a');
+    const b = event('$b');
+    const shields = new Map<MatrixEvent, MessageShield | null>();
+    await resolveShieldsInto(crypto as never, [a, b], shields, {
+      ...NOT_STALE,
+      canWrite: (e) => e === b,
+    });
+    expect(shields.has(a)).toBe(false);
+    expect(shields.has(b)).toBe(true);
+  });
 });
 
 /** A message-or-state event as the unencrypted-shield lookup reads it. */
@@ -388,5 +519,74 @@ describe('shieldSubject', () => {
     const edited = sent('$orig', { replacement: edit });
 
     expect(shieldSubject(edited)).toBe(edited);
+  });
+});
+
+describe('TrustRechecks', () => {
+  it('collects named users, and everyone for a key change or no names', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    t.note(['@b:hs'], '@me:hs');
+    expect(t.take()?.senders).toEqual(new Set(['@a:hs', '@b:hs']));
+    expect(t.take()).toBeNull();
+    t.note(undefined, '@me:hs');
+    expect(t.take()?.senders).toBe('all');
+  });
+
+  it('checks everyone when the own user is named', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs', '@me:hs'], '@me:hs');
+    expect(t.take()?.senders).toBe('all');
+  });
+
+  it('keeps a widened pass covering everyone when a newer one takes over', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    const a = t.take();
+    t.widen(a?.pass ?? 0);
+    t.note(['@b:hs'], '@me:hs');
+    expect(t.take()?.senders).toBe('all');
+  });
+
+  it('lets a newer pass take over the senders of one still running', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    const a = t.take();
+    t.note(['@b:hs'], '@me:hs');
+    const b = t.take();
+    expect(b?.senders).toEqual(new Set(['@a:hs', '@b:hs']));
+    expect(t.isCurrent(a?.pass ?? 0)).toBe(false);
+    expect(t.isCurrent(b?.pass ?? 0)).toBe(true);
+  });
+
+  it('forgets a settled pass, so the next one covers only its own senders', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    t.settle(t.take()?.pass ?? 0);
+    t.note(['@b:hs'], '@me:hs');
+    expect(t.take()?.senders).toEqual(new Set(['@b:hs']));
+  });
+
+  it('refuses an older check only the results a newer pass has checked', () => {
+    const t = new TrustRechecks();
+    const began = t.pass;
+    const a = event('$a');
+    const b = event('$b');
+    t.note(['@a:hs'], '@me:hs');
+    const pass = t.take()?.pass ?? 0;
+    expect(t.mayWrite(a, pass, pass)).toBe(true);
+    expect(t.mayWrite(a, 0, began)).toBe(false);
+    expect(t.mayWrite(b, 0, began)).toBe(true);
+    expect(t.mayWrite(a, 0, t.pass)).toBe(true);
+  });
+
+  it('drops everything on reset and invalidates a running pass', () => {
+    const t = new TrustRechecks();
+    t.note(['@a:hs'], '@me:hs');
+    const a = t.take();
+    t.note(['@b:hs'], '@me:hs');
+    t.reset();
+    expect(t.take()).toBeNull();
+    expect(t.isCurrent(a?.pass ?? 0)).toBe(false);
   });
 });

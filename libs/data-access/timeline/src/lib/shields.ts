@@ -188,6 +188,9 @@ export function unencryptedShieldFor(
   return (event, subject) => unencryptedShield(markFor(event, subject));
 }
 
+/** How many `getEncryptionInfoForEvent` probes run at once. */
+export const SHIELD_PROBES_IN_FLIGHT = 8;
+
 /** The slice of the crypto API the shield resolver needs. */
 export interface ShieldCrypto {
   getEncryptionInfoForEvent(
@@ -207,40 +210,147 @@ export async function resolveShieldsInto(
   crypto: ShieldCrypto,
   events: readonly MatrixEvent[],
   shields: ShieldStore,
-  opts: { force: boolean; isStale: () => boolean },
+  opts: {
+    force: boolean;
+    isStale: () => boolean;
+    /** Whether a result for `event` may still be stored; a refused one is dropped. */
+    canWrite?: (event: MatrixEvent) => boolean;
+  },
 ): Promise<boolean> {
   let changed = false;
-  for (const event of events) {
-    if (!opts.force && shields.has(event) && !event.isDecryptionFailure()) {
-      continue;
+  let stopped = false;
+  const todo = events.filter(
+    (event) => opts.force || !shields.has(event) || event.isDecryptionFailure(),
+  );
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (!stopped && next < todo.length) {
+      const event = todo[next++];
+      try {
+        let shield: MessageShield | null = null;
+        try {
+          shield = toShield(await crypto.getEncryptionInfoForEvent(event));
+        } catch {
+          // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
+          // shield, visually identical to a fully authenticated message. A transient crypto/store
+          // error must not silently upgrade an unverified message's appearance; show the cautious
+          // indicator instead. (Still caught, so a probe failure can never break the timeline.)
+          shield = {
+            level: 'grey',
+            reason: shieldReasonText(null),
+            explanation: shieldExplanationText(null),
+          };
+        }
+        if (stopped || opts.isStale()) {
+          stopped = true; // switched rooms/threads, or a newer pass took over
+          return;
+        }
+        if (opts.canWrite && !opts.canWrite(event)) {
+          continue;
+        }
+        // A trusted (null) result is kept once the event is decrypted, so a pending edit can be
+        // told from a checked one (see shownSubject). Before decryption it stays absent and is
+        // asked again.
+        const record = shields.has(event)
+          ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
+          : shield !== null || event.getClearContent() !== null;
+        if (record) {
+          shields.set(event, shield);
+          changed = true;
+        }
+      } catch {
+        // One event's bookkeeping failed: drop its result and keep the pass going.
+      }
     }
-    let shield: MessageShield | null = null;
-    try {
-      shield = toShield(await crypto.getEncryptionInfoForEvent(event));
-    } catch {
-      // Fail CLOSED. `events` is already filtered to encrypted events, and null renders as NO
-      // shield, visually identical to a fully authenticated message. A transient crypto/store
-      // error must not silently upgrade an unverified message's appearance; show the cautious
-      // indicator instead. (Still caught, so a probe failure can never break the timeline.)
-      shield = {
-        level: 'grey',
-        reason: shieldReasonText(null),
-        explanation: shieldExplanationText(null),
-      };
-    }
-    if (opts.isStale()) {
-      return changed; // switched rooms/threads mid-resolve
-    }
-    // A trusted (null) result is kept once the event is decrypted, so a pending edit can be
-    // told from a checked one (see shownSubject). Before decryption it stays absent and is
-    // asked again.
-    const record = shields.has(event)
-      ? shieldKey(shields.get(event) ?? null) !== shieldKey(shield)
-      : shield !== null || event.getClearContent() !== null;
-    if (record) {
-      shields.set(event, shield);
-      changed = true;
-    }
-  }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(SHIELD_PROBES_IN_FLIGHT, todo.length) },
+      worker,
+    ),
+  );
   return changed;
+}
+
+/**
+ * The trust-change bookkeeping behind a coalesced shield re-check: which senders wait, which
+ * pass is running, and a token so an older pass cannot overwrite a newer one.
+ */
+export class TrustRechecks {
+  private pending: Set<string> | 'all' | null = null;
+  private active: Set<string> | 'all' | null = null;
+  /** The last pass that checked each event. */
+  private readonly checkedIn = new WeakMap<MatrixEvent, number>();
+  private current = 0;
+
+  /** The latest pass number; note it when an ordinary check starts (see {@link mayWrite}). */
+  get pass(): number {
+    return this.current;
+  }
+
+  get waiting(): boolean {
+    return this.pending !== null;
+  }
+
+  /**
+   * Record a trust change. Without user ids, or when they include `selfId` (everyone's
+   * verified status rests on our own cross-signing trust), every sender is re-checked.
+   */
+  note(userIds: readonly string[] | undefined, selfId: string | null): void {
+    if (
+      !userIds?.length ||
+      this.pending === 'all' ||
+      (selfId !== null && userIds.includes(selfId))
+    ) {
+      this.pending = 'all';
+      return;
+    }
+    this.pending ??= new Set();
+    userIds.forEach((id) => (this.pending as Set<string>).add(id));
+  }
+
+  /** Start a pass over everything noted so far, taking over a pass still running. */
+  take(): { senders: Set<string> | 'all'; pass: number } | null {
+    if (!this.pending) return null;
+    let senders = this.pending;
+    this.pending = null;
+    if (senders !== 'all' && this.active) {
+      senders =
+        this.active === 'all' ? 'all' : new Set([...senders, ...this.active]);
+    }
+    this.active = senders;
+    return { senders, pass: ++this.current };
+  }
+
+  /** A running pass that is a room's first check covers everyone, and so must its successor. */
+  widen(pass: number): void {
+    if (pass === this.current) this.active = 'all';
+  }
+
+  isCurrent(pass: number): boolean {
+    return pass === this.current;
+  }
+
+  settle(pass: number): void {
+    if (pass === this.current) this.active = null;
+  }
+
+  /**
+   * Whether a result for `event` may be stored: always from a trust pass (`pass` > 0), which
+   * records it; from an ordinary check begun at pass `began`, only if no later pass checked it.
+   */
+  mayWrite(event: MatrixEvent, pass: number, began: number): boolean {
+    if (pass > 0) {
+      this.checkedIn.set(event, pass);
+      return true;
+    }
+    return (this.checkedIn.get(event) ?? 0) <= began;
+  }
+
+  /** Drop everything and invalidate any running pass (the room closed). */
+  reset(): void {
+    this.pending = null;
+    this.active = null;
+    this.current++;
+  }
 }
