@@ -15,6 +15,7 @@ import { type Mention } from '@trinity/util/matrix';
 import { latestGuard } from '@trinity/util/ui';
 import type { ImagePackImage } from '@trinity/data-access/media';
 import {
+  EMPTY,
   Observable,
   catchError,
   defaultIfEmpty,
@@ -596,11 +597,20 @@ export class MessageActionsService {
 
   /**
    * End a jump when the person leaves its room: its outcome would be shown in the room
-   * they moved to, and unsubscribing stops its paging.
+   * they moved to, and unsubscribing stops its paging. The room is also read on each
+   * outcome, since `activeRoomId$` only emits on the next effect run.
    */
   private untilRoomChanges<T>(): MonoTypeOperatorFunction<T> {
     const roomId = this.store.activeRoomId();
-    return takeUntil(this.activeRoomId$.pipe(filter((id) => id !== roomId)));
+    const stillThere = () => this.store.activeRoomId() === roomId;
+    return (source) =>
+      source.pipe(
+        filter(stillThere),
+        catchError((err: unknown) =>
+          stillThere() ? throwError(() => err) : EMPTY,
+        ),
+        takeUntil(this.activeRoomId$.pipe(filter((id) => id !== roomId))),
+      );
   }
 }
 

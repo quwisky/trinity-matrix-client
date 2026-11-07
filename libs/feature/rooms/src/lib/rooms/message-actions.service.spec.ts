@@ -870,6 +870,24 @@ describe('MessageActionsService', () => {
       expect(toastShow).not.toHaveBeenCalled();
     });
 
+    it('shows nothing for an outcome that lands before the room switch is seen', () => {
+      const { actions, openRoom } = build();
+      openRoom('!r:hs');
+      TestBed.tick();
+      const event = new Subject<boolean>();
+      const date = new Subject<{ kind: 'too-far' }>();
+      loadEvent.mockReturnValueOnce(event);
+      jumpToDate.mockReturnValueOnce(date);
+
+      actions.onPanelJump('$pinned');
+      actions.jumpToDate();
+      openRoom('!other:hs');
+      event.next(false);
+      date.error(new Error('offline'));
+
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
     it('reports a jump that fails in the room still open', () => {
       const { actions, openRoom } = build();
       openRoom('!r:hs');
