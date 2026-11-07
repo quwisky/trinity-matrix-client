@@ -276,6 +276,25 @@ describe('typing', () => {
     expect(getMembers).not.toHaveBeenCalled();
   });
 
+  it('leaves out typing users who are not loaded members, from the event and from a reopen alike', () => {
+    const members = [fakeMember('@alice:hs', true, 'Alice')];
+    const { svc, client } = setupTyping(members);
+    const room = client.getRoom() as { getMember: (id: string) => unknown };
+    const getMember = room.getMember;
+    room.getMember = (id) => (id === '@bob:hs' ? null : getMember(id));
+
+    client.handlers.get('RoomMember.typing')?.(
+      typingEvent('@alice:hs', '@bob:hs'),
+      members[0],
+    );
+    expect(svc.typingNames()).toEqual(['Alice']);
+
+    members.push(fakeMember('@bob:hs', true, 'Bob'));
+    svc.setVisible(false);
+    svc.setVisible(true);
+    expect(svc.typingNames()).toEqual(['Alice']);
+  });
+
   it('ignores typing changes from other rooms', () => {
     const { svc, client } = setupTyping([fakeMember('@alice:hs', true)]);
     client.handlers.get('RoomMember.typing')?.(typingEvent('@x:hs'), {

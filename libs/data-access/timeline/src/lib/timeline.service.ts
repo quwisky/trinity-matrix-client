@@ -472,12 +472,9 @@ export class TimelineService {
     if (!ctx) {
       return;
     }
-    const selfId = ctx.client.getUserId();
-    const userIds = event.getContent<{ user_ids?: string[] }>().user_ids ?? [];
     this.setTypingNames(
-      userIds
-        .filter((id) => id !== selfId)
-        .map((id) => ctx.room.getMember(id)?.name ?? id),
+      ctx,
+      event.getContent<{ user_ids?: string[] }>().user_ids ?? [],
     );
   };
 
@@ -968,20 +965,36 @@ export class TimelineService {
   private refreshTyping(): void {
     const ctx = this.openContext();
     if (!ctx) {
-      this.setTypingNames([]);
+      this.publishTypingNames([]);
       return;
     }
-    const selfId = ctx.client.getUserId();
     this.setTypingNames(
+      ctx,
       ctx.room
         .getMembers()
-        .filter((member) => member.typing && member.userId !== selfId)
-        .map((member) => member.name),
+        .filter((member) => member.typing)
+        .map((member) => member.userId),
     );
   }
 
+  /** Names of the typing users who are loaded members, excluding the local user. */
+  private setTypingNames(
+    ctx: NonNullable<ReturnType<TimelineService['openContext']>>,
+    userIds: readonly string[],
+  ): void {
+    const selfId = ctx.client.getUserId();
+    const names: string[] = [];
+    for (const id of userIds) {
+      const name = id === selfId ? undefined : ctx.room.getMember(id)?.name;
+      if (name !== undefined) {
+        names.push(name);
+      }
+    }
+    this.publishTypingNames(names);
+  }
+
   /** Publish only a changed list, so an unchanged typing event wakes no consumer. */
-  private setTypingNames(names: string[]): void {
+  private publishTypingNames(names: string[]): void {
     const current = this._typingNames();
     if (
       names.length !== current.length ||
