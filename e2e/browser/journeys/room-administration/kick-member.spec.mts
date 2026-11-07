@@ -33,7 +33,7 @@ interface RoomAdministrationFaultWindow extends Window {
       };
     };
   };
-  restoreRoomAdministrationMembers?: () => void;
+  restoreRoomAdministrationMembersOnRetry?: () => void;
 }
 
 test.describe('Remove a member', () => {
@@ -180,8 +180,14 @@ test.describe('Remove a member', () => {
         target.ng.getComponent(root).runtime.adapter.session.roomAdministration
           .members;
       const membersOf = members.membersOf;
-      target.restoreRoomAdministrationMembers = () => {
-        members.membersOf = membersOf;
+      const retryProjection = members.retryProjection;
+      // A sync could otherwise recover the roster before Retry is pressed.
+      target.restoreRoomAdministrationMembersOnRetry = () => {
+        members.retryProjection = () => {
+          members.membersOf = membersOf;
+          members.retryProjection = retryProjection;
+          retryProjection.call(members);
+        };
       };
       members.membersOf = () => {
         throw new Error('synthetic private membership response');
@@ -224,8 +230,8 @@ test.describe('Remove a member', () => {
 
     await page.evaluate(() => {
       const target = window as unknown as RoomAdministrationFaultWindow;
-      target.restoreRoomAdministrationMembers?.();
-      delete target.restoreRoomAdministrationMembers;
+      target.restoreRoomAdministrationMembersOnRetry?.();
+      delete target.restoreRoomAdministrationMembersOnRetry;
     });
     await memberHealth
       .getByRole('button', { name: 'Retry Room administration' })
