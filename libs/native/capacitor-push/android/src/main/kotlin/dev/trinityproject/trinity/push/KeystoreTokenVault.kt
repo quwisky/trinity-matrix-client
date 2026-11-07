@@ -2,6 +2,7 @@ package dev.trinityproject.trinity.push
 
 import android.content.Context
 import android.content.SharedPreferences
+import javax.crypto.AEADBadTagException
 import org.json.JSONObject
 
 /**
@@ -20,12 +21,31 @@ class KeystoreTokenVault internal constructor(
     )
 
     override fun read(userId: String): TokenVaultRead {
+        var stored: String? = null
         return try {
-            val stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
+            stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
             decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
+        } catch (error: AEADBadTagException) {
+            // Sealed under a key the alias no longer holds: it can never be opened, so the account
+            // reads as signed out instead of failing on every refresh.
+            discard(userId, stored)
+            TokenVaultRead.Absent
         } catch (error: Exception) {
             // Keystore faults are security and provider exceptions; Android's JSONException is checked.
             TokenVaultRead.Unavailable
+        }
+    }
+
+    /** Removes [stale] unless a write replaced it meanwhile. */
+    private fun discard(userId: String, stale: String?) {
+        synchronized(LOCK) {
+            try {
+                if (preferences.getString(key(userId), null) == stale) {
+                    preferences.edit().remove(key(userId)).commit()
+                }
+            } catch (error: Exception) {
+                // Left in place, it reads as Absent again next time.
+            }
         }
     }
 

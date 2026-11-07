@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -31,6 +32,18 @@ class KeystoreTokenVaultTest {
 
         crypto.failing = false
         assertEquals(TokenVaultRead.Record(R0), vault.read(user))
+    }
+
+    @Test
+    fun aRecordSealedUnderAReplacedKeyReadsAsAbsentAndIsRemoved() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String = throw AEADBadTagException("Tag mismatch")
+        }
+
+        assertEquals(TokenVaultRead.Absent, KeystoreTokenVault(preferences, replacedKey).read(user))
+
+        assertFalse(preferences.contains("tokens:$user"))
     }
 
     @Test

@@ -284,7 +284,9 @@ app-group file
 `push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
 (`EncryptedSharedPreferences` is deprecated). The vault record is a second Keystore-encrypted
-file, `trinity_push_tokens`, and on iOS the lease files that serialize a refresh are in the app
+file, `trinity_push_tokens`; a record that fails its GCM tag check (sealed under a key the
+alias no longer holds) is removed and reads as absent, so the account gets the ordinary soft
+logout instead of a refresh that can never succeed. On iOS the lease files that serialize a refresh are in the app
 group under `push-handoff/leases/`. Android's lease is held in the process's memory, with no file.
 
 **Refresh before the background.** Each time the app goes to the background,
