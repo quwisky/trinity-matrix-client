@@ -99,8 +99,32 @@ function checkoutBusy(command, dir) {
   return null;
 }
 
-/** `gh` in command position, after any `VAR=value` prefixes. */
-const GH = String.raw`(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh\b[^\n;&|]*`;
+/** Command position, after any `VAR=value` or a wrapper such as `time`, `env` or `xargs` and its arguments. */
+const AT_COMMAND = String.raw`(?:^|[;&|(\n]\s*)(?:(?:\w+=\S*|(?:time|command|env|exec|nice|nohup|sudo|xargs)\b[^\n;&|]*?)\s+)*`;
+
+const SHELL_C = new RegExp(
+  String.raw`${AT_COMMAND}(?:ba|da|z)?sh\s+(?:-\w+\s+)*-\w*c\s+("(?:\\.|[^"\\])*"|'[^']*')`,
+  'g',
+);
+
+/** The command and, recursively, every script it hands to `sh -c`. */
+const scripts = (command) => [
+  command,
+  ...[...command.matchAll(SHELL_C)].flatMap((m) => scripts(m[1].slice(1, -1))),
+];
+
+const GH = String.raw`${AT_COMMAND}gh\b[^\n;&|]*`;
+const GRAPHQL = new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*\bgraphql\b`);
+const GRAPHQL_WRITE =
+  /\b(?:mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|(?:create|update|delete)RepositoryRuleset)\b/;
+
+/** A GraphQL merge, approval or ruleset write; the query sits in quotes, so read it raw. */
+const graphqlWrite = (script) =>
+  GRAPHQL.test(unquoted(script)) &&
+  (GRAPHQL_WRITE.test(script) ||
+    (/\b(?:add|submit)PullRequestReview\b/.test(script) &&
+      /\bAPPROVE\b/.test(script)));
+
 const MAINTAINER_ONLY = [
   new RegExp(String.raw`${GH}\bpr\s+merge\b`),
   new RegExp(String.raw`${GH}\bpr\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`),
@@ -119,8 +143,10 @@ const MAINTAINER_ONLY = [
 
 /** Merging, approving and rulesets stay with the maintainer (.agents/rules/git/pull-request-handling.md). */
 function maintainerOnly(command) {
-  const bare = unquoted(command);
-  return MAINTAINER_ONLY.some((pattern) => pattern.test(bare))
+  const blocked = (script) =>
+    graphqlWrite(script) ||
+    MAINTAINER_ONLY.some((pattern) => pattern.test(unquoted(script)));
+  return scripts(command).some(blocked)
     ? 'The maintainer merges, approves and changes rulesets (.agents/rules/git/pull-request-handling.md). If they asked for this, they can run it themselves with `! <command>`.'
     : null;
 }
@@ -260,8 +286,10 @@ function pushTypecheck(command, dir) {
  * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments,
  * which run on through a `>&` redirection such as `2>&1` so that `words` drops it whole.
  */
-const GH_PR =
-  /(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b((?:>&|[^\n;&|])*)/g;
+const GH_PR = new RegExp(
+  String.raw`${AT_COMMAND}gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b((?:>&|[^\n;&|])*)`,
+  'g',
+);
 
 /** Words of a simple argument list, without quotes, redirections or a trailing comment. */
 const words = (text) =>
@@ -275,12 +303,15 @@ const words = (text) =>
 
 /** Pull requests open as drafts and are marked ready only once every check passes. */
 function draftPullRequest(command, dir) {
-  for (const pr of command.matchAll(GH_PR)) {
+  const matches = scripts(command).flatMap((script) =>
+    [...script.matchAll(GH_PR)].map((pr) => [pr, script]),
+  );
+  for (const [pr, script] of matches) {
     const repo = words(pr[1]);
     if (pr[2] === 'create') {
       // Look past the first `&`, `;` or newline: a multi-line --body may come before --draft.
-      if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(command.slice(pr.index)))
-        continue;
+      const rest = unquoted(script.slice(pr.index));
+      if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(rest)) continue;
       return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
     }
     const args = [...words(pr[3]), ...repo];

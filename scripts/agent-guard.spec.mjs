@@ -98,6 +98,14 @@ describe('agent-guard PreToolUse hook', () => {
         'gh pr create --body "$(cat <<\'EOF\'\nQ & A\nEOF\n)" --draft --base main',
       ).status,
     ).toBe(0);
+    expect(
+      hook('gh pr create --title t --body "use --draft later"').status,
+    ).toBe(2);
+    expect(hook("gh pr create --body 'try -d first' --base main").status).toBe(
+      2,
+    );
+    expect(hook('time gh pr create --base main').status).toBe(2);
+    expect(hook('bash -c "gh pr create --base main"').status).toBe(2);
   });
 
   it('ignores gh pr commands that only appear as text', () => {
@@ -173,6 +181,43 @@ describe('agent-guard PreToolUse hook', () => {
     expect(hook('gh api repos/o/r/rulesets -f name=x').status).toBe(2);
     expect(hook('gh api -X DELETE repos/o/r/rulesets/1').status).toBe(2);
     expect(hook('gh api -X GET repos/o/r/rulesets').status).toBe(0);
+  });
+
+  it.each([
+    'time gh pr merge 5',
+    'command gh pr merge 5',
+    'env GH_REPO=o/r gh pr merge 5',
+    'exec gh pr merge 5',
+    'nice -n 10 gh pr merge 5',
+    'sudo gh pr merge 5',
+    'echo 5 | xargs gh pr merge',
+    'bash -c "gh pr merge 5"',
+    "sh -c 'gh pr review 5 --approve'",
+    'zsh -lc "cd x && gh pr merge 5"',
+  ])('finds gh behind a command prefix: %s', (command) => {
+    expect(hook(command).status).toBe(2);
+  });
+
+  it.each([
+    `gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: "x"}) { clientMutationId } }'`,
+    `gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: "x"}) { clientMutationId } }'`,
+    `gh api graphql -f query="mutation { addPullRequestReview(input: {pullRequestId: \\"x\\", event: APPROVE}) { clientMutationId } }"`,
+    `gh api graphql -F event=APPROVE -f query='mutation($event: PullRequestReviewEvent!) { submitPullRequestReview(input: {pullRequestReviewId: "x", event: $event}) { clientMutationId } }'`,
+  ])('blocks merging or approving through GraphQL: %s', (command) => {
+    expect(hook(command).status).toBe(2);
+  });
+
+  it('allows GraphQL queries and reviews that do not approve', () => {
+    expect(hook(`gh api graphql -f query='{ viewer { login } }'`).status).toBe(
+      0,
+    );
+    expect(
+      hook(
+        `gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "x", event: COMMENT}) { clientMutationId } }'`,
+      ).status,
+    ).toBe(0);
+    expect(hook('grep -rn mergePullRequest scripts').status).toBe(0);
+    expect(hook(`grep -rn 'bash -c "gh pr merge 5"' docs`).status).toBe(0);
   });
 
   it('blocks Release-As footers and tool attribution in commit messages', () => {
