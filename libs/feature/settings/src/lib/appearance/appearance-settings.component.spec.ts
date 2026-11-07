@@ -23,7 +23,6 @@ import {
 } from '@trinity/runtime/preferences';
 import {
   SpaceRoomOrderService,
-  TRINITY_ROOM_SORTS,
   type RoomSortMode,
   provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
@@ -93,7 +92,6 @@ describe('AppearanceSettingsComponent', () => {
         // Mocked rather than real: the service injects MatrixClientService (this page has
         // no Matrix client) and hydrates from Capacitor Preferences on construction.
         MockProvider(SpaceRoomOrderService, {
-          modes: TRINITY_ROOM_SORTS,
           defaultMode: spaceOrderDefault.asReadonly(),
           setDefault,
         }),

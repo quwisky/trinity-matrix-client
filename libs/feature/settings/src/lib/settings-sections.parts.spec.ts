@@ -43,7 +43,6 @@ import {
 import {
   InvitePermissionService,
   SpaceRoomOrderService,
-  TRINITY_ROOM_SORTS,
   provideRoomLibraryPreferences,
 } from '@trinity/data-access/room-library';
 import {
@@ -205,7 +204,6 @@ const SETUPS: Record<string, () => Setup> = {
           showRoomChanges: signal(true),
         }),
         MockProvider(SpaceRoomOrderService, {
-          modes: TRINITY_ROOM_SORTS,
           defaultMode: signal('recent' as const).asReadonly(),
         }),
       ],
