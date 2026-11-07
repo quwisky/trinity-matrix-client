@@ -1,9 +1,10 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { type MatrixClient } from 'matrix-js-sdk';
+import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { RoomMembersService } from './room-members.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
 
@@ -330,6 +331,44 @@ describe('RoomMembersService', () => {
     service.retryProjection();
     await Promise.resolve();
 
+    expect(roster().map((item) => item.roomDisplayName)).toEqual([
+      'Ada',
+      'Bob',
+    ]);
+  });
+
+  it('keeps a failed retry failed until a later sync rereads the roster', async () => {
+    const source = room('!room:hs', [member('@ada:hs', 'Ada')]);
+    const matrixClient = client([source]);
+    const { service } = setup(matrixClient);
+    const roster = service.membersFor('!room:hs');
+    const conditions: string[] = [];
+    TestBed.inject(ProjectionRuntime)
+      .observe('room-administration.members', { kind: 'active-account' })
+      .subscribe(({ condition }) => conditions.push(condition));
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    source.getJoinedMembers.mockImplementation(() => {
+      throw new Error('membership unavailable');
+    });
+    service.retryProjection();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(conditions.at(-1)).toBe('failed');
+
+    matrixClient.handlers.get(ClientEvent.Sync)?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(conditions.at(-1)).toBe('failed');
+
+    source.getJoinedMembers.mockImplementation(() => [
+      member('@ada:hs', 'Ada'),
+      member('@bob:hs', 'Bob'),
+    ]);
+    matrixClient.handlers.get(ClientEvent.Sync)?.();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(conditions.at(-1)).toBe('available');
     expect(roster().map((item) => item.roomDisplayName)).toEqual([
       'Ada',
       'Bob',

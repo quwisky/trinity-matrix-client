@@ -147,12 +147,13 @@ export class RoomMembersService {
     events: [ClientEvent.Sync],
     rebuild: (client) => {
       if (client !== this.lastClient || this.retryRequested) {
-        this.retryRequested = false;
-        this.lastClient = client;
         this.memberCache.clear();
         this.bannedCache.clear();
         this.knockCache.clear();
+        // Mark the reread done only after it succeeds, so a later sync repeats a failed one.
         this.reread(null);
+        this.retryRequested = false;
+        this.lastClient = client;
       }
     },
     bind: (client) => {
