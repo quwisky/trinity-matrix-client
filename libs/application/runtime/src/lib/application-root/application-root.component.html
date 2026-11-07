@@ -3,16 +3,61 @@
   [style.visibility]="appLocked() ? 'hidden' : null"
 >
   <trn-title-bar />
-  @if (booting()) {
+  @if (booting() || removingAccount()) {
     <div
-      class="flex flex-1 flex-col items-center justify-center gap-4"
-      role="status"
-      aria-live="polite"
+      class="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-4 overflow-y-auto p-6 text-center"
       data-testid="app-booting"
     >
-      <trn-spinner />
-      @if (startupStep(); as step) {
-        <span class="text-sm text-[var(--trinity-text-muted)]">{{ step }}</span>
+      <div
+        #startupStatus
+        class="flex flex-col items-center gap-4"
+        role="status"
+        aria-live="polite"
+        tabindex="-1"
+        data-testid="app-startup-status"
+      >
+        <trn-spinner />
+        @if (removingAccount()) {
+          <p class="text-base font-semibold">Removing account…</p>
+        } @else if (stalled()) {
+          <p class="text-base font-semibold">Still starting…</p>
+          <p class="max-w-md text-sm text-[var(--trinity-text-muted)]">
+            This is taking longer than usual. You can keep waiting or try again.
+          </p>
+        } @else if (startupStep(); as step) {
+          <span class="text-sm text-[var(--trinity-text-muted)]">{{
+            step
+          }}</span>
+        }
+      </div>
+      @if (stalled()) {
+        <div
+          class="flex flex-wrap justify-center gap-2"
+          data-testid="app-startup-stalled"
+        >
+          <button trnBtn type="button" (click)="retryStalled()">
+            Retry startup
+          </button>
+          @if (stalledAccountRemovable()) {
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              type="button"
+              (click)="removeStalledAccount()"
+            >
+              {{ secondaryLabel('reauthenticate') }}
+            </button>
+          }
+          <button
+            trnBtn
+            presentation="outline"
+            type="button"
+            (click)="status.show()"
+          >
+            System status
+          </button>
+        </div>
       }
     </div>
   } @else if (sessionNotice(); as notice) {

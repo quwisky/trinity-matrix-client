@@ -30,8 +30,10 @@ export class ApplicationRecoveryPresenter {
   private readonly toast = inject(TrnToastService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
 
+  /** `closeWhen` withdraws the account-removal confirm once the question stops applying. */
   confirmAndRecover(
     recovery: ApplicationStartupRecovery,
+    closeWhen?: Observable<unknown>,
   ): Observable<ApplicationRecoveryOutcome> {
     if (recovery === 'reauthenticate') {
       // No account ID is exposed here, so this is the device's total, and true on an unread count:
@@ -44,6 +46,7 @@ export class ApplicationRecoveryPresenter {
             confirmText: 'Remove account',
             cancelText: 'Cancel',
             variant: 'danger',
+            closeWhen,
           }),
         ),
         filter(Boolean),

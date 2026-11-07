@@ -82,6 +82,9 @@ export type ApplicationStartupStageOutcome =
 /** The diagnostic of a tab that cannot take the session lock: no Web Locks (an insecure context). */
 export const SESSION_LOCK_UNAVAILABLE_CODE = 'session-lock-unavailable';
 
+/** The diagnostic of an attempt the user ended from the "Still starting…" notice. */
+export const APPLICATION_STARTUP_STALLED_CODE = 'application-startup-stalled';
+
 /** The secure-connection copy, shared by the notice and System status. */
 export const SESSION_LOCK_UNAVAILABLE_COPY = {
   heading: 'Trinity needs a secure connection',

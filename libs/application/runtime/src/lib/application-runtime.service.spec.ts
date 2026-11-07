@@ -435,6 +435,64 @@ describe('ApplicationRuntimeService', () => {
     lifetime.unsubscribe();
   });
 
+  it('ends a stalled attempt and retries it through the one startup chain', async () => {
+    const stalled = new Subject<ApplicationStartupStageOutcome>();
+    vi.mocked(adapter.restoreWorkspace)
+      .mockReturnValueOnce(stalled)
+      .mockImplementation(() => of(ready()));
+    const outcomes: ApplicationStartOutcome[] = [];
+    const lifetime = runtime
+      .run()
+      .subscribe((outcome) => outcomes.push(outcome));
+    expect(runtime.state()).toMatchObject({
+      phase: 'starting',
+      stage: 'workspace-restoration',
+    });
+
+    await expect(
+      firstValueFrom(runtime.recover('retry-startup')),
+    ).resolves.toEqual({ kind: 'accepted' });
+
+    expect(stalled.observed).toBe(false);
+    expect(adapter.recover).toHaveBeenCalledExactlyOnceWith('retry-startup');
+    expect(outcomes).toMatchObject([
+      {
+        kind: 'blocked',
+        attempt: 1,
+        failure: { diagnostic: { code: 'application-startup-stalled' } },
+      },
+      { kind: 'ready', attempt: 2 },
+    ]);
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(adapter.restoreWorkspace).toHaveBeenCalledTimes(2);
+    lifetime.unsubscribe();
+  });
+
+  it('removes the account of a stalled attempt, and refuses any other recovery', async () => {
+    vi.mocked(adapter.awaitReadiness).mockReturnValueOnce(NEVER);
+    const lifetime = runtime.run().subscribe();
+
+    await expect(
+      firstValueFrom(runtime.recover('reset-installation')),
+    ).resolves.toEqual({ kind: 'unavailable', reason: 'not-blocked' });
+    expect(runtime.state()).toMatchObject({
+      phase: 'starting',
+      stage: 'readiness',
+    });
+
+    await expect(
+      firstValueFrom(runtime.recover('reauthenticate')),
+    ).resolves.toEqual({ kind: 'accepted' });
+    expect(adapter.recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
+    // The removed account's session and workspace never carry over: restoration runs again.
+    expect(adapter.restoreAccounts).toHaveBeenCalledTimes(2);
+    expect(adapter.runSession).toHaveBeenCalledTimes(2);
+    expect(adapter.restoreWorkspace).toHaveBeenCalledTimes(2);
+    expect(adapter.negotiateHost).toHaveBeenCalledOnce();
+    expect(runtime.state()).toMatchObject({ phase: 'ready', attempt: 2 });
+    lifetime.unsubscribe();
+  });
+
   it('blocks a required failure with typed recovery and retries in order', async () => {
     vi.mocked(adapter.restoreAccounts)
       .mockReturnValueOnce(
