@@ -382,7 +382,16 @@ async function waitForProviderPage(): Promise<void> {
   await browser.waitUntil(
     async () => {
       if (await button.isExisting()) return true;
-      if (++misses % 5 === 0) await shell('input', ['keyevent', 'KEYCODE_F5']);
+      // Only Chrome binds F5 to reload; never send it to the app or launcher.
+      if (
+        ++misses % 5 === 0 &&
+        (await browser.getCurrentPackage()) === 'com.android.chrome'
+      ) {
+        console.log(
+          `[mas] Continue missing after ${misses * 2} s; reloading the tab`,
+        );
+        await shell('input', ['keyevent', 'KEYCODE_F5']);
+      }
       return false;
     },
     {
