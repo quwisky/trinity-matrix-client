@@ -82,6 +82,8 @@ export interface ConversationTimelineController {
   /** Page the room back in after its live timeline was rewound; see {@link TimelineService.refill}. */
   refill(depth: number): Observable<void>;
   resources(): ConversationResources;
+  /** Whether the account has another client now, as after signing out and in again. */
+  clientReplaced(): boolean;
 }
 
 export interface ConversationTimelineFactory {
@@ -136,6 +138,7 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       pins,
       search,
       refill: (depth) => timeline.refill(depth),
+      clientReplaced: () => this.matrix.clientFor(key.accountId) !== client,
       setVisible: (visible) => {
         timeline.setVisible(visible);
         // After the timeline: loadOlder() no-ops while hidden, so readiness must resume second.

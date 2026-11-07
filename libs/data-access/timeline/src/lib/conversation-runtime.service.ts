@@ -197,6 +197,11 @@ export class ConversationRuntime {
   });
 
   focus(key: ConversationKey): ConversationHandle {
+    const outlived = this.entry(key);
+    if (outlived?.controller.clientReplaced()) {
+      this.retire(outlived);
+      this.composeSnapshots.delete(conversationDraftKey(key));
+    }
     const existing = this.entry(key);
     if (existing?.handle === this.focusedHandle()) {
       return existing.handle;

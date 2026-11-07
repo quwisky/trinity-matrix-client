@@ -184,6 +184,7 @@ function setup(
         liveSettled: signal(false),
         refill: vi.fn(() => of(undefined)),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
+        clientReplaced: vi.fn(() => false),
         visible,
         released,
         history,
@@ -338,6 +339,24 @@ describe('ConversationRuntime', () => {
     expect(retryLoad).toHaveBeenCalledOnce();
   });
 
+  it('opens a warm room afresh once its account signed out and in again', () => {
+    const { runtime, factory, controller } = setup();
+    const x = { accountId: ALICE, roomId: '!x:example.org' };
+    const stale = runtime.focus(x);
+    runtime.focus({ accountId: ALICE, roomId: '!y:example.org' });
+    vi.mocked(controller('!x:example.org').clientReplaced).mockReturnValue(
+      true,
+    );
+
+    const fresh = runtime.focus(x);
+
+    expect(fresh).not.toBe(stale);
+    expect(stale.state()).toBe('retired');
+    expect(controller('!x:example.org').released()).toBe(true);
+    expect(controller('!x:example.org', 1).visible()).toBe(true);
+    expect(factory.create).toHaveBeenCalledTimes(3);
+  });
+
   it('is ready when nothing is focused', () => {
     const { runtime } = setup();
     expect(runtime.timeline.loadState()).toEqual({ kind: 'ready' });
@@ -411,6 +430,17 @@ describe('ConversationRuntime', () => {
       const loaded = () => room.getLiveTimeline().getEvents().length;
       return { client, room, controller, loaded };
     }
+
+    it('notices when its account has another client', async () => {
+      let live: MatrixClient | null = null;
+      const { controller } = await realFactory(() => live);
+
+      expect(controller.clientReplaced()).toBe(false);
+
+      live = createClient({ baseUrl: 'https://hs', userId: ALICE });
+
+      expect(controller.clientReplaced()).toBe(true);
+    });
 
     it('trims the room back to its latest events once the handle is released', async () => {
       const { controller, loaded } = await realFactory(() => null);
