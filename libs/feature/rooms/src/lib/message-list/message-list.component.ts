@@ -464,12 +464,13 @@ export class MessageListComponent extends MessageListBase {
         }
       }
       if (
-        !newestChanged &&
         firstBefore !== null &&
         firstBefore !== ids[0] &&
         !ids.includes(firstBefore)
       ) {
-        this.keepPlaceAfterTrim(el, ids);
+        // With a new message too, the pin to the bottom below keeps the reader's place.
+        if (newestChanged) this.forgetMeasured(ids);
+        else this.keepPlaceAfterTrim(el, ids);
       }
       // Untracked so this effect keeps firing only on messages().
       const stickToBottom =
@@ -765,10 +766,7 @@ export class MessageListComponent extends MessageListBase {
    */
   private keepPlaceAfterTrim(el: HTMLElement, ids: readonly string[]): void {
     const fromEnd = el.scrollHeight - el.scrollTop;
-    const kept = new Set(ids);
-    for (const id of [...this.measured.keys()]) {
-      if (!kept.has(id)) this.measured.delete(id);
-    }
+    this.forgetMeasured(ids);
     untracked(() =>
       afterNextRender(
         () => {
@@ -778,6 +776,13 @@ export class MessageListComponent extends MessageListBase {
         { injector: this.injector },
       ),
     );
+  }
+
+  private forgetMeasured(ids: readonly string[]): void {
+    const kept = new Set(ids);
+    for (const id of [...this.measured.keys()]) {
+      if (!kept.has(id)) this.measured.delete(id);
+    }
   }
 
   /** Auto-load older history once the user scrolls near the top. */

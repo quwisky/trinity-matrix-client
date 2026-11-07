@@ -55,7 +55,7 @@ function setup() {
   const errors = { handleError: vi.fn() };
   const trimHeld = vi.fn();
   const refillHeld = vi.fn((): Observable<void> => EMPTY);
-  const windowHidden = signal(false);
+  const trimsFocused = signal<'hidden' | 'settled' | null>(null);
   const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
     { key: { accountId: ALICE, roomId: '!open:hs' } },
   );
@@ -75,7 +75,7 @@ function setup() {
             accountId === ALICE && held.has(roomId),
           trimHeld,
           refillHeld,
-          windowHidden: windowHidden.asReadonly(),
+          trimsFocused: trimsFocused.asReadonly(),
           focused: focused.asReadonly(),
         },
       },
@@ -109,7 +109,7 @@ function setup() {
     errors,
     trimHeld,
     refillHeld,
-    windowHidden,
+    trimsFocused,
     sync,
     loaded,
   };
@@ -155,18 +155,23 @@ describe('LiveTimelineTrimmer', () => {
     running.unsubscribe();
   });
 
-  it('trims the focused room as soon as the window is hidden, without waiting for a sync', async () => {
-    const { trimmer, accountIds, trimHeld, windowHidden, sync } = setup();
+  it('trims the focused room as soon as the window is hidden or its view settles, without waiting for a sync', async () => {
+    const { trimmer, accountIds, trimHeld, trimsFocused, sync } = setup();
     const running = trimmer.run().subscribe();
     accountIds.set([ALICE]);
     TestBed.tick();
     for (let i = 0; i < 21; i++) await sync();
     expect(trimHeld).toHaveBeenCalledOnce();
 
-    windowHidden.set(true);
+    trimsFocused.set('settled');
+    TestBed.tick();
+    expect(trimHeld).toHaveBeenCalledTimes(2);
+
+    // Hidden after settling: a hidden window trims further, so it is tried again.
+    trimsFocused.set('hidden');
     TestBed.tick();
 
-    expect(trimHeld).toHaveBeenCalledTimes(2);
+    expect(trimHeld).toHaveBeenCalledTimes(3);
     expect(trimHeld).toHaveBeenLastCalledWith(ALICE, '!open:hs');
     running.unsubscribe();
   });
@@ -177,7 +182,7 @@ describe('LiveTimelineTrimmer', () => {
       accountIds,
       errors,
       trimHeld,
-      windowHidden,
+      trimsFocused,
       held,
       sync,
       loaded,
@@ -192,11 +197,11 @@ describe('LiveTimelineTrimmer', () => {
 
     for (let i = 0; i < 25; i++) await sync();
     // A later hidden period does not try it again.
-    windowHidden.set(true);
+    trimsFocused.set('hidden');
     TestBed.tick();
-    windowHidden.set(false);
+    trimsFocused.set(null);
     TestBed.tick();
-    windowHidden.set(true);
+    trimsFocused.set('hidden');
     TestBed.tick();
     expect(trimHeld).toHaveBeenCalledOnce();
     expect(errors.handleError).toHaveBeenCalledExactlyOnceWith(failure);
