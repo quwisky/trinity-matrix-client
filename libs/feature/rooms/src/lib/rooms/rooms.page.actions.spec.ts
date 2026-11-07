@@ -1142,6 +1142,8 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember(bob);
 
+    await vi.dynamicImportSettled();
+
     expect(surfaceOpen).toHaveBeenCalledWith(
       MemberInfoComponent,
       memberInfoOptions('!r:hs', false, 'Design team'),
@@ -1157,6 +1159,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
     // `direct` says whether the room is a DM — member info must not name an owner in a 1:1
     // chat, where both people sit at power level 100. No `kind`: the surface service applies
     // the sheet-or-dialog rule rather than this caller picking one.
@@ -1180,6 +1184,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
     // While it is open the roster is still the slot's surface, behind the dialog or sheet.
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
 
@@ -1203,6 +1209,7 @@ describe('RoomsPage room / DM / invite actions', () => {
     await settleWorkspace();
     const ref = memberInfoRef();
     shell.members.onSelectMember(bob);
+    await vi.dynamicImportSettled();
     await settleWorkspace();
     expect(ref.close).not.toHaveBeenCalled();
 
@@ -1228,6 +1235,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
     ref.close('@bob:hs');
     await settleWorkspace();
 
@@ -1246,6 +1255,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const ref = memberInfoRef();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
     ref.close('@bob:hs');
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
     shell.routing.onSelectRoomSelection(
@@ -1278,13 +1289,15 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     shell.members.onSelectMember(bob);
 
+    await vi.dynamicImportSettled();
+
     expect(surfaceOpen).toHaveBeenCalledWith(
       MemberInfoComponent,
       memberInfoOptions('!dm:hs', true),
     );
   });
 
-  it('opens no member info without an active room', () => {
+  it('opens no member info without an active room', async () => {
     const shell = build();
     setRouteRoom(null);
     // The empty slot must be left exactly as it is. Reference identity, so any write to it
@@ -1292,6 +1305,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     const before = shell.surfaces.renderedSurface();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
 
     expect(surfaceOpen).not.toHaveBeenCalled();
     expect(shell.surfaces.renderedSurface()).toBe(before);
@@ -1313,6 +1328,8 @@ describe('RoomsPage room / DM / invite actions', () => {
 
       shell.members.onSelectMember(bob);
 
+      await vi.dynamicImportSettled();
+
       expect(shell.surfaces.membersVisible()).toBe(true);
       expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });
       expect(surfaceOpen).toHaveBeenCalledWith(
@@ -1333,6 +1350,8 @@ describe('RoomsPage room / DM / invite actions', () => {
     memberInfoRef();
 
     shell.members.onSelectMember(bob);
+
+    await vi.dynamicImportSettled();
 
     expect(shell.surfaces.membersVisible()).toBe(true);
     expect(shell.surfaces.renderedSurface()).toEqual({ kind: 'members' });

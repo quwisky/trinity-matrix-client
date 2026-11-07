@@ -1,4 +1,4 @@
-import { DestroyRef, Injectable, inject } from '@angular/core';
+import { DestroyRef, Injectable, inject, type Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
 import {
@@ -22,15 +22,16 @@ import { ReportService } from '../report/report.service';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { InviteHistoryNoteService } from '../shared/invite-history-note';
 import type { PickedUser } from '../user-picker/user-picker.component';
-import {
+import type {
+  DirectoryJoin,
   RoomDirectoryComponent,
-  type DirectoryJoin,
 } from '../room-directory/room-directory.component';
-import {
+import type {
   RoomSettingsComponent,
-  type RoomSettingsSection,
+  RoomSettingsSection,
 } from '../room-settings/room-settings.component';
 import type { RoomSettingsResult } from '../room-settings/room-settings.models';
+import { LazyPanelOpener } from './lazy-panel-opener';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -77,6 +78,9 @@ export class RoomActionsService {
   private readonly dialog = inject(TrnSurfaceService);
   private readonly reports = inject(ReportService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly panels = new LazyPanelOpener(this.destroyRef, (message) =>
+    this.status.showError(message),
+  );
 
   /** Sidebar room ⋮ menu "Leave room": confirm, then leave the room entirely — on the
    * account that owns the row. Leaving is irreversible for a private room, so it must
@@ -215,6 +219,19 @@ export class RoomActionsService {
   onExploreRooms(): void {
     const accountId = this.store.activeAccountId();
     if (!accountId) return;
+    void this.panels.open(
+      () => import('../room-directory/room-directory.component'),
+      'Could not open the room directory. Reload to try again.',
+      () => this.store.activeAccountId() === accountId,
+      ({ RoomDirectoryComponent }) =>
+        this.showRoomDirectory(RoomDirectoryComponent, accountId),
+    );
+  }
+
+  private showRoomDirectory(
+    RoomDirectoryComponent: Type<RoomDirectoryComponent>,
+    accountId: string,
+  ): void {
     this.dialog
       .openAndWait$<DirectoryJoin | null>(RoomDirectoryComponent, {
         autoFocus: '[data-autofocus]',
@@ -390,27 +407,36 @@ export class RoomActionsService {
       id,
       name: this.vm.railSpaces().find((s) => s.id === id)?.name ?? id,
     }));
-    this.dialog
-      .openAndWait$<RoomSettingsResult, RoomSettingsComponent>(
-        RoomSettingsComponent,
-        {
-          ariaLabel: 'Room settings',
-          autoFocus: '[data-autofocus]',
-          dismissGuard: (component) =>
-            component?.requestExternalDismiss() ?? true,
-          inputs: {
-            accountId,
-            roomId: room.id,
-            roomDisplayName: room.name,
-            direct: room.directUserId !== undefined,
-            parentSpaces,
-            ...(initialSection && { initialSection }),
-          },
-        },
-      )
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((result) => {
-        if (result) this.onGoToUpgradedRoom(result.roomId, result.accountId);
-      });
+    void this.panels.open(
+      () => import('../room-settings/room-settings.component'),
+      'Could not open room settings. Reload to try again.',
+      () =>
+        this.store.activeAccountId() === accountId &&
+        this.vm.activeRoom()?.id === room.id,
+      ({ RoomSettingsComponent }) =>
+        this.dialog
+          .openAndWait$<RoomSettingsResult, RoomSettingsComponent>(
+            RoomSettingsComponent,
+            {
+              ariaLabel: 'Room settings',
+              autoFocus: '[data-autofocus]',
+              dismissGuard: (component) =>
+                component?.requestExternalDismiss() ?? true,
+              inputs: {
+                accountId,
+                roomId: room.id,
+                roomDisplayName: room.name,
+                direct: room.directUserId !== undefined,
+                parentSpaces,
+                ...(initialSection && { initialSection }),
+              },
+            },
+          )
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe((result) => {
+            if (result)
+              this.onGoToUpgradedRoom(result.roomId, result.accountId);
+          }),
+    );
   }
 }

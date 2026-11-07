@@ -863,7 +863,7 @@ describe('RoomsPage rail unread chat focus', () => {
 });
 
 describe('RoomsPage rendered inbox', () => {
-  it('swaps the sidebar list for the inbox, keeping the rail and user panel', () => {
+  it('swaps the sidebar list for the inbox, keeping the rail and user panel', async () => {
     const { fixture, inboxView } = buildPage();
     fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
@@ -872,6 +872,9 @@ describe('RoomsPage rendered inbox', () => {
 
     inboxView.set(true);
     fixture.detectChanges();
+    await vi.dynamicImportSettled(); // the inbox loads on demand
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     expect(root.querySelector('trn-channel-sidebar')).toBeNull();
     expect(root.querySelector('trn-notification-inbox')).not.toBeNull();
@@ -879,15 +882,30 @@ describe('RoomsPage rendered inbox', () => {
     expect(root.querySelector('trn-sidebar-user-panel')).not.toBeNull();
   });
 
+  it('holds the column with a placeholder until the inbox has loaded', () => {
+    const { fixture, inboxView } = buildPage();
+    fixture.detectChanges();
+    inboxView.set(true);
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+
+    const placeholder = root.querySelector('[data-testid="inbox-placeholder"]');
+    expect(placeholder?.classList.contains('shell-side__rooms')).toBe(true);
+    expect(root.querySelector('trn-channel-sidebar')).toBeNull();
+  });
+
   function inboxFrom(fixture: ComponentFixture<RoomsPage>) {
     return fixture.debugElement.query(By.directive(NotificationInboxComponent))
       .componentInstance as NotificationInboxComponent;
   }
 
-  it('opens the row the inbox emits, at its account and message', () => {
+  it('opens the row the inbox emits, at its account and message', async () => {
     const openInboxRow = vi.fn();
     const { fixture, inboxView } = buildPage({ routing: { openInboxRow } });
     inboxView.set(true);
+    fixture.detectChanges();
+    await vi.dynamicImportSettled(); // the inbox loads on demand
+    await fixture.whenStable();
     fixture.detectChanges();
     const row = { eventId: '$e', roomId: '!r:hs', accountId: '@me:hs' };
 
@@ -896,10 +914,13 @@ describe('RoomsPage rendered inbox', () => {
     expect(openInboxRow).toHaveBeenCalledExactlyOnceWith(row);
   });
 
-  it('tells the inbox the open room, and hands its switcher to the shell', () => {
+  it('tells the inbox the open room, and hands its switcher to the shell', async () => {
     const openSwitcher = vi.fn();
     const { fixture, inboxView } = buildPage({ shortcuts: { openSwitcher } });
     inboxView.set(true);
+    fixture.detectChanges();
+    await vi.dynamicImportSettled(); // the inbox loads on demand
+    await fixture.whenStable();
     fixture.detectChanges();
     const inbox = inboxFrom(fixture);
 
@@ -909,9 +930,12 @@ describe('RoomsPage rendered inbox', () => {
     expect(openSwitcher).toHaveBeenCalledTimes(1);
   });
 
-  it('tells the inbox only while a compact Conversation hides its pane', () => {
+  it('tells the inbox only while a compact Conversation hides its pane', async () => {
     const { fixture, inboxView, placement } = buildPage();
     inboxView.set(true);
+    fixture.detectChanges();
+    await vi.dynamicImportSettled(); // the inbox loads on demand
+    await fixture.whenStable();
     fixture.detectChanges();
     const inbox = inboxFrom(fixture);
     expect(inbox.paneHidden()).toBe(false);

@@ -16,8 +16,8 @@ import {
 } from '@trinity/components/overlay';
 import { filter, map, Observable, of, switchMap, throwError } from 'rxjs';
 import { AddToSpaceComponent } from '../add-to-space/add-to-space.component';
-import { SpaceSettingsComponent } from '../space-settings/space-settings.component';
 import { runWithBusy } from '@trinity/util/ui';
+import { LazyPanelOpener } from './lazy-panel-opener';
 import { RoomShellStore } from './room-shell-store';
 import { RoomShellViewModel } from './room-shell-view-model';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -49,6 +49,9 @@ export class SpaceActionsService {
   private readonly alert = inject(TrnAlertService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly panels = new LazyPanelOpener(this.destroyRef, (message) =>
+    this.status.showError(message),
+  );
 
   /** Rail "+": prompt for a name, create the space, then select it on success. */
   onCreateSpace(): void {
@@ -329,21 +332,29 @@ export class SpaceActionsService {
     spaceId: string,
     initialSection?: 'general' | 'contents' | 'members',
   ): void {
-    this.dialog
-      .openAndWait$(SpaceSettingsComponent, {
-        ariaLabel: 'Space settings',
-        autoFocus: '[data-autofocus]',
-        dismissGuard: (component) =>
-          component?.requestExternalDismiss() ?? true,
-        inputs: {
-          accountId,
-          spaceId,
-          spaceDisplayName: this.vm.activeSpaceName(),
-          initialSection,
-        },
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    void this.panels.open(
+      () => import('../space-settings/space-settings.component'),
+      'Could not open space settings. Reload to try again.',
+      () =>
+        this.store.activeAccountId() === accountId &&
+        this.store.activeSpaceId() === spaceId,
+      ({ SpaceSettingsComponent }) =>
+        this.dialog
+          .openAndWait$(SpaceSettingsComponent, {
+            ariaLabel: 'Space settings',
+            autoFocus: '[data-autofocus]',
+            dismissGuard: (component) =>
+              component?.requestExternalDismiss() ?? true,
+            inputs: {
+              accountId,
+              spaceId,
+              spaceDisplayName: this.vm.activeSpaceName(),
+              initialSection,
+            },
+          })
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(),
+    );
   }
 
   /** Space overflow "Add existing rooms": link rooms the user is already in. */

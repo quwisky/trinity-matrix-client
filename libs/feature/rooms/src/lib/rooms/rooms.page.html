@@ -49,14 +49,26 @@
         (openUnreadChat)="openRailUnreadChat($event)"
       />
       @if (store.inboxView()) {
-        <trn-notification-inbox
-          class="shell-side__rooms"
-          [showSwitcher]="!titleBar.active()"
-          [activeRoomId]="store.activeRoomId()"
-          [paneHidden]="store.placement() === 'conversation'"
-          (openRow)="routing.openInboxRow($event)"
-          (openSwitcher)="shortcutActions.openSwitcher()"
-        />
+        @defer (on immediate) {
+          <trn-notification-inbox
+            class="shell-side__rooms"
+            [showSwitcher]="!titleBar.active()"
+            [activeRoomId]="store.activeRoomId()"
+            [paneHidden]="store.placement() === 'conversation'"
+            (openRow)="routing.openInboxRow($event)"
+            (openSwitcher)="shortcutActions.openSwitcher()"
+          />
+        } @placeholder {
+          <div
+            class="shell-side__rooms"
+            data-testid="inbox-placeholder"
+            aria-hidden="true"
+          ></div>
+        } @error {
+          <p class="shell-side__rooms" role="alert" data-testid="inbox-error">
+            Could not load the inbox. Reload to try again.
+          </p>
+        }
       } @else {
         <trn-channel-sidebar
           class="shell-side__rooms"
