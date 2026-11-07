@@ -8,17 +8,13 @@ import {
   stagedFiles,
   stubObjectUrls,
 } from './message-composer.spec-harness';
-import { computed, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  ConversationRuntime,
-  conversationDraftKey,
-} from '@trinity/data-access/timeline';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { DraftStoreService } from '@trinity/platform-native';
-import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 import { type ComposerSubmit } from './message-composer.component';
 import { type BatchItem, type BatchOutcome } from '../shared/send-media-batch';
 
@@ -204,25 +200,19 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     const A = { accountId: '@a:hs', roomId: '!r:hs' };
 
     /** Account A sends one file that will fail, then account B opens the same room. */
-    async function sendThenSwitch(held: Map<string, ConversationComposeStub>) {
-      const focused = signal<ConversationComposeStub | null>(
-        held.get('@a:hs') ?? null,
-      );
+    async function sendThenSwitch() {
       const accountIds = signal<readonly string[]>(['@a:hs', '@b:hs']);
+      const softLoggedOut = signal<readonly string[]>([]);
+      const kept: [unknown, string][] = [];
       const runtime = {
-        focused: computed(() => {
-          const compose = focused();
-          return compose ? { compose } : null;
-        }),
-        compose: { draft: computed(() => focused()?.draft() ?? '') },
-        heldCompose: (key: { accountId: string }) =>
-          held.get(key.accountId) ?? null,
+        compose: { draft: signal('') },
+        keepDraft: (key: unknown, text: string) => kept.push([key, text]),
       };
       const { fixture } = await renderComposer(
         { ...A, conversationDraft: true },
         [
           { provide: ConversationRuntime, useValue: runtime },
-          MockProvider(MatrixClientService, { accountIds }),
+          MockProvider(MatrixClientService, { accountIds, softLoggedOut }),
         ],
       );
       const cmp = fixture.componentInstance;
@@ -236,62 +226,39 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
       cmp.text.set('for the room');
       cmp.submit();
 
-      focused.set(held.get('@b:hs') ?? null);
       fixture.componentRef.setInput('accountId', '@b:hs');
       fixture.detectChanges();
-      return { settle: () => finish[0]?.(), accountIds };
+      return { settle: () => finish[0]?.(), accountIds, softLoggedOut, kept };
     }
 
-    const stored = (key: string) => TestBed.inject(DraftStoreService).get(key);
-
     it('keeps it as the draft of its own account’s conversation', async () => {
-      const composeA = new ConversationComposeStub();
-      const composeB = new ConversationComposeStub();
-      const held = new Map([
-        ['@a:hs', composeA],
-        ['@b:hs', composeB],
-      ]);
-      const { settle } = await sendThenSwitch(held);
+      const { settle, kept } = await sendThenSwitch();
+
       settle();
 
-      expect(composeA.draft()).toBe('for the room');
-      expect(composeB.draft()).toBe('');
+      expect(kept).toEqual([[A, 'for the room']]);
       // Not under the bare room id, which any account opening the room would claim.
-      expect(stored('!r:hs')).toBe('');
-    });
-
-    it('stores it for the next handle when no handle holds the conversation', async () => {
-      const { settle } = await sendThenSwitch(new Map());
-
-      settle();
-
-      expect(stored(conversationDraftKey(A))).toBe('for the room');
-    });
-
-    it('gives it to the handle holding the conversation when the upload settles', async () => {
-      const retired = new ConversationComposeStub();
-      const held = new Map([['@a:hs', retired]]);
-      const { settle } = await sendThenSwitch(held);
-      const replacement = new ConversationComposeStub();
-      held.set('@a:hs', replacement);
-
-      settle();
-
-      expect(replacement.draft()).toBe('for the room');
-      expect(retired.draft()).toBe('');
+      expect(TestBed.inject(DraftStoreService).get('!r:hs')).toBe('');
     });
 
     it('writes nothing back for an account signed out before the upload settled', async () => {
-      const composeA = new ConversationComposeStub();
-      const { settle, accountIds } = await sendThenSwitch(
-        new Map([['@a:hs', composeA]]),
-      );
+      const { settle, accountIds, kept } = await sendThenSwitch();
       accountIds.set(['@b:hs']); // sign-out cleared every draft
 
       settle();
 
-      expect(composeA.draft()).toBe('');
-      expect(stored(conversationDraftKey(A))).toBe('');
+      expect(kept).toEqual([]);
+    });
+
+    it('keeps it for an account whose session expired, which keeps its drafts', async () => {
+      const { settle, accountIds, softLoggedOut, kept } =
+        await sendThenSwitch();
+      accountIds.set(['@b:hs']);
+      softLoggedOut.set(['@a:hs']);
+
+      settle();
+
+      expect(kept).toEqual([[A, 'for the room']]);
     });
   });
 

@@ -51,10 +51,7 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import { ComposerTextField } from './composer-text-field';
-import {
-  type CaptionDraft,
-  ComposerBatchSender,
-} from './composer-batch-sender';
+import { type KeepCaption, ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
 import { ComposerDrafts } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
@@ -75,7 +72,6 @@ import {
 import {
   ComposerExpressionTabPreference,
   ConversationRuntime,
-  conversationDraftKey,
 } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
@@ -421,32 +417,25 @@ export class MessageComposerComponent {
    * it settles, by Account and Room: the handle open at Send may since have been retired and
    * replaced, and the Account signed out, its drafts cleared.
    */
-  private captionDraft(): CaptionDraft | null {
+  private captionDraft(): KeepCaption | null {
     const roomId = this.roomId();
     const accountId = this.accountId();
     if (roomId == null) return null;
+    // A soft-logged-out Account keeps its drafts for the sign-in that restores it.
     const signedIn = () =>
-      accountId == null || this.matrix.accountIds().includes(accountId);
+      accountId == null ||
+      this.matrix.accountIds().includes(accountId) ||
+      this.matrix.softLoggedOut().includes(accountId);
     if (!this.conversationDraft()) {
-      return {
-        get: () => this.drafts.get(roomId),
-        set: (text) => {
-          if (signedIn()) this.drafts.set(roomId, text);
-        },
+      return (caption) => {
+        if (signedIn() && !this.drafts.get(roomId)) {
+          this.drafts.set(roomId, caption);
+        }
       };
     }
     if (accountId == null) return null;
-    const key = { accountId, roomId };
-    const held = () => this.runtime?.heldCompose(key) ?? null;
-    return {
-      get: () => held()?.draft() ?? this.drafts.get(conversationDraftKey(key)),
-      set: (text) => {
-        if (!signedIn()) return;
-        const compose = held();
-        if (!compose) this.drafts.set(conversationDraftKey(key), text);
-        // An edit's draft is that message's new body, not a place for a caption.
-        else if (compose.intent().kind !== 'edit') compose.setDraft(text);
-      },
+    return (caption) => {
+      if (signedIn()) this.runtime?.keepDraft({ accountId, roomId }, caption);
     };
   }
   protected openFormatSheet(): void {

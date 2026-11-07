@@ -960,6 +960,50 @@ describe('ConversationRuntime', () => {
     expect(alice.compose.draft()).toBe('alice draft');
   });
 
+  describe('keeping a draft for a conversation that is not on screen', () => {
+    const KEY = { accountId: ALICE, roomId: '!room:example.org' };
+
+    it('gives it to the handle that holds the conversation now', () => {
+      const { runtime } = setup(2, undefined, [message('$edit')]);
+      const held = runtime.focus(KEY);
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('keeps it in the message draft while an edit is in progress, shown once the edit ends', () => {
+      const { runtime } = setup(2, undefined, [message('$edit')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginEdit('$edit', 'original message');
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('original message');
+      held.compose.cancelIntent();
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('leaves a draft that already holds text alone', () => {
+      const { runtime } = setup();
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('typed since');
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('typed since');
+    });
+
+    it('stores it for the next handle when none holds the conversation', () => {
+      const { runtime } = setup();
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(runtime.focus(KEY).compose.draft()).toBe('caption');
+    });
+  });
+
   it('starts reply and edit intent only for eligible presented messages', () => {
     const editable = message('$editable');
     const unavailable = message('$failed', { status: 'failed' });

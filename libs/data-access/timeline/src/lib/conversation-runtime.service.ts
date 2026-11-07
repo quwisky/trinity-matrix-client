@@ -242,9 +242,18 @@ export class ConversationRuntime {
     }
   }
 
-  /** The compose state of the focused or retained handle for the room, if one holds it. */
-  heldCompose(key: ConversationKey): ConversationCompose | null {
-    return this.entry(key)?.handle.compose ?? null;
+  /**
+   * Keep `text` as the Account-and-Room message draft unless that draft already holds text: in
+   * the handle holding the room, if one does, else in the stored draft its next handle reads.
+   */
+  keepDraft(key: ConversationKey, text: string): void {
+    const entry = this.entry(key);
+    if (entry) {
+      entry.composeController.keepMessageDraft(text);
+      return;
+    }
+    const draftKey = conversationDraftKey(key);
+    if (!this.drafts.get(draftKey)) this.drafts.set(draftKey, text);
   }
 
   /** Whether the Account has a focused or retained handle for the room. */

@@ -11,11 +11,8 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 
-/** One conversation's compose draft. */
-export interface CaptionDraft {
-  get(): string;
-  set(text: string): void;
-}
+/** Keeps a caption as one conversation's draft, unless that draft already holds text. */
+export type KeepCaption = (caption: string) => void;
 
 /** What the sender needs from the composer around it. */
 export interface ComposerBatchPorts {
@@ -40,7 +37,7 @@ export interface ComposerBatchPorts {
   /** Mark exactly these staged rows as failed. */
   readonly markFailed: (ids: readonly string[]) => void;
   /** The open conversation's draft, where a caption goes once that conversation is left. */
-  readonly captionDraft: () => CaptionDraft | null;
+  readonly captionDraft: () => KeepCaption | null;
   /** Re-measure the input after the DOM catches up with a text write. */
   readonly regrow: () => void;
 }
@@ -187,7 +184,7 @@ export class ComposerBatchSender {
     caption: string,
     mentions: readonly Mention[],
     generation: number,
-    atDispatch: { conversation: string; draft: CaptionDraft | null },
+    atDispatch: { conversation: string; draft: KeepCaption | null },
   ): void {
     // The ONLY release: inferring it from `uploadProgress` returning to null cannot work, as a
     // send that completes synchronously is back to null before a signal input can observe it.
@@ -215,9 +212,7 @@ export class ComposerBatchSender {
       // room-change effect prevents. Park them as the draft of their own conversation instead,
       // unless a single file already carried them in its media event.
       const carried = delivered > 0 && outcomes.length === 1;
-      if (!carried && atDispatch.draft && !atDispatch.draft.get()) {
-        atDispatch.draft.set(caption);
-      }
+      if (!carried) atDispatch.draft?.(caption);
       return;
     }
     if (delivered && outcomes.length > 1) {

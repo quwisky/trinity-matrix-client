@@ -129,6 +129,17 @@ export class ConversationComposeController {
     this.setTarget('edit', eventId);
   }
 
+  /**
+   * Put `text` in the message draft unless it already holds text, even while an edit is in
+   * progress: the edit's end shows it.
+   */
+  keepMessageDraft(text: string): void {
+    if (this.messageDraftState()) return;
+    this.revision += 1;
+    this.messageDraftState.set(text);
+    this.ports.persistDraft(text);
+  }
+
   private setDraft(draft: string): void {
     if (this.compose.draft() === draft) return;
     this.revision += 1;
