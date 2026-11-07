@@ -8,6 +8,7 @@ import {
   type HierarchyRoom,
   type MatrixClient,
   type MatrixEvent,
+  type Room,
   type RoomState,
 } from 'matrix-js-sdk';
 import {
@@ -15,8 +16,12 @@ import {
   asyncScheduler,
   catchError,
   defer,
+  filter,
   map,
+  merge,
   of,
+  scan,
+  share,
   switchMap,
   throttleTime,
   throwError,
@@ -213,38 +218,69 @@ export class SpaceContentsService {
   ): Observable<SpaceContentsSnapshot> {
     const client = this.matrix.clientFor(target.accountId);
     if (!client) return of(this.unavailableSnapshot(target));
-    const invalidations = new Observable<void>((subscriber) => {
-      const publish = (): void => subscriber.next();
+    // true: the Space or one of its linked children changed, so its hierarchy is read
+    // again. Any other Room only changes the local candidates.
+    const invalidations = new Observable<boolean>((subscriber) => {
       const onState = (event: MatrixEvent, state?: RoomState): void => {
         if (
           event.getRoomId() === target.spaceId ||
           state?.roomId === target.spaceId
         ) {
-          publish();
+          subscriber.next(true);
         }
       };
+      const onRoom = (room: Room): void =>
+        subscriber.next(
+          room.roomId === target.spaceId ||
+            this.children
+              .childLinksFor(target.accountId, target.spaceId)
+              .some(({ childId }) => childId === room.roomId),
+        );
       client.on(RoomStateEvent.Events, onState);
-      client.on(ClientEvent.Room, publish);
-      client.on(RoomEvent.Name, publish);
-      client.on(RoomEvent.MyMembership, publish);
-      publish();
+      client.on(ClientEvent.Room, onRoom);
+      client.on(RoomEvent.Name, onRoom);
+      client.on(RoomEvent.MyMembership, onRoom);
+      subscriber.next(true);
       return () => {
         client.off(RoomStateEvent.Events, onState);
-        client.off(ClientEvent.Room, publish);
-        client.off(RoomEvent.Name, publish);
-        client.off(RoomEvent.MyMembership, publish);
+        client.off(ClientEvent.Room, onRoom);
+        client.off(RoomEvent.Name, onRoom);
+        client.off(RoomEvent.MyMembership, onRoom);
       };
-    });
+    }).pipe(share());
     // Synapse allows each user a burst of 10 hierarchy reads at 5/s, and one sync batch
     // can announce many Rooms. Leading + trailing keeps the first read immediate and the
     // last event reflected while holding the rate under that budget.
-    return invalidations.pipe(
+    const hierarchy = invalidations.pipe(
+      filter(Boolean),
       throttleTime(HIERARCHY_REFRESH_MS, asyncScheduler, {
         leading: true,
         trailing: true,
       }),
       switchMap(() => this.load(target, client)),
     );
+    const local = invalidations.pipe(
+      filter((refetch) => !refetch),
+      map(() => null),
+    );
+    return merge(hierarchy, local).pipe(
+      scan<SpaceContentsSnapshot | null, SpaceContentsSnapshot | null>(
+        (last, next) => next ?? (last && this.refreshLocal(last, client)),
+        null,
+      ),
+      filter((snapshot) => snapshot !== null),
+    );
+  }
+
+  /** Rebuild the local parts of a snapshot, keeping the hierarchy it last read. */
+  private refreshLocal(
+    last: SpaceContentsSnapshot,
+    client: MatrixClient,
+  ): SpaceContentsSnapshot {
+    const local = this.localSnapshot(last.target, client);
+    return local.availability === 'available'
+      ? { ...local, items: last.items, hierarchyError: last.hierarchyError }
+      : local;
   }
 
   private load(

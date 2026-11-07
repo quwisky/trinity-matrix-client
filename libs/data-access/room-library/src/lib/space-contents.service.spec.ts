@@ -4,7 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { MatrixError } from '@trinity/util/matrix';
-import { ClientEvent } from 'matrix-js-sdk';
+import { RoomEvent, RoomStateEvent } from 'matrix-js-sdk';
 import { BehaviorSubject, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { RoomLibraryService } from './room-library.service';
@@ -131,6 +131,7 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
     service: TestBed.inject(SpaceContentsService),
     accountIds,
     client,
+    candidate,
     handlers,
     authorize,
     createRoomFor,
@@ -257,13 +258,40 @@ describe('SpaceContentsService', () => {
       const subscription = service.observe(TARGET).subscribe();
       await vi.advanceTimersByTimeAsync(0);
 
-      // One sync batch can announce many Rooms at once. Synapse allows each user a burst
+      // One sync batch can carry many Space state events. Synapse allows each user a burst
       // of 10 hierarchy reads at 5/s, so one read per event trips 429 within a batch.
-      const onRoom = handlers.get(ClientEvent.Room) as () => void;
-      for (let index = 0; index < 20; index += 1) onRoom();
+      const onState = handlers.get(RoomStateEvent.Events) as (
+        event: unknown,
+      ) => void;
+      const event = { getRoomId: () => TARGET.spaceId };
+      for (let index = 0; index < 20; index += 1) onState(event);
       await vi.advanceTimersByTimeAsync(1_000);
 
       expect(client.getRoomHierarchy.mock.calls.length).toBeLessThanOrEqual(3);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renames an unrelated Room locally without reading the hierarchy again', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, client, candidate, handlers } = setup();
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      candidate.name = 'Renamed';
+      const onName = handlers.get(RoomEvent.Name) as (room: unknown) => void;
+      onName(candidate);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(client.getRoomHierarchy).toHaveBeenCalledTimes(1);
+      expect(snapshots.at(-1)?.candidates[0]?.name).toBe('Renamed');
+      expect(snapshots.at(-1)?.items).toHaveLength(2);
       subscription.unsubscribe();
     } finally {
       vi.useRealTimers();
