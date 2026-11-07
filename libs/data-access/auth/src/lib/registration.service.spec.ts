@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatrixError, createClient } from 'matrix-js-sdk';
 import { MockProvider } from 'ng-mocks';
-import { firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
+import { Subject, firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
@@ -402,6 +402,58 @@ describe('RegistrationService', () => {
     });
     expect(logout).toHaveBeenCalledExactlyOnceWith(true);
     expect(service.stage().kind).toBe('idle');
+  });
+
+  describe('leaving after a Retry', () => {
+    const READY = {
+      kind: 'ready',
+      accountId: '@new:hs',
+      placement: 'active',
+    } as const;
+
+    async function failedSetup() {
+      const logout = vi.fn().mockResolvedValue({});
+      const registerRequest = vi.fn().mockResolvedValue(registered);
+      createClientMock.mockReturnValue(
+        client({ registerRequest, logout }) as never,
+      );
+      vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValueOnce(
+        throwError(() => new Error('storage failed')),
+      );
+      await lastValueFrom(
+        service.begin('https://hs', 'new', 'password', 'hs'),
+        { defaultValue: undefined },
+      );
+      expect(service.stage()).toMatchObject({ kind: 'session-error' });
+      return logout;
+    }
+
+    it('keeps the session a successful Retry started', async () => {
+      const logout = await failedSetup();
+      vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValueOnce(
+        of(READY),
+      );
+
+      await firstValueFrom(service.retryEstablishment());
+      service.cancel();
+
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('keeps the session when left while a Retry is still starting it', async () => {
+      const logout = await failedSetup();
+      const started = new Subject<typeof READY>();
+      vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValueOnce(
+        started,
+      );
+
+      service.retryEstablishment().subscribe({ error: () => undefined });
+      service.cancel();
+      started.next(READY);
+      started.complete();
+
+      expect(logout).not.toHaveBeenCalled();
+    });
   });
 
   it('does not retry a registration response that omitted its login tokens', async () => {

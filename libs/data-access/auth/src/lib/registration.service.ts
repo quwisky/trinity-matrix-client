@@ -228,8 +228,9 @@ export class RegistrationService {
 
   /** Invalidate callbacks from the current route and discard unpersisted UIA state. */
   cancel(): void {
-    // A created session kept only for Retry: leaving means nothing will use it.
-    if (this.stageState().kind === 'session-error') {
+    // A created session kept only for Retry: leaving means nothing will use it. A Retry
+    // still running may yet start the account with it.
+    if (this.stageState().kind === 'session-error' && !this.busyState()) {
       this.handBackDeclinedSession();
     }
     this.token = this.attempt.next();
@@ -420,7 +421,11 @@ export class RegistrationService {
     }).pipe(
       switchMap((outcome) => {
         this.ensureActive(token);
-        if (outcome.kind === 'ready') return of(void 0);
+        if (outcome.kind === 'ready') {
+          // The account owns the session now.
+          this.createdResponse = undefined;
+          return of(void 0);
+        }
         this.handleEstablishmentOutcome(outcome);
         return EMPTY;
       }),
