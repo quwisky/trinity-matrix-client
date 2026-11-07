@@ -64,6 +64,7 @@ import {
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
+import { repairStaleMembership } from './stale-membership-repair';
 import { syncStore } from './sync-store-worker';
 import {
   clientHasOutgoingWork,
@@ -167,8 +168,8 @@ interface AccountClient {
     oldEventId?: string,
     oldStatus?: EventStatus | null,
   ) => void;
-  /** Ends this client's {@link trackEncryptedNonMessages}. */
-  readonly stopTrackingNonMessages: () => void;
+  /** Ends this client's {@link trackEncryptedNonMessages} and {@link repairStaleMembership}. */
+  readonly stopClientTrackers: () => void;
   /** Whether this client has completed a sync with its homeserver ({@link isServerSync}). */
   readonly serverSynced: WritableSignal<boolean>;
   /** Whether this client has prepared its rooms, from its sync cache or its homeserver. */
@@ -1019,7 +1020,7 @@ export class MatrixClientService {
       // Wired only into THIS client's callbacks so a background account's key operation
       // can't read or overwrite another account's key.
       const holder = new SecretStorageKeyHolder();
-      let stopTrackingNonMessages = (): void => undefined;
+      let stopClientTrackers = (): void => undefined;
       /**
        * Undo whatever this attempt managed to do. Driven from `finalize`, so it covers the
        * error path AND the cancelled one: an unsubscribed start still reaches the end, and
@@ -1036,7 +1037,7 @@ export class MatrixClientService {
         syncProjection?.release();
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         created?.off(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
-        stopTrackingNonMessages();
+        stopClientTrackers();
         created?.stopClient();
         holder.clear();
         this.forgetOAuthTokens(session.userId, created);
@@ -1173,7 +1174,12 @@ export class MatrixClientService {
           });
           created!.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
           created!.on(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
-          stopTrackingNonMessages = trackEncryptedNonMessages(created!);
+          const stopNonMessages = trackEncryptedNonMessages(created!);
+          const stopMembershipRepair = repairStaleMembership(created!);
+          stopClientTrackers = () => {
+            stopNonMessages();
+            stopMembershipRepair();
+          };
           created!.on(
             CryptoEvent.KeyBackupSessionsRemaining,
             onBackupKeysRemaining,
@@ -1212,7 +1218,7 @@ export class MatrixClientService {
             syncState,
             waitingCount,
             onLocalEchoUpdated,
-            stopTrackingNonMessages,
+            stopClientTrackers,
             serverSynced,
             roomsPrepared,
             syncProjection,
@@ -1504,7 +1510,7 @@ export class MatrixClientService {
         RoomEvent.LocalEchoUpdated,
         account.onLocalEchoUpdated,
       );
-      account.stopTrackingNonMessages();
+      account.stopClientTrackers();
       account.client.stopClient();
       account.holder.clear();
       this.closeStore(account.syncStore);
@@ -1544,7 +1550,7 @@ export class MatrixClientService {
     account.syncProjection.release();
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
     account.client.off(RoomEvent.LocalEchoUpdated, account.onLocalEchoUpdated);
-    account.stopTrackingNonMessages();
+    account.stopClientTrackers();
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);
