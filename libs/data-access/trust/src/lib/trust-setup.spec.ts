@@ -622,7 +622,7 @@ describe('setUp failures', () => {
   });
 
   it('still refuses a retry when the account’s key is not the one it made', async () => {
-    const { svc, crypto, client, secretStorage } = setup({});
+    const { svc, crypto, client, secretStorage, keys } = setup({});
     crypto.bootstrapSecretStorage.mockRejectedValueOnce(new Error('502'));
     await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow();
     client.http.authedRequest.mockResolvedValue({ key: 'someone-else' });
@@ -637,6 +637,29 @@ describe('setUp failures', () => {
       message: expect.stringMatching(/different recovery key/i),
     });
     expect(crypto.bootstrapSecretStorage).toHaveBeenCalledOnce();
+    // Forgotten, so the next setup starts fresh instead of repeating the warning.
+    expect(keys.unfinishedSetupKey).toBeNull();
+  });
+
+  it('withdraws the held key when a retry proves another key is the default', async () => {
+    // The pointer read fails on the retry, and bootstrap then fails, but this device sees
+    // a different MAC'd default the held key does not open.
+    const { svc, crypto, client, secretStorage, keys } = setup({});
+    crypto.bootstrapSecretStorage.mockRejectedValue(new Error('502'));
+    await expect(firstValueFrom(svc.setUp(async () => 'pw'))).rejects.toThrow();
+    expect(keys.unfinishedSetupKey).not.toBeNull();
+    client.http.authedRequest.mockRejectedValue(new Error('network down'));
+    secretStorage.getDefaultKeyId.mockResolvedValue('theirs');
+    secretStorage.getKey.mockResolvedValue(['theirs', { mac: 'm' }]);
+    secretStorage.checkKey.mockResolvedValue(false);
+
+    await expect(
+      firstValueFrom(svc.setUp(async () => 'pw')),
+    ).rejects.toMatchObject({
+      kind: 'invalid-secret',
+      recoveryKey: null,
+    });
+    expect(keys.unfinishedSetupKey).toBeNull();
   });
 
   for (const [label, local] of [

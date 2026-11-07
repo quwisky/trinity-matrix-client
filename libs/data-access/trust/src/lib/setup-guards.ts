@@ -50,19 +50,23 @@ export async function assertNoRecoveryOnAccount(
     return { ownKeyId: keyId };
   }
   if (match === 'mismatch') {
-    // `invalid-secret`: the key this device showed earlier is provably not the account's.
-    throw new TrustOperationError(
-      'setup',
-      'invalid-secret',
-      'review-security-settings',
-      'This account now has a different recovery key, set up from another device. Don’t use the key shown earlier. Unlock this device with the account’s recovery key instead.',
-    );
+    throw keyReplacedError();
   }
   throw new TrustOperationError(
     'setup',
     'stale-state',
     'review-security-settings',
     'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
+  );
+}
+
+/** `invalid-secret`: the key this device showed earlier is provably not the account's. */
+export function keyReplacedError(): TrustOperationError {
+  return new TrustOperationError(
+    'setup',
+    'invalid-secret',
+    'review-security-settings',
+    'This account now has a different recovery key, set up from another device. Don’t use the key shown earlier. Unlock this device with the account’s recovery key instead.',
   );
 }
 

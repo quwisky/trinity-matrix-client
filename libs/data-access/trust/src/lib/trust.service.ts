@@ -43,6 +43,7 @@ import {
   assertNoIdentityElsewhere,
   assertNoRecoveryOnAccount,
   isAnotherKeyDefault,
+  keyReplacedError,
 } from './setup-guards';
 import { TrustHealthService } from './trust-health.service';
 
@@ -126,13 +127,22 @@ export class TrustService {
           const client = context.client;
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
-          // Per-account and cleared with the account, so a retry after sign-out mints anew.
+          // Per-account and cleared with the account: after sign-out the key is forgotten,
+          // so a retry is refused as stale-state unless the first try's pointer never landed.
           const holder = this.cryptoPort.secretStorageKey();
           const unfinished = holder?.unfinishedSetupKey ?? null;
           const found = await assertNoRecoveryOnAccount(
             client,
             unfinished?.privateKey,
-          );
+          ).catch((err: unknown) => {
+            if (
+              err instanceof TrustOperationError &&
+              err.kind === 'invalid-secret'
+            ) {
+              holder?.holdUnfinishedSetupKey(null);
+            }
+            throw err;
+          });
           const identity = await assertNoIdentityElsewhere(client, crypto);
           const recoveryKey: GeneratedSecretStorageKey = unfinished
             ? {
@@ -172,6 +182,11 @@ export class TrustService {
               !(await isAnotherKeyDefault(client, recoveryKey.privateKey));
             await this.healthRuntime.reconcile();
             if (!mayBeInUse) {
+              if (unfinished) {
+                // The key shown earlier is provably not the account's.
+                holder?.holdUnfinishedSetupKey(null);
+                throw keyReplacedError();
+              }
               throw cause;
             }
             holder?.holdUnfinishedSetupKey(recoveryKey);
