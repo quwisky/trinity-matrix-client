@@ -69,7 +69,17 @@ function validInput() {
         {
           name: 'app',
           installMode: 'prefetch',
-          resources: { files: ['/manifest.webmanifest'] },
+          resources: {
+            files: [
+              '/manifest.webmanifest',
+              ...LAZY_CHUNKS.map((c) => `!${c}`),
+            ],
+          },
+        },
+        {
+          name: 'lazy-features',
+          installMode: 'lazy',
+          resources: { files: LAZY_CHUNKS },
         },
         {
           name: 'assets',
@@ -80,6 +90,8 @@ function validInput() {
     },
   };
 }
+
+const LAZY_CHUNKS = ['/config-editor.component-*.js'];
 
 function errorsAfter(mutate) {
   const input = validInput();
@@ -148,6 +160,25 @@ describe('web host contract', () => {
 
     expect(errors).toContain(
       'Web host main.ts is missing composition marker: .then(startApplicationRuntime)',
+    );
+  });
+
+  it('keeps the config editor chunk out of the install prefetch', () => {
+    const prefetched = errorsAfter((input) => {
+      const app = input.ngsw.assetGroups.find((g) => g.name === 'app');
+      app.resources.files = ['/manifest.webmanifest', '/*.js'];
+    });
+    const missing = errorsAfter((input) => {
+      input.ngsw.assetGroups = input.ngsw.assetGroups.filter(
+        (g) => g.name !== 'lazy-features',
+      );
+    });
+
+    expect(prefetched).toContain(
+      'Web service worker must not prefetch /config-editor.component-*.js',
+    );
+    expect(missing).toContain(
+      'Web service worker must cache /config-editor.component-*.js lazily',
     );
   });
 

@@ -12,7 +12,8 @@
           "/*.css",
           "/*.js",
           "!/katex.css",
-          "!/maths-render-*.js"
+          "!/maths-render-*.js",
+          "!/config-editor.component-*.js"
         ]
       }
     },
@@ -22,6 +23,14 @@
       "updateMode": "lazy",
       "resources": {
         "files": ["/katex.css", "/maths-render-*.js"]
+      }
+    },
+    {
+      "name": "lazy-features",
+      "installMode": "lazy",
+      "updateMode": "lazy",
+      "resources": {
+        "files": ["/config-editor.component-*.js"]
       }
     },
     {

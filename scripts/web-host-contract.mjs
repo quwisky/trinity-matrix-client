@@ -72,6 +72,9 @@ function imports(source) {
   ].map((match) => match[1]);
 }
 
+/** Rarely opened chunks the install must not download: the config editor. */
+const LAZY_CHUNKS = ['/config-editor.component-*.js'];
+
 export function validateWebHostContract(input, errors) {
   const {
     project,
@@ -183,6 +186,20 @@ export function validateWebHostContract(input, errors) {
     !appGroup.resources?.files?.includes('/manifest.webmanifest')
   ) {
     errors.push('Web service worker must prefetch the installable app shell');
+  }
+  const lazyGroup = ngsw.assetGroups?.find(
+    (group) => group.name === 'lazy-features',
+  );
+  for (const chunk of LAZY_CHUNKS) {
+    if (appGroup?.resources?.files?.includes(`!${chunk}`) !== true) {
+      errors.push(`Web service worker must not prefetch ${chunk}`);
+    }
+    if (
+      lazyGroup?.installMode !== 'lazy' ||
+      lazyGroup.resources?.files?.includes(chunk) !== true
+    ) {
+      errors.push(`Web service worker must cache ${chunk} lazily`);
+    }
   }
   if (
     assetGroup?.installMode !== 'prefetch' ||
