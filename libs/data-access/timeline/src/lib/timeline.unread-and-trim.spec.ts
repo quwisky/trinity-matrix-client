@@ -241,6 +241,11 @@ describe('paging a rewound room back in', () => {
     );
     const events = all.slice(-5);
     const room = fakeRoom(events);
+    const live = room.getLiveTimeline;
+    room.getLiveTimeline = () => ({
+      ...live(),
+      getPaginationToken: () => 'tok' as never,
+    });
     const client = fakeClient(room, []);
     const scrollback = vi.fn(async () => {
       const end = history - events.length;

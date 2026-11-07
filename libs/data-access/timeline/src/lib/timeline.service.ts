@@ -814,7 +814,8 @@ export class TimelineService {
   /**
    * Page history back until `eventId` is in the live timeline, so a jump to a pinned or
    * searched message that was never loaded has an element to scroll to. Emits whether it
-   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Cold.
+   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Starts once any
+   * paging already running ends. Cold.
    */
   loadEvent(eventId: string): Observable<boolean> {
     return defer(() => {
@@ -823,6 +824,14 @@ export class TimelineService {
       const { client, room } = ctx;
       const loaded = (): boolean => room.findEventById(eventId) !== undefined;
       if (loaded()) return of(true);
+      if (this._loadingOlder()) {
+        return this.pagingIdle.pipe(
+          take(1),
+          switchMap(() =>
+            this.room === room ? this.loadEvent(eventId) : of(false),
+          ),
+        );
+      }
       this._loadingOlder.set(true);
       return from(this.pageBackLoop(client, room, loaded)).pipe(
         tap(() => this.refresh()),
@@ -887,7 +896,8 @@ export class TimelineService {
    * message at or after the requested midnight.
    *
    * Paging stops early when the server runs out of history, or a room whose start has been
-   * reached would burn every remaining page on empty requests.
+   * reached would burn every remaining page on empty requests. Starts once any paging
+   * already running ends.
    */
   private pageBackTo(
     client: MatrixClient,
@@ -896,20 +906,30 @@ export class TimelineService {
     dayStartMs: number,
   ): Observable<JumpToDateResult> {
     const loaded = (): boolean => room.findEventById(eventId) !== undefined;
-    if (loaded()) {
-      return of(this.renderableFrom(dayStartMs));
-    }
-    return defer(() => {
+    return defer((): Observable<JumpToDateResult> => {
+      if (loaded()) {
+        return of(this.renderableFrom(dayStartMs));
+      }
+      if (this._loadingOlder()) {
+        return this.pagingIdle.pipe(
+          take(1),
+          switchMap(() =>
+            this.room === room
+              ? this.pageBackTo(client, room, eventId, dayStartMs)
+              : of<JumpToDateResult>({ kind: 'too-far' }),
+          ),
+        );
+      }
       this._loadingOlder.set(true);
-      return from(this.pageBackLoop(client, room, loaded));
-    }).pipe(
-      tap(() => this.refresh()),
-      // Reset on success *or* error, as loadOlder does; a stuck flag disables pagination.
-      finalize(() => this.pagingDone()),
-      map((reached): JumpToDateResult =>
-        reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
-      ),
-    );
+      return from(this.pageBackLoop(client, room, loaded)).pipe(
+        tap(() => this.refresh()),
+        // Reset on success *or* error, as loadOlder does; a stuck flag disables pagination.
+        finalize(() => this.pagingDone()),
+        map((reached): JumpToDateResult =>
+          reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
+        ),
+      );
+    });
   }
 
   /**
@@ -929,7 +949,6 @@ export class TimelineService {
     loaded: () => boolean,
   ): Promise<boolean> {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
-      const before = room.getLiveTimeline().getEvents().length;
       await scrollbackLive(client, room, SCROLLBACK);
       // The user can leave during up to 20 sequential requests, and nothing unsubscribes this
       // (the subscription is tied to the PAGE, not the open room). Without this check the
@@ -941,7 +960,11 @@ export class TimelineService {
       if (loaded()) {
         return true;
       }
-      if (room.getLiveTimeline().getEvents().length === before) {
+      // Not an unchanged event count: a page of thread replies, or one dropped after a gappy
+      // sync, adds nothing to the live timeline while older history remains.
+      if (
+        room.getLiveTimeline().getPaginationToken(Direction.Backward) === null
+      ) {
         return false; // start of the room: no more history to page in
       }
     }
