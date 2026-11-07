@@ -1,4 +1,4 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import {
   ClientEvent,
@@ -100,14 +100,15 @@ export class SpaceContentsService {
   private readonly rooms = inject(RoomLibraryService);
   private readonly spaces = inject(SpacesService);
   private readonly children = inject(SpaceChildrenService);
-  private readonly injector = inject(Injector);
+  // Created once: a `toObservable` per `observe()` would outlive its subscriber until this
+  // root service is destroyed.
+  private readonly accountIds$ = toObservable(this.matrix.accountIds);
 
   /** Observe one immutable target and reattach if its Account client is replaced. */
   observe(target: SpaceContentsTarget): Observable<SpaceContentsSnapshot> {
-    const accountIds = toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    });
-    return accountIds.pipe(switchMap(() => this.observeCurrentClient(target)));
+    return this.accountIds$.pipe(
+      switchMap(() => this.observeCurrentClient(target)),
+    );
   }
 
   /** Read the latest hierarchy once, for explicit retry and post-command refresh. */

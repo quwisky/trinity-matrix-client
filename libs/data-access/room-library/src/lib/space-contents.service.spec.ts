@@ -1,4 +1,5 @@
-import { signal } from '@angular/core';
+import { ApplicationRef, signal, type Signal } from '@angular/core';
+import { SIGNAL, type ReactiveNode } from '@angular/core/primitives/signals';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
@@ -141,7 +142,26 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
   };
 }
 
+/** How many live watchers (effects) a signal feeds. */
+function liveConsumers(source: Signal<unknown>): number {
+  let count = 0;
+  let link = (source[SIGNAL] as ReactiveNode).consumers;
+  for (; link; link = link.nextConsumer) count += 1;
+  return count;
+}
+
 describe('SpaceContentsService', () => {
+  it('does not leave a watcher behind for each closed observation', async () => {
+    const { service, accountIds } = setup();
+    for (let index = 0; index < 3; index += 1) {
+      const subscription = service.observe(TARGET).subscribe();
+      await TestBed.inject(ApplicationRef).whenStable();
+      subscription.unsubscribe();
+    }
+
+    expect(liveConsumers(accountIds)).toBe(1);
+  });
+
   it('projects Room and Space children from the opening Account hierarchy', async () => {
     const { service, client } = setup();
 

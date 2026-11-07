@@ -1,4 +1,5 @@
-import { signal, type WritableSignal } from '@angular/core';
+import { signal, type Signal, type WritableSignal } from '@angular/core';
+import { SIGNAL, type ReactiveNode } from '@angular/core/primitives/signals';
 import { TestBed } from '@angular/core/testing';
 import { convertToParamMap, type ParamMap } from '@angular/router';
 import {
@@ -378,6 +379,14 @@ function drop(
 
 afterEach(() => TestBed.resetTestingModule());
 
+/** How many live watchers (effects) a signal feeds. */
+function liveConsumers(source: Signal<unknown>): number {
+  let count = 0;
+  let link = (source[SIGNAL] as ReactiveNode).consumers;
+  for (; link; link = link.nextConsumer) count += 1;
+  return count;
+}
+
 describe('WorkspaceNavigationService', () => {
   it('canonicalizes a bare route even when its destination matches the active Workspace', async () => {
     const h = harness();
@@ -569,12 +578,15 @@ describe('WorkspaceNavigationService', () => {
     const attentive = signal(false);
     const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, attentive });
     await vi.waitFor(() => expect(h.conversations.focus).toHaveBeenCalled());
+    TestBed.tick();
 
     h.paramMap.next(convertToParamMap({}));
     h.queryParamMap.next(convertToParamMap({ account: ALICE }));
     await vi.waitFor(() =>
       expect(h.service.view()).toMatchObject({ roomId: null }),
     );
+    // The cancelled wait stops watching instead of living as long as the root service.
+    expect(liveConsumers(attentive)).toBe(0);
     attentive.set(true);
     TestBed.tick();
 
