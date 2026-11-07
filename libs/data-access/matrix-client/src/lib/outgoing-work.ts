@@ -51,6 +51,7 @@ interface SyncLoopOwner {
 interface PausableSyncLoop {
   stop(): void;
   readonly running?: boolean;
+  syncState?: SyncState | null;
   readonly connectionReturnedResolvers?: unknown;
   readonly savedSyncPromise?: Promise<void>;
   updateSyncState?(state: SyncState, data?: unknown): void;
@@ -64,6 +65,12 @@ const LATE_STATES: ReadonlySet<SyncState> = new Set([
   SyncState.Reconnecting,
   SyncState.Catchup,
 ]);
+
+/**
+ * How long a resume waits for the paused loop to report its exit. A loop that dies on a failed
+ * store write never reports it, and it is already stopped, so after this the resume goes ahead.
+ */
+export const PAUSED_LOOP_EXIT_TIMEOUT_MS = 5_000;
 
 /** Settles once each paused loop can no longer process or request anything. */
 const exits = new WeakMap<PausableSyncLoop, Promise<void>>();
@@ -119,6 +126,8 @@ export function pauseClientSync(client: MatrixClient): void {
   if (typeof loop?.stop !== 'function') return;
   if (!exits.has(loop)) exits.set(loop, watchExit(loop));
   loop.stop();
+  // Connecting again from here on, as the paused loop's own stop report is dropped.
+  if (loop.syncState) loop.syncState = SyncState.Catchup;
 }
 
 /** The protected and private matrix-js-sdk members {@link resumeClientSync} restarts a loop with. */
@@ -164,8 +173,18 @@ export function resumeClientSync(client: MatrixClient): void {
   wanted.set(client, true);
   if (resuming.has(client)) return;
   resuming.add(client);
-  void exited
-    .then(() => paused.savedSyncPromise)
+  // Timed from the resume: a phone frozen in the background lets the old loop finish on thaw.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  void Promise.race([
+    exited,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, PAUSED_LOOP_EXIT_TIMEOUT_MS);
+    }),
+  ])
+    .then(() => {
+      clearTimeout(timer);
+      return paused.savedSyncPromise;
+    })
     .then(() => {
       resuming.delete(client);
       return wanted.get(client) &&
@@ -195,17 +214,22 @@ async function runResumedLoop(
   loop.abortController = new AbortController();
   owner.syncApi = loop;
   globalThis.window?.addEventListener?.('online', loop.onOnline, false);
-  // Rules a pause cut off before they loaded would leave notifications unevaluated.
-  await loop.getPushRules();
-  loop.prepareSyncFilterLazyLoading();
-  await loop.prepareSyncFilterUserProfiles();
-  const { filterId, filter } = await loop.getFilter();
-  if (!filter) return;
-  await loop.doSync({
-    filter: filterId,
-    // Only a client that never synced still owes its Prepared.
-    hasSyncedBefore: client.store.getSyncToken() !== null,
-  });
+  try {
+    // Rules a pause cut off before they loaded would leave notifications unevaluated.
+    await loop.getPushRules();
+    loop.prepareSyncFilterLazyLoading();
+    await loop.prepareSyncFilterUserProfiles();
+    const { filterId, filter } = await loop.getFilter();
+    if (!filter) return;
+    await loop.doSync({
+      filter: filterId,
+      // Only a client that never synced still owes its Prepared.
+      hasSyncedBefore: client.store.getSyncToken() !== null,
+    });
+  } catch (error: unknown) {
+    // A pause during a keep-alive rejects it; that loop was meant to end.
+    if (loop.running) throw error;
+  }
 }
 
 /**

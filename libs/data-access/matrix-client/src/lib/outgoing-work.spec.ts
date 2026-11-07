@@ -10,6 +10,7 @@ import {
 } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  PAUSED_LOOP_EXIT_TIMEOUT_MS,
   pauseClientSync,
   resendWaitingEchoes,
   resumeClientSync,
@@ -244,6 +245,14 @@ describe('pausing and resuming a real sync loop', () => {
   function fakeServerClient() {
     const syncs: URLSearchParams[] = [];
     const pending: ((body: unknown) => void)[] = [];
+    /** `pushRulesFail`: push rules answer 500; `versionsHang`: `/versions` waits until aborted. */
+    const server = { pushRulesFail: false, versionsHang: false };
+    const hang = (init?: RequestInit) =>
+      new Promise<Response>((_, reject) =>
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        ),
+      );
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), {
         status,
@@ -255,8 +264,11 @@ describe('pausing and resuming a real sync loop', () => {
     ): Promise<Response> => {
       const url = new URL(String(input));
       if (url.pathname.endsWith('/versions'))
-        return json({ versions: ['v1.11'] });
-      if (url.pathname.includes('/pushrules')) return json({ global: {} });
+        return server.versionsHang ? hang(init) : json({ versions: ['v1.11'] });
+      if (url.pathname.includes('/pushrules'))
+        return server.pushRulesFail
+          ? json({ errcode: 'M_UNKNOWN' }, 500)
+          : json({ global: {} });
       // A filter id the SDK remembered from an earlier test reads back as a different filter.
       if (url.pathname.includes('/filter'))
         return json(init?.method === 'POST' ? { filter_id: 'f1' } : {});
@@ -283,7 +295,7 @@ describe('pausing and resuming a real sync loop', () => {
     client.on(ClientEvent.Sync, (state) => states.push(state));
     /** Answer the latest waiting `/sync`. */
     const respond = (body: unknown) => pending.at(-1)?.(body);
-    return { client, syncs, states, respond };
+    return { client, syncs, states, respond, server };
   }
 
   async function syncingClient() {
@@ -365,6 +377,68 @@ describe('pausing and resuming a real sync loop', () => {
       await vi.waitFor(() => expect(syncs).toHaveLength(3));
       expect(syncs[2].get('since')).toBe('s2');
     } finally {
+      client.stopClient();
+    }
+  });
+
+  it('reports a paused client as catching up, not as still syncing', async () => {
+    const { client } = await syncingClient();
+    try {
+      pauseClientSync(client);
+
+      expect(client.getSyncState()).toBe(SyncState.Catchup);
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('still resumes when the old loop dies on a store write instead of stopping', async () => {
+    const { client, syncs, respond } = await syncingClient();
+    let failWrite!: (error: Error) => void;
+    vi.spyOn(client.store, 'setSyncData').mockImplementationOnce(
+      () => new Promise<void>((_, reject) => (failWrite = reject)),
+    );
+    try {
+      respond({ next_batch: 's2' });
+      await vi.waitFor(() => expect(failWrite).toBeDefined());
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+      pauseClientSync(client);
+      resumeClientSync(client);
+      failWrite(new Error('Connection to Indexed Database server lost'));
+      await vi.advanceTimersByTimeAsync(PAUSED_LOOP_EXIT_TIMEOUT_MS);
+      vi.useRealTimers();
+
+      await vi.waitFor(() => expect(syncs).toHaveLength(3));
+      expect(syncs[2].get('since')).toBe('s2');
+    } finally {
+      vi.useRealTimers();
+      client.stopClient();
+    }
+  });
+
+  it('says nothing when a resumed loop is paused during its keep-alive', async () => {
+    const { client, server } = await syncingClient();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      pauseClientSync(client);
+      server.pushRulesFail = true;
+      server.versionsHang = true;
+      resumeClientSync(client);
+      // The push rules fail, so the resumed loop polls /versions until the server answers.
+      await vi.advanceTimersByTimeAsync(8_000);
+
+      pauseClientSync(client);
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      expect(warn).not.toHaveBeenCalledWith(
+        "Couldn't resume syncing.",
+        expect.anything(),
+      );
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
       client.stopClient();
     }
   });
