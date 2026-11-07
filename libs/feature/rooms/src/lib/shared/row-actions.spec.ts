@@ -28,6 +28,7 @@ function setup(overrides: Partial<SharedRowActionContext> = {}) {
       open: vi.fn(),
       openAndWait$: vi.fn(() => of('🎉')),
       openActions: vi.fn(),
+      prefersSheet: vi.fn(() => false),
     },
     timeline: {
       rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
@@ -251,13 +252,37 @@ describe('dispatchSharedRowAction', () => {
     // No ariaLabel: the picker sits in the dialog shell, whose heading names the dialog.
     expect(ctx.dialog.openAndWait$).toHaveBeenCalledWith(
       ReactionPickerComponent,
+      {},
     );
+  });
+
+  it("focuses a sheet's frame, not its search, so a phone keyboard stays down", () => {
+    const openAndWait$ = vi.fn(() => of(null));
+    const ctx = setup({
+      dialog: {
+        open: vi.fn(),
+        openAndWait$,
+        openActions: vi.fn(),
+        prefersSheet: () => true,
+      } as never,
+    });
+
+    dispatchSharedRowAction({ type: 'react-more' }, row, ctx);
+
+    expect(openAndWait$).toHaveBeenCalledWith(ReactionPickerComponent, {
+      autoFocus: 'dialog',
+      detents: ['large'],
+    });
   });
 
   it('does not react when the picker is dismissed', () => {
     const picked = new Subject<string | null>();
     const ctx = setup({
-      dialog: { open: vi.fn(), openAndWait$: () => picked } as never,
+      dialog: {
+        open: vi.fn(),
+        openAndWait$: () => picked,
+        prefersSheet: () => false,
+      } as never,
     });
 
     dispatchSharedRowAction({ type: 'react-more' }, row, ctx);

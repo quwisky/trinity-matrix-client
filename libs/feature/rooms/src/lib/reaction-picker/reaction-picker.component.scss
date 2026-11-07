@@ -3,9 +3,11 @@
     display: block;
   }
 
-  // emoji-mart sizes itself; keep it from overflowing a narrow dialog on mobile.
+  // The body is a flex column (see the template), so the picker takes its height: the list
+  // fills a full-height sheet, and shrinks to fit a sheet or dialog capped below its content.
   .reaction-picker {
-    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
     max-width: 100%;
   }
 }

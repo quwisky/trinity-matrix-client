@@ -71,6 +71,26 @@ describe('ReactionPickerComponent', () => {
     expect(close).toHaveBeenCalledWith('🚀');
   });
 
+  it("fills a centred dialog's width at the desktop size, with no card of its own", async () => {
+    const { picker } = await setup('dialog');
+
+    expect([picker.framed(), picker.layout(), picker.size()]).toEqual([
+      false,
+      'fill',
+      'md',
+    ]);
+  });
+
+  it("fills a phone's sheet with touch-sized cells and no card of its own", async () => {
+    const { picker } = await setup('sheet');
+
+    expect([picker.framed(), picker.layout(), picker.size()]).toEqual([
+      false,
+      'fill',
+      'lg',
+    ]);
+  });
+
   it("shows the account's recent emoji first", async () => {
     const { picker } = await setup();
 

@@ -30,6 +30,7 @@ export class ReactionPickerComponent {
   private readonly recentEmoji = inject(RecentEmojiService);
 
   protected readonly recent = this.recentEmoji.recent;
+  protected readonly sheet = this.dialogRef.presentation === 'sheet';
 
   constructor() {
     this.recentEmoji.run().pipe(takeUntilDestroyed()).subscribe();
