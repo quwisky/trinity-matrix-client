@@ -389,6 +389,26 @@ test.describe('Message actions on a phone', () => {
       dialog.getByTestId('dialog-surface').boundingBox(),
     ]);
     expect(gridBox!.width).toBeGreaterThan(sheetBox!.width - 48);
+    // Each category tab is a finger-sized target with its icon centred over its underline.
+    const tabs = await dialog
+      .locator('.emoji-mart-anchor')
+      .evaluateAll((anchors) =>
+        anchors.map((anchor) => {
+          const tab = anchor.getBoundingClientRect();
+          const icon = anchor.querySelector('svg')!.getBoundingClientRect();
+          return {
+            height: tab.height,
+            offCentre: Math.abs(
+              icon.x + icon.width / 2 - (tab.x + tab.width / 2),
+            ),
+          };
+        }),
+      );
+    expect(tabs.length).toBeGreaterThan(0);
+    for (const tab of tabs) {
+      expect(tab.height).toBeGreaterThanOrEqual(44);
+      expect(tab.offCentre).toBeLessThan(1);
+    }
     // A focused search raises a phone's keyboard over the grid. The full-width grid draws
     // only after measuring the sheet, which happens to land after the dialog places focus;
     // the dialog is told to focus itself so this holds whatever the timing.

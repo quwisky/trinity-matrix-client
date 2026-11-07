@@ -34,10 +34,22 @@
 
     // Only the idle and hover states are ours to paint: the vendor inline-styles the anchor
     // bar and the selected anchor from its `color` input, so a rule for either is outranked.
-    // On touch, :hover stays on whatever was tapped last, so the hover paint is pointer-only.
+    // The vendor's 12px around an 18px icon makes a 42px tab; a finger gets the 44px floor,
+    // with the icon kept in the middle.
     .emoji-mart-anchor {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: var(--trinity-interaction-target-min-size);
       color: var(--muted-foreground);
 
+      // Preflight makes an svg a block, which ignores the vendor's `text-align: center`; a
+      // tab wider than its icon then leaves the icon at its left edge, off its underline.
+      svg {
+        margin-inline: auto;
+      }
+
+      // On touch, :hover stays on whatever was tapped last, so the hover paint is pointer-only.
       @media (hover: hover) {
         &:hover {
           color: var(--trinity-link);
