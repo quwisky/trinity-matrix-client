@@ -35,6 +35,7 @@ import {
   SHORTCODE_JOINER,
   type FormatAction,
   type Mention,
+  type SlashCommandContext,
 } from '@trinity/util/matrix';
 import { ComposerFormatMenuComponent } from './composer-format-menu/composer-format-menu.component';
 import { ComposerAttachmentStripComponent } from './composer-attachment-strip/composer-attachment-strip.component';
@@ -235,7 +236,7 @@ export class MessageComposerComponent {
     composerPreview(
       this.text(),
       untracked(() => this.menus.activeMentions()),
-      this.parsesCommands(),
+      this.commandContext(),
     ),
   );
 
@@ -323,16 +324,19 @@ export class MessageComposerComponent {
       (this.editing() || !this.attachments.hasStaged() || this.canSendMedia()),
   );
   /**
-   * Whether a leading slash is READ as a command on the way out.
+   * Which leading slash commands are READ on the way out.
    *
-   * One computed read by BOTH {@link preview} and the slash menu (through the `commandsParsed`
+   * One computed read by BOTH {@link preview} and the slash menu (through the `commandContext`
    * port), so they cannot disagree: a preview refusing to conceal a `/spoiler` while a menu
-   * offers to complete one. Only `send` and `sendThreadMessage` run `slashCommandContent`; a
-   * reply, an edit and an attachment caption never do.
+   * offers to complete one. `send` and `sendThreadMessage` run `slashCommandContent`; a reply
+   * applies only the text-art commands (`replyTextArt`); an edit and a caption read none.
    */
-  private readonly parsesCommands = computed(
-    () =>
-      !this.editing() && !this.replyingTo() && !this.attachments.hasStaged(),
+  private readonly commandContext = computed<SlashCommandContext>(() =>
+    this.editing() || this.attachments.hasStaged()
+      ? 'none'
+      : this.replyingTo()
+        ? 'reply'
+        : 'message',
   );
 
   private readonly textarea = viewChild<ElementRef<HTMLTextAreaElement>>('ta');
@@ -430,7 +434,7 @@ export class MessageComposerComponent {
         this.field.replaceRange(start, end, insert),
       scrollIntoView: (id) => this.field.scrollSuggestionIntoView(id),
       insertAtCursor: (text) => this.insertEmoji(text),
-      commandsParsed: this.parsesCommands,
+      commandContext: this.commandContext,
     });
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,

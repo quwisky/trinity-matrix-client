@@ -278,24 +278,35 @@ describe('MessageComposerComponent — the @mention and /command autocompletes',
       expect(cmp.menus.slashOpen()).toBe(false);
     });
 
-    it.each([
-      ['replying', { replyingTo: 'Alice' }],
-      ['editing', { editing: true }],
-    ])(
-      'offers nothing while %s, where the send path would not parse one',
-      async (_label, inputs) => {
-        // The other half of "only where the send path would parse one". `send` runs
-        // `slashCommandContent`; `replyMessageContent` and `editMessageContent` never see it,
-        // so a completed `/me waves` would arrive in the room as those nine characters.
-        const { fixture, container } = await renderComposer(inputs);
-        const cmp = fixture.componentInstance;
-        const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    it('offers nothing while editing, where the send path would not parse one', async () => {
+      // The other half of "only where the send path would parse one". `send` runs
+      // `slashCommandContent`; `editMessageContent` never sees it, so a completed `/me waves`
+      // would arrive in the room as those nine characters.
+      const { fixture, container } = await renderComposer({ editing: true });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
 
-        typeSlash(cmp, ta, '/');
+      typeSlash(cmp, ta, '/');
 
-        expect(cmp.menus.slashOpen()).toBe(false);
-      },
-    );
+      expect(cmp.menus.slashOpen()).toBe(false);
+    });
+
+    it('offers only the text art while replying, the commands a reply applies', async () => {
+      const { fixture, container } = await renderComposer({
+        replyingTo: 'Alice',
+      });
+      const cmp = fixture.componentInstance;
+      const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+      typeSlash(cmp, ta, '/');
+
+      expect(cmp.menus.slashMatches().map((c) => c.name)).toEqual([
+        'shrug',
+        'tableflip',
+        'unflip',
+        'lenny',
+      ]);
+    });
 
     it('offers nothing once a file is staged, where the caption is sent as written', async () => {
       const { fixture, container } = await renderComposer();
