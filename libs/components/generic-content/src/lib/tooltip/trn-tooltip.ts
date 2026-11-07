@@ -43,19 +43,15 @@ export const TRN_TOOLTIP_CONTENT_CLASSES = trn(
  *
  * **Focus opens a tooltip only when the browser would draw a focus ring (`:focus-visible`).**
  * Our Brain patch ignores touch focus, and programmatic focus while the last input was a touch
- * (until the next key or mouse press). WebKit doesn't focus a tapped button, so focus restored
- * after a tap reaches Brain as programmatic and matches `:focus-visible` (seen in Playwright on
- * macOS WebKit). Any other programmatic focus is keyboard intent to Brain, so focus restored to
- * a trigger after a sheet or dialog closed could open a tooltip that stayed until the next
- * interaction. Brain has no hook to filter focus and its `delay` method is private, so a focus
- * without a ring switches the tooltip off through the public `mutableTooltipDisabled` signal,
- * which Brain checks when the show delay elapses. Blur or a mouse or pen entering switches it
- * back on, and a focus that lands while one is over the host (hover, then click within the show
- * delay) is left alone, so hover is unaffected and Tab focus is evaluated anew.
- *
- * Known gap: after a dialog close Brain marks the restored focus as visible, so a later hover
- * opens the tooltip and it outlives `pointerleave`. Closing it needs Brain's private `delay`,
- * which this wrapper deliberately does not reach into.
+ * or a mouse press (until the next key press): Chromium carries the ring from a panel's input
+ * to the opener focus is restored to, and a focus-owned tooltip outlives `pointerleave`. WebKit
+ * doesn't focus a tapped button, so focus restored after a tap reaches Brain as programmatic and
+ * matches `:focus-visible` (seen in Playwright on macOS WebKit). Any other programmatic focus is
+ * keyboard intent to Brain. Brain has no hook to filter focus and its `delay` method is private,
+ * so a focus without a ring switches the tooltip off through the public `mutableTooltipDisabled`
+ * signal, which Brain checks when the show delay elapses. Blur or a mouse or pen entering
+ * switches it back on, and a focus that lands while one is over the host (hover, then click
+ * within the show delay) is left alone, so hover is unaffected and Tab focus is evaluated anew.
  */
 @Directive({
   selector: '[trnTooltip]',
