@@ -600,6 +600,28 @@ describe('SessionHandoverWorkflow', () => {
       expect(steps).toEqual(HANDED_OVER);
       lifetime.unsubscribe();
     });
+
+    it('gives up on a remembered "Try again" too while it is still running, and holds the session', async () => {
+      const { steps, requestHandover, writeBack, reload, lifetime } = setup({
+        lifecycleBusy: true,
+        realLock: true,
+      });
+      const sessionLock = TestBed.inject(SessionLockService);
+      await firstValueFrom(sessionLock.acquire());
+
+      requestHandover();
+      await vi.advanceTimersByTimeAsync(1_000);
+      requestHandover();
+      await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_TIMEOUT_MS);
+      expect(sessionLock.state()).toBe('releasing');
+      await vi.advanceTimersByTimeAsync(SESSION_HANDOVER_TIMEOUT_MS);
+
+      expect(sessionLock.state()).toBe('held');
+      expect(steps).toEqual([]);
+      expect(writeBack).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+      lifetime.unsubscribe();
+    });
   });
 
   it('reports a failure before the handover, holds the session again and hears the next request', async () => {
