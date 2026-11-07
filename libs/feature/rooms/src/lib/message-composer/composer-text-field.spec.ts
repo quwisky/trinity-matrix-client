@@ -56,3 +56,35 @@ describe('ComposerTextField.autoGrow', () => {
     expect(rect).not.toHaveBeenCalled();
   });
 });
+
+describe('ComposerTextField.write', () => {
+  it('replaces only the changed span through execCommand, so undo keeps the edit', () => {
+    const { box, input, field } = setUp('say hello', 0);
+    document.body.append(box);
+    const calls: [string, string, number, number][] = [];
+    const execCommand = vi.fn(
+      (command: string, _ui: boolean, value: string) => {
+        calls.push([command, value, input.selectionStart, input.selectionEnd]);
+        input.setRangeText(value);
+        return true;
+      },
+    );
+    Object.assign(document, { execCommand });
+
+    field.write({ text: 'say **hello**', selectionStart: 6, selectionEnd: 11 });
+
+    expect(calls).toEqual([['insertText', '**hello**', 4, 9]]);
+    expect(input.value).toBe('say **hello**');
+    expect([input.selectionStart, input.selectionEnd]).toEqual([6, 11]);
+    Reflect.deleteProperty(document, 'execCommand');
+    box.remove();
+  });
+
+  it('assigns the value when the browser has no execCommand', () => {
+    const { input, field } = setUp('- one\n- ', 0);
+
+    field.write({ text: '- one\n', selectionStart: 6, selectionEnd: 6 });
+
+    expect(input.value).toBe('- one\n');
+  });
+});

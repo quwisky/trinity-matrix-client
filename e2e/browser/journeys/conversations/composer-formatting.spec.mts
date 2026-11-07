@@ -693,3 +693,52 @@ test.describe('On-demand composer formatting on mobile', () => {
     await expect(composer).toHaveValue('compact draft');
   });
 });
+
+// Native undo only survives edits that go through the browser's editing pipeline; assigning the
+// textarea's `value` from script empties its undo stack in Chromium and Firefox.
+test.describe('Composer edits keep undo', () => {
+  test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+
+  test('undo reverses a formatting chord, a list continuation and a quote', async ({
+    page,
+    request,
+  }) => {
+    const { composer } = await openComposer(page, request, 'undo-fmt');
+
+    await composer.click();
+    await composer.pressSequentially('say hello');
+    await selectWord(page, 'hello');
+    await page.keyboard.press('ControlOrMeta+b');
+    await expect(composer).toHaveValue('say **hello**');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(composer).toHaveValue('say hello');
+
+    await composer.fill('');
+    await composer.pressSequentially('- one');
+    await composer.press('Shift+Enter');
+    await expect(composer).toHaveValue('- one\n- ');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(composer).toHaveValue('- one');
+
+    await composer.fill('');
+    await composer.pressSequentially('one word');
+    await selectWord(page, 'word');
+    await chooseDesktopFormat(page, 'quote');
+    await expect(composer).toHaveValue('> one word');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(composer).toHaveValue('one word');
+  });
+
+  test('undo brings back a shortcode the composer converted', async ({
+    page,
+    request,
+  }) => {
+    const { composer } = await openComposer(page, request, 'undo-emoji');
+
+    await composer.click();
+    await composer.pressSequentially('hi :smile:');
+    await expect(composer).toHaveValue('hi 😄');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect(composer).toHaveValue('hi :smile:');
+  });
+});

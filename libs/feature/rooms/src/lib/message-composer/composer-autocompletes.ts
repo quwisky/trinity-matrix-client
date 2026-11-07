@@ -103,11 +103,12 @@ export class ComposerAutocompletes {
    * Recompute all three menus from the text under the caret.
    *
    * The emoji engine is the only one that can splice here: a fully typed `:shortcode:` is
-   * converted inline, which the others have no equivalent of.
+   * converted inline, which the others have no equivalent of. `convert: false` (an undo that
+   * brought the shortcode back) leaves it as text.
    */
-  sync(): void {
+  sync(convert = true): void {
     const replacement = this.emoji.sync(this.ports.text(), this.ports.caret());
-    if (replacement) {
+    if (replacement && convert) {
       this.ports.replaceRange(
         replacement.start,
         replacement.end,
