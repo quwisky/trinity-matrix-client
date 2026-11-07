@@ -1062,6 +1062,22 @@ describe('MessageListComponent', () => {
       expect(st).toBe(12_800);
     });
 
+    it('looks measured rows up by index map instead of scanning the id list', async () => {
+      const { container } = await renderList({ messages: many(200) });
+      const scroll = container.querySelector('.scroll') as HTMLElement;
+      const rows = [...scroll.querySelectorAll('[data-mid]')];
+      const scans = vi.spyOn(Array.prototype, 'indexOf');
+      try {
+        rowObserver().emit(rows.map((row) => resizeEntry(row, 120)));
+        const idListScans = scans.mock.instances.filter(
+          (list) => (list as unknown[]).length >= 200,
+        ).length;
+        expect(idListScans).toBe(0);
+      } finally {
+        scans.mockRestore();
+      }
+    });
+
     /**
      * A room just past full, pinned near the top: its pin's scroll event, reported after the next
      * message rendered, has paged history in as a fill, and the reader is pinned with it in flight.
