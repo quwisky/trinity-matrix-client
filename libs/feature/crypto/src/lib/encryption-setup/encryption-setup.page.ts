@@ -75,15 +75,25 @@ export class EncryptionSetupPage {
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
+  /** Setup failed after minting the key on screen; trying again reuses that key. */
+  readonly unfinished = computed(
+    () => this.error() !== null && this.recoveryKey() !== null,
+  );
+
   /** Bootstrap cross-signing, secret storage and key backup. */
   setUp(): void {
     this.failureRecovery.set(null);
     const setUp = this.crypto.setUp(this.promptPassword).pipe(
       tap({
-        error: (err: unknown) =>
-          this.failureRecovery.set(
-            err instanceof TrustOperationError ? err.recovery : null,
-          ),
+        error: (err: unknown) => {
+          if (!(err instanceof TrustOperationError)) {
+            return;
+          }
+          this.failureRecovery.set(err.recovery);
+          if (err.recoveryKey) {
+            this.recoveryKey.set(err.recoveryKey);
+          }
+        },
       }),
     );
     this.withBusy(setUp).subscribe((key) => {

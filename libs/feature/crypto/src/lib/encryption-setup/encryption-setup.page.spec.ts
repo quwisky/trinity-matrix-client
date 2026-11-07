@@ -239,6 +239,47 @@ describe('EncryptionSetupPage', () => {
     expect(screen.queryByTestId('setup-security-settings')).toBeNull();
   });
 
+  describe('when setup fails after minting the recovery key', () => {
+    const partial = () =>
+      new TrustOperationError(
+        'setup',
+        'partial-update',
+        'retry',
+        'Encryption setup didn’t finish. Save this recovery key now.',
+        true,
+        KEY,
+      );
+
+    it('shows the key to save alongside what went wrong', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));
+
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain(KEY);
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Save this recovery key now.',
+      );
+    });
+
+    it('offers to finish with the same key', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+      screen.getByRole('button', { name: 'Try again' }).click();
+      fixture.detectChanges();
+
+      expect(crypto.setUp).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(fixture.nativeElement.textContent).toContain(KEY);
+    });
+  });
+
   describe('when setup is refused because the identity lives elsewhere', () => {
     const refusal = (recovery: TrustRecovery) =>
       new TrustOperationError(
