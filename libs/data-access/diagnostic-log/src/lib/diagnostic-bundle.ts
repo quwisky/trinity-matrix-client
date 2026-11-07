@@ -10,11 +10,7 @@ import {
   type DiagnosticNameGroup,
   type DiagnosticReportFacts,
 } from './report-facts';
-import {
-  runInSlices,
-  runToEnd,
-  type SliceOptions,
-} from './report/run-in-slices';
+import { runInSlices, type SliceOptions } from './report/run-in-slices';
 import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 /** The redacted file plus what the report flow needs alongside it. */
@@ -43,21 +39,8 @@ const NAMES_INCOMPLETE_NOTE =
   'Some names were not replaced: there were too many, or they could not be read. Check the file before attaching it.';
 
 /**
- * Build the exported file: `# ` header lines, then one redacted line per entry, oldest
- * first. Header and body share one redactor, so a placeholder means the same thing
- * throughout the file, and the preview shows exactly this text. All at once; see
- * {@link buildDiagnosticBundleInSlices} for the main thread.
- */
-export function buildDiagnosticBundle(
-  input: DiagnosticBundleInput,
-): DiagnosticBundle {
-  return runToEnd(diagnosticBundleSteps(input));
-}
-
-/**
- * {@link buildDiagnosticBundle} a few milliseconds at a time, yielding between slices so a
- * full log never freezes the UI. The same steps, so the same file byte for byte. Cold;
- * unsubscribing stops the work.
+ * Build the exported file a few milliseconds at a time, yielding between slices so a full
+ * log never freezes the UI. Cold; unsubscribing stops the work.
  */
 export function buildDiagnosticBundleInSlices(
   input: DiagnosticBundleInput,
@@ -66,8 +49,13 @@ export function buildDiagnosticBundleInSlices(
   return runInSlices(() => diagnosticBundleSteps(input), options);
 }
 
-/** The build, pausable after every line it learns or writes. */
-function* diagnosticBundleSteps(
+/**
+ * The build, pausable after every line it learns or writes: `# ` header lines, then one
+ * redacted line per entry, oldest first. Header and body share one redactor, so a
+ * placeholder means the same thing throughout the file, and the preview shows exactly this
+ * text.
+ */
+export function* diagnosticBundleSteps(
   input: DiagnosticBundleInput,
 ): Generator<void, DiagnosticBundle> {
   const { accounts, snapshot } = input;

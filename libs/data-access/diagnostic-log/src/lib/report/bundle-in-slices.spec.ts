@@ -2,11 +2,11 @@ import { createHash } from 'node:crypto';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  buildDiagnosticBundle,
   buildDiagnosticBundleInSlices,
+  diagnosticBundleSteps,
   type DiagnosticBundleInput,
 } from '../diagnostic-bundle';
-import { runInSlices } from './run-in-slices';
+import { runInSlices, runToEnd } from './run-in-slices';
 import type { DiagnosticEntry } from '../diagnostic-entry.model';
 import type { DiagnosticNameGroup } from '../report-facts';
 import {
@@ -111,12 +111,12 @@ const PINNED = {
 describe('the diagnostic file', () => {
   it('matches the pinned synchronous output', () => {
     expect(CORPUS_CONTEXT.selfUserIds).toEqual([ALICE]);
-    expect(sha256(buildDiagnosticBundle(input(corpusEntries())).text)).toBe(
-      PINNED.corpus,
-    );
-    expect(sha256(buildDiagnosticBundle(input(largeLog())).text)).toBe(
-      PINNED.large,
-    );
+    expect(
+      sha256(runToEnd(diagnosticBundleSteps(input(corpusEntries()))).text),
+    ).toBe(PINNED.corpus);
+    expect(
+      sha256(runToEnd(diagnosticBundleSteps(input(largeLog()))).text),
+    ).toBe(PINNED.large);
   });
 });
 
@@ -145,7 +145,7 @@ describe('building the diagnostic file in slices', () => {
       );
 
       expect(sha256(sliced.text)).toBe(pinned());
-      expect(sliced).toEqual(buildDiagnosticBundle(input(entries())));
+      expect(sliced).toEqual(runToEnd(diagnosticBundleSteps(input(entries()))));
       if (entries === largeLog) {
         // One clock read per step and per slice start: this many reads is many slices.
         expect(clock.reads() / (SLICE_MS + 1)).toBeGreaterThan(MIN_SLICES);
@@ -162,7 +162,7 @@ describe('building the diagnostic file in slices', () => {
     );
 
     expect(sliced).toEqual(
-      buildDiagnosticBundle(input(largeLog(), LARGE_LOG_NAMES)),
+      runToEnd(diagnosticBundleSteps(input(largeLog(), LARGE_LOG_NAMES))),
     );
     expect(sliced.text).not.toContain('second line');
     expect(sliced.text).toContain('Room 1');

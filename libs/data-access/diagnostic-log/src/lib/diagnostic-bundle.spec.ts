@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { DiagnosticEntry } from './diagnostic-entry.model';
-import { buildDiagnosticBundle } from './diagnostic-bundle';
+import { diagnosticBundleSteps } from './diagnostic-bundle';
 import { MAX_DISPLAY_NAMES_PER_GROUP } from './redaction/known-names';
+import { runToEnd } from './report/run-in-slices';
 import {
   diagnosticLogFileName,
   type DiagnosticAccount,
@@ -47,24 +48,26 @@ function bundle(
   accounts = [ALICE],
   knownNames: Iterable<DiagnosticNameGroup> = [],
 ) {
-  return buildDiagnosticBundle({
-    now: new Date(2026, 9, 11, 9, 30),
-    build: {
-      version: '0.4.0',
-      commit: 'abc1234',
-      builtAt: '',
-      dependencies: { matrixJsSdk: '43.0.0', cryptoWasm: '18.9.0' },
-    },
-    platform: 'Web, Chrome 141 on macOS',
-    accounts,
-    knownNames,
-    snapshot: {
-      entries: ENTRIES,
-      dropped: false,
-      storage: 'indexeddb',
-      ...snapshot,
-    },
-  });
+  return runToEnd(
+    diagnosticBundleSteps({
+      now: new Date(2026, 9, 11, 9, 30),
+      build: {
+        version: '0.4.0',
+        commit: 'abc1234',
+        builtAt: '',
+        dependencies: { matrixJsSdk: '43.0.0', cryptoWasm: '18.9.0' },
+      },
+      platform: 'Web, Chrome 141 on macOS',
+      accounts,
+      knownNames,
+      snapshot: {
+        entries: ENTRIES,
+        dropped: false,
+        storage: 'indexeddb',
+        ...snapshot,
+      },
+    }),
+  );
 }
 
 describe('diagnosticLogFileName', () => {
@@ -75,7 +78,7 @@ describe('diagnosticLogFileName', () => {
   });
 });
 
-describe('buildDiagnosticBundle', () => {
+describe('diagnosticBundleSteps', () => {
   it('writes a header with version, platform, library versions and redacted accounts', () => {
     const { text, filename } = bundle();
 
