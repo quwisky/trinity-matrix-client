@@ -1112,6 +1112,44 @@ describe('ConversationRuntime', () => {
       );
     });
 
+    describe('a send that succeeds after its handle retired', () => {
+      async function reopenWhileSending() {
+        const fixture = setup();
+        const old = fixture.runtime.focus(KEY);
+        old.compose.setDraft('hi');
+        const outcome = firstValueFrom(old.compose.submit());
+        fixture.runtime.focus({
+          accountId: ALICE,
+          roomId: '!other:example.org',
+        });
+        fixture.runtime.retireRetained();
+        const fresh = fixture.runtime.focus(KEY);
+        return { ...fixture, fresh, outcome };
+      }
+
+      it('leaves the reopened box and storage without the sent text', async () => {
+        const { fresh, sends, drafts, outcome } = await reopenWhileSending();
+        expect(fresh.compose.draft()).toBe('hi'); // read from storage while it was sending
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(fresh.compose.draft()).toBe('');
+        expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+      });
+
+      it('keeps what the person changed in the reopened box', async () => {
+        const { fresh, sends, drafts, outcome } = await reopenWhileSending();
+        fresh.compose.setDraft('hi there');
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(fresh.compose.draft()).toBe('hi there');
+        expect(drafts.get(conversationDraftKey(KEY))).toBe('hi there');
+      });
+    });
+
     it('does not keep a reply open after its send succeeds', async () => {
       const { runtime, sends } = setup(2, undefined, [message('$target')]);
       const held = runtime.focus(KEY);

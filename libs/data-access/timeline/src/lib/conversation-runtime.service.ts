@@ -49,7 +49,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
-import { appendDraft, putBackDraft } from './draft-text';
+import { appendDraft, putBackDraft, withoutSent } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -367,6 +367,16 @@ export class ConversationRuntime {
           this.drafts.set(
             draftKey,
             putBackDraft(this.drafts.get(draftKey), failed),
+          );
+        }
+      },
+      dropSentRetired: (sent) => {
+        const live = this.entry(immutableKey);
+        if (live) live.composeController.dropSent(sent);
+        else {
+          this.drafts.set(
+            draftKey,
+            withoutSent(this.drafts.get(draftKey), sent),
           );
         }
       },

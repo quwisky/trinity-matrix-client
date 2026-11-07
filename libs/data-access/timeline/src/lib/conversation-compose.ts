@@ -78,6 +78,8 @@ interface ConversationComposePorts {
   readDraft(): string;
   /** Put a failed message back once this handle is retired: into a newer live one, or storage. */
   putBackRetired(failed: string): void;
+  /** Drop a sent message once this handle is retired: from a newer live one, or storage. */
+  dropSentRetired(sent: string): void;
   persistSnapshot(snapshot: ConversationComposeSnapshot | null): void;
   setTyping(typing: boolean): void;
   send(request: ConversationTextSendRequest): ConversationTextSendOperation;
@@ -142,6 +144,16 @@ export class ConversationComposeController {
   keepMessageDraft(text: string): void {
     this.messageDraftState.set(appendDraft(this.messageDraftState(), text));
     this.ports.persistDraft(appendDraft(this.ports.readDraft(), text));
+  }
+
+  /**
+   * Drop a message another handle for this room sent from the front of this one's draft, which
+   * read it from storage while it was sending. A box the person has changed keeps their text;
+   * storage drops it either way.
+   */
+  dropSent(sent: string): void {
+    this.messageDraftState.set(withoutSent(this.messageDraftState(), sent));
+    this.ports.persistDraft(withoutSent(this.ports.readDraft(), sent));
   }
 
   /** Put a failed message back in front of the message draft. Not a user edit either. */
@@ -242,9 +254,13 @@ export class ConversationComposeController {
                 // Storage drops the sent text even if a reply or edit began meanwhile, or a
                 // reload would offer it again; only the box waits on the revision.
                 if (intent.kind !== 'edit') {
-                  this.ports.persistDraft(
-                    withoutSent(this.ports.readDraft(), draft),
-                  );
+                  if (this.ports.state() === 'retired') {
+                    this.ports.dropSentRetired(draft);
+                  } else {
+                    this.ports.persistDraft(
+                      withoutSent(this.ports.readDraft(), draft),
+                    );
+                  }
                 }
                 if (this.revision === revision) this.finishIntent();
                 subscriber.next(
