@@ -258,6 +258,20 @@ export function reuseUnchanged(
     : next;
 }
 
+/**
+ * The SDK's unread or member counts no longer match the row's. A sync updates them without an
+ * event naming the room, possibly after this room's row was rebuilt mid-sync.
+ */
+export function countsMoved(room: Room, row: RoomSummary): boolean {
+  return (
+    room.getJoinedMemberCount() !== row.memberCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Total) !==
+      row.unreadCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
+      row.highlightCount
+  );
+}
+
 /** Same rooms, in the same order, as the same objects: nothing for a consumer to redo. */
 export function sameRooms(
   a: readonly RoomSummary[],

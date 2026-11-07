@@ -45,7 +45,9 @@ export interface PendingInvite {
 export class InvitesService {
   private readonly matrix = inject(MatrixClientService);
 
-  private readonly _pendingInvites = signal<PendingInvite[]>([]);
+  private readonly _pendingInvites = signal<PendingInvite[]>([], {
+    equal: sameInvites,
+  });
   /** Rooms/spaces we have been invited to; live as the client syncs. */
   readonly pendingInvites = this._pendingInvites.asReadonly();
 
@@ -198,6 +200,21 @@ export function buildInvite(
     isSpace: room.isSpaceRoom(),
     isDirect,
   };
+}
+
+/** Same invites, in the same order, with the same fields: a sync that changed none republishes nothing. */
+export function sameInvites(
+  a: readonly PendingInvite[],
+  b: readonly PendingInvite[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((x, i) =>
+      (Object.keys(x) as (keyof PendingInvite)[]).every(
+        (key) => x[key] === b[i][key],
+      ),
+    )
+  );
 }
 
 /** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */

@@ -137,6 +137,19 @@ describe('AccountBadgesService', () => {
     expect(svc.forAccount('@alt:hs')?.name).toBe('Alt');
   });
 
+  it('keeps the same badges when the view changes without changing them', () => {
+    const { svc, selected } = harness({
+      selected: ['@me:hs', '@alt:hs'],
+      profiles: { '@me:hs': {}, '@alt:hs': {} },
+    });
+    const before = svc.badges();
+
+    // A new view object, as every room-list sync publishes, with the same Accounts.
+    selected.set(new Set(['@me:hs', '@alt:hs']));
+
+    expect(svc.badges()).toBe(before);
+  });
+
   it('empties when mixed mode is turned off', () => {
     const { svc, mixing } = harness({
       selected: ['@me:hs', '@alt:hs'],

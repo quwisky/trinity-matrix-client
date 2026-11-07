@@ -675,7 +675,7 @@ export class SpacesService {
  * Whether two space lists carry the same summaries, so a sync that changed no space does
  * not republish the list. `initial` derives from `name`, so it needs no comparison.
  */
-function sameSpaces(
+export function sameSpaces(
   a: readonly SpaceSummary[],
   b: readonly SpaceSummary[],
 ): boolean {
@@ -704,7 +704,10 @@ function leavingKey(accountId: string, spaceId: string): string {
  * Whether two id sets hold the same ids, so a sync that changed no membership does not
  * re-derive the hierarchy projection and everything downstream of it.
  */
-function sameIds(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+export function sameIds(
+  a: ReadonlySet<string>,
+  b: ReadonlySet<string>,
+): boolean {
   if (a.size !== b.size) {
     return false;
   }

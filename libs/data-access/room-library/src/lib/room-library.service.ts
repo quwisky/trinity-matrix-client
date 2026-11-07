@@ -4,7 +4,6 @@ import {
   EventType,
   HistoryVisibility,
   MatrixEventEvent,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RoomEvent,
@@ -48,6 +47,7 @@ import {
   compareRoomSummaries,
   decryptionChangesRow,
   directMapOf,
+  countsMoved,
   isMarkedUnread,
   reuseUnchanged,
   sameRooms,
@@ -887,20 +887,6 @@ export class RoomLibraryService {
       hasUnread: summary.unreadCount > 0 || pending,
     };
   }
-}
-
-/**
- * The SDK's unread or member counts no longer match the row's. A sync updates them without an
- * event naming the room, possibly after this room's row was rebuilt mid-sync.
- */
-function countsMoved(room: Room, row: RoomSummary): boolean {
-  return (
-    room.getJoinedMemberCount() !== row.memberCount ||
-    room.getUnreadNotificationCount(NotificationCountType.Total) !==
-      row.unreadCount ||
-    room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
-      row.highlightCount
-  );
 }
 
 /** Whether `next` sorts by different keys than `previous`; see {@link compareRoomSummaries}. */

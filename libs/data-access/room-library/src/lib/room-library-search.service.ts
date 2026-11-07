@@ -173,10 +173,11 @@ export class RoomLibrarySearchService {
     const corpus = accountId
       ? this.entries().filter((entry) => entry.accountId === accountId)
       : this.entries();
+    const wordStart = new RegExp(`\\b${escapeRegExp(qLower)}`);
     return corpus
       .map((entry) => ({
         entry,
-        score: scoreOf(entry.titleLower, entry.haystack, qLower),
+        score: scoreOf(entry.titleLower, entry.haystack, qLower, wordStart),
       }))
       .filter((scored) => scored.score > 0)
       .sort(
@@ -219,7 +220,12 @@ export class RoomLibrarySearchService {
  * the title, then a substring fallback over `haystack` (title plus a room's topic). `0` means
  * no match; an empty query matches everything equally.
  */
-function scoreOf(titleLower: string, haystack: string, qLower: string): number {
+function scoreOf(
+  titleLower: string,
+  haystack: string,
+  qLower: string,
+  wordStart: RegExp,
+): number {
   if (!qLower) {
     return SCORE_EMPTY;
   }
@@ -229,7 +235,7 @@ function scoreOf(titleLower: string, haystack: string, qLower: string): number {
   if (titleLower.startsWith(qLower)) {
     return SCORE_PREFIX;
   }
-  if (new RegExp(`\\b${escapeRegExp(qLower)}`).test(titleLower)) {
+  if (wordStart.test(titleLower)) {
     return SCORE_WORD_BOUNDARY;
   }
   if (haystack.includes(qLower)) {

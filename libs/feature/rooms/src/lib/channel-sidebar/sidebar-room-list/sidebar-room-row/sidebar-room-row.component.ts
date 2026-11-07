@@ -71,10 +71,9 @@ const LONG_PRESS_SLOP_PX = 10;
 /**
  * One room in the sidebar list: the select button, the kebab and its menu with the Notifications submenu.
  *
- * Per-row helpers (`typingIn`, `presenceOf`, `notifyMode`, the badge label) are `computed()`. Not
- * memoised across syncs: `projectSelectedRooms` rebuilds every `RoomSummary` on each sync, so every
- * row's `room` input changes then and its computeds re-read the push rule and presence (cheap
- * lookups). The host is `display: contents` so `.channel-row` lays out as a direct child of the list.
+ * Per-row helpers (`typingIn`, `presenceOf`, `notifyMode`, the badge label) are `computed()`. A
+ * row's `room` input changes when a sync changes its room, and its computeds then re-read the push
+ * rule and presence (cheap lookups). The host is `display: contents` so `.channel-row` lays out as a direct child of the list.
  */
 @Component({
   selector: 'trn-sidebar-room-row',

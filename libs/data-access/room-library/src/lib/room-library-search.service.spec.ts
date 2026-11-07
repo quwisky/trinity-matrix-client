@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type PendingInvite } from './invites.service';
 import { RoomLibrarySearchService } from './room-library-search.service';
 import { type RoomSummary } from './room-library.service';
@@ -72,6 +72,7 @@ function setup(
 
 describe('RoomLibrarySearchService', () => {
   beforeEach(() => TestBed.resetTestingModule());
+  afterEach(() => vi.restoreAllMocks());
 
   it('ranks exact, prefix, word-boundary, then substring matches', () => {
     const search = setup({
@@ -89,6 +90,20 @@ describe('RoomLibrarySearchService', () => {
       '!word:hs',
       '!substring:hs',
     ]);
+  });
+
+  it('compiles the word-boundary pattern once per search, not once per room', () => {
+    const search = setup({
+      rooms: Array.from({ length: 50 }, (_, i) =>
+        room({ id: `!r${i}:hs`, name: `team room ${i}` }),
+      ),
+    });
+    search.search('warm-up');
+    const compiled = vi.spyOn(globalThis, 'RegExp');
+
+    search.search('room');
+
+    expect(compiled).toHaveBeenCalledOnce();
   });
 
   it('classifies DMs and spaces without reaching outside Room Library', () => {
