@@ -102,6 +102,13 @@ export class ConversationPinsController implements ConversationPins {
   };
 
   attach(key: ConversationKey, client: MatrixClient): void {
+    if (
+      this.client === client &&
+      this.key?.accountId === key.accountId &&
+      this.key.roomId === key.roomId
+    ) {
+      return;
+    }
     this.release();
     const room = client.getRoom(key.roomId);
     if (!room || client.getUserId() !== key.accountId) return;

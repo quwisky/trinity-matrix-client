@@ -28,6 +28,7 @@ import {
   trackEncryptedNonMessages,
 } from '@trinity/util/matrix';
 import { TimelineService } from './timeline.service';
+import { projectMessage } from './project-message';
 import { revisionOf } from './event-revision';
 import { shieldSubject } from './shields';
 import { trimLiveTimeline } from './live-timeline-trim';
@@ -38,6 +39,12 @@ import {
   privacyProvider,
   systemLinesProvider,
 } from './timeline.spec-harness';
+
+// Counts the rows a refresh projects, through the real projection.
+vi.mock('./project-message', async (original) => {
+  const actual = await original<typeof import('./project-message')>();
+  return { ...actual, projectMessage: vi.fn(actual.projectMessage) };
+});
 
 // What a refresh may skip is only as good as what tells it a row changed. These specs drive
 // a real SDK client and Room through each way a loaded row can change, so a path the
@@ -1752,6 +1759,123 @@ describe('TimelineService incremental projection', () => {
       await settle();
 
       expect(row(id(4))?.summary).toBe('@b:hs invited Carol');
+    });
+  });
+
+  describe('a hidden room', () => {
+    const SHOWN = 320;
+
+    it('is shown again without projecting its rows again', async () => {
+      const { svc } = await openConversation(SHOWN, SHOWN);
+      expect(svc.messages()).toHaveLength(SHOWN);
+      svc.setVisible(false);
+      vi.mocked(projectMessage).mockClear();
+
+      svc.setVisible(true);
+
+      expect(projectMessage).not.toHaveBeenCalled();
+      expect(svc.messages()).toHaveLength(SHOWN);
+    });
+
+    it('keeps and counts every row until it is closed', async () => {
+      const { svc } = await openConversation(SHOWN, SHOWN);
+      const shown = svc.resources().retainedBytes;
+
+      svc.setVisible(false);
+
+      expect(svc.messages()).toHaveLength(100);
+      expect(svc.resources().retainedBytes).toBe(shown);
+
+      svc.close();
+
+      expect(svc.resources().retainedBytes).toBe(0);
+    });
+
+    it('shows an edit of a message it no longer showed while hidden', async () => {
+      const { svc, row, receive } = await openConversation(SHOWN, SHOWN, {
+        9: reply(9, 2),
+      });
+      svc.setVisible(false);
+
+      await receive(
+        live('$edit', {
+          content: {
+            msgtype: 'm.text',
+            body: '* changed',
+            'm.new_content': { msgtype: 'm.text', body: 'changed' },
+            'm.relates_to': { rel_type: 'm.replace', event_id: id(2) },
+          },
+        }),
+      );
+      svc.setVisible(true);
+
+      expect(row(id(2))?.body).toBe('changed');
+      expect(row(id(9))?.replyTo?.body).toBe('changed');
+    });
+
+    it('updates the quote in a message it no longer showed of a message it still showed', async () => {
+      const { svc, row, receive } = await openConversation(SHOWN, SHOWN, {
+        2: reply(2, SHOWN - 1),
+      });
+      svc.setVisible(false);
+
+      await receive(
+        live('$edit', {
+          content: {
+            msgtype: 'm.text',
+            body: '* changed',
+            'm.new_content': { msgtype: 'm.text', body: 'changed' },
+            'm.relates_to': { rel_type: 'm.replace', event_id: id(SHOWN - 1) },
+          },
+        }),
+      );
+      svc.setVisible(true);
+
+      expect(row(id(2))?.replyTo?.body).toBe('changed');
+    });
+
+    it('renames a sender it no longer showed while hidden', async () => {
+      const { svc, row, receive } = await openConversation(SHOWN, SHOWN, {
+        2: { sender: '@c:hs' },
+      });
+      svc.setVisible(false);
+
+      await receive(member('@c:hs', 'Carol'));
+      svc.setVisible(true);
+
+      expect(row(id(2))?.senderName).toBe('Carol');
+    });
+
+    it('moves "seen by" off a message it no longer showed while hidden', async () => {
+      const { svc, room, row } = await openConversation(SHOWN, SHOWN);
+      room.addReceipt(receipt(id(4), '@r:hs', 1));
+      await settle();
+      svc.setVisible(false);
+
+      room.addReceipt(receipt(id(SHOWN), '@r:hs', 2));
+      await settle();
+      svc.setVisible(true);
+
+      expect(row(id(4))?.readReceipts).toEqual([]);
+    });
+
+    it('drops a quote whose message a trim removed while hidden', async () => {
+      const { svc, room, row, pageBack } = await openConversation(
+        PAGE * 4,
+        PAGE,
+        { [PAGE * 4 - 5]: reply(PAGE * 4 - 5, 5) },
+      );
+      await pageBack();
+      await pageBack();
+      await pageBack();
+      svc.setVisible(false);
+
+      expect(trimLiveTimeline(room, ME)).toBeGreaterThan(0);
+      await settle();
+      svc.setVisible(true);
+
+      expect(row(id(5))).toBeUndefined();
+      expect(row(id(PAGE * 4 - 5))?.replyTo).toBeNull();
     });
   });
 
