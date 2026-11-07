@@ -27,6 +27,7 @@ import {
   matrixProvider,
   mediaProvider,
   openTimeline,
+  immediateReadReceiptsProvider,
   privacyProvider,
   setup,
   switchableMatrixProvider,
@@ -46,7 +47,9 @@ vi.mock('./live-scrollback', () => ({
 }));
 
 beforeEach(() => {
-  TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
+  TestBed.configureTestingModule({
+    providers: [privacyProvider(true), immediateReadReceiptsProvider],
+  });
 });
 
 describe('TimelineService', () => {
@@ -802,7 +805,10 @@ describe('TimelineService', () => {
           return Promise.resolve({});
         },
       });
-      openTimeline(client, [privacyProvider(sendReceipts)]);
+      openTimeline(client, [
+        privacyProvider(sendReceipts),
+        immediateReadReceiptsProvider,
+      ]);
 
       expect(received).toEqual([{ id: '$a', type: expected }]);
     },

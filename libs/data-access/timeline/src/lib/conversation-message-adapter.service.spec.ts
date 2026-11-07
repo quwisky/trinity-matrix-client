@@ -316,7 +316,7 @@ describe('MatrixConversationMessageAdapter', () => {
       adapter.acknowledge({ key: KEY, messageId: '$message' }).subscribe();
       await vi.advanceTimersByTimeAsync(400);
       adapter.acknowledge({ key: KEY, messageId: '$newer' }).subscribe();
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(500);
       expect(client.sendReadReceipt).not.toHaveBeenCalled();
 
       await vi.advanceTimersByTimeAsync(200);
@@ -326,6 +326,20 @@ describe('MatrixConversationMessageAdapter', () => {
         ReceiptType.Read,
       );
       expect(client.setRoomReadMarkers).toHaveBeenCalledTimes(1);
+    });
+
+    it('still sends every second or so while acks keep arriving', async () => {
+      vi.useFakeTimers();
+      const { adapter, client } = setup({ withNewer: true });
+
+      for (let elapsed = 0; elapsed < 5_000; elapsed += 300) {
+        adapter.acknowledge({ key: KEY, messageId: '$newer' }).subscribe();
+        await vi.advanceTimersByTimeAsync(300);
+      }
+
+      expect(client.sendReadReceipt.mock.calls.length).toBeGreaterThanOrEqual(
+        4,
+      );
     });
 
     it('keeps the room and thread receipts separate', async () => {

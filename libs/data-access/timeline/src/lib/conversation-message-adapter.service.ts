@@ -75,7 +75,7 @@ export const READ_RECEIPT_DEBOUNCE_MS = new InjectionToken<number>(
 );
 
 interface PendingReceipt {
-  readonly request: ConversationMessageActionRequest;
+  request: ConversationMessageActionRequest;
   readonly outcome: ReplaySubject<ConversationMessageOutcome>;
   readonly timer: ReturnType<typeof setTimeout>;
 }
@@ -244,11 +244,12 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
           this.flushReceipt(other);
         }
       }
-      const superseded = this.pendingReceipts.get(key);
-      if (superseded) {
-        clearTimeout(superseded.timer);
-        superseded.outcome.next(this.applied('receipt'));
-        superseded.outcome.complete();
+      // A newer ack swaps the request but keeps the running timer, so a steady stream of acks
+      // still sends once per debounce window.
+      const waiting = this.pendingReceipts.get(key);
+      if (waiting) {
+        waiting.request = request;
+        return waiting.outcome.pipe(take(1));
       }
       const outcome = new ReplaySubject<ConversationMessageOutcome>(1);
       this.pendingReceipts.set(key, {

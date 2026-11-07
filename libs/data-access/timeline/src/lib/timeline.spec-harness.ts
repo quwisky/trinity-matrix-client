@@ -23,15 +23,17 @@ import {
 } from '@trinity/platform-native';
 
 /** A PrivacySettingsService mock with a fixed send-read-receipts preference. */
-export function privacyProvider(sendReadReceipts: boolean): Provider[] {
-  return [
-    MockProvider(PrivacySettingsService, {
-      sendReadReceipts: signal(sendReadReceipts).asReadonly(),
-    }),
-    // Timeline specs assert the receipt synchronously; the debounce has its own spec.
-    { provide: READ_RECEIPT_DEBOUNCE_MS, useValue: 0 },
-  ];
+export function privacyProvider(sendReadReceipts: boolean) {
+  return MockProvider(PrivacySettingsService, {
+    sendReadReceipts: signal(sendReadReceipts).asReadonly(),
+  });
 }
+
+/** Sends read receipts at once, for specs that assert the send; the debounce has its own spec. */
+export const immediateReadReceiptsProvider: Provider = {
+  provide: READ_RECEIPT_DEBOUNCE_MS,
+  useValue: 0,
+};
 
 /**
  * A SystemLineSettingsService mock with writable category toggles, so a test can hide a

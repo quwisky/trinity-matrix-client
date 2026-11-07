@@ -8,6 +8,7 @@ import {
   fakeRoom,
   matrixProvider,
   mediaProvider,
+  immediateReadReceiptsProvider,
   privacyProvider,
 } from './timeline.spec-harness';
 
@@ -24,7 +25,9 @@ vi.mock('./live-scrollback', () => ({
 }));
 
 beforeEach(() => {
-  TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
+  TestBed.configureTestingModule({
+    providers: [privacyProvider(true), immediateReadReceiptsProvider],
+  });
 });
 
 beforeEach(() => {
