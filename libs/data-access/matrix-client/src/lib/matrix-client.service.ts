@@ -64,7 +64,7 @@ import {
 } from '@trinity/util/matrix';
 import { SecretStorageKeyHolder } from './secret-storage-key-holder';
 import { roomEncryptionRepair } from './room-encryption-repair';
-import { syncStoreWorkerFactory } from './sync-store-worker';
+import { syncStore } from './sync-store-worker';
 import {
   clientHasOutgoingWork,
   clientPendingTexts,
@@ -1650,14 +1650,10 @@ export class MatrixClientService {
     if (typeof globalThis.indexedDB === 'undefined') {
       return null;
     }
-    return new IndexedDBStore({
-      indexedDB: globalThis.indexedDB,
-      // Per-account database so accounts on one device don't share a cache.
-      // The SDK prepends `matrix-js-sdk:` to this; anything deleting the database by name
-      // must use syncStoreIndexedDbName.
-      dbName: syncStoreDbName(userId),
-      workerFactory: syncStoreWorkerFactory(),
-    });
+    // Per-account database so accounts on one device don't share a cache.
+    // The SDK prepends `matrix-js-sdk:` to this; anything deleting the database by name
+    // must use syncStoreIndexedDbName.
+    return syncStore(globalThis.indexedDB, syncStoreDbName(userId));
   }
 
   /**

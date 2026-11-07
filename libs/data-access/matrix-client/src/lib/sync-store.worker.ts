@@ -1,4 +1,6 @@
 import { IndexedDBStoreWorker } from 'matrix-js-sdk/lib/indexeddb-worker';
 
-const store = new IndexedDBStoreWorker((message) => self.postMessage(message));
-self.onmessage = store.onMessage;
+import { relaySyncStoreCommands } from './sync-store-relay';
+
+const post = (message: unknown): void => self.postMessage(message);
+self.onmessage = relaySyncStoreCommands(new IndexedDBStoreWorker(post), post);
