@@ -131,8 +131,9 @@
           </div>
         </section>
       }
-      <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: the grid must
-           not size its track; the content's width does. -->
+      <!-- A sheet's touch cells are 44px with the larger glyph. `min-w-0`: in the popover's
+           grid the content's width sizes the track, not the picker. In a sheet the picker
+           takes the height left, and its list shrinks to fit. -->
       <trn-emoji-picker
         class="min-w-0"
         [class.flex-1]="presentation() === 'sheet'"
