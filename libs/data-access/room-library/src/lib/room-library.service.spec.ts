@@ -401,6 +401,179 @@ describe('RoomLibraryService', () => {
     });
   });
 
+  describe('rebuilding only the rooms that changed (#1942)', () => {
+    function setupMany() {
+      vi.useFakeTimers();
+      const handlers = new Map<string, (...args: unknown[]) => void>();
+      const activity: Record<string, number> = {
+        '!a:hs': 300,
+        '!b:hs': 200,
+        '!c:hs': 100,
+      };
+      const unread: Record<string, number> = {
+        '!a:hs': 0,
+        '!b:hs': 0,
+        '!c:hs': 0,
+      };
+      const built: string[] = [];
+      const make = (id: string) => {
+        const room = fakeRoom({ roomId: id, name: id });
+        // Only a summary build reads the activity time, so it counts builds.
+        room.getLastActiveTimestamp = () => {
+          built.push(id);
+          return activity[id];
+        };
+        room.getUnreadNotificationCount = (type?: string) =>
+          type === 'highlight' ? 0 : unread[id];
+        return room;
+      };
+      let rooms = ['!a:hs', '!b:hs', '!c:hs'].map(make);
+      const sync = { state: 'SYNCING' };
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => rooms,
+        getSyncState: () => sync.state,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.set(event, handler);
+        },
+        off: vi.fn(),
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      const emit = (event: string, ...args: unknown[]) =>
+        handlers.get(event)?.(...args);
+      const room = (id: string) => rooms.find((r) => r.roomId === id);
+      return {
+        svc,
+        activity,
+        unread,
+        sync,
+        emit,
+        room,
+        setRooms: (ids: string[]) => {
+          rooms = ids.map((id) => room(id) ?? make(id));
+        },
+        /** End the sync and return the rooms it rebuilt. */
+        endSync: async () => {
+          built.length = 0;
+          emit(ClientEvent.Sync);
+          await windowEnds();
+          return [...built].sort();
+        },
+        timeline: (id: string) =>
+          emit(RoomEvent.Timeline, timelineEvent({}), room(id), false),
+        ids: () => svc.rooms().map((r) => r.id),
+      };
+    }
+
+    it('rebuilds nothing on a sync that named no room', async () => {
+      const { svc, endSync } = setupMany();
+      const before = svc.rooms();
+
+      expect(await endSync()).toEqual([]);
+      expect(svc.rooms()).toBe(before);
+    });
+
+    it('rebuilds only the room a sync delivered events to', async () => {
+      const { svc, endSync, timeline } = setupMany();
+      const b = svc.rooms()[1];
+
+      timeline('!a:hs');
+
+      expect(await endSync()).toEqual(['!a:hs']);
+      expect(svc.rooms()[1]).toBe(b);
+    });
+
+    it('rebuilds every room named across one coalescing window, once each', async () => {
+      const { emit, endSync, timeline, room } = setupMany();
+
+      emit(RoomEvent.Receipt, {}, room('!a:hs'));
+      timeline('!c:hs');
+      timeline('!c:hs');
+
+      expect(await endSync()).toEqual(['!a:hs', '!c:hs']);
+      // Consumed: the next sync starts clean.
+      expect(await endSync()).toEqual([]);
+    });
+
+    it('moves a rebuilt room whose activity changed', async () => {
+      const { activity, endSync, timeline, ids } = setupMany();
+
+      activity['!c:hs'] = 400;
+      timeline('!c:hs');
+      await endSync();
+
+      expect(ids()).toEqual(['!c:hs', '!a:hs', '!b:hs']);
+    });
+
+    it('keeps the order when a rebuilt room kept its sort key', async () => {
+      const { svc, unread, emit, endSync, room, ids } = setupMany();
+
+      unread['!b:hs'] = 3;
+      emit(RoomEvent.Receipt, {}, room('!b:hs'));
+      await endSync();
+
+      expect(ids()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
+      expect(svc.rooms()[1].unreadCount).toBe(3);
+    });
+
+    it('picks up an unread count that changed with no event naming the room', async () => {
+      const { svc, unread, endSync } = setupMany();
+
+      unread['!c:hs'] = 4;
+
+      expect(await endSync()).toEqual(['!c:hs']);
+      expect(svc.totalUnread()).toBe(4);
+    });
+
+    it('rebuilds every room when account data such as m.direct changes', async () => {
+      const { emit, endSync } = setupMany();
+
+      emit(ClientEvent.AccountData, { getType: () => 'm.direct' });
+
+      expect(await endSync()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
+    });
+
+    it('rebuilds every room when the sync state changes', async () => {
+      const { sync, endSync } = setupMany();
+
+      sync.state = 'CATCHUP';
+
+      expect(await endSync()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
+    });
+
+    it('rebuilds every room when a room is upgraded', async () => {
+      const { emit, endSync } = setupMany();
+
+      emit(
+        RoomStateEvent.Events,
+        { getType: () => 'm.room.tombstone', getRoomId: () => '!a:hs' },
+        { roomId: '!a:hs' },
+      );
+
+      expect(await endSync()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
+    });
+
+    it('rebuilds every room when an event names no room', async () => {
+      const { emit, endSync } = setupMany();
+
+      emit(MatrixEventEvent.Replaced, { getRoomId: () => undefined });
+
+      expect(await endSync()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
+    });
+
+    it('drops a room that left and adds one that joined', async () => {
+      const { activity, setRooms, emit, endSync, ids } = setupMany();
+
+      activity['!d:hs'] = 50;
+      setRooms(['!a:hs', '!c:hs', '!d:hs']);
+      emit(ClientEvent.Room);
+      await endSync();
+
+      expect(ids()).toEqual(['!a:hs', '!c:hs', '!d:hs']);
+    });
+  });
+
   it('re-reads a room once history pages into a live timeline replaced since its row was built', async () => {
     vi.useFakeTimers();
     const handlers = new Map<string, (...args: unknown[]) => void>();
@@ -434,6 +607,7 @@ describe('RoomLibraryService', () => {
     // Rewound: the list rebuilds on the sync while the new timeline is still empty.
     const paged: ReturnType<typeof timelineEvent>[] = [];
     timeline = { getEvents: () => paged, getState };
+    handlers.get(RoomEvent.TimelineReset)?.(room);
     handlers.get(ClientEvent.Sync)?.();
     await Promise.resolve();
     expect(preview()).toBe('');
@@ -493,13 +667,16 @@ describe('RoomLibraryService', () => {
         getRooms: () => rooms,
         getRoom: (id: string) => rooms.find((r) => r.roomId === id),
         setRoomAccountData,
-        on: () => {},
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.set(event, handler);
+        },
       };
+      const handlers = new Map<string, (...args: unknown[]) => void>();
       const { svc, matrix } = provideRooms(client);
       ngMocks.stubMember(matrix, 'accountIds', signal(['@me:hs']).asReadonly());
       ngMocks.stubMember(matrix, 'clientFor', (() => client) as never);
       svc.runProjection().subscribe();
-      return { svc, client, setRoomAccountData };
+      return { svc, client, setRoomAccountData, handlers };
     }
 
     it('writes the STABLE event type when flagging a room', async () => {
@@ -554,7 +731,7 @@ describe('RoomLibraryService', () => {
       // room says the same thing, the overlay is dropped so a change made on another
       // device is not fought by a stale local guess.
       const room = fakeRoom({ roomId: '!r:hs', name: 'R' });
-      const { svc } = setupWritable([room]);
+      const { svc, handlers } = setupWritable([room]);
       await firstValueFrom(svc.setMarkedUnread('!r:hs', true));
 
       // The sync echo lands: the room itself now says flagged, matching the overlay.
@@ -567,8 +744,8 @@ describe('RoomLibraryService', () => {
 
       // Another device clears it. With the overlay dropped, the server wins.
       room.getAccountData = () => undefined;
-      await firstValueFrom(svc.setMarkedUnread('!other:hs', true));
-      expect(svc.rooms()[0].markedUnread).toBe(false);
+      handlers.get(RoomEvent.AccountData)?.({}, room);
+      await vi.waitFor(() => expect(svc.rooms()[0].markedUnread).toBe(false));
     });
 
     it('still clears the flag when the room has nothing to acknowledge', async () => {
@@ -925,23 +1102,25 @@ describe('RoomLibraryService', () => {
 
     it('reorders on the next sync after a thread reply arrives', async () => {
       const threads: { rootTs: number; replyTs?: number }[] = [];
-      const handlers = new Map<string, () => void>();
+      const handlers = new Map<string, (...args: unknown[]) => void>();
       const client = {
         baseUrl: 'https://hs.example',
         getRooms: () => [
           fakeRoom({ roomId: '!a:hs', name: 'A', activity: 200 }),
           fakeRoom({ roomId: '!b:hs', name: 'B', activity: 100, threads }),
         ],
-        on: (event: string, cb: () => void) => handlers.set(event, cb),
+        on: (event: string, cb: (...args: unknown[]) => void) =>
+          handlers.set(event, cb),
         off: vi.fn(),
       };
       const { svc } = provideRooms(client);
       svc.runProjection().subscribe();
       expect(svc.rooms().map((r) => r.id)).toEqual(['!a:hs', '!b:hs']);
 
-      // The SDK files the reply into B's thread while it processes the sync response,
-      // then emits Sync — the same signal a main-timeline message moves the list on.
+      // The SDK files the reply into B's thread while it processes the sync response (the
+      // thread's timeline event reaches the client naming B), then emits Sync.
       threads.push({ rootTs: 50, replyTs: 300 });
+      handlers.get(RoomEvent.Timeline)?.({}, { roomId: '!b:hs' }, false);
       handlers.get(ClientEvent.Sync)?.();
       await Promise.resolve();
 
