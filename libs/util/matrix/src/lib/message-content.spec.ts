@@ -107,7 +107,7 @@ describe('replyTextArt', () => {
   it('leaves a plain message and the art alone to the reply, which escapes them whole', () => {
     expect(replyTextArt('/lenny', renderMarkdown)).toEqual({
       text: '( ͡° ͜ʖ ͡°)',
-      md: { formatted: false, html: '' },
+      md: { formatted: false, html: '( ͡° ͜ʖ ͡°)' },
     });
     expect(replyTextArt('/shrug oh well', renderMarkdown)?.md.formatted).toBe(
       false,

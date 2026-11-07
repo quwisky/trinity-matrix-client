@@ -47,6 +47,17 @@ describe('composerPreview', () => {
     );
   });
 
+  it('pills a mention in a text-art reply, as the reply will', () => {
+    const { html } = composerPreview(
+      '/shrug hi @Bob',
+      [{ userId: '@bob:hs', display: '@Bob' }],
+      'reply',
+    );
+
+    expect(html).toContain('https://matrix.to/#/@bob:hs');
+    expect(html).toContain('¯\\_(ツ)_/¯');
+  });
+
   it('opens a plain-text preview link as the timeline will, out of the app', () => {
     const element = document.createElement('div');
     element.innerHTML = composerPreview(

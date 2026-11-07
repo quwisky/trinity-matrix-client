@@ -282,8 +282,12 @@ export function replyTextArt(
   const full = parsed.arg ? `${parsed.arg} ${art}` : art;
   const md = parsed.arg ? render(parsed.arg) : null;
   if (!md?.formatted) {
-    // Plain: the reply escapes the whole text itself.
-    return { text: full, md: { formatted: false, html: '' } };
+    // Plain: the reply escapes the whole text itself. The HTML is for anything that builds
+    // rich content from it anyway, as the preview does to show a mention pill.
+    return {
+      text: full,
+      md: { formatted: false, html: escapeInlineText(full) },
+    };
   }
   // On the message's last line when that is a paragraph; on a line of its own after a block.
   const html = md.html.trimEnd();
