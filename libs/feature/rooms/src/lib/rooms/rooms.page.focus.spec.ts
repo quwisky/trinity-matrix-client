@@ -231,6 +231,7 @@ function buildPage({
       }),
       MockProvider(MatrixClientService, {
         activeUserId: signal<string | null>('@me:hs'),
+        accountIds: signal<readonly string[]>(['@me:hs']),
       }),
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
