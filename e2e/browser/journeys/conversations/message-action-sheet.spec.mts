@@ -383,7 +383,7 @@ test.describe('Message actions on a phone', () => {
     await expect(grid).toBeVisible({ timeout: 20_000 });
     await sheetAtRest(dialog.getByTestId('dialog-surface'));
 
-    // The desktop picker is a fixed 302px card; in a sheet it spans the sheet's padded width.
+    // The picker spans the sheet's padded width, not the vendor's fixed 302px.
     const [gridBox, sheetBox] = await Promise.all([
       grid.boundingBox(),
       dialog.getByTestId('dialog-surface').boundingBox(),

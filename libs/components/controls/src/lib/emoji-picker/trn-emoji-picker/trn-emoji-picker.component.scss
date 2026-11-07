@@ -169,15 +169,13 @@
         height: 100%;
       }
 
-      .emoji-mart-scroll {
-        flex: 1 1 auto;
-        min-height: 0;
-      }
-
-      // The vendor promotes its scroll area to a layer (`will-change: transform`); filling,
-      // that left a hairline of stale paint under the sticky headings in Chromium.
+      // The list takes the height that is left. The vendor also promotes it to a layer
+      // (`will-change: transform`); filling, that left a hairline of stale paint under the
+      // sticky headings in Chromium.
       .emoji-mart-scroll {
         will-change: auto;
+        flex: 1 1 auto;
+        min-height: 0;
       }
     }
 
