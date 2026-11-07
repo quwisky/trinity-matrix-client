@@ -11,7 +11,10 @@ import { vi } from 'vitest';
 import { TimelineService } from './timeline.service';
 import { TimelineActionsService } from './timeline-actions.service';
 import { ConversationActionContextService } from './conversation-action-context.service';
-import { CONVERSATION_MESSAGE_POLICY } from './conversation-message-adapter.service';
+import {
+  CONVERSATION_MESSAGE_POLICY,
+  READ_RECEIPT_DEBOUNCE_MS,
+} from './conversation-message-adapter.service';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MediaService, type UploadedMedia } from '@trinity/data-access/media';
 import {
@@ -25,6 +28,12 @@ export function privacyProvider(sendReadReceipts: boolean) {
     sendReadReceipts: signal(sendReadReceipts).asReadonly(),
   });
 }
+
+/** Sends read receipts at once, for specs that assert the send; the debounce has its own spec. */
+export const immediateReadReceiptsProvider: Provider = {
+  provide: READ_RECEIPT_DEBOUNCE_MS,
+  useValue: 0,
+};
 
 /**
  * A SystemLineSettingsService mock with writable category toggles, so a test can hide a

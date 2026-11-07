@@ -3,7 +3,9 @@ import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { RoomEvent } from 'matrix-js-sdk';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { of } from 'rxjs';
 import { CONVERSATION_ATTENTION } from './conversation-attention.port';
+import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { TimelineService } from './timeline.service';
 import {
   clientFor,
@@ -13,6 +15,7 @@ import {
   matrixProvider,
   mediaProvider,
   openTimeline,
+  immediateReadReceiptsProvider,
   privacyProvider,
   setup,
 } from './timeline.spec-harness';
@@ -30,7 +33,9 @@ vi.mock('./live-scrollback', () => ({
 }));
 
 beforeEach(() => {
-  TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
+  TestBed.configureTestingModule({
+    providers: [privacyProvider(true), immediateReadReceiptsProvider],
+  });
 });
 
 beforeEach(() => {
@@ -87,6 +92,31 @@ it('reports deterministic retained resources and returns them to zero on release
   svc.close();
 
   expect(svc.resources()).toEqual({ listenerCount: 0, retainedBytes: 0 });
+});
+
+it('sends the receipts still waiting when the room closes', () => {
+  const flushReceipts = vi.fn();
+  const room = fakeRoom([fakeEvent({ id: '$a', sender: '@a:hs', body: 'hi' })]);
+  TestBed.configureTestingModule({
+    providers: [
+      TimelineService,
+      matrixProvider(clientFor(room)),
+      {
+        provide: CONVERSATION_MESSAGE_ADAPTER,
+        useValue: {
+          acknowledge: () => of({ kind: 'applied', operation: 'receipt' }),
+          flushReceipts,
+        },
+      },
+    ],
+  });
+  const svc = TestBed.inject(TimelineService);
+  svc.open('!r:hs');
+  flushReceipts.mockClear(); // opening a room closes the previous one
+
+  svc.close();
+
+  expect(flushReceipts).toHaveBeenCalledTimes(1);
 });
 
 it('shows only the newest events of a blurred conversation', () => {
