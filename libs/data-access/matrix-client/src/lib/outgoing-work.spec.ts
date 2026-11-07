@@ -238,11 +238,12 @@ describe('resendWaitingEchoes', () => {
 
 describe('pausing and resuming a real sync loop', () => {
   /**
-   * A started client on a fake homeserver: the first `/sync` answers `s1`, every later one
-   * waits until it is aborted. `syncs` lists each `/sync` request's query.
+   * A client on a fake homeserver: the first `/sync` answers `s1`, every later one waits until
+   * it is aborted unless `respond` answers it first. `syncs` lists each `/sync` request's query.
    */
-  async function syncingClient() {
+  function fakeServerClient() {
     const syncs: URLSearchParams[] = [];
+    const pending: ((body: unknown) => void)[] = [];
     const json = (body: unknown, status = 200) =>
       new Response(JSON.stringify(body), {
         status,
@@ -261,12 +262,14 @@ describe('pausing and resuming a real sync loop', () => {
         return json(init?.method === 'POST' ? { filter_id: 'f1' } : {});
       if (url.pathname.endsWith('/sync')) {
         syncs.push(url.searchParams);
-        if (syncs.length === 1) return json({ next_batch: 's1' });
-        return new Promise((_, reject) =>
+        if (syncs.length === 1 && !url.searchParams.has('since'))
+          return json({ next_batch: 's1' });
+        return new Promise((resolve, reject) => {
+          pending.push((body) => resolve(json(body)));
           init?.signal?.addEventListener('abort', () =>
             reject(new DOMException('aborted', 'AbortError')),
-          ),
-        );
+          );
+        });
       }
       return json({ errcode: 'M_UNRECOGNIZED' }, 404);
     };
@@ -278,22 +281,35 @@ describe('pausing and resuming a real sync loop', () => {
     });
     const states: SyncState[] = [];
     client.on(ClientEvent.Sync, (state) => states.push(state));
-    await client.startClient({ initialSyncLimit: 1 });
-    await vi.waitFor(() => expect(syncs).toHaveLength(2));
-    return { client, syncs, states };
+    /** Answer the latest waiting `/sync`. */
+    const respond = (body: unknown) => pending.at(-1)?.(body);
+    return { client, syncs, states, respond };
   }
 
-  it('resumes from the token it stopped at, without syncing from scratch again', async () => {
+  async function syncingClient() {
+    const server = fakeServerClient();
+    await server.client.startClient({ initialSyncLimit: 1 });
+    await vi.waitFor(() => expect(server.syncs).toHaveLength(2));
+    return server;
+  }
+
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 50));
+
+  it('resumes from the token it stopped at with a catch-up sync, never reporting itself stopped', async () => {
     const { client, syncs, states } = await syncingClient();
     try {
       pauseClientSync(client);
-      await vi.waitFor(() => expect(states.at(-1)).toBe(SyncState.Stopped));
+      await settle();
 
       resumeClientSync(client);
 
       await vi.waitFor(() => expect(syncs).toHaveLength(3));
       expect(syncs[2].get('since')).toBe('s1');
-      expect(states.filter((s) => s === SyncState.Prepared)).toHaveLength(1);
+      expect(syncs[2].get('timeout')).toBe('0');
+      await settle();
+      expect(states).toEqual([SyncState.Prepared, SyncState.Syncing]);
+      // Still connecting, so a conversation waiting for its room keeps waiting.
+      expect(client.getSyncState()).toBe(SyncState.Catchup);
     } finally {
       client.stopClient();
     }
@@ -303,7 +319,7 @@ describe('pausing and resuming a real sync loop', () => {
     const { client, syncs } = await syncingClient();
     try {
       resumeClientSync(client);
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await settle();
 
       expect(syncs).toHaveLength(2);
     } finally {
@@ -311,8 +327,8 @@ describe('pausing and resuming a real sync loop', () => {
     }
   });
 
-  it('resumes a loop paused before it had stopped', async () => {
-    const { client, syncs } = await syncingClient();
+  it('ends rapid switches with one loop and no late stop from the old one', async () => {
+    const { client, syncs, states } = await syncingClient();
     try {
       pauseClientSync(client);
       resumeClientSync(client);
@@ -320,8 +336,59 @@ describe('pausing and resuming a real sync loop', () => {
       resumeClientSync(client);
 
       await vi.waitFor(() => expect(syncs.length).toBeGreaterThan(2));
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await settle();
       expect(syncs).toHaveLength(3);
+      expect(syncs[2].get('timeout')).toBe('0');
+      expect(states).not.toContain(SyncState.Stopped);
+      expect(client.getSyncState()).toBe(SyncState.Catchup);
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('waits for the old loop to finish the response it is processing', async () => {
+    const { client, syncs, respond } = await syncingClient();
+    let saved!: () => void;
+    vi.spyOn(client.store, 'setSyncData').mockImplementationOnce(
+      () => new Promise<void>((resolve) => (saved = resolve)),
+    );
+    try {
+      respond({ next_batch: 's2' });
+      await vi.waitFor(() => expect(saved).toBeDefined());
+
+      pauseClientSync(client);
+      resumeClientSync(client);
+      await settle();
+      expect(syncs).toHaveLength(2);
+
+      saved();
+      await vi.waitFor(() => expect(syncs).toHaveLength(3));
+      expect(syncs[2].get('since')).toBe('s2');
+    } finally {
+      client.stopClient();
+    }
+  });
+
+  it('resumes a loop paused during startup only after its saved sync is replayed', async () => {
+    const { client, syncs } = fakeServerClient();
+    let replay!: (saved: unknown) => void;
+    vi.spyOn(client.store, 'getSavedSyncToken').mockResolvedValue('s0');
+    vi.spyOn(client.store, 'getSavedSync').mockReturnValue(
+      new Promise((resolve) => (replay = resolve)) as never,
+    );
+    try {
+      await client.startClient({ initialSyncLimit: 1 });
+      pauseClientSync(client);
+      resumeClientSync(client);
+      await settle();
+
+      replay({ nextBatch: 's0', roomsData: {}, accountData: [] });
+
+      await vi.waitFor(() =>
+        expect(syncs.some((query) => query.get('timeout') === '0')).toBe(true),
+      );
+      await settle();
+      expect(syncs.map((query) => query.get('since'))).not.toContain(null);
     } finally {
       client.stopClient();
     }
@@ -332,7 +399,7 @@ describe('pausing and resuming a real sync loop', () => {
     client.stopClient();
 
     resumeClientSync(client);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await settle();
 
     expect(syncs).toHaveLength(2);
   });

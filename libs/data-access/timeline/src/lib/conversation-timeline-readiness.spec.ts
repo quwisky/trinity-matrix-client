@@ -407,6 +407,12 @@ describe('ConversationTimelineReadiness', () => {
     });
   });
 
+  it('waits for a pending Room while a resumed sync catches up (opened from a notification)', () => {
+    const client = fakeClient(SyncState.Catchup);
+    const readiness = start(client, fakeTimeline().timeline);
+    expect(readiness.state()).toMatchObject({ reason: 'room-pending' });
+  });
+
   it('settles from the store when an already synced Account is Reconnecting, Catchup or Error', () => {
     for (const state of [
       SyncState.Reconnecting,
