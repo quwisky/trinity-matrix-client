@@ -25,7 +25,6 @@ import {
   of,
   switchMap,
   take,
-  tap,
   throwError,
 } from 'rxjs';
 import {
@@ -293,7 +292,7 @@ export class LoginPage {
               : this.storage.reusableDeviceId(record);
             return reusable.pipe(
               // With no device to reuse, whatever signs in next gets a new one.
-              tap({ error: () => this.reauthMovesDevice.set(true) }),
+              catchError(() => of(null)),
               switchMap((deviceId) => {
                 this.reauthDeviceId = deviceId;
                 this.reauthMovesDevice.set(deviceId === null);

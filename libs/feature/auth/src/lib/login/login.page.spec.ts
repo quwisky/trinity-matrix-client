@@ -1956,6 +1956,9 @@ describe('LoginPage', () => {
         });
 
         expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+        // …and the page goes on to offer that sign-in rather than stranding.
+        expect(cmp.passwordSupported()).toBe(true);
+        expect(cmp.error()).toBeNull();
       });
 
       it('a plain sign-in has no sentence', async () => {
