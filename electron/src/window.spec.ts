@@ -48,7 +48,7 @@ function fakeContents() {
 describe('hardenContents', () => {
   beforeEach(() => openExternal.mockClear());
 
-  it('denies every window.open, opening only http(s) externally', () => {
+  it('denies every window.open, opening only external links externally', () => {
     const c = fakeContents();
     hardenContents(c as never);
     const handler = c.setWindowOpenHandler.mock.calls[0][0] as (a: {
@@ -72,6 +72,48 @@ describe('hardenContents', () => {
 
     expect(event.preventDefault).toHaveBeenCalled();
     expect(openExternal).toHaveBeenCalledWith('https://evil.example/phish');
+  });
+
+  // The schemes the message sanitizer keeps on links; matrix: and mxc: stay in-app.
+  it.each([
+    'mailto:alice@example.org',
+    'magnet:?xt=urn:btih:c9e15763f722f23e98a29decdfae341b98d53056',
+    'ftp://ftp.example.org/pub/file.txt',
+  ])('hands a %s link to the operating system', (url) => {
+    const c = fakeContents();
+    hardenContents(c as never);
+    const handler = c.setWindowOpenHandler.mock.calls[0][0] as (a: {
+      url: string;
+    }) => unknown;
+    const event = { preventDefault: vi.fn() };
+
+    c.emit('will-navigate', event, url);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(openExternal).toHaveBeenCalledWith(url);
+
+    openExternal.mockClear();
+    expect(handler({ url })).toEqual({ action: 'deny' });
+    expect(openExternal).toHaveBeenCalledWith(url);
+  });
+
+  it.each([
+    'javascript:alert(1)',
+    'file:///etc/passwd',
+    'data:text/html,<script>alert(1)</script>',
+    'matrix:r/room:example.org',
+    'mxc://example.org/media',
+  ])('never hands %s to the operating system', (url) => {
+    const c = fakeContents();
+    hardenContents(c as never);
+    const handler = c.setWindowOpenHandler.mock.calls[0][0] as (a: {
+      url: string;
+    }) => unknown;
+    const event = { preventDefault: vi.fn() };
+
+    c.emit('will-navigate', event, url);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(handler({ url })).toEqual({ action: 'deny' });
+    expect(openExternal).not.toHaveBeenCalled();
   });
 
   it('blocks webview attachment', () => {
