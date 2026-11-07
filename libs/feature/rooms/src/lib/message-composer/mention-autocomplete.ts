@@ -31,6 +31,15 @@ export class MentionAutocomplete {
   /** The `@mention` query under the caret, or null when the menu is closed. */
   readonly query = signal<string | null>(null);
 
+  /** The member list with names lowercased once per list, not per keystroke. */
+  private readonly lowered = computed(() =>
+    this.members().map((member) => ({
+      member,
+      name: member.roomDisplayName.toLowerCase(),
+      id: member.userId.toLowerCase(),
+    })),
+  );
+
   /** Members matching the current query (prefix matches first), capped for the menu. */
   readonly matches = computed<MentionMember[]>(() => {
     const q = this.query();
@@ -38,18 +47,17 @@ export class MentionAutocomplete {
       return [];
     }
     const query = q.toLowerCase();
-    return this.members()
-      .filter(
-        (m) =>
-          m.roomDisplayName.toLowerCase().includes(query) ||
-          m.userId.toLowerCase().includes(query),
-      )
-      .sort(
-        (a, b) =>
-          Number(b.roomDisplayName.toLowerCase().startsWith(query)) -
-          Number(a.roomDisplayName.toLowerCase().startsWith(query)),
-      )
-      .slice(0, MENTION_SUGGESTION_LIMIT);
+    const prefix: MentionMember[] = [];
+    const rest: MentionMember[] = [];
+    for (const { member, name, id } of this.lowered()) {
+      if (name.includes(query) || id.includes(query)) {
+        (name.startsWith(query) ? prefix : rest).push(member);
+        if (prefix.length === MENTION_SUGGESTION_LIMIT) {
+          break;
+        }
+      }
+    }
+    return [...prefix, ...rest].slice(0, MENTION_SUGGESTION_LIMIT);
   });
 
   /** The mention menu shows only when a query yields at least one member. */

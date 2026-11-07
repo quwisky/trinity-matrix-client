@@ -68,7 +68,10 @@ import {
   ExpressionSheetComponent,
   type ExpressionSheetBridge,
 } from '../expression-picker/expression-sheet.component';
-import { ComposerExpressionTabPreference } from '@trinity/data-access/timeline';
+import {
+  ComposerExpressionTabPreference,
+  ConversationRuntime,
+} from '@trinity/data-access/timeline';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /** A room member offered by the @-mention autocomplete; the shape of the `members` input. */
@@ -147,6 +150,11 @@ export class MessageComposerComponent {
    * until thread state moves behind its Conversation child.
    */
   readonly composeDraft = input<string | null>(null);
+  /**
+   * Read the draft from the focused Conversation here instead of through `composeDraft`, so
+   * the host's template does not re-evaluate on every keystroke.
+   */
+  readonly conversationDraft = input(false);
   /** A Conversation-owned text attempt is still resolving through the SDK. */
   readonly textSending = input(false);
   /** The Conversation is not ready to send (loading or failed); typing and drafts stay live. */
@@ -350,6 +358,12 @@ export class MessageComposerComponent {
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
   private readonly drafts = inject(DraftStoreService);
+  private readonly runtime = inject(ConversationRuntime, { optional: true });
+  private readonly managedDraft = computed(() =>
+    this.conversationDraft()
+      ? (this.runtime?.compose.draft() ?? null)
+      : this.composeDraft(),
+  );
   protected readonly formatting: ComposerFormatting;
   protected readonly composing = signal(false);
   protected readonly formatContext = computed(() => ({
@@ -476,7 +490,7 @@ export class MessageComposerComponent {
       editing: this.editing,
       editTargetId: this.editTargetId,
       draft: this.draft,
-      composeDraft: this.composeDraft,
+      composeDraft: this.managedDraft,
       text: this.text,
       store: this.drafts,
       emitDraft: (draft) => this.composeDraftChange.emit(draft),
@@ -701,7 +715,7 @@ export class MessageComposerComponent {
     this.resetMenus();
     // The saved Aa selection must not be applied to a later draft.
     this.formatting.clearSelection();
-    if (!this.editing() && this.composeDraft() === null) {
+    if (!this.editing() && this.managedDraft() === null) {
       // Conversation-owned text clears from the authoritative input signal; the legacy thread
       // composer owns its local draft and clears it here.
       this.text.set('');

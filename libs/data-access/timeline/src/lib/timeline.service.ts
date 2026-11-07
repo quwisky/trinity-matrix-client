@@ -463,15 +463,19 @@ export class TimelineService {
     }
   };
 
-  // The event carries only the changed member; re-read the room's whole typing set so the
-  // signal reflects everyone typing, not one delta.
+  // The m.typing event lists everyone typing, so the names come from its user ids.
   private readonly onTyping = (
-    _event: MatrixEvent,
+    event: MatrixEvent,
     member: RoomMember,
   ): void => {
-    if (member.roomId === this.roomId) {
-      this.refreshTyping();
+    const ctx = member.roomId === this.roomId ? this.openContext() : null;
+    if (!ctx) {
+      return;
     }
+    this.setTypingNames(
+      ctx,
+      event.getContent<{ user_ids?: string[] }>().user_ids ?? [],
+    );
   };
 
   /** The window regained focus: send the read receipt held back while unfocused. */
@@ -961,15 +965,43 @@ export class TimelineService {
   private refreshTyping(): void {
     const ctx = this.openContext();
     if (!ctx) {
-      this._typingNames.set([]);
+      this.publishTypingNames([]);
       return;
     }
+    this.setTypingNames(
+      ctx,
+      ctx.room
+        .getMembers()
+        .filter((member) => member.typing)
+        .map((member) => member.userId),
+    );
+  }
+
+  /** Names of the typing users who are loaded members, excluding the local user. */
+  private setTypingNames(
+    ctx: NonNullable<ReturnType<TimelineService['openContext']>>,
+    userIds: readonly string[],
+  ): void {
     const selfId = ctx.client.getUserId();
-    const names = ctx.room
-      .getMembers()
-      .filter((member) => member.typing && member.userId !== selfId)
-      .map((member) => member.name);
-    this._typingNames.set(names);
+    const names: string[] = [];
+    for (const id of userIds) {
+      const name = id === selfId ? undefined : ctx.room.getMember(id)?.name;
+      if (name !== undefined) {
+        names.push(name);
+      }
+    }
+    this.publishTypingNames(names);
+  }
+
+  /** Publish only a changed list, so an unchanged typing event wakes no consumer. */
+  private publishTypingNames(names: string[]): void {
+    const current = this._typingNames();
+    if (
+      names.length !== current.length ||
+      names.some((name, i) => name !== current[i])
+    ) {
+      this._typingNames.set(names);
+    }
   }
 
   /** The raw (effective) JSON of an event for "view source", or null if not loaded. */
