@@ -115,6 +115,46 @@ describe('MentionAutocomplete active mentions', () => {
     ]);
   });
 
+  it('keeps a name and a longer name that starts with it, and drops the shorter once deleted', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Jo Smith', '@js:x'), member('Jo', '@jo:x')]),
+    );
+    const text = pick(mentions, pick(mentions, '', 'Jo', 0), 'Jo', 1);
+
+    expect(text).toBe('@Jo Smith @Jo ');
+    expect(mentions.active(text).map((m) => m.userId)).toEqual([
+      '@js:x',
+      '@jo:x',
+    ]);
+    expect(mentions.active('@Jo Smith ').map((m) => m.userId)).toEqual([
+      '@js:x',
+    ]);
+  });
+
+  it('drops a deleted name that a hyphenated name starts with', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Al', '@al:x'), member('Al-Rashid', '@alr:x')]),
+    );
+    pick(mentions, '', 'Al', 0); // Al, then deleted
+    const text = pick(mentions, '', 'Al-');
+
+    expect(mentions.active(text).map((m) => m.userId)).toEqual(['@alr:x']);
+  });
+
+  it('keeps a mention inside markdown emphasis', () => {
+    const mentions = new MentionAutocomplete(signal([member('Alice')]));
+    const text = pick(mentions, '_thanks ', 'Ali');
+
+    expect(mentions.active(`${text.trimEnd()}_`)).toHaveLength(1);
+  });
+
+  it('keeps a mention followed directly by more letters, as CJK writes it', () => {
+    const mentions = new MentionAutocomplete(signal([member('太郎')]));
+    const text = pick(mentions, '', '太');
+
+    expect(mentions.active(`${text.trimEnd()}さん`)).toHaveLength(1);
+  });
+
   it('lists a member picked twice once', () => {
     const mentions = new MentionAutocomplete(
       signal([member('Alice', '@a1:x')]),

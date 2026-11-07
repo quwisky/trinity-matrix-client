@@ -1,5 +1,5 @@
 import { computed, signal, type Signal } from '@angular/core';
-import { findMention, type Mention } from '@trinity/util/matrix';
+import { placeMentions, type Mention } from '@trinity/util/matrix';
 import { type CaretReplacement } from './caret-replacement';
 
 /** A room member offered by the @-mention autocomplete. */
@@ -110,13 +110,13 @@ export class MentionAutocomplete {
 
   /** Chosen mentions still present in the text (deleted ones dropped), deduped. */
   active(text: string): Mention[] {
+    const present = new Set(
+      placeMentions(text, this.chosen()).map(({ mention }) => mention),
+    );
     const seen = new Set<string>();
     const out: Mention[] = [];
     for (const mention of this.chosen()) {
-      if (
-        findMention(text, mention.display) !== -1 &&
-        !seen.has(mention.userId)
-      ) {
+      if (present.has(mention) && !seen.has(mention.userId)) {
         seen.add(mention.userId);
         out.push(mention);
       }

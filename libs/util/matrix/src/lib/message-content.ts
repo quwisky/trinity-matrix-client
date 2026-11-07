@@ -27,18 +27,46 @@ export interface Mention {
   display: string;
 }
 
-/** A character that would continue a display name, so `@Al` before it is part of `@Alice`. */
-const NAME_CHAR = /[\p{L}\p{N}\p{M}_]/u;
+/** A mention found in a message's text, at `index`. */
+export interface PlacedMention {
+  mention: Mention;
+  index: number;
+}
 
 /**
- * Where `display` occurs in `text` as a whole mention (not the start of a longer name), or -1.
+ * Find each mention's first occurrence in `text` that a longer mention doesn't cover: every
+ * occurrence of `@Jo Smith` hides the `@Jo` at its start, so `@Jo` counts only on its own.
+ * Mentions not found are left out. A boundary-character rule can't do this: names contain
+ * spaces and hyphens, and CJK writers drop the space after a name.
  */
-export function findMention(text: string, display: string): number {
-  let at = text.indexOf(display);
-  while (at !== -1 && NAME_CHAR.test(text.charAt(at + display.length))) {
-    at = text.indexOf(display, at + 1);
+export function placeMentions(
+  text: string,
+  mentions: readonly Mention[],
+): PlacedMention[] {
+  const placed: PlacedMention[] = [];
+  const covered: (readonly [number, number])[] = [];
+  const longestFirst = [...mentions].sort(
+    (a, b) => b.display.length - a.display.length,
+  );
+  for (const mention of longestFirst) {
+    const { display } = mention;
+    const own: (readonly [number, number])[] = [];
+    for (
+      let at = text.indexOf(display);
+      at !== -1;
+      at = text.indexOf(display, at + 1)
+    ) {
+      const end = at + display.length;
+      if (!covered.some(([start, stop]) => at < stop && start < end)) {
+        own.push([at, end]);
+      }
+    }
+    covered.push(...own);
+    if (own.length > 0) {
+      placed.push({ mention, index: own[0][0] });
+    }
   }
-  return at;
+  return placed;
 }
 
 /**
@@ -84,7 +112,7 @@ function mentionsBlock(
 
 /**
  * Turn each mention's plain `@display` in the sanitized HTML into a matrix.to pill link, once
- * per mention, at its first occurrence in the message's text.
+ * per mention, where `placeMentions` finds it in the message's text.
  *
  * Works on the parsed DOM, not the serialized string: a string search could match inside an
  * attribute (`@bob` in an autolinked `https://x.test/@bob`) or inside an earlier pill, and
@@ -97,32 +125,39 @@ function applyMentionPills(html: string, mentions: Mention[]): string {
     return html;
   }
   const doc = new DOMParser().parseFromString(html, 'text/html');
-  for (const mention of mentions) {
-    placeMentionPill(doc, mention);
+  const nodes: Text[] = [];
+  const starts: number[] = [];
+  let text = '';
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.parentElement?.closest('a, code, pre')) {
+      nodes.push(node as Text);
+      starts.push(text.length);
+      // `\n` between nodes: a match spanning two nodes can't be wrapped in one pill.
+      text += `${node.nodeValue ?? ''}\n`;
+    }
+  }
+  // Last match first: splitting a node then leaves the offsets of earlier matches intact.
+  const placed = placeMentions(text, mentions).sort(
+    (a, b) => b.index - a.index,
+  );
+  for (const { mention, index } of placed) {
+    let i = starts.length - 1;
+    while (starts[i] > index) i--;
+    const offset = index - starts[i];
+    if (offset + mention.display.length > nodes[i].length) {
+      continue;
+    }
+    const rest = nodes[i].splitText(offset);
+    rest.splitText(mention.display.length);
+    const pill = doc.createElement('a');
+    // No manual escaping: the serializer writes the attribute, so an id carrying `"` or `<`
+    // cannot break out.
+    pill.setAttribute('href', `https://matrix.to/#/${mention.userId}`);
+    pill.textContent = mention.display;
+    rest.replaceWith(pill);
   }
   return doc.body.innerHTML;
-}
-
-/** Replace the first text occurrence of `mention.display` with a matrix.to link. */
-function placeMentionPill(doc: Document, mention: Mention): void {
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
-  while (node) {
-    const at = findMention(node.nodeValue ?? '', mention.display);
-    if (at !== -1 && !node.parentElement?.closest('a, code, pre')) {
-      const target = node as Text;
-      const rest = target.splitText(at);
-      rest.splitText(mention.display.length);
-      const pill = doc.createElement('a');
-      // No manual escaping: the serializer writes the attribute, so an id carrying `"` or `<`
-      // cannot break out.
-      pill.setAttribute('href', `https://matrix.to/#/${mention.userId}`);
-      pill.textContent = mention.display;
-      rest.replaceWith(pill);
-      return;
-    }
-    node = walker.nextNode();
-  }
 }
 
 /**
