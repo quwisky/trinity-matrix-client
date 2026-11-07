@@ -8,6 +8,17 @@ export interface AccountSignOutSettlementContext {
   readonly remainingAccountIds: readonly string[];
 }
 
+/** The Active Account after a removal: the live one while it remains, else the first remaining. */
+export function survivingActiveAccount(
+  liveActiveAccountId: string | null,
+  remainingAccountIds: readonly string[],
+): string | null {
+  return liveActiveAccountId &&
+    remainingAccountIds.includes(liveActiveAccountId)
+    ? liveActiveAccountId
+    : (remainingAccountIds[0] ?? null);
+}
+
 /** Build one settled Account-removal outcome from the live Active Account pointer. */
 export function accountSignOutSettlement(
   liveActiveAccountId: string | null,
@@ -17,14 +28,12 @@ export function accountSignOutSettlement(
   AccountSignOutOutcome,
   { readonly kind: 'ready' | 'partial-cleanup' }
 > {
-  const activeAccountId =
-    liveActiveAccountId &&
-    context.remainingAccountIds.includes(liveActiveAccountId)
-      ? liveActiveAccountId
-      : (context.remainingAccountIds[0] ?? null);
   const base = {
     accountId: context.accountId,
-    activeAccountId,
+    activeAccountId: survivingActiveAccount(
+      liveActiveAccountId,
+      context.remainingAccountIds,
+    ),
     remainingAccountIds: context.remainingAccountIds,
   };
   return issues.length === 0
