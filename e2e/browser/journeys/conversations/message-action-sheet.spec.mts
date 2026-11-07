@@ -409,10 +409,16 @@ test.describe('Message actions on a phone', () => {
       expect(tab.height).toBeGreaterThanOrEqual(44);
       expect(tab.offCentre).toBeLessThan(1);
     }
-    // A focused search raises a phone's keyboard over the grid. The full-width grid draws
-    // only after measuring the sheet, which happens to land after the dialog places focus;
-    // the dialog is told to focus itself so this holds whatever the timing.
-    await expect(dialog.locator('.emoji-mart-search input')).not.toBeFocused();
+    // A focused search raises a phone's keyboard over the grid, so the sheet focuses itself.
+    // Asserted positively: the grid draws late enough that "search not focused" would pass
+    // even with focus on the wrong control.
+    await expect(dialog).toBeFocused();
+
+    // The tabs are buttons (patches/@ctrl__ngx-emoji-mart): one jumps to its category.
+    await dialog.getByRole('button', { name: 'Food & Drink' }).click();
+    await expect(
+      dialog.getByRole('button', { name: 'Food & Drink' }),
+    ).toHaveAttribute('aria-current', 'true');
 
     await dialog.getByRole('button', { name: '😂' }).first().click();
     await expect(page.locator(`${rowSel} trn-message-reactions`)).toContainText(

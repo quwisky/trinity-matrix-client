@@ -92,6 +92,13 @@ test.describe('Full emoji reaction picker', () => {
     // The trigger has to agree with what is on screen, which is the half that desynced.
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
 
+    // A keyboard reaches the category tabs, sees where it is, and Enter jumps.
+    const food = picker.getByRole('button', { name: 'Food & Drink' });
+    await food.focus();
+    await page.keyboard.press('Enter');
+    await expect(food).toHaveAttribute('aria-current', 'true');
+    await expect(food).toHaveCSS('outline-style', 'solid');
+
     await trigger.click();
     await expect(picker).toBeHidden({ timeout: 10_000 });
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
