@@ -29,6 +29,7 @@ import {
 import {
   annotationContent,
   isTransientMatrixError,
+  isWaitingToSend,
   myReactionIds,
   resendAtEnd,
 } from '@trinity/util/matrix';
@@ -207,14 +208,20 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
         catchError((error: unknown) => {
           // Offline, the row now waits and the next sync resends it, so its text must not go
           // back to the composer, where Send would post it a second time.
-          const waiting = keepWhileWaiting(
-            this.drafts,
-            request.threadRootId
-              ? threadDraftKey(request.threadRootId)
-              : conversationDraftKey(request.key),
-            event,
-            unsentText(event) ?? '',
-          );
+          // A waiting echo with no composer text (a notice) still waits; there is just nothing
+          // to hold for a reload.
+          const text = unsentText(event);
+          const waiting =
+            text === null
+              ? isWaitingToSend(event)
+              : keepWhileWaiting(
+                  this.drafts,
+                  request.threadRootId
+                    ? threadDraftKey(request.threadRootId)
+                    : conversationDraftKey(request.key),
+                  event,
+                  text,
+                );
           return of(
             waiting
               ? this.applied('retry')

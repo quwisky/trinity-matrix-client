@@ -18,7 +18,7 @@ import {
   CONVERSATION_MESSAGE_ADAPTER,
   CONVERSATION_MESSAGE_POLICY,
 } from './conversation-message-adapter.service';
-import { conversationDraftKey } from './conversation-draft-key';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
 import type {
   ConversationMessagePolicy,
   ConversationRedactionDecision,
@@ -269,31 +269,94 @@ describe('MatrixConversationMessageAdapter', () => {
 
   // A refused send's Retry, offline: the SDK marks the row waiting and the next sync resends it,
   // so putting its text back in the composer would let Send post it twice.
-  it('counts a retry that fails offline as sent, keeping its text while it waits', async () => {
-    const echo = new MatrixEvent({
-      event_id: '~!shared:hs:txn-1',
-      type: 'm.room.message',
-      content: { msgtype: 'm.emote', body: 'waves' },
-    });
-    echo.setTxnId('txn-1');
-    echo.setStatus(EventStatus.NOT_SENT);
-    const { adapter, client, drafts } = setup({ echo });
-    client.resendEvent.mockImplementation(() => {
-      echo.error = new ConnectionError('offline') as never;
+  describe('a retry that fails offline', () => {
+    async function retryOffline(
+      content: Record<string, unknown>,
+      threadRootId?: string,
+    ) {
+      const echo = new MatrixEvent({
+        event_id: '~!shared:hs:txn-1',
+        type: 'm.room.message',
+        content,
+      });
+      echo.setTxnId('txn-1');
       echo.setStatus(EventStatus.NOT_SENT);
-      return Promise.reject(echo.error);
+      const { adapter, client, drafts } = setup({ echo });
+      client.resendEvent.mockImplementation(() => {
+        echo.error = new ConnectionError('offline') as never;
+        echo.setStatus(EventStatus.NOT_SENT);
+        return Promise.reject(echo.error);
+      });
+      const outcome = await firstValueFrom(
+        adapter.retry({
+          key: KEY,
+          messageId: '~!shared:hs:txn-1',
+          threadRootId,
+        }),
+      );
+      return { outcome, echo, drafts };
+    }
+
+    it('counts as sent and keeps its text until the echo is sent', async () => {
+      const { outcome, echo, drafts } = await retryOffline({
+        msgtype: 'm.emote',
+        body: 'waves',
+      });
+
+      expect(outcome).toEqual({ kind: 'applied', operation: 'retry' });
+      expect(drafts.holdWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(KEY),
+        'txn-1',
+        '/me waves',
+      );
+      echo.setStatus(EventStatus.SENDING);
+      expect(drafts.releaseWaiting).not.toHaveBeenCalled();
+      echo.setStatus(EventStatus.SENT);
+      echo.setStatus(null);
+      expect(drafts.releaseWaiting).toHaveBeenCalledOnce();
+      expect(drafts.releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(KEY),
+        'txn-1',
+      );
     });
 
-    await expect(
-      firstValueFrom(
-        adapter.retry({ key: KEY, messageId: '~!shared:hs:txn-1' }),
-      ),
-    ).resolves.toEqual({ kind: 'applied', operation: 'retry' });
-    expect(drafts.holdWaiting).toHaveBeenCalledWith(
-      conversationDraftKey(KEY),
-      'txn-1',
-      '/me waves',
-    );
+    it('lets its text go when the waiting echo is cancelled', async () => {
+      const { echo, drafts } = await retryOffline({
+        msgtype: 'm.text',
+        body: 'hello',
+      });
+
+      echo.setStatus(EventStatus.CANCELLED);
+
+      expect(drafts.releaseWaiting).toHaveBeenCalledWith(
+        conversationDraftKey(KEY),
+        'txn-1',
+      );
+    });
+
+    it('keeps a thread reply under the thread composer key', async () => {
+      const { outcome, drafts } = await retryOffline(
+        { msgtype: 'm.text', body: 'hello' },
+        '$root',
+      );
+
+      expect(outcome).toEqual({ kind: 'applied', operation: 'retry' });
+      expect(drafts.holdWaiting).toHaveBeenCalledWith(
+        threadDraftKey('$root'),
+        'txn-1',
+        'hello',
+      );
+    });
+
+    it('holds nothing for a waiting echo without composer text', async () => {
+      const { outcome, drafts } = await retryOffline({
+        msgtype: 'm.notice',
+        body: 'bot says',
+      });
+
+      expect(outcome).toEqual({ kind: 'applied', operation: 'retry' });
+      expect(drafts.holdWaiting).not.toHaveBeenCalled();
+    });
   });
 
   // #1868: the SDK keeps a resent echo where it was first added, but the server stamps it with
