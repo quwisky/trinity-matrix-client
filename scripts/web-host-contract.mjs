@@ -72,12 +72,8 @@ function imports(source) {
   ].map((match) => match[1]);
 }
 
-/** Rarely opened chunks the install must not download: the config editor and the emoji picker. */
-const LAZY_CHUNKS = [
-  '/config-editor.component-*.js',
-  '/ctrl-ngx-emoji-mart-*.js',
-  '/trn-emoji-picker-panel.component-*.js',
-];
+/** Rarely opened chunks the install must not download: the config editor. */
+const LAZY_CHUNKS = ['/config-editor.component-*.js'];
 
 export function validateWebHostContract(input, errors) {
   const {

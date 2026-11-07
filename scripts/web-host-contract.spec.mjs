@@ -91,11 +91,7 @@ function validInput() {
   };
 }
 
-const LAZY_CHUNKS = [
-  '/config-editor.component-*.js',
-  '/ctrl-ngx-emoji-mart-*.js',
-  '/trn-emoji-picker-panel.component-*.js',
-];
+const LAZY_CHUNKS = ['/config-editor.component-*.js'];
 
 function errorsAfter(mutate) {
   const input = validInput();
@@ -167,7 +163,7 @@ describe('web host contract', () => {
     );
   });
 
-  it('keeps the config editor and emoji picker chunks out of the install prefetch', () => {
+  it('keeps the config editor chunk out of the install prefetch', () => {
     const prefetched = errorsAfter((input) => {
       const app = input.ngsw.assetGroups.find((g) => g.name === 'app');
       app.resources.files = ['/manifest.webmanifest', '/*.js'];

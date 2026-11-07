@@ -13,9 +13,7 @@
           "/*.js",
           "!/katex.css",
           "!/maths-render-*.js",
-          "!/config-editor.component-*.js",
-          "!/ctrl-ngx-emoji-mart-*.js",
-          "!/trn-emoji-picker-panel.component-*.js"
+          "!/config-editor.component-*.js"
         ]
       }
     },
@@ -32,11 +30,7 @@
       "installMode": "lazy",
       "updateMode": "lazy",
       "resources": {
-        "files": [
-          "/config-editor.component-*.js",
-          "/ctrl-ngx-emoji-mart-*.js",
-          "/trn-emoji-picker-panel.component-*.js"
-        ]
+        "files": ["/config-editor.component-*.js"]
       }
     },
     {
