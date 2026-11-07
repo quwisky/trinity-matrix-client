@@ -235,7 +235,7 @@ describe('trimming the open room (#1366)', () => {
 
 describe('paging a rewound room back in', () => {
   /** A room with `history` messages whose live timeline was rewound to empty after opening. */
-  function rewound(history: number) {
+  function rewound(history: number, threadPages = 0) {
     const all = Array.from({ length: history }, (_, i) =>
       fakeEvent({ id: `$${i + 1}`, sender: '@alice:hs', body: `${i + 1}` }),
     );
@@ -248,6 +248,8 @@ describe('paging a rewound room back in', () => {
     });
     const client = fakeClient(room, []);
     const scrollback = vi.fn(async () => {
+      // A page of only thread replies goes to its threads, not the live timeline.
+      if (threadPages-- > 0) return room;
       const end = history - events.length;
       events.unshift(...all.slice(Math.max(0, end - 30), end));
       return room;
@@ -275,6 +277,15 @@ describe('paging a rewound room back in', () => {
       Array.from({ length: 60 }, (_, i) => `$${i + 41}`),
     );
     expect(svc.loadingOlder()).toBe(false);
+  });
+
+  it('pages past history that is all thread replies', async () => {
+    const { svc, scrollback } = rewound(100, 2);
+
+    await firstValueFrom(svc.refill(50));
+
+    expect(scrollback).toHaveBeenCalledTimes(4);
+    expect(svc.messages()).toHaveLength(60);
   });
 
   it('pages one page back in while the Conversation is retained', async () => {

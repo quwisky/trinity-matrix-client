@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
 import { Direction } from 'matrix-js-sdk';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   fakeClient,
   fakeEvent,
@@ -10,6 +10,7 @@ import {
   openTimeline,
   privacyProvider,
 } from './timeline.spec-harness';
+import { JUMP_WAIT_MS } from './timeline.service';
 
 // The fake clients here model one page of history as `client.scrollback`. The real paging
 // (and its race with gappy syncs) is covered against the SDK in live-scrollback.spec.
@@ -26,6 +27,8 @@ vi.mock('./live-scrollback', () => ({
 beforeEach(() => {
   TestBed.configureTestingModule({ providers: [privacyProvider(true)] });
 });
+
+afterEach(() => vi.useRealTimers());
 
 /**
  * Jump to date. The interesting half is not `timestampToEvent` — it is that the server
@@ -240,6 +243,77 @@ describe('TimelineService.jumpToDate', () => {
     expect(pages.mostInFlight()).toBe(1);
     expect(pages.flags.every(Boolean)).toBe(true);
     expect(svc.loadingOlder()).toBe(false);
+  });
+
+  it('a jump waiting for older history gives up when the room is left meanwhile', async () => {
+    const { svc, client, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 100,
+      targetIndex: 5,
+    });
+    const pages = holdPages(client, () => svc.loadingOlder());
+
+    const older = firstValueFrom(svc.loadOlder());
+    const jump = firstValueFrom(svc.loadEvent('$e5'));
+    svc.close();
+    await pages.landUntil(Promise.all([older, jump]));
+
+    // Paging on would page the room that is open now for an event that is not in it.
+    expect(await jump).toBe(false);
+    expect(scrollbacks()).toBe(1);
+  });
+
+  it('a date jump waiting for older history gives up when the room is hidden meanwhile', async () => {
+    const { svc, client, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 100,
+      targetIndex: 5,
+    });
+    const pages = holdPages(client, () => svc.loadingOlder());
+
+    const older = firstValueFrom(svc.loadOlder());
+    const jump = firstValueFrom(svc.jumpToDate(6_000));
+    await new Promise((resolve) => setTimeout(resolve));
+    svc.setVisible(false);
+    await pages.landUntil(Promise.all([older, jump]));
+
+    expect(await jump).toEqual({ kind: 'too-far' });
+    expect(scrollbacks()).toBe(1);
+  });
+
+  it('a jump reports failure when older history being paged in never lands', async () => {
+    vi.useFakeTimers();
+    const { svc, client } = pagingSetup({
+      loaded: 10,
+      total: 100,
+      targetIndex: 5,
+    });
+    holdPages(client, () => svc.loadingOlder());
+    void firstValueFrom(svc.loadOlder());
+
+    const event = firstValueFrom(svc.loadEvent('$e5'));
+    const date = firstValueFrom(svc.jumpToDate(6_000));
+    await vi.advanceTimersByTimeAsync(JUMP_WAIT_MS);
+
+    expect(await event).toBe(false);
+    expect(await date).toEqual({ kind: 'failed' });
+  });
+
+  it('stops paging after the page in flight once a jump is unsubscribed', async () => {
+    const { svc, client, scrollbacks } = pagingSetup({
+      loaded: 10,
+      total: 5000,
+      targetIndex: 0,
+    });
+    const pages = holdPages(client, () => svc.loadingOlder());
+
+    svc.loadEvent('$e0').subscribe().unsubscribe();
+    svc.jumpToDate(1_000).subscribe().unsubscribe();
+    expect(svc.loadingOlder()).toBe(false);
+    await pages.landUntil(new Promise((resolve) => setTimeout(resolve, 50)));
+
+    // Each jump sent its page before unsubscribing; neither sends another.
+    expect(scrollbacks()).toBeLessThanOrEqual(2);
   });
 
   it('loadEvent costs no request when the event is already loaded', async () => {
