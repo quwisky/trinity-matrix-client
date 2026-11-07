@@ -1,4 +1,4 @@
-import type { DebugElement } from '@angular/core';
+import { signal, type DebugElement } from '@angular/core';
 import { By } from '@angular/platform-browser';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
@@ -11,6 +11,7 @@ import {
   type KeywordRule,
 } from '@trinity/data-access/notifications';
 import { TrnToastService } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { KeywordRulesBlockComponent } from './keyword-rules-block.component';
 
 const LOUD: KeywordRule = {
@@ -35,6 +36,8 @@ const OFF: KeywordRule = {
   soundValue: 'default',
 };
 
+const activeAccount = signal<string | null>('@me:hs');
+
 async function build(
   over: {
     keywords?: KeywordRule[][];
@@ -55,8 +58,12 @@ async function build(
   const setSound = over.setSound ?? vi.fn(() => of(undefined));
   const find = over.find ?? vi.fn(() => undefined);
   const toastShow = vi.fn();
+  activeAccount.set('@me:hs');
   const { fixture } = await render(KeywordRulesBlockComponent, {
     providers: [
+      MockProvider(MatrixClientService, {
+        activeUserId: activeAccount.asReadonly(),
+      }),
       MockProvider(KeywordRulesService, {
         keywords,
         hasLoaded: () => over.hasLoaded ?? true,
@@ -98,6 +105,34 @@ describe('KeywordRulesBlockComponent', () => {
     expect(rows(fixture)).toHaveLength(2);
     expect(text(fixture)).toContain('oncall');
     expect(text(fixture)).toContain('trinity');
+  });
+
+  it('shows the new account’s keywords after an account switch', async () => {
+    const { fixture, keywords } = await build({ keywords: [[LOUD], [QUIET]] });
+    expect(rows(fixture)[0].textContent).toContain('oncall');
+
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(keywords).toHaveBeenCalledTimes(2);
+    expect(rows(fixture)).toHaveLength(1);
+    expect(rows(fixture)[0].textContent).toContain('trinity');
+  });
+
+  it('drops the previous account’s write after a switch', async () => {
+    const write = new Subject<void>();
+    const { cmp, fixture, toastShow } = await build({
+      keywords: [[LOUD], [LOUD]],
+      remove: vi.fn(() => write),
+    });
+
+    cmp.remove(LOUD);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    write.error(new Error('404'));
+
+    expect(cmp.isBusy(LOUD.ruleId)).toBe(false);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('says a muted room stays muted, because users expect the opposite', async () => {

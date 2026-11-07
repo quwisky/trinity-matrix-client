@@ -86,7 +86,7 @@ async function build(over: { setOn?: Mock } = {}) {
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
-  return { cmp: fixture.componentInstance, fixture, setOn, toastShow };
+  return { cmp: fixture.componentInstance, fixture, setOn, isOn, toastShow };
 }
 
 /** Only the switches rendered for push-rule toggles (excludes the sound one). */
@@ -265,6 +265,36 @@ describe('NotificationsSectionComponent', () => {
       expect.any(String),
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('shows the new account’s toggles after an account switch', async () => {
+    const { cmp, fixture, isOn } = await build();
+    expect(cmp.checked(TOGGLES[0])).toBe(true);
+
+    isOn.mockImplementation(
+      (t: PushRuleToggle) => t.id === '.m.rule.roomnotif',
+    );
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[0])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('does not let the previous account’s failed toggle write touch the new account', async () => {
+    const write = new Subject<void>();
+    const { cmp, fixture, toastShow } = await build({
+      setOn: vi.fn(() => write),
+    });
+
+    cmp.toggle(TOGGLES[1], true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    write.error(new Error('old account failed'));
+
+    expect(cmp.isPending(TOGGLES[1])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('ignores a change while the same toggle’s write is in flight', async () => {

@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
@@ -58,9 +59,9 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly state = signal<ReadonlyMap<string, boolean>>(new Map());
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
-  private reactionAccountId: string | null | undefined;
-  /** Emits on an account switch; releases the previous account's reaction write. */
-  private readonly reactionAccountSwitches = new Subject<void>();
+  private accountId: string | null | undefined;
+  /** Emits on an account switch; releases the previous account's writes. */
+  private readonly accountSwitches = new Subject<void>();
 
   /**
    * Key for the sound switch in the same optimistic maps as the rule toggles. Not a rule id:
@@ -73,32 +74,17 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const accountId = this.matrix.activeUserId();
-      if (
-        this.reactionAccountId !== undefined &&
-        this.reactionAccountId !== accountId
-      ) {
-        this.reactionAccountSwitches.next();
-        this.state.update((current) => {
-          const next = new Map(current);
-          next.delete(this.reactionsKey);
-          return next;
-        });
-        this.pending.update((current) => {
-          const next = new Set(current);
-          next.delete(this.reactionsKey);
-          return next;
-        });
+      if (this.accountId !== undefined && this.accountId !== accountId) {
+        this.accountSwitches.next();
+        this.state.set(untracked(() => this.seededToggles()));
+        this.pending.set(new Set());
       }
-      this.reactionAccountId = accountId;
+      this.accountId = accountId;
     });
   }
 
   ngOnInit(): void {
-    const seeded = new Map<string, boolean>();
-    for (const toggle of this.toggles) {
-      seeded.set(toggle.id, this.push.isOn(toggle));
-    }
-    this.state.set(seeded);
+    this.state.set(this.seededToggles());
     // Tracks account data, so a value that arrives after this page has rendered (a cold
     // load, or a change made on another device) still shows.
     this.sound.connect();
@@ -131,17 +117,27 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(this.soundKey, on);
     this.setPending(this.soundKey, true);
+    const accountId = this.matrix.activeUserId();
     this.sound
       .setOn(on)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: () => this.setPending(this.soundKey, false),
+        next: () => {
+          if (this.isCurrentAccount(accountId)) {
+            this.setPending(this.soundKey, false);
+          }
+        },
         error: () => {
-          this.setState(this.soundKey, !on);
-          this.setPending(this.soundKey, false);
-          this.toast.show('Could not update your notification settings.', {
-            variant: 'danger',
-          });
+          if (this.isCurrentAccount(accountId)) {
+            this.setState(this.soundKey, !on);
+            this.setPending(this.soundKey, false);
+            this.toast.show('Could not update your notification settings.', {
+              variant: 'danger',
+            });
+          }
         },
       });
   }
@@ -166,17 +162,17 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     this.reactions
       .setOn(on)
       .pipe(
-        takeUntil(this.reactionAccountSwitches),
+        takeUntil(this.accountSwitches),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: () => {
-          if (this.isCurrentReactionWrite(accountId)) {
+          if (this.isCurrentAccount(accountId)) {
             this.setPending(this.reactionsKey, false);
           }
         },
         error: () => {
-          if (this.isCurrentReactionWrite(accountId)) {
+          if (this.isCurrentAccount(accountId)) {
             this.setState(this.reactionsKey, !on);
             this.setPending(this.reactionsKey, false);
             this.toast.show('Could not update your notification settings.', {
@@ -188,7 +184,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   }
 
   /** The switch effect runs later than the signal changes, so also compare the account. */
-  private isCurrentReactionWrite(accountId: string | null): boolean {
+  private isCurrentAccount(accountId: string | null): boolean {
     return this.matrix.activeUserId() === accountId;
   }
 
@@ -207,20 +203,37 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(toggle.id, on);
     this.setPending(toggle.id, true);
+    const accountId = this.matrix.activeUserId();
     this.push
       .setOn(toggle, on)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: () => this.setPending(toggle.id, false),
+        next: () => {
+          if (this.isCurrentAccount(accountId)) {
+            this.setPending(toggle.id, false);
+          }
+        },
         error: () => {
-          this.setState(toggle.id, !on); // revert the optimistic flip
-          this.setPending(toggle.id, false);
-          this.toast.show('Could not update your notification settings.', {
-            duration: 4000,
-            variant: 'danger',
-          });
+          if (this.isCurrentAccount(accountId)) {
+            this.setState(toggle.id, !on); // revert the optimistic flip
+            this.setPending(toggle.id, false);
+            this.toast.show('Could not update your notification settings.', {
+              duration: 4000,
+              variant: 'danger',
+            });
+          }
         },
       });
+  }
+
+  /** Each rule toggle as the active account's synced rules have it. */
+  private seededToggles(): Map<string, boolean> {
+    return new Map(
+      this.toggles.map((toggle) => [toggle.id, this.push.isOn(toggle)]),
+    );
   }
 
   private setState(id: string, on: boolean): void {

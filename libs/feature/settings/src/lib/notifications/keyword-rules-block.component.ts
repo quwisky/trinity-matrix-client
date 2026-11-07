@@ -2,16 +2,18 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, form } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSwitchComponent } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   KeywordRulesService,
   KeywordValidationError,
@@ -23,6 +25,7 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { Subject, takeUntil } from 'rxjs';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -46,8 +49,9 @@ import { EmptyStateComponent } from '@trinity/components/generic-content';
     TrnInput,
   ],
 })
-export class KeywordRulesBlockComponent implements OnInit {
+export class KeywordRulesBlockComponent {
   private readonly keywordsSvc = inject(KeywordRulesService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly toast = inject(TrnToastService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -80,6 +84,9 @@ export class KeywordRulesBlockComponent implements OnInit {
     new Map(),
   );
 
+  /** Emits on an account switch; releases the previous account's writes. */
+  private readonly accountSwitches = new Subject<void>();
+
   /** The word being added. */
   private readonly keywordModel = signal({ word: '' });
   readonly keywordForm = form(this.keywordModel);
@@ -89,8 +96,18 @@ export class KeywordRulesBlockComponent implements OnInit {
   /** Nothing typed — the Add button has nothing to do. */
   readonly nothingTyped = computed(() => this.typedWord().length === 0);
 
-  ngOnInit(): void {
-    this.reload();
+  constructor() {
+    // Show the active account's keywords, and drop the previous account's row state.
+    effect(() => {
+      this.matrix.activeUserId();
+      untracked(() => {
+        this.accountSwitches.next();
+        this.adding.set(false);
+        this.busy.set(new Set());
+        this.optimisticSound.set(new Map());
+        this.reload();
+      });
+    });
   }
 
   isBusy(ruleId: string): boolean {
@@ -134,7 +151,10 @@ export class KeywordRulesBlockComponent implements OnInit {
     this.adding.set(true);
     this.keywordsSvc
       .add(word)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
           this.adding.set(false);
@@ -159,7 +179,10 @@ export class KeywordRulesBlockComponent implements OnInit {
     this.setBusy(keyword.ruleId, true);
     this.keywordsSvc
       .remove(keyword.ruleId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
           this.setBusy(keyword.ruleId, false);
@@ -182,7 +205,10 @@ export class KeywordRulesBlockComponent implements OnInit {
     this.setOptimisticSound(keyword.ruleId, sound);
     this.keywordsSvc
       .setSound(keyword.ruleId, sound)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: () => {
           this.setBusy(keyword.ruleId, false);
