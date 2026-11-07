@@ -92,6 +92,13 @@ const RETAINED_SENDER_BYTES = 16;
 const RETAINED_EVENT_LIMIT = 100;
 
 /**
+ * How long the open room's view must follow the newest message before it counts as settled
+ * there and its older history may be trimmed: long enough that a reader passing the bottom
+ * on the way back up does not lose the page they are heading for.
+ */
+export const LIVE_TRIM_DWELL_MS = 3_000;
+
+/**
  * Outcome of a "jump to date" attempt. A union rather than `string | null`: the outcomes
  * need different things said to the user and are not failures of one kind.
  */
@@ -260,6 +267,13 @@ export class TimelineService {
    * while scrolled back or unreported. See {@link setLiveView}.
    */
   private liveViewFrom: string | null = null;
+  private liveSettleTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly _liveSettled = signal(false);
+  /**
+   * Whether the view has followed the newest message for {@link LIVE_TRIM_DWELL_MS}, so the
+   * room may be trimmed while shown. Cleared as soon as it scrolls back or pages history in.
+   */
+  readonly liveSettled = this._liveSettled.asReadonly();
 
   /**
    * The client {@link open} attached its listeners to. `matrix.instance` follows the ACTIVE
@@ -581,7 +595,23 @@ export class TimelineService {
    * shows. A hidden (blurred) Conversation has no view.
    */
   setLiveView(oldestShownId: string | null): void {
-    this.liveViewFrom = this.visible ? oldestShownId : null;
+    const from = this.visible ? oldestShownId : null;
+    if (!from) {
+      this.unsettle();
+    } else if (!this.liveViewFrom) {
+      this.unsettle();
+      this.liveSettleTimer = setTimeout(
+        () => this._liveSettled.set(true),
+        LIVE_TRIM_DWELL_MS,
+      );
+    }
+    this.liveViewFrom = from;
+  }
+
+  private unsettle(): void {
+    clearTimeout(this.liveSettleTimer);
+    this.liveSettleTimer = undefined;
+    this._liveSettled.set(false);
   }
 
   /**
@@ -611,6 +641,7 @@ export class TimelineService {
     this.visible = visible;
     // A view reports again once it shows this Conversation.
     this.liveViewFrom = null;
+    this.unsettle();
     if (!visible) {
       this.stopTypingOnConnectedClient();
     }
@@ -673,6 +704,7 @@ export class TimelineService {
     this.roomId = null;
     this.lastReadEventId = null;
     this.liveViewFrom = null;
+    this.unsettle();
     this._readMarker.set(null);
     this._firstUnreadId.set(null);
     this._oldestEventId.set(null);

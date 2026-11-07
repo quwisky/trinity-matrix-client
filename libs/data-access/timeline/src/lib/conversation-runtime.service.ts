@@ -147,6 +147,18 @@ export class ConversationRuntime {
   readonly focused = this.focusedHandle.asReadonly();
   /** Whether {@link trimFocusedWhileHidden} is running: the window has been hidden a while. */
   readonly windowHidden = computed(() => this.hiddenWindows() > 0);
+  /**
+   * Why {@link trimHeld} may trim the focused room now, or null: the window is hidden, or
+   * the room's view has settled at the newest messages. Each reason trims differently, so
+   * a change between them is a change too.
+   */
+  readonly trimsFocused = computed<'hidden' | 'settled' | null>(() => {
+    if (this.windowHidden()) return 'hidden';
+    const handle = this.focusedHandle();
+    return handle && this.entry(handle.key)?.controller.liveSettled()
+      ? 'settled'
+      : null;
+  });
   readonly timeline = this.focusedTimeline();
   readonly search = this.focusedSearch();
   readonly compose = this.focusedCompose();
@@ -250,14 +262,14 @@ export class ConversationRuntime {
   }
 
   /**
-   * Trim a room a handle holds, if it may be trimmed now: only the focused room, only while
-   * the window is hidden. A retained room waits for its handle to retire. A failed trim
-   * throws and leaves the room as it was; the trimmer reports a room once.
+   * Trim a room a handle holds, if it may be trimmed now: only the focused room, and only
+   * while the window is hidden or, with no thread open, while its view has settled at the
+   * newest messages. A retained room waits for its handle to retire. A failed trim throws
+   * and leaves the room as it was; the trimmer reports a room once.
    */
   trimHeld(accountId: string, roomId: string): void {
     const handle = this.focusedHandle();
     if (
-      this.hiddenWindows() === 0 ||
       !handle ||
       handle.key.accountId !== accountId ||
       handle.key.roomId !== roomId
@@ -266,14 +278,19 @@ export class ConversationRuntime {
     }
     const entry = this.entry(handle.key);
     if (entry?.handle !== handle) return;
-    const intent = entry.composeController.compose.intent();
+    const hidden = this.hiddenWindows() > 0;
     // The thread panel reads its root from the Thread, so the root needs no more than the
     // receipt's protection.
     const root = entry.controller.threads.openThreadRootId();
-    entry.controller.trimWhileHidden({
-      kept: intent.kind === 'message' ? [] : [intent.eventId],
-      marked: root ? [root] : [],
-    });
+    if (!hidden && (!entry.controller.liveSettled() || root)) return;
+    const intent = entry.composeController.compose.intent();
+    entry.controller.trimFocused(
+      {
+        kept: intent.kind === 'message' ? [] : [intent.eventId],
+        marked: root ? [root] : [],
+      },
+      !hidden,
+    );
   }
 
   /**

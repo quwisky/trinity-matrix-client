@@ -13,7 +13,7 @@ import {
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { TimelineService } from './timeline.service';
+import { LIVE_TRIM_DWELL_MS, TimelineService } from './timeline.service';
 import { eventRevision } from './event-revision';
 import {
   clientFor,
@@ -1441,6 +1441,67 @@ describe('TimelineService', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(svc.messages()[0].body).toBe('unchanged');
+    });
+  });
+
+  describe('settling at the newest messages', () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    it('settles once the view has followed the newest message for the dwell', () => {
+      const svc = setup([
+        fakeEvent({ id: '$1', sender: '@a:hs' }),
+        fakeEvent({ id: '$2', sender: '@a:hs' }),
+      ]);
+
+      svc.setLiveView('$1');
+      vi.advanceTimersByTime(LIVE_TRIM_DWELL_MS - 1);
+      expect(svc.liveSettled()).toBe(false);
+
+      // A new message moves the oldest shown row without restarting the dwell.
+      svc.setLiveView('$2');
+      vi.advanceTimersByTime(1);
+      expect(svc.liveSettled()).toBe(true);
+    });
+
+    it('starts over when the view scrolls back within the dwell', () => {
+      const svc = setup([fakeEvent({ id: '$1', sender: '@a:hs' })]);
+
+      svc.setLiveView('$1');
+      vi.advanceTimersByTime(LIVE_TRIM_DWELL_MS - 1);
+      svc.setLiveView(null);
+      svc.setLiveView('$1');
+      vi.advanceTimersByTime(LIVE_TRIM_DWELL_MS - 1);
+      expect(svc.liveSettled()).toBe(false);
+
+      vi.advanceTimersByTime(1);
+      expect(svc.liveSettled()).toBe(true);
+    });
+
+    it('unsettles when the view scrolls back, the room is hidden or closed', () => {
+      const svc = setup([fakeEvent({ id: '$1', sender: '@a:hs' })]);
+      const settle = () => {
+        svc.setLiveView('$1');
+        vi.advanceTimersByTime(LIVE_TRIM_DWELL_MS);
+        expect(svc.liveSettled()).toBe(true);
+      };
+
+      settle();
+      svc.setLiveView(null);
+      expect(svc.liveSettled()).toBe(false);
+
+      settle();
+      svc.setVisible(false);
+      expect(svc.liveSettled()).toBe(false);
+      svc.setLiveView('$1');
+      vi.advanceTimersByTime(LIVE_TRIM_DWELL_MS);
+      expect(svc.liveSettled()).toBe(false);
+
+      svc.setVisible(true);
+      settle();
+      svc.close();
+      expect(svc.liveSettled()).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
     });
   });
 });

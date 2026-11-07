@@ -27,8 +27,10 @@ export const TRIM_HIGH_WATER = 200;
 /**
  * How many events a room nobody has open may hold before its read receipt and fully-read
  * marker stop protecting the events after them, about 2 MB. The room is then trimmed to
- * its latest events like any other. Unread counts live on the room and stay; what goes is
- * the "New messages" divider when the room is opened again, as after a restart.
+ * its latest events like any other. Also how many the open room may hold once its view has
+ * settled at the newest messages, so a long scroll back does not slow every later update.
+ * Unread counts live on the room and stay; what goes is the "New messages" divider when
+ * the room is opened again, as after a restart.
  *
  * In an encrypted room, re-fetched events decrypt again, and the SDK counts those after a
  * receipt it does not have loaded as unread a second time. That needs the room opened

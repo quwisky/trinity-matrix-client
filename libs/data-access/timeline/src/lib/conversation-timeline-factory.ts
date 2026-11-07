@@ -2,6 +2,7 @@ import {
   EnvironmentInjector,
   Injectable,
   InjectionToken,
+  type Signal,
   createEnvironmentInjector,
   inject,
 } from '@angular/core';
@@ -15,6 +16,7 @@ import { ThreadsService } from './threads.service';
 import { ConversationPinsController } from './conversation-pins.controller';
 import { ConversationSearchController } from './conversation-search.service';
 import {
+  TRIM_CEILING,
   TRIM_HIGH_WATER,
   trimLiveTimeline,
   type TrimGuard,
@@ -68,12 +70,15 @@ export interface ConversationTimelineController {
    */
   releaseHistory(): void;
   /**
-   * While the window is hidden and the room stays focused: trim its SDK live timeline like
-   * a room nobody has open once it passes {@link TRIM_HIGH_WATER} events, but only while
-   * its view follows the newest message, never past what that view shows, and keeping
-   * what `guard` names as well.
+   * While the room is focused: trim its SDK live timeline like a room nobody has open, but
+   * only while its view follows the newest message, never past what that view shows, and
+   * keeping what `guard` names as well. While the window is hidden that is once it passes
+   * {@link TRIM_HIGH_WATER} events; while `shown`, once it passes {@link TRIM_CEILING},
+   * keeping what is marked too.
    */
-  trimWhileHidden(guard: TrimGuard): void;
+  trimFocused(guard: TrimGuard, shown: boolean): void;
+  /** See {@link TimelineService.liveSettled}. */
+  readonly liveSettled: Signal<boolean>;
   /** Page the room back in after its live timeline was rewound; see {@link TimelineService.refill}. */
   refill(depth: number): Observable<void>;
   resources(): ConversationResources;
@@ -195,7 +200,8 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           trimLiveTimeline(room, userId);
         }
       },
-      trimWhileHidden: (extra) => {
+      liveSettled: timeline.liveSettled,
+      trimFocused: (extra, shown) => {
         const room = client.getRoom(key.roomId);
         const userId = client.getUserId();
         if (
@@ -203,16 +209,22 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
           !room ||
           !userId ||
           this.matrix.clientFor(key.accountId) !== client ||
-          room.getLiveTimeline().getEvents().length <= TRIM_HIGH_WATER
+          room.getLiveTimeline().getEvents().length <=
+            (shown ? TRIM_CEILING : TRIM_HIGH_WATER)
         ) {
           return;
         }
         const guard = timeline.liveTrimGuard();
         if (!guard) return;
-        trimLiveTimeline(room, userId, {
-          marked: [...(guard.marked ?? []), ...(extra.marked ?? [])],
-          kept: [...(guard.kept ?? []), ...(extra.kept ?? [])],
-        });
+        const marked = [...(guard.marked ?? []), ...(extra.marked ?? [])];
+        const kept = [...(guard.kept ?? []), ...(extra.kept ?? [])];
+        // On screen, a quote whose target went would lose its preview, and the divider
+        // and its jump pill their anchor, so what is marked stays past the ceiling too.
+        trimLiveTimeline(
+          room,
+          userId,
+          shown ? { kept: [...kept, ...marked] } : { marked, kept },
+        );
       },
     };
   }

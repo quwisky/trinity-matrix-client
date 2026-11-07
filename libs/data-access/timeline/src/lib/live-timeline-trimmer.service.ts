@@ -50,17 +50,17 @@ const REFILL_PAGE = 30;
  * the only place a live event can later be cut from, and trims a room that has passed
  * {@link TRIM_HIGH_WATER} events back to its latest ones. A room a Conversation handle
  * holds is left to {@link ConversationRuntime.trimHeld}: a retained room is trimmed when
- * its handle retires, and the focused room only while the window is hidden and its view
- * follows the newest message, keeping what that view shows. That room is tried as
- * soon as the window has been hidden a while, then after each sync. If its trim fails it
- * is reported once and not tried again while open; once nobody has it open, it is trimmed
- * like any other room.
+ * its handle retires, and the focused room only while its view follows the newest message,
+ * keeping what that view shows: while the window is hidden, or once that view has settled
+ * there and the room holds more than `TRIM_CEILING` events. That room is tried as soon as
+ * either begins, then after each sync. If its trim fails it is reported once and not
+ * tried again while open; once nobody has it open, it is trimmed like any other room.
  *
  * It also rewinds rooms after the person unblocks someone; see {@link rewind}.
  *
  * Not bounded: a focused room scrolled back, or whose composer replies to or edits an
- * event, keeps what it holds from there on while the window is hidden, until the person
- * moves to another room and its handle retires, or the app restarts.
+ * event, keeps what it holds from there on, until the person returns to the newest
+ * messages, moves to another room and its handle retires, or the app restarts.
  */
 @Injectable({ providedIn: 'root' })
 export class LiveTimelineTrimmer {
@@ -131,8 +131,8 @@ export class LiveTimelineTrimmer {
       return new Observable<never>(() => {
         // A room that failed once is reported once, not on every later sync.
         const failed = new WeakSet<Room>();
-        // Likewise an open room whose hidden-window trim failed: it is not tried again
-        // while open, but it is still trimmed like any other once nobody has it open.
+        // Likewise an open room whose trim failed: it is not tried again while open, but
+        // it is still trimmed like any other once nobody has it open.
         const failedOpen = new WeakSet<Room>();
         const trimHeld = (room: Room): void => {
           if (
@@ -206,14 +206,15 @@ export class LiveTimelineTrimmer {
         };
         client.on(ClientEvent.AccountData, onAccountData);
         client.on(ClientEvent.Sync, onSync);
-        // The window has just been hidden for a while: trim the open room now rather than
-        // at its next event, which may be hours away.
-        const hidden = toObservable(this.conversations.windowHidden, {
+        // The window has just been hidden for a while, or the open room's view has settled
+        // at the newest messages: trim it now rather than at its next event, which may be
+        // hours away.
+        const trimsFocused = toObservable(this.conversations.trimsFocused, {
           injector: this.injector,
-        }).subscribe((isHidden) => {
+        }).subscribe((trims) => {
           const key = this.conversations.focused()?.key;
           const room =
-            isHidden && key?.accountId === accountId
+            trims !== null && key?.accountId === accountId
               ? client.getRoom(key.roomId)
               : null;
           if (room) trimHeld(room);
@@ -221,7 +222,7 @@ export class LiveTimelineTrimmer {
         return () => {
           client.off(ClientEvent.AccountData, onAccountData);
           client.off(ClientEvent.Sync, onSync);
-          hidden.unsubscribe();
+          trimsFocused.unsubscribe();
           refills.unsubscribe();
         };
       });
