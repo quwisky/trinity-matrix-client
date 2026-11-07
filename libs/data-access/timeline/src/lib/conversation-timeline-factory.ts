@@ -38,6 +38,7 @@ export type ConversationTimeline = Pick<
   | 'loadEvent'
   | 'setTyping'
   | 'rawEvent'
+  | 'roomVia'
   | 'reactionDetails'
   | 'loadState'
   | 'retryLoad'

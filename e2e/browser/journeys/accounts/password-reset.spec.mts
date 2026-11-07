@@ -178,4 +178,22 @@ test.describe('Password reset', () => {
     });
     await expect(page.getByTestId('reset-sent')).toHaveCount(0);
   });
+
+  test('does not promise a link to an address the server may not know', async ({
+    page,
+  }) => {
+    // Newer Synapse answers an unknown address as if it sent a link, so addresses
+    // cannot be probed. The harness turns that off; this replays the server default.
+    const address = `nobody-${testResourceId('run')}@example.test`;
+    await page.route('**/account/password/email/requestToken', (route) =>
+      route.fulfill({ status: 200, json: { sid: 'unknown-address-sid' } }),
+    );
+    await openReset(page);
+    await sendLink(page, address);
+    await expect(page.getByTestId('reset-sent')).toHaveText(
+      `If an account uses ${address}, we sent a link. Open it and confirm, then come back here.`,
+      { timeout: 20_000 },
+    );
+    await expect(page.getByTestId('reset-resend')).toBeVisible();
+  });
 });

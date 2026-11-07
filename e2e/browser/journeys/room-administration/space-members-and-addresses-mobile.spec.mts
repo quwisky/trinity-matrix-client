@@ -226,7 +226,8 @@ test.describe('Space member and address settings on a phone', () => {
       hs,
       { accessToken: token },
       spaceName,
-      { space: true },
+      // Room version 12 creators cannot be demoted, and the journey demotes this one.
+      { space: true, roomVersion: '10' },
     );
     const roomId = await createRoom(
       request,

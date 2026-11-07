@@ -185,6 +185,17 @@ test.describe('Room settings', () => {
       `${hs}/_matrix/client/v3/profile/${encodeURIComponent(memberId)}/displayname`,
       { headers: memberAuth, data: { displayname: memberName } },
     );
+    // The controller must outrank the admin to demote them later. Before room version 12
+    // the creator is listed and needs 101; from version 12 a creator outranks everyone
+    // and may not be listed at all.
+    const defaultVersion = await request
+      .get(`${hs}/_matrix/client/v3/capabilities`, { headers: controllerAuth })
+      .then((response) => response.json())
+      .then(
+        (body) =>
+          body.capabilities?.['m.room_versions']?.default as string | undefined,
+      );
+    const creatorListed = Number(defaultVersion ?? '1') < 12;
     const roomId = await request
       .post(`${hs}/_matrix/client/v3/createRoom`, {
         headers: controllerAuth,
@@ -193,7 +204,10 @@ test.describe('Room settings', () => {
           preset: 'private_chat',
           invite: [adminId, memberId],
           power_level_content_override: {
-            users: { [controllerId]: 101, [adminId]: 100 },
+            users: {
+              ...(creatorListed ? { [controllerId]: 101 } : {}),
+              [adminId]: 100,
+            },
           },
         },
       })

@@ -47,6 +47,8 @@ function setup(
     may?: boolean;
     noRoom?: boolean;
     signedOut?: boolean;
+    /** Other rooms the client knows, by room ID. */
+    rooms?: Record<string, unknown>;
   } = {},
 ) {
   const sendStateEvent = vi.fn().mockResolvedValue({});
@@ -73,7 +75,7 @@ function setup(
       };
   const client = {
     sendStateEvent,
-    getRoom: () => room,
+    getRoom: (roomId: string) => opts.rooms?.[roomId] ?? room,
     getUserId: () => '@me:hs.example',
     on: vi.fn(),
     off: vi.fn(),
@@ -236,6 +238,48 @@ describe('SpaceChildrenService', () => {
       );
 
       expect(sentContent(sendStateEvent)['via']).toEqual(['remote.example']);
+    });
+
+    describe('for a room version 12 child, whose ID names no server', () => {
+      const CHILD = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+      function childRoom(joined: string[]) {
+        return {
+          getJoinedMembers: () => joined.map((userId) => ({ userId })),
+        };
+      }
+
+      it('routes via the servers of its joined members, most populous first', async () => {
+        const { svc, sendStateEvent } = setup({
+          rooms: {
+            [CHILD]: childRoom([
+              '@a:hs.example',
+              '@b:far.example',
+              '@c:far.example',
+            ]),
+          },
+        });
+
+        await firstValueFrom(
+          svc.addExistingRoom('@me:hs.example', '!s:hs', CHILD),
+        );
+
+        expect(sentContent(sendStateEvent)['via']).toEqual([
+          'far.example',
+          'hs.example',
+        ]);
+      });
+
+      it('falls back to our own server when nothing else names one', async () => {
+        const { svc, sendStateEvent } = setup({
+          rooms: { [CHILD]: childRoom([]) },
+        });
+
+        await firstValueFrom(
+          svc.addExistingRoom('@me:hs.example', '!s:hs', CHILD),
+        );
+
+        expect(sentContent(sendStateEvent)['via']).toEqual(['hs.example']);
+      });
     });
 
     it('appends after the last child rather than disturbing the arrangement', async () => {

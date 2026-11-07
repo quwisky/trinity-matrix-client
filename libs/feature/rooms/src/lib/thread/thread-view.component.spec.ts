@@ -196,6 +196,7 @@ async function build(
         typingNames: signal<string[]>(state.typingNames ?? []).asReadonly(),
         setTyping: setTypingCalls,
         rawEvent: vi.fn(() => ({ type: 'm.room.message' })),
+        roomVia: vi.fn(() => ['hs']),
       }),
       {
         provide: ConversationRuntime,

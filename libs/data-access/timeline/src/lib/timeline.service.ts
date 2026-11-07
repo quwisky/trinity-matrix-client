@@ -50,6 +50,7 @@ import {
   TYPING_REFRESH_MS,
   TYPING_TIMEOUT_MS,
   liveRoomState,
+  roomVia,
 } from '@trinity/util/matrix';
 import {
   ConversationTimelineReadiness,
@@ -977,6 +978,15 @@ export class TimelineService {
   rawEvent(roomId: string, eventId: string): object | null {
     const event = this.connectedClient?.getRoom(roomId)?.findEventById(eventId);
     return event?.getEffectiveEvent() ?? null;
+  }
+
+  /** Routing servers for a permalink to `roomId`; see {@link roomVia}. */
+  roomVia(roomId: string): string[] {
+    const room = this.connectedClient?.getRoom(roomId);
+    return roomVia(
+      roomId,
+      room?.getJoinedMembers().map(({ userId }) => userId) ?? [],
+    );
   }
 
   /**

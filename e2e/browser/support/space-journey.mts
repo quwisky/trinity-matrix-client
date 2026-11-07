@@ -11,6 +11,7 @@ export async function createRoom(
   options: {
     readonly space?: boolean;
     readonly invite?: readonly string[];
+    readonly roomVersion?: string;
   } = {},
 ): Promise<string> {
   const res = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
@@ -20,6 +21,7 @@ export async function createRoom(
       preset: 'private_chat',
       ...(options.space ? { creation_content: { type: 'm.space' } } : {}),
       ...(options.invite ? { invite: options.invite } : {}),
+      ...(options.roomVersion ? { room_version: options.roomVersion } : {}),
     },
   });
   if (!res.ok()) {

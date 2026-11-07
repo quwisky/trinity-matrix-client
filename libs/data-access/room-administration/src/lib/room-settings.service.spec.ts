@@ -351,6 +351,59 @@ describe('RoomSettingsService', () => {
     );
   });
 
+  it('setJoinRule allows a room version 12 Space ID without a server name', async () => {
+    const { svc, sendStateEvent } = setup();
+    const spaceId = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Restricted, [spaceId]),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'restricted',
+        allow: [{ type: 'm.room_membership', room_id: spaceId }],
+      },
+      '',
+    );
+  });
+
+  it.each([
+    ['a bare sigil', '!x'],
+    [
+      'a room version 12 ID of the wrong length',
+      '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhd',
+    ],
+    ['an empty server name', '!opaque:'],
+  ])('setJoinRule rejects %s as an allowed Space ID', async (_, spaceId) => {
+    const { svc, sendStateEvent } = setup();
+
+    await expect(
+      firstValueFrom(svc.setJoinRule('!r:hs', JoinRule.Restricted, [spaceId])),
+    ).rejects.toThrow('valid Matrix Room ID');
+    expect(sendStateEvent).not.toHaveBeenCalled();
+  });
+
+  it('setJoinRule allows a Space ID whose server name carries a port', async () => {
+    const { svc, sendStateEvent } = setup();
+
+    await firstValueFrom(
+      svc.setJoinRule('!r:hs', JoinRule.Restricted, ['!a:b:8448']),
+    );
+
+    expect(sendStateEvent).toHaveBeenCalledWith(
+      '!r:hs',
+      'm.room.join_rules',
+      {
+        join_rule: 'restricted',
+        allow: [{ type: 'm.room_membership', room_id: '!a:b:8448' }],
+      },
+      '',
+    );
+  });
+
   it('setJoinRule rejects an invalid allowed Space ID before writing', async () => {
     const { svc, sendStateEvent } = setup();
 

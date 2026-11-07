@@ -17,7 +17,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { liveRoomState } from '@trinity/util/matrix';
+import { liveRoomState, roomVia } from '@trinity/util/matrix';
 import {
   compareOrder,
   isValidOrder,
@@ -200,7 +200,7 @@ export class SpaceChildrenService {
       }
       const last = links.length > 0 ? links[links.length - 1].order : '';
       const content: SpaceChildContent = {
-        via: [viaFor(client, childId)],
+        via: viaFor(client, childId),
         // Appended, not inserted, so an admin's arrangement is undisturbed. A null gap just
         // means the new child sorts as unordered, which the spec puts last.
         ...(orderBetween(last, '')
@@ -465,16 +465,25 @@ function sameLinks(
 }
 
 /**
- * The server to route a join through, preferring the child room's own server over ours.
- * A `via` naming only our homeserver is useless for a room we do not host.
+ * Servers to route a join through, preferring the child room's own over ours: a `via`
+ * naming only our homeserver is useless for a room we do not host. A room version 12
+ * child ID names no server, so its joined members' servers stand in before ours.
  */
-function viaFor(client: MatrixClient, childId: string): string {
-  const fromChild = childId.includes(':')
-    ? childId.split(':').slice(1).join(':')
-    : '';
-  if (fromChild) {
-    return fromChild;
+function viaFor(client: MatrixClient, childId: string): string[] {
+  const fromId = roomVia(childId);
+  if (fromId.length > 0) {
+    return fromId;
+  }
+  const fromMembers = roomVia(
+    childId,
+    client
+      .getRoom(childId)
+      ?.getJoinedMembers()
+      .map(({ userId }) => userId) ?? [],
+  );
+  if (fromMembers.length > 0) {
+    return fromMembers;
   }
   const userId = client.getUserId() ?? '';
-  return userId.includes(':') ? userId.split(':').slice(1).join(':') : '';
+  return userId.includes(':') ? [userId.split(':').slice(1).join(':')] : [];
 }

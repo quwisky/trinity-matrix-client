@@ -352,6 +352,30 @@ describe('RoomActionPermissionsService', () => {
     expect(service.member('!room:hs', '@me:hs').kick.available).toBe(false);
   });
 
+  it.each([
+    ['an admin', 100],
+    ['another creator', Infinity],
+  ])(
+    'blocks %s from changing the role of a room version 12 creator',
+    (_, myPower) => {
+      // matrix-js-sdk gives a version 12 creator infinite power; the server refuses any
+      // power-level event that lists them, so the roles UI must not offer the change.
+      const { service } = setup(
+        clientFixture('@me:hs', {
+          myPower,
+          targetPower: Infinity,
+        }),
+      );
+
+      const demotion = service.role('!room:hs', '@target:hs', 0);
+      expect(demotion.available).toBe(false);
+      expect(demotion.reason).toContain('lower role');
+      expect(service.member('!room:hs', '@target:hs').setPower.available).toBe(
+        false,
+      );
+    },
+  );
+
   it.each([KnownMembership.Invite, KnownMembership.Knock])(
     'lets a higher-ranked moderator remove someone whose membership is %s',
     (targetMembership) => {

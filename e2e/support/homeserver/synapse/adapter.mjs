@@ -307,6 +307,12 @@ export async function ensureConfig(ctx) {
       additions.push('caches:', '  sync_response_cache_duration: 0');
     }
   }
+  // Newer Synapse (1.164.1 here) answers a password-reset request for an unknown address as if it had
+  // sent a link, so addresses cannot be probed. The reset journey covers the refusal.
+  // Guarded on its own key for the same reason as the publication rules above.
+  if (!/^request_token_inhibit_3pid_errors:/m.test(yaml)) {
+    additions.push('request_token_inhibit_3pid_errors: false');
+  }
   // Email validation for the email-address journeys, sent to Mailpit. Notifications stay
   // off so no other spec's traffic lands in the mailbox. Guarded on its own key for the
   // same reason as the publication rules above.

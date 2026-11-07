@@ -68,24 +68,28 @@ async function setPowerLevel(
   const current = await request
     .get(url, { headers: actor.headers })
     .then((r) => r.json());
-  await request.put(url, {
+  const res = await request.put(url, {
     headers: actor.headers,
     data: { ...current, users: { ...(current.users ?? {}), [userId]: level } },
   });
+  if (!res.ok()) {
+    throw new Error(await describeFailure('set power level', res));
+  }
 }
 
 /**
  * Register a reader (the room creator, so power level 100 = admin) plus one extra
  * participant per `powers` entry, set every display name, create the room inviting
- * all extras with a `power_level_content_override` that grants each their level, and
- * have every extra join. The result is a synced room whose member list spans the
- * requested roles.
+ * all extras, grant each their level, and have every extra join. The result is a synced
+ * room whose member list spans the requested roles. `roomVersion` pins the room for a
+ * journey that demotes the creator, which room version 12 forbids.
  */
 async function seedRoleRoom(
   request: APIRequestContext,
   hs: string,
   runId: string,
   powers: number[],
+  roomVersion?: string,
 ): Promise<{
   reader: HomeserverSession;
   roomName: string;
@@ -114,26 +118,34 @@ async function seedRoleRoom(
     extras.push({ ...api, name, power: powers[i] });
   }
 
-  // Only levels above the default (0) need an override; the creator must be listed
-  // explicitly at 100 because the override replaces the generated `users` map.
-  const users: Record<string, number> = { [admin.userId]: 100 };
+  const created = await request.post(`${hs}/_matrix/client/v3/createRoom`, {
+    headers: admin.headers,
+    data: {
+      name: roomName,
+      invite: extras.map((e) => e.userId),
+      power_level_content_override: { invite: 50 },
+      ...(roomVersion ? { room_version: roomVersion } : {}),
+    },
+  });
+  if (!created.ok()) {
+    throw new Error(await describeFailure('createRoom', created));
+  }
+  const roomId = ((await created.json()) as { room_id: string }).room_id;
+
+  // Merged into the generated `users` map rather than replacing it: before room version
+  // 12 that map must keep the creator at 100, and from version 12 it must not list them.
   for (const extra of extras) {
     if (extra.power > 0) {
-      users[extra.userId] = extra.power;
+      await setPowerLevel(
+        request,
+        hs,
+        admin,
+        roomId,
+        extra.userId,
+        extra.power,
+      );
     }
   }
-
-  const roomId = await request
-    .post(`${hs}/_matrix/client/v3/createRoom`, {
-      headers: admin.headers,
-      data: {
-        name: roomName,
-        invite: extras.map((e) => e.userId),
-        power_level_content_override: { users, invite: 50 },
-      },
-    })
-    .then((r) => r.json())
-    .then((j) => j.room_id as string);
 
   for (const extra of extras) {
     await request.post(
@@ -472,6 +484,7 @@ test.describe('Member role sections', () => {
       hs,
       runId,
       [0],
+      '10',
     );
     const [plain] = extras;
 
@@ -536,6 +549,7 @@ test.describe('Member role sections', () => {
       hs,
       runId,
       [],
+      '10',
     );
 
     await login(page, reader);
@@ -583,6 +597,7 @@ test.describe('Unavailable action touch feedback', () => {
       hs,
       runId,
       [0],
+      '10',
     );
     const [plain] = extras;
 

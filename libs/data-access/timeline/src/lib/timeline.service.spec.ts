@@ -624,6 +624,20 @@ describe('TimelineService', () => {
     expect(svc.reactionDetails('$nope')).toEqual([]);
   });
 
+  it('routes a room version 12 room through the servers of its joined members', () => {
+    const roomId = '!LBOfzW0JkH06c0NE00RkPmr4WWaXuhduNwR58TTi1Yc';
+    const room = {
+      ...fakeRoom([]),
+      roomId,
+      getJoinedMembers: () =>
+        ['@a:other.org', '@b:hs', '@c:hs'].map((userId) => ({ userId })),
+    };
+    const svc = openTimeline(clientFor(room));
+
+    expect(svc.roomVia(roomId)).toEqual(['hs', 'other.org']);
+    expect(svc.roomVia('!r:hs')).toEqual(['hs']);
+  });
+
   it('does not re-project when an unreferenced member changes', async () => {
     const events = [fakeEvent({ id: '$1', sender: '@a:hs', body: 'hi' })];
     let memberCalls = 0;
