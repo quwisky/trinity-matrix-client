@@ -1,6 +1,12 @@
 /** The tap only ever receives a published, signed release, written by the deploy key. */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { read, workflow as loadWorkflow } from './workspace-sources.mjs';
@@ -157,6 +163,40 @@ describe('Homebrew tap workflow', () => {
     }
     expect(check).toBeLessThan(tap);
     expect(step.id).toBe('latest');
+  });
+
+  it('never rolls a cask back to an older release', () => {
+    const run = job.steps[stepIndex('Write, check and push the cask')].run;
+    const guard = run.slice(0, run.indexOf('sha=$('));
+    const writes = (current, VERSION, CASK = 'trinity@next') => {
+      const dir = mkdtempSync(join(tmpdir(), 'homebrew-rollback-'));
+      if (current) {
+        mkdirSync(join(dir, 'tap/Casks'), { recursive: true });
+        writeFileSync(
+          join(dir, `tap/Casks/${CASK}.rb`),
+          `cask "${CASK}" do\n  version "${current}"\nend\n`,
+        );
+      }
+      const result = spawnSync(
+        'bash',
+        ['-e', '-o', 'pipefail', '-c', `${guard}echo WRITE`],
+        {
+          cwd: dir,
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH, CASK, VERSION },
+        },
+      );
+      rmSync(dir, { recursive: true, force: true });
+      expect(result.status).toBe(0);
+      return result.stdout.includes('WRITE');
+    };
+    expect(writes(undefined, '0.7.0-next.3')).toBe(true);
+    expect(writes('0.7.0-next.3', '0.7.0-next.3')).toBe(true);
+    expect(writes('0.7.0-next.9', '0.7.0-next.10')).toBe(true);
+    expect(writes('0.7.0-next.3', '0.8.0-next.0')).toBe(true);
+    expect(writes('0.7.0-next.10', '0.7.0-next.9')).toBe(false);
+    expect(writes('0.8.0-next.0', '0.7.0-next.3')).toBe(false);
+    expect(writes('0.10.0', '0.9.1', 'trinity')).toBe(false);
   });
 
   it('refuses drafts before downloading', () => {
