@@ -166,8 +166,11 @@ export class AccountDeletionWorkflow {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       // A sign-in or removal since then owns the account: removing it now would wipe that.
-      const superseded = () =>
-        !hold.isHeld() || this.matrix.clientFor(accountId) !== client;
+      // A client merely stopped, as by a switch or a rolled-back start, does not.
+      const superseded = () => {
+        const now = this.matrix.clientFor(accountId);
+        return !hold.isHeld() || (now !== null && now !== client);
+      };
       return defer(() =>
         superseded() ? of(null) : this.accounts.removeDeletedAccount(accountId),
       ).pipe(

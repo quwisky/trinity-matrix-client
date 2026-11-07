@@ -166,6 +166,37 @@ describe('AccountDeletionWorkflow', () => {
     }
   });
 
+  it('still removes a deleted account whose client a transition stopped meanwhile', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      vi.mocked(test.accounts.removeDeletedAccount)
+        .mockReturnValueOnce(
+          of({
+            kind: 'transition-in-progress',
+            accountId: ALICE,
+            operation: 'switching-account',
+          }),
+        )
+        .mockReturnValueOnce(of(CLEANED));
+      const results: unknown[] = [];
+      test.workflow.delete(request(test.stages)).subscribe((result) => {
+        results.push(result);
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      vi.mocked(test.matrix.clientFor).mockReturnValue(null);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(results).toEqual([
+        { kind: 'deleted', accountId: ALICE, cleanup: CLEANED },
+      ]);
+      expect(test.release).toHaveBeenCalledWith({ deleted: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   describe('when the account is taken over while a transition holds the removal back', () => {
     async function heldBack(
       takeOver: (test: ReturnType<typeof setup>) => void,

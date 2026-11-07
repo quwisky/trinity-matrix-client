@@ -1101,6 +1101,54 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.setActive).toHaveBeenLastCalledWith('@d:hs');
   });
 
+  it('leaves an account that signed in again alone when its sign-out cleanup is retried', async () => {
+    const { adapter, matrix, storage, lifecycle, accountIds } = setup('@a:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of(
+        ['@a:hs', '@x:hs'].map((userId, index) => ({
+          userId,
+          baseUrl: 'https://hs',
+          deviceId: `D${index}`,
+        })),
+      ),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove)
+      .mockReturnValueOnce(throwError(() => new Error('registry locked')))
+      .mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    vi.mocked(lifecycle.unregisterNotifications)
+      .mockReturnValueOnce(throwError(() => new Error('push unavailable')))
+      .mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@x:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toHaveLength(2);
+    accountIds.set(['@a:hs', '@x:hs']);
+
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      failure: 'account-unavailable',
+    });
+    expect(storage.remove).toHaveBeenCalledOnce();
+    expect(lifecycle.forgetPushHandoff).toHaveBeenCalledOnce();
+    expect(lifecycle.unregisterNotifications).toHaveBeenCalledOnce();
+
+    accountIds.set(['@a:hs']);
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      failure: 'account-unavailable',
+    });
+    expect(storage.remove).toHaveBeenCalledOnce();
+  });
+
   it('retries only settled safe Account-removal residue', async () => {
     const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
     const client = { logout: vi.fn(() => Promise.resolve()) };
