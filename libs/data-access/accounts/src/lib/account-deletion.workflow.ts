@@ -17,9 +17,11 @@ import {
   catchError,
   defer,
   finalize,
+  first,
   from,
   map,
   of,
+  repeat,
   switchMap,
   Subject,
 } from 'rxjs';
@@ -71,6 +73,8 @@ export type AccountDeletionResult =
     }
   /** The server may or may not have deleted it; asking again can settle it. */
   | { readonly kind: 'unconfirmed'; readonly accountId: string };
+
+const TRANSITION_RETRY_MS = 500;
 
 type ServerAnswer =
   | { readonly kind: 'deleted' }
@@ -155,7 +159,10 @@ export class AccountDeletionWorkflow {
 
   /** Clean up an account whose deletion is already known, such as at its provider. */
   removeDeleted(accountId: string): Observable<AccountDeletionResult> {
-    return this.accounts.removeDeletedAccount(accountId).pipe(
+    return defer(() => this.accounts.removeDeletedAccount(accountId)).pipe(
+      // A switch, start or restore refuses the removal without doing anything.
+      repeat({ delay: TRANSITION_RETRY_MS }),
+      first((cleanup) => cleanup.kind !== 'transition-in-progress'),
       map((cleanup): AccountDeletionResult => {
         const result = { kind: 'deleted', accountId, cleanup } as const;
         this.finished.set(accountId, result);

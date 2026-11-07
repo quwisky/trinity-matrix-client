@@ -131,6 +131,41 @@ describe('AccountDeletionWorkflow', () => {
     expect(test.order).toEqual(['cleanup', 'release:true']);
   });
 
+  it('waits for a running account transition before reporting the deletion and releasing the hold', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = setup();
+      vi.mocked(test.accounts.removeDeletedAccount)
+        .mockReturnValueOnce(
+          of({
+            kind: 'transition-in-progress',
+            accountId: ALICE,
+            operation: 'switching-account',
+          }),
+        )
+        .mockReturnValueOnce(of(CLEANED));
+      const results: unknown[] = [];
+
+      test.workflow.delete(request(test.stages)).subscribe((result) => {
+        results.push(result);
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(results).toEqual([]);
+      expect(test.release).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(results).toEqual([
+        { kind: 'deleted', accountId: ALICE, cleanup: CLEANED },
+      ]);
+      expect(test.accounts.removeDeletedAccount).toHaveBeenCalledTimes(2);
+      expect(test.release).toHaveBeenCalledWith({ deleted: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('passes erase false through', async () => {
     const test = setup();
 
