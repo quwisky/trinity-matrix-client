@@ -65,8 +65,9 @@ export class ComposerDrafts {
       store,
     } = ports;
 
-    // On a room, thread or account change, drop what belonged to the old room and swap drafts. The composer
-    // instance is reused across rooms, so otherwise a half-typed message leaks into the next one.
+    // On a room, thread or account change, drop what belonged to the old one and swap drafts.
+    // The composer instance is reused across rooms, so otherwise a half-typed message leaks into
+    // the next one.
     effect(() => {
       const id = roomId();
       const conversation = `${accountId() ?? ''}\u0000${id ?? ''}`;
