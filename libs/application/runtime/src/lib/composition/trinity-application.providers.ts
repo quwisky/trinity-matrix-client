@@ -9,7 +9,6 @@ import {
   type Signal,
 } from '@angular/core';
 import {
-  PreloadAllModules,
   provideRouter,
   withDisabledInitialNavigation,
   withPreloading,
@@ -65,6 +64,7 @@ import {
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { appLockProviders } from './app-lock.providers';
 import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { PreloadAfterFirstNavigation } from './preload-after-first-navigation.strategy';
 import { AccountDeletionLauncherAdapter } from './account-deletion-launcher.adapter';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
 import { AccountSwitchLauncherAdapter } from './account-switch-launcher.adapter';
@@ -138,7 +138,7 @@ export function provideTrinityApplication(
     provideRouter(
       options.routes,
       withDisabledInitialNavigation(),
-      withPreloading(PreloadAllModules),
+      withPreloading(PreloadAfterFirstNavigation),
       withRouterConfig({ canceledNavigationResolution: 'computed' }),
     ),
     TrinityApplicationRuntimeAdapter,
