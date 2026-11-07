@@ -987,6 +987,8 @@ describe('createLogRedactor', () => {
       'listen on 127.0.0.1:8008 and 0.0.0.0, mask 255.255.255.0',
       'loopback ::1 and ::',
       'lib version 1.2.3.4',
+      'Chrome/141.0.0.0 v1.2.3.4 version: 1.2.3.4',
+      'open #/settings:general',
     ])('keeps %s, which names no one', (text) => {
       expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(text);
     });
@@ -1005,9 +1007,30 @@ describe('createLogRedactor', () => {
       ],
       ['64:ff9b::198.51.100.7', 'server3'],
       ['fe80::1%en0', 'server3%en0'],
+      ['host-10.0.0.1', 'host-server3'],
+      ['ip10.0.0.1', 'ipserver3'],
+      ['_10.0.0.1', '_server3'],
+      ['10.0.0.1-10.0.0.9', 'server3-server4'],
+      ['ver 10.1.2.3:8448', 'ver server3:8448'],
       ['[fe80::1%25en0]:8448', '[server3%25en0]:8448'],
     ])('replaces the address in %s', (text, expected) => {
       expect(createLogRedactor(CORPUS_CONTEXT).redact(text)).toBe(expected);
+    });
+
+    it('replaces aliases holding ";", a backtick or a bare "%"', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact('#ro;om:evil.org #a`b:evil.org #50%off:evil.org'),
+      ).toBe('#alias1:server3 #alias2:server3 #alias3:server3');
+    });
+
+    it('leaves an Element route fragment to the room rule', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(
+        redactor.redact('https://app.element.io/#/room/!abc:evil.org'),
+      ).toBe('https://server3/#/room/!room1:server4');
     });
 
     it('replaces aliases and user IDs partly URL-encoded before a literal colon', () => {

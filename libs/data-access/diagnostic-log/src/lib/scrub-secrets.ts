@@ -6,11 +6,20 @@ export const MAX_SCRUB_INPUT = 64 * 1024;
 
 const CUT_NOTE = ' [rest dropped before scrubbing]';
 
+/** Characters a token never contains: the input cut backs off to the last of these. */
+const TOKEN_SEPARATOR = /[\s"',;{}[\]()<>]/;
+
 /**
- * Characters neither a token nor a Matrix ID contains: a cut backs off to the last of these.
- * Historical user IDs and aliases may hold "'", ";" and brackets.
+ * Characters no Matrix ID contains either, for cuts of scrubbed text: historical user IDs
+ * and aliases may hold "'", ";" and brackets.
  */
-const SEPARATOR = /[\s",<>]/;
+export const ID_SEPARATOR = /[\s",<>]/;
+
+/**
+ * How far a cut backs off looking for a separator. Longer than any Matrix ID (255 bytes);
+ * with no separator that close, the cut falls at the limit rather than dropping everything.
+ */
+const CUT_WINDOW = 256;
 
 /**
  * Names whose value is a credential, key material, a push or TURN secret, or message
@@ -171,17 +180,17 @@ function isReadableFlag(name: string, value: string): boolean {
 
 /**
  * A parameter name and its "="; the name may start after any non-alphanumeric character.
- * Spaces around the "=" are allowed, but "==" is a comparison.
+ * Spaces around the "=" are allowed, and then "==" is a comparison.
  */
 const PARAM =
-  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})([ \t]{0,8}=(?!=)[ \t]{0,8})/g;
+  /(?<![A-Za-z0-9])([A-Za-z_][\w.-]{0,63})(=(?![ \t])|[ \t]{0,8}=(?!=)[ \t]{0,8})/g;
 
 /** Where a bare parameter value ends; a spaced one (`if (token = x)`) also ends at ")". */
 const PARAM_VALUE_END = /[&#\s"']/;
 const SPACED_PARAM_VALUE_END = /[&#\s"')]/;
 
-/** After a quote, what shows it closes the string around a parameter: `"?code=","next":…`. */
-const AFTER_CLOSING_QUOTE = /^(?:[,:}\])]|$)/;
+/** The most backslashes before a quote that opens a parameter value, as in `readValue`. */
+const MAX_ESCAPE = 8;
 
 /**
  * A name whose spaced assignment (`password = x`) holds a secret: one with a secret word in
@@ -285,6 +294,7 @@ export function scrubSecrets(text: string): string {
  */
 function maskParams(text: string): string {
   const pattern = new RegExp(PARAM);
+  const isOpen = openStrings(text);
   let out = '';
   let position = 0;
   for (
@@ -297,7 +307,10 @@ function maskParams(text: string): string {
       continue;
     }
     const start = match.index + match[0].length;
-    const end = paramValueEnd(text, start, spaced);
+    if (text.startsWith(REDACTED, start)) {
+      continue;
+    }
+    const end = paramValueEnd(text, start, spaced, isOpen);
     if (isReadableFlag(match[1], text.slice(start, end))) {
       continue;
     }
@@ -308,20 +321,32 @@ function maskParams(text: string): string {
   return out + text.slice(position);
 }
 
-function paramValueEnd(text: string, start: number, spaced: boolean): number {
-  let slashes = 0;
-  while (text[start + slashes] === '\\' && slashes < 8) {
-    slashes += 1;
+function paramValueEnd(
+  text: string,
+  start: number,
+  spaced: boolean,
+  isOpen: (at: number, quote: string, slashes: number) => boolean,
+): number {
+  let run = 0;
+  while (text[start + run] === '\\' && run < MAX_ESCAPE) {
+    run += 1;
   }
-  const quote = text[start + slashes];
+  const quote = text[start + run];
   if (quote === '"' || quote === "'") {
-    // A quote that closes the string around the parameter leaves its value empty: read as
-    // an opener, it would swallow the next field's name, which then escapes `maskFields`.
-    return AFTER_CLOSING_QUOTE.test(
-      text.slice(start + slashes + 1, start + slashes + 2),
-    )
-      ? start
-      : readString(text, start, `${'\\'.repeat(slashes)}${quote}`).end;
+    // `\\"` is a backslash, then a bare quote: the backslashes the quote's level leaves
+    // over are part of the value.
+    const level = quoteLevel(run);
+    const opener = start + run - level;
+    // A quote that closes the string the parameter sits in (`{"u":"?code=","next":…}`)
+    // leaves its value empty: read as an opener, it would run over the text after it.
+    if (isOpen(start + run, quote, level)) {
+      return opener;
+    }
+    const { end } = readString(text, opener, `${'\\'.repeat(level)}${quote}`);
+    // An escaped string ends with the string around it, closed or not.
+    return level === 0
+      ? end
+      : shallowerQuote(text, start + run + 1, end, quote, level);
   }
   const valueEnd = spaced ? SPACED_PARAM_VALUE_END : PARAM_VALUE_END;
   let end = start;
@@ -330,6 +355,82 @@ function paramValueEnd(text: string, start: number, spaced: boolean): number {
   }
   return end;
 }
+
+/** The level of a quote after `run` backslashes: the lowest one whose escape it can be. */
+function quoteLevel(run: number): number {
+  let level = 0;
+  while (level < MAX_ESCAPE && run % (2 * level + 2) !== level) {
+    level += 1;
+  }
+  return level;
+}
+
+/** Where the first `quote` of a level below `level` between `from` and `end` starts, or `end`. */
+function shallowerQuote(
+  text: string,
+  from: number,
+  end: number,
+  quote: string,
+  level: number,
+): number {
+  let run = 0;
+  for (let at = from; at < end; at += 1) {
+    if (text[at] === '\\') {
+      run += 1;
+      continue;
+    }
+    if (text[at] === quote && quoteLevel(run) < level) {
+      return at - run;
+    }
+    run = 0;
+  }
+  return end;
+}
+
+/**
+ * Reads `text` left to right, once, and answers whether a string opened by `quote` behind
+ * `slashes` backslashes is open just before `at`: an odd number of such quotes lies before
+ * it. A quote belongs to a level when its backslash run unescapes to a bare quote there (see
+ * `readString`). An apostrophe between two letters (`it's`) is no quote. Ask in order.
+ */
+function openStrings(
+  text: string,
+): (at: number, quote: string, slashes: number) => boolean {
+  const counts = {
+    '"': new Array<number>(MAX_ESCAPE + 1).fill(0),
+    "'": new Array<number>(MAX_ESCAPE + 1).fill(0),
+  };
+  let read = 0;
+  let run = 0;
+  return (at, quote, slashes) => {
+    for (; read < at; read += 1) {
+      const char = text[read];
+      if (char === '\\') {
+        run += 1;
+        continue;
+      }
+      if (
+        (char === '"' || char === "'") &&
+        !(
+          char === "'" &&
+          run === 0 &&
+          LETTER.test(text[read - 1] ?? '') &&
+          LETTER.test(text[read + 1] ?? '')
+        )
+      ) {
+        for (let level = 0; level <= MAX_ESCAPE; level += 1) {
+          if (run % (2 * level + 2) === level) {
+            counts[char][level] += 1;
+          }
+        }
+      }
+      run = 0;
+    }
+    return counts[quote === '"' ? '"' : "'"][slashes] % 2 === 1;
+  };
+}
+
+const LETTER = /\p{L}/u;
 
 /**
  * Masks each key run that starts at a %-escape, except inside an encoded event or room ID:
@@ -370,7 +471,7 @@ export function scrubMessage(text: string): string {
   try {
     return scrubSecrets(
       text.length > MAX_SCRUB_INPUT
-        ? `${cutAtSeparator(text, MAX_SCRUB_INPUT)}${CUT_NOTE}`
+        ? `${cutAtSeparator(text, MAX_SCRUB_INPUT, TOKEN_SEPARATOR)}${CUT_NOTE}`
         : text,
     );
   } catch {
@@ -388,16 +489,23 @@ const CUT_RECOVERY_KEY =
   /\bEs(?:[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){0,10})?\s*$/;
 
 /**
- * The text up to `limit`, backed off to the last separator so no token is cut in half, and
- * without anything that could be a recovery key's leading groups, which the full-key rule
- * would no longer match.
+ * The text up to `limit`, backed off to the last `separator` within {@link CUT_WINDOW} so no
+ * token or ID is cut in half, and without anything that could be a recovery key's leading
+ * groups, which the full-key rule would no longer match. With no separator that close the
+ * cut falls at the limit: what it splits is a run longer than any ID, and a secret that long
+ * is still long enough for the token rules.
  */
-export function cutAtSeparator(text: string, limit: number): string {
+export function cutAtSeparator(
+  text: string,
+  limit: number,
+  separator: RegExp,
+): string {
+  const floor = Math.max(0, limit - CUT_WINDOW);
   let end = limit;
-  while (end > 0 && !SEPARATOR.test(text[end - 1])) {
+  while (end > floor && !separator.test(text[end - 1])) {
     end -= 1;
   }
-  return text.slice(0, end).replace(CUT_RECOVERY_KEY, '');
+  return text.slice(0, end > floor ? end : limit).replace(CUT_RECOVERY_KEY, '');
 }
 
 interface FieldValue {

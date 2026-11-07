@@ -75,6 +75,15 @@ describe('truncateMessage', () => {
     );
   });
 
+  it.each([
+    ['a long URL', `https://x/?${'a=1&'.repeat(2600)}`],
+    ['a run of local-part characters', 'xy;'.repeat(3000)],
+  ])('cuts %s with no separator near the limit at the limit', (_name, text) => {
+    expect(
+      truncateMessage(text).startsWith(text.slice(0, MAX_MESSAGE_LENGTH)),
+    ).toBe(true);
+  });
+
   it('cuts before an identifier the limit runs through, never inside it', () => {
     const filler = `${'x'.repeat(MAX_MESSAGE_LENGTH - 7)} `;
 

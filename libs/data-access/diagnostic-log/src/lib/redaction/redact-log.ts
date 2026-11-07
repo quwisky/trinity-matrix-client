@@ -50,11 +50,11 @@ const serverName = (port: string): string =>
 const SERVER = serverName(PORT);
 // Historical user IDs may hold any printable ASCII but ":" (Matrix spec, "Historical user
 // IDs"); an alias any character but ":" and NUL. Both stop where a log writes around an ID:
-// whitespace, double quotes, "<>", brackets, "," and a further sigil. Either may be partly
-// URL-encoded, but an escaped ":" or sigil belongs to the encoded forms (ENCODED_ID).
-const LOCAL_ESCAPE = String.raw`%(?!3[Aa]|40|2[134])[0-9A-Fa-f]{2}`;
-const USER_LOCALPART = String.raw`(?:[A-Za-z0-9._=\-/+!$&'*;?^|~]|${LOCAL_ESCAPE})+`;
-const ALIAS_LOCALPART = String.raw`(?:[^\s\0:"<>#%@,;()[\]{}\\\x60]|${LOCAL_ESCAPE})+`;
+// whitespace, '"', "<>", brackets, ",", "\\", a further "@" or "#", and an escaped ":" or
+// sigil, which belongs to the encoded forms (ENCODED_ID). Other escapes may stay in them.
+const LOCAL_PERCENT = String.raw`%(?!3[Aa]|40|2[134])`;
+const USER_LOCALPART = String.raw`(?:[A-Za-z0-9._=\-/+!$&'*;?^|~\x60]|${LOCAL_PERCENT})+`;
+const ALIAS_LOCALPART = String.raw`(?:[^\s\0:"<>()[\]{}#%@,\\]|${LOCAL_PERCENT})+`;
 const OPAQUE = String.raw`[A-Za-z0-9._~+/=-]+`;
 
 // The optional userinfo is bounded, so a long run of "@" or ":" cannot make the scan quadratic.
@@ -64,8 +64,9 @@ const URL_HOST = new RegExp(
 );
 // A TURN or STUN URI (RFC 7064, 7065): the host goes, the port stays.
 const TURN_HOST = /\b(turns?|stuns?):(\[[0-9A-Fa-f:.]+\]|[\p{L}\p{N}.-]+)/giu;
-// A bare IP address; a port after it stays. IPv4 stands outside a word or dotted run, so
-// `Chrome/141.0.0.0` and `v1.2.3.4` stay versions. IPv6 needs a digit, and all eight groups
+// A bare IP address; a port after it stays. IPv4 stands outside a dotted number run; after
+// "/" (`Chrome/141.0.0.0`), and after "v", "ver" or "version" unless a port follows, it is a
+// version (see `isVersion`). IPv6 needs a digit, and all eight groups
 // led by a long one, or "::" with a group after it or two before it (IPv4-mapped too), so
 // times, `fe80::` and Rust paths such as `cc::add` or `matrix_sdk::foo` stay.
 const OCTET = String.raw`(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)`;
@@ -80,13 +81,15 @@ const IPV6 = [
 ].join('|');
 const IP_ADDRESS = new RegExp(
   [
-    String.raw`(?<![\p{L}\p{N}./-]|\bver(?:sion)?[\s:=]{1,3})${IPV4}(?![\p{L}\p{N}_-]|\.\p{N})`,
+    String.raw`(?<!\/|\p{N}\.?)${IPV4}(?!\.?\p{N})`,
     String.raw`(?<![\p{L}\p{N}_./:-])(?=[0-9A-Fa-f:.]*\d)(?:${IPV6})(?![\p{L}\p{N}_:-]|\.\p{N})`,
   ].join('|'),
   'gu',
 );
 // Loopback, unspecified and netmask values identify no one and help to read a log.
 const NOBODYS_ADDRESS = /^(?:127\.|0\.0\.0\.0$|255\.|::1?$)/;
+// What a version written like an IPv4 address follows: "v", "ver" or "version".
+const VERSION_BEFORE = /\bv(?:er(?:sion)?[\s:=]{1,3})?$/i;
 // An email address. The local part starts a run (no ID or URL character before it) and every
 // part is bounded, so a long run of address characters cannot make the scan quadratic. A
 // Matrix ID has nothing before its "@"; a URL's userinfo is already gone when this runs.
@@ -129,7 +132,7 @@ const ROOM = new RegExp(String.raw`!${OPAQUE}:(${SERVER})`, 'gu');
 // Room version 12 room IDs carry no server name: "!" and 43 unpadded base64url characters.
 const ROOM_V12 = /![A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])/g;
 const ALIAS = new RegExp(
-  String.raw`(?<![A-Za-z0-9&])#${ALIAS_LOCALPART}:(${SERVER})`,
+  String.raw`(?<![A-Za-z0-9&])#(?!\/)${ALIAS_LOCALPART}:(${SERVER})`,
   'gu',
 );
 const EVENT_V1 = new RegExp(String.raw`\$${OPAQUE}:${SERVER}`, 'gu');
@@ -379,8 +382,8 @@ class IdentifierRedactor implements LogRedactor {
     text = text.replace(ENCODED_ID, (match) => this.redactEncoded(match));
     text = this.redactIdentifiers(text);
     // After the IDs, whose server may be an address. An IPv6 one is keyed as in an ID.
-    text = text.replace(IP_ADDRESS, (ip) =>
-      NOBODYS_ADDRESS.test(ip)
+    text = text.replace(IP_ADDRESS, (ip: string, at: number, line: string) =>
+      NOBODYS_ADDRESS.test(ip) || isVersion(ip, at, line)
         ? ip
         : this.server(ip.includes(':') ? `[${ip}]` : ip),
     );
@@ -633,6 +636,15 @@ class IdentifierRedactor implements LogRedactor {
     map.set(key, placeholder);
     return placeholder;
   }
+}
+
+/** An IPv4-shaped version (`v1.2.3.4`, `version 1.2.3.4`); one with a port is an address. */
+function isVersion(ip: string, at: number, line: string): boolean {
+  return (
+    !ip.includes(':') &&
+    line[at + ip.length] !== ':' &&
+    VERSION_BEFORE.test(line.slice(Math.max(0, at - 12), at))
+  );
 }
 
 /** `run` without the full stops at its end; a loop, so a long run of them stays linear. */

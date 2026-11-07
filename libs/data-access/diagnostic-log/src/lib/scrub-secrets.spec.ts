@@ -373,6 +373,13 @@ describe('scrubSecrets', () => {
     ['password = "hunter2"', `password = ${REDACTED}`],
     ['access_token = hunter2&x=1', `access_token = ${REDACTED}&x=1`],
     ['if token == null', 'if token == null'],
+    ['password==hunter2', `password=${REDACTED}`],
+    ['?access_token=abc)def x', `?access_token=${REDACTED} x`],
+    ['?token==abcdef', `?token=${REDACTED}`],
+    ['password=",hunter2"', `password=${REDACTED}`],
+    ['password=":hunter2"', `password=${REDACTED}`],
+    ['token=",abcdefsecret",x', `token=${REDACTED},x`],
+    ["it's x?password='secret' ok", `it's x?password=${REDACTED} ok`],
     ['username = alice', 'username = alice'],
     ['sync state = SYNCING', 'sync state = SYNCING'],
     ['code = 429 too many', 'code = 429 too many'],
@@ -407,12 +414,41 @@ describe('scrubSecrets', () => {
       String.raw`{"m":"{\"url\":\"https://x/?code=\",\"password\":\"hunter2\"}"}`,
       String.raw`{"m":"{\"url\":\"https://x/?code=${REDACTED}\",\"password\":\"${REDACTED}\"}"}`,
     ],
+    [
+      '{"url":"https://x/?code=" , "password":"hunter2"}',
+      `{"url":"https://x/?code=${REDACTED}" , "password":"${REDACTED}"}`,
+    ],
+    ['{"a":["?code=" ,"x"]}', `{"a":["?code=${REDACTED}" ,"x"]}`],
+    ['{"a":"?code="\n}', `{"a":"?code=${REDACTED}"\n}`],
+    [
+      `{"cmd":"curl 'https://x/?code=' -d password=hunter2 -H x"}`,
+      `{"cmd":"curl 'https://x/?code=${REDACTED}' -d password=${REDACTED} -H x"}`,
+    ],
+    [
+      String.raw`{"m":"{\"u\":\"?code=\"} tail"}`,
+      String.raw`{"m":"{\"u\":\"?code=${REDACTED}\"} tail"}`,
+    ],
+    [
+      String.raw`{"url":"https://x/?access_token=\"","access_token":"s"}`,
+      String.raw`{"url":"https://x/?access_token=${REDACTED}","access_token":"${REDACTED}"}`,
+    ],
+    [
+      String.raw`{"url":"https://x/?code=\\","password":"hunter2"}`,
+      String.raw`{"url":"https://x/?code=${REDACTED}","password":"${REDACTED}"}`,
+    ],
   ])(
     'reads an empty parameter value at the end of a string as empty: %s',
     (line, expected) => {
       expect(scrubSecrets(line)).toBe(expected);
     },
   );
+
+  it('leaves an already masked parameter as it is when scrubbed again', () => {
+    const once = scrubSecrets('password="hunter2","x" y');
+
+    expect(once).toBe(`password=${REDACTED},"x" y`);
+    expect(scrubSecrets(once)).toBe(once);
+  });
 
   it('masks an escaped string through its own closing quote, past quotes escaped deeper', () => {
     expect(
@@ -564,6 +600,10 @@ describe('scrubSecrets', () => {
       'a = '.repeat(16000),
       '{"u":"?code=",'.repeat(4500),
       'token = ('.repeat(7000),
+      '"?code=\\"x'.repeat(6500),
+      "it's ?password='".repeat(4000),
+      'password=\\"x\\"'.repeat(5000),
+      'password=\\"x"'.repeat(5000),
     ];
 
     for (const input of inputs) {
@@ -633,6 +673,17 @@ describe('scrubMessage', () => {
     expect(scrubMessage(`Authorization: Bearer ${SYNAPSE_TOKEN}`)).toBe(
       `Authorization: ${REDACTED}`,
     );
+  });
+
+  it('cuts at the limit when no separator is near it, after which it scrubs', () => {
+    const scrubbed = scrubMessage(`${'a;'.repeat(40000)}password=x`);
+
+    expect(scrubbed.length).toBeGreaterThan(MAX_SCRUB_INPUT - 300);
+    expect(scrubbed).not.toContain('password=x');
+
+    const run = scrubMessage(`${'xy'.repeat(40000)}`);
+
+    expect(run.length).toBeGreaterThan(MAX_SCRUB_INPUT - 300);
   });
 
   it('drops a token cut by the input limit instead of keeping part of it', () => {

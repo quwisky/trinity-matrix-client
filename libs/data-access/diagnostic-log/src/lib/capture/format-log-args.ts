@@ -1,17 +1,17 @@
 import { MAX_MESSAGE_LENGTH } from '../diagnostic-entry.model';
-import { cutAtSeparator, REDACTED } from '../scrub-secrets';
+import { cutAtSeparator, ID_SEPARATOR, REDACTED } from '../scrub-secrets';
 
 /**
  * Cut a message to {@link MAX_MESSAGE_LENGTH}, saying how much was cut. Only ever applied to
  * text that `scrubMessage` has already scrubbed, so a cut can't leave part of a secret. The
- * cut backs off to a separator, so it can't leave part of an ID that export redaction would
- * no longer recognise.
+ * cut backs off to a separator no ID holds, so it can't leave part of an ID that export
+ * redaction would no longer recognise.
  */
 export function truncateMessage(text: string): string {
   if (text.length <= MAX_MESSAGE_LENGTH) {
     return text;
   }
-  const kept = cutAtSeparator(text, MAX_MESSAGE_LENGTH);
+  const kept = cutAtSeparator(text, MAX_MESSAGE_LENGTH, ID_SEPARATOR);
   return `${kept}… [${text.length - kept.length} characters truncated]`;
 }
 
