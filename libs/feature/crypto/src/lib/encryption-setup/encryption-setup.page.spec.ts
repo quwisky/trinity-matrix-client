@@ -278,6 +278,31 @@ describe('EncryptionSetupPage', () => {
       expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
       expect(fixture.nativeElement.textContent).toContain(KEY);
     });
+
+    it('withdraws Try again, but keeps the key, when the retry is refused', async () => {
+      const { fixture, crypto } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(throwError(partial));
+      fixture.componentInstance.setUp();
+      fixture.detectChanges();
+
+      vi.mocked(crypto.setUp).mockReturnValue(
+        throwError(
+          () =>
+            new TrustOperationError(
+              'setup',
+              'stale-state',
+              'review-security-settings',
+              'This account already has a recovery key.',
+            ),
+        ),
+      );
+      screen.getByRole('button', { name: 'Try again' }).click();
+      fixture.detectChanges();
+
+      expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+      expect(screen.getByTestId('setup-security-settings')).toBeTruthy();
+      expect(fixture.nativeElement.textContent).toContain(KEY);
+    });
   });
 
   describe('when setup is refused because the identity lives elsewhere', () => {

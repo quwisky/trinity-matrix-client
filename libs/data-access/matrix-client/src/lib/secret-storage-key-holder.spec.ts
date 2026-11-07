@@ -97,4 +97,16 @@ describe('SecretStorageKeyHolder', () => {
     // The held buffer is wiped, not just dereferenced.
     expect(Array.from(key)).toEqual([0, 0, 0]);
   });
+
+  it('holds an unfinished setup key as a copy and zeroes it on teardown', () => {
+    const privateKey = new Uint8Array([7, 7, 7]);
+    keys.holdUnfinishedSetupKey({ encodedPrivateKey: 'EsT', privateKey });
+    const held = keys.unfinishedSetupKey;
+    privateKey.fill(0); // the SDK zeroing its own buffer must not reach the copy
+
+    expect(held?.privateKey).toEqual(new Uint8Array([7, 7, 7]));
+    keys.clear();
+    expect(keys.unfinishedSetupKey).toBeNull();
+    expect(held?.privateKey).toEqual(new Uint8Array([0, 0, 0]));
+  });
 });

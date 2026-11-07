@@ -33,14 +33,20 @@ import {
  * `ownKey` is the key an earlier, partly failed setup on this device minted and showed.
  * When the server's pointer is that key, finishing the setup replaces nothing the user
  * does not already hold.
+ *
+ * Resolves with what it found, so setup can tell whether a key it mints may become the
+ * account's: `none`, `unreadable` (failed open), or the id of `ownKey`.
  */
 export async function assertNoRecoveryOnAccount(
   client: TrustMatrixClient,
   ownKey: Uint8Array | null = null,
-): Promise<void> {
+): Promise<'none' | 'unreadable' | { readonly ownKeyId: string }> {
   const keyId = await readServerDefaultKeyId(client);
-  if (!keyId || (ownKey && (await isKeyFor(client, keyId, ownKey)))) {
-    return;
+  if (keyId === null || keyId === undefined) {
+    return keyId === null ? 'none' : 'unreadable';
+  }
+  if (ownKey && (await isKeyFor(client, keyId, ownKey))) {
+    return { ownKeyId: keyId };
   }
   throw new TrustOperationError(
     'setup',
@@ -148,6 +154,19 @@ export async function assertNoIdentityElsewhere(
       );
 }
 
+/** Whether `privateKey` opens the account's current default 4S key, as this device sees it. */
+export async function isDefaultKey(
+  client: TrustMatrixClient,
+  privateKey: Uint8Array,
+): Promise<boolean> {
+  try {
+    const keyId = await client.secretStorage.getDefaultKeyId();
+    return !!keyId && (await isKeyFor(client, keyId, privateKey));
+  } catch {
+    return false;
+  }
+}
+
 /** Whether `privateKey` opens the 4S key `keyId`; any failed read is a no. */
 async function isKeyFor(
   client: TrustMatrixClient,
@@ -156,8 +175,10 @@ async function isKeyFor(
 ): Promise<boolean> {
   try {
     const stored = await client.secretStorage.getKey(keyId);
+    // checkKey answers true for a description with no MAC, which proves nothing.
     return (
-      !!stored && (await client.secretStorage.checkKey(privateKey, stored[1]))
+      !!stored?.[1].mac &&
+      (await client.secretStorage.checkKey(privateKey, stored[1]))
     );
   } catch {
     return false;
@@ -165,15 +186,15 @@ async function isKeyFor(
 }
 
 /**
- * The account's 4S pointer as the SERVER has it, or null when there is none — which is
- * also what a failed read yields, since the caller fails open.
+ * The account's 4S pointer as the SERVER has it, null when there is none, or undefined
+ * when the read failed (the caller fails open either way).
  */
 async function readServerDefaultKeyId(
   client: TrustMatrixClient,
-): Promise<string | null> {
+): Promise<string | null | undefined> {
   const userId = client.getUserId();
   if (!userId) {
-    return null;
+    return undefined;
   }
   try {
     // Use the tighter crypto-flow deadline rather than the client's 30-second default, so
@@ -186,10 +207,12 @@ async function readServerDefaultKeyId(
       ),
     );
     return content.key ?? null;
-  } catch {
-    // `M_NOT_FOUND` is the ordinary first-run answer, and anything else (offline, 5xx,
-    // a homeserver that stopped answering) is a read we cannot trust either way. Both
+  } catch (err) {
+    // `M_NOT_FOUND` is the ordinary first-run answer; anything else (offline, 5xx, a
+    // homeserver that stopped answering) is a read we cannot trust either way. Both
     // mean "let the setup proceed".
-    return null;
+    return (err as { errcode?: unknown } | null)?.errcode === 'M_NOT_FOUND'
+      ? null
+      : undefined;
   }
 }
