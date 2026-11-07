@@ -86,6 +86,11 @@ const TAB_LABELS: Readonly<Record<ComposerExpressionTab, string>> = {
       "presentation() === 'sheet' ? '100%' : 'calc(302rem / 16)'",
     '[style.max-width]':
       "presentation() === 'sheet' ? null : 'calc(100vw - 1rem)'",
+    // A sheet: a flex column from the body down to the emoji list, so the list shrinks to
+    // fit a sheet capped below its content (a phone held sideways) instead of the sheet
+    // scrolling around it. The emoji picker's fill layout carries it on inside.
+    '[class.flex-1]': "presentation() === 'sheet'",
+    '[class.min-h-0]': "presentation() === 'sheet'",
     '[attr.data-presentation]': 'presentation()',
     '[attr.id]': 'panelId()',
     'data-testid': 'expression-picker',

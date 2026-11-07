@@ -807,7 +807,7 @@ test.describe('Message actions on a phone', () => {
   });
 });
 
-test.describe('"More reactions…" on a phone held sideways', () => {
+test.describe('Emoji pickers on a phone held sideways', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
   test.describe.configure({ timeout: 90_000 });
   // Pixel 5 landscape. Too short for the title, tabs, search and Cancel plus the vendor's
@@ -839,5 +839,36 @@ test.describe('"More reactions…" on a phone held sideways', () => {
     expect(fit.list).toBeLessThan(270);
     // The fixed list left the body scrolling about 250px around it.
     expect(fit.bodyOverflow).toBeLessThan(100);
+  });
+
+  test("the composer's emoji sheet shrinks its list the same way", async ({
+    page,
+    request,
+  }) => {
+    await openRoomWithMessage(page, request, 'c');
+    await page
+      .getByRole('button', { name: 'Emoji, GIFs and stickers' })
+      .click();
+    const sheet = page.getByRole('dialog', {
+      name: 'Emoji, GIFs and stickers',
+    });
+    await expect(sheet.locator('.emoji-mart')).toBeVisible({
+      timeout: 20_000,
+    });
+    await sheetAtRest(sheet.getByTestId('dialog-surface'));
+
+    const fit = await sheet.evaluate((surface) => {
+      const body = surface.querySelector('.dialog-shell__body')!;
+      return {
+        list: surface
+          .querySelector('.emoji-mart-scroll')!
+          .getBoundingClientRect().height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThanOrEqual(99);
+    expect(fit.list).toBeLessThan(270);
+    // The fixed list left the sheet scrolling about 180px around it.
+    expect(fit.bodyOverflow).toBeLessThan(60);
   });
 });
