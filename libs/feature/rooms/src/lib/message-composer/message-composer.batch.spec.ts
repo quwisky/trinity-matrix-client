@@ -8,7 +8,12 @@ import {
   stagedFiles,
   stubObjectUrls,
 } from './message-composer.spec-harness';
+import { computed, signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { DraftStoreService } from '@trinity/platform-native';
+import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
 import { type ComposerSubmit } from './message-composer.component';
 import { type BatchItem, type BatchOutcome } from '../shared/send-media-batch';
 
@@ -165,6 +170,64 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     fixture.componentRef.setInput('roomId', '!a:hs');
     fixture.detectChanges();
     expect(cmp.text()).toBe('here are the photos');
+  });
+
+  it('does not keep a single file’s caption as a draft once its file was sent', async () => {
+    const { fixture } = await renderComposer({ roomId: '!a:hs' });
+    const cmp = fixture.componentInstance;
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      finish.push(() =>
+        onOutcomes(items.map((item) => ({ id: item.id, failed: false }))),
+      );
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('just this one');
+    cmp.submit();
+
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.detectChanges();
+    finish[0]?.();
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.detectChanges();
+
+    // It went out inside the media event; a draft would invite sending it twice.
+    expect(cmp.text()).toBe('');
+  });
+
+  it('keeps a lost caption as the draft of its own account’s conversation', async () => {
+    const composeA = new ConversationComposeStub();
+    const composeB = new ConversationComposeStub();
+    const focused = signal({ compose: composeA });
+    const runtime = {
+      focused,
+      compose: { draft: computed(() => focused().compose.draft()) },
+    };
+    const { fixture } = await renderComposer(
+      { accountId: '@a:hs', roomId: '!r:hs', conversationDraft: true },
+      [{ provide: ConversationRuntime, useValue: runtime }],
+    );
+    const cmp = fixture.componentInstance;
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      finish.push(() =>
+        onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+      );
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('for the room');
+    cmp.submit();
+
+    // Another account opens the same room.
+    focused.set({ compose: composeB });
+    fixture.componentRef.setInput('accountId', '@b:hs');
+    fixture.detectChanges();
+    finish[0]?.();
+
+    expect(composeA.draft()).toBe('for the room');
+    expect(composeB.draft()).toBe('');
+    // Not under the bare room id, which any account opening the room would claim.
+    expect(TestBed.inject(DraftStoreService).get('!r:hs')).toBe('');
   });
 
   it('does not let Escape clear rows the batch is still reporting on', async () => {

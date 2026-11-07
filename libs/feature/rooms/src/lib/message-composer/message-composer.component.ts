@@ -51,7 +51,10 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import { ComposerTextField } from './composer-text-field';
-import { ComposerBatchSender } from './composer-batch-sender';
+import {
+  type CaptionDraft,
+  ComposerBatchSender,
+} from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
 import { ComposerDrafts } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
@@ -410,6 +413,28 @@ export class MessageComposerComponent {
     this.justSent.set(true);
     this.justSentTimer = setTimeout(() => this.justSent.set(false), 1000);
   }
+  /** Where a caption goes if its conversation is left before its upload settles. */
+  private captionDraft(): CaptionDraft | null {
+    if (this.conversationDraft()) {
+      const compose = this.runtime?.focused()?.compose;
+      return compose
+        ? {
+            get: () => compose.draft(),
+            // An edit's draft is that message's new body, not a place for a caption.
+            set: (text) => {
+              if (compose.intent().kind !== 'edit') compose.setDraft(text);
+            },
+          }
+        : null;
+    }
+    const roomId = this.roomId();
+    return roomId == null
+      ? null
+      : {
+          get: () => this.drafts.get(roomId),
+          set: (text) => this.drafts.set(roomId, text),
+        };
+  }
   protected openFormatSheet(): void {
     this.formatMenu()?.openMobileSheet();
   }
@@ -439,13 +464,15 @@ export class MessageComposerComponent {
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
       blocked: this.cannotSend,
-      roomId: this.roomId,
+      conversation: computed(
+        () => `${this.accountId() ?? ''}\u0000${this.roomId() ?? ''}`,
+      ),
       text: this.text,
       send: (event) => this.submitMedia.emit(event),
       sendCaption: (event) => this.submitBatchCaption.emit(event),
       removeStaged: (id) => this.attachments.removeStaged(id),
       markFailed: (ids) => this.attachments.markFailed(ids),
-      drafts: this.drafts,
+      captionDraft: () => this.captionDraft(),
       regrow: () => this.field.regrowAfterRender(),
     });
     this.uploadLabel = this.batches.uploadLabel;

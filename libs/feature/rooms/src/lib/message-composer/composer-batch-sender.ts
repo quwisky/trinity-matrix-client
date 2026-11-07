@@ -11,14 +11,20 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 
+/** One conversation's compose draft. */
+export interface CaptionDraft {
+  get(): string;
+  set(text: string): void;
+}
+
 /** What the sender needs from the composer around it. */
 export interface ComposerBatchPorts {
   /** Upload fraction while an attachment uploads, else null — a signal input, so it lags. */
   readonly uploadProgress: Signal<BatchProgress | null>;
   /** The Conversation cannot take a send right now. */
   readonly blocked: Signal<boolean>;
-  /** The conversation this composer is showing right now. */
-  readonly roomId: Signal<string | null>;
+  /** The account and room/thread this composer is showing right now. */
+  readonly conversation: Signal<string>;
   /** The composer's text, which a send empties and a lost caption restores. */
   readonly text: WritableSignal<string>;
   /** Hand a batch to the owner, which performs the upload. */
@@ -33,11 +39,8 @@ export interface ComposerBatchPorts {
   readonly removeStaged: (id: string) => void;
   /** Mark exactly these staged rows as failed. */
   readonly markFailed: (ids: readonly string[]) => void;
-  /** Per-room draft storage, for a caption whose room is no longer open. */
-  readonly drafts: {
-    get(roomId: string): string;
-    set(roomId: string, text: string): void;
-  };
+  /** The open conversation's draft, where a caption goes once that conversation is left. */
+  readonly captionDraft: () => CaptionDraft | null;
   /** Re-measure the input after the DOM catches up with a text write. */
   readonly regrow: () => void;
 }
@@ -158,12 +161,16 @@ export class ComposerBatchSender {
     this.activeBatchGeneration = generation;
     this.sending.set(true);
     // A batch settles long after it was pressed, by when this composer may show another room.
-    const roomAtDispatch = this.ports.roomId();
+    const conversationAtDispatch = this.ports.conversation();
+    const draftAtDispatch = caption ? this.ports.captionDraft() : null;
     this.ports.send({
       items,
       caption,
       onOutcomes: (outcomes) =>
-        this.reconcile(outcomes, caption, mentions, roomAtDispatch, generation),
+        this.reconcile(outcomes, caption, mentions, generation, {
+          conversation: conversationAtDispatch,
+          draft: draftAtDispatch,
+        }),
     });
     return true;
   }
@@ -179,8 +186,8 @@ export class ComposerBatchSender {
     outcomes: readonly BatchOutcome[],
     caption: string,
     mentions: readonly Mention[],
-    roomAtDispatch: string | null,
     generation: number,
+    atDispatch: { conversation: string; draft: CaptionDraft | null },
   ): void {
     // The ONLY release: inferring it from `uploadProgress` returning to null cannot work, as a
     // send that completes synchronously is back to null before a signal input can observe it.
@@ -201,16 +208,18 @@ export class ComposerBatchSender {
     if (!caption) {
       return;
     }
-    if (this.ports.roomId() !== roomAtDispatch) {
+    const delivered = outcomes.filter((outcome) => !outcome.failed).length;
+    if (this.ports.conversation() !== atDispatch.conversation) {
       // The conversation moved on. Posting would put these words in a room they were not
       // written for, and restoring would leave them in that room's composer, the same leak the
-      // room-change effect prevents. Park them as the draft of their own room instead.
-      if (roomAtDispatch != null && !this.ports.drafts.get(roomAtDispatch)) {
-        this.ports.drafts.set(roomAtDispatch, caption);
+      // room-change effect prevents. Park them as the draft of their own conversation instead,
+      // unless a single file already carried them in its media event.
+      const carried = delivered > 0 && outcomes.length === 1;
+      if (!carried && atDispatch.draft && !atDispatch.draft.get()) {
+        atDispatch.draft.set(caption);
       }
       return;
     }
-    const delivered = outcomes.filter((outcome) => !outcome.failed).length;
     if (delivered && outcomes.length > 1) {
       // Goes out after the files, and only if at least one arrived. On its OWN output: the user
       // may by now be part-way into an edit or a reply, which the ordinary submit path would
