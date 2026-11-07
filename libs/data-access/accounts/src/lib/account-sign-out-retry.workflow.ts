@@ -241,7 +241,11 @@ export class AccountSignOutRetryWorkflow {
                 : this.storage.remove(context.accountId),
             ),
             concatMap(() => {
-              const active = context.remainingAccountIds[0] ?? null;
+              const live = this.matrix.activeUserId();
+              const active =
+                live && context.remainingAccountIds.includes(live)
+                  ? live
+                  : (context.remainingAccountIds[0] ?? null);
               return active ? this.storage.setActive(active) : of(void 0);
             }),
           );
