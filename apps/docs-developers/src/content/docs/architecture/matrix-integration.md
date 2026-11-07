@@ -14,6 +14,8 @@ Trinity uses `matrix-js-sdk` as the authoritative source for Matrix protocol sta
 
 The `AccountRuntimeService` restores saved accounts and coordinates the active account. Startup waits only for the active account when it restores; the inactive accounts then restore in the background. Until they have finished, sign-in, sign-out, account removal, installation reset and account deletion are refused with `transition-in-progress`, and a session handover waits. Switching is refused only to an account still restoring, in that background run or in a retry of a failed restore (`AccountRuntimeService.restoringAccountIds`). The account switcher and “Accounts in view” show that account, and adding or removing one, disabled with “Loading…” until it settles. When the active account cannot be restored, the inactive accounts restore within startup, as before, so the recovery screen's actions are not refused. The Matrix client registry owns live client instances and their sync lifecycle. Capability code resolves the client for an explicit account or follows the selected-account projection appropriate to its scope.
 
+Each live account keeps its sync cache in its own IndexedDB database (`syncStoreDbName`). The SDK loads and saves that cache in a worker (`sync-store.worker.ts`), so a large account's cold start and its saves every five minutes do not block the main thread. Where the host cannot start the worker, the SDK keeps the store on the main thread.
+
 Never use the active account implicitly for work that already has an account identifier. Room and event identifiers alone do not establish which authenticated client owns an operation.
 
 ## Adapt SDK state at the boundary {#adapt-sdk-state}
