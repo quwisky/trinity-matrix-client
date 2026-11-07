@@ -272,7 +272,10 @@ export function dispatchSharedRowAction(
           ReactionPickerComponent,
           // A sheet's first tabbable is the search, and focusing it raises a phone's keyboard
           // over the grid. Wider, the search keeps focus so a keyboard user can type at once.
-          ctx.dialog.prefersSheet() ? { autoFocus: 'dialog' } : {},
+          // Full height, so the grid has a height to fill and shrinks above the keyboard.
+          ctx.dialog.prefersSheet()
+            ? { autoFocus: 'dialog', detents: ['large'] }
+            : {},
         ),
       )
         .pipe(

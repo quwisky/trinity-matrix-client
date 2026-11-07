@@ -389,6 +389,18 @@ test.describe('Message actions on a phone', () => {
       dialog.getByTestId('dialog-surface').boundingBox(),
     ]);
     expect(gridBox!.width).toBeGreaterThan(sheetBox!.width - 48);
+    // A full-height sheet: the list grows past the vendor's fixed 270px to fill it, and the
+    // sheet's body has nothing left to scroll around the grid's own scroller.
+    const fit = await dialog.evaluate((sheet) => {
+      const body = sheet.querySelector('.dialog-shell__body')!;
+      return {
+        list: sheet.querySelector('.emoji-mart-scroll')!.getBoundingClientRect()
+          .height,
+        bodyOverflow: body.scrollHeight - body.clientHeight,
+      };
+    });
+    expect(fit.list).toBeGreaterThan(300);
+    expect(fit.bodyOverflow).toBeLessThanOrEqual(1);
     // Each category tab is a finger-sized target with its icon centred over its underline.
     const tabs = await dialog
       .locator('.emoji-mart-anchor')

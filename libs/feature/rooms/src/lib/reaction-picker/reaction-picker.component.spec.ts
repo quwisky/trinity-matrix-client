@@ -71,12 +71,12 @@ describe('ReactionPickerComponent', () => {
     expect(close).toHaveBeenCalledWith('🚀');
   });
 
-  it('keeps its own fixed card in a centred dialog', async () => {
+  it("fills a centred dialog's width at the desktop size, with no card of its own", async () => {
     const { picker } = await setup('dialog');
 
     expect([picker.framed(), picker.layout(), picker.size()]).toEqual([
-      true,
-      'fixed',
+      false,
+      'fill',
       'md',
     ]);
   });

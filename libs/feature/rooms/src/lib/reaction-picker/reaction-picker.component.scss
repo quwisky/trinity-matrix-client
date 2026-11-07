@@ -3,9 +3,11 @@
     display: block;
   }
 
-  // emoji-mart sizes itself; keep it from overflowing a narrow dialog on mobile.
+  // emoji-mart sizes itself; keep it from overflowing a narrow dialog on mobile. In a phone's
+  // full-height sheet the body has a height, and the grid stretches to fill it.
   .reaction-picker {
     display: block;
     max-width: 100%;
+    height: 100%;
   }
 }

@@ -271,6 +271,7 @@ describe('dispatchSharedRowAction', () => {
 
     expect(openAndWait$).toHaveBeenCalledWith(ReactionPickerComponent, {
       autoFocus: 'dialog',
+      detents: ['large'],
     });
   });
 

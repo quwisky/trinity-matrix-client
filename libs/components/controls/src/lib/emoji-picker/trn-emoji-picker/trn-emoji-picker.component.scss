@@ -154,6 +154,26 @@
         padding: var(--trn-emoji-cell-padding);
       }
 
+      // In a host with a definite height (a full-height sheet), the list grows to fill it and
+      // shrinks when the keyboard takes room. In any other host each `100%` resolves to auto,
+      // so the list keeps the vendor's 270px.
+      trn-emoji-picker-panel,
+      emoji-mart {
+        display: block;
+        height: 100%;
+      }
+
+      .emoji-mart {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      .emoji-mart-scroll {
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+
       // The vendor promotes its scroll area to a layer (`will-change: transform`); filling,
       // that left a hairline of stale paint under the sticky headings in Chromium.
       .emoji-mart-scroll {
