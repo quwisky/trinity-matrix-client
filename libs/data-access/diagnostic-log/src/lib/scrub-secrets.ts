@@ -193,6 +193,9 @@ const ESCAPED_QUOTE = /^\\+["']/;
 const ESCAPED_APOSTROPHE = /^\\+'[\p{L}\p{N}]/u;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
+/** The most passes {@link scrubSecrets} makes before it masks a text whole. */
+const MAX_PASSES = 4;
+
 /**
  * Whether the quote at `at`, after `run` backslashes, is an apostrophe inside a word
  * (`it's`, `hunt\\'er2`). With `masks`, the edge of a masked value counts as a letter, as
@@ -248,11 +251,6 @@ const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
   [/("?\b(?:set-)?cookie"?\s*[:=]\s*"?)[^"\r\n}]+/gi, `$1${REDACTED}`],
 ];
 
-/**
- * Stands for a space inside a recovery key while the rules run (see `scrubOnce`); never in
- * the output. A Unicode noncharacter, kept for internal use, so no font or text uses it.
- */
-const KEY_SPACE = '\uFDD0';
 const BASE58 = '[1-9A-HJ-NP-Za-km-z]';
 
 /**
@@ -265,9 +263,50 @@ function recoveryKey(gap: string): string {
 
 const RECOVERY_KEY = new RegExp(recoveryKey(String.raw`\s`), 'g');
 const RECOVERY_KEY_AT = new RegExp(recoveryKey(String.raw`\s`), 'y');
-/** A marked key, or what is left of one: its groups and masks, joined by marked spaces. */
-const MARKED_KEY = new RegExp(
-  `(?:${REDACTED}|${BASE58}+)?(?:${KEY_SPACE}(?:${REDACTED}|${BASE58}+)?)+`,
+
+/**
+ * What stands for a space inside a recovery key while the rules run (see `scrubOnce`); never
+ * in the output. The first Unicode noncharacter (U+FDD0 to U+FDEF, kept for internal use)
+ * that the text lacks, so none of its own characters is taken for one; null if it has them
+ * all.
+ */
+function keyMarker(text: string): string | null {
+  for (let code = 0xfdd0; code <= 0xfdef; code += 1) {
+    const marker = String.fromCharCode(code);
+    if (!text.includes(marker)) {
+      return marker;
+    }
+  }
+  return null;
+}
+
+interface MarkedKeyRules {
+  /** A recovery key standing as a whole token, its spaces marked or not. */
+  readonly whole: RegExp;
+  /** A marked key, or what is left of one: its groups and masks, joined by marked spaces. */
+  readonly marked: RegExp;
+}
+
+const markedKeyRules = new Map<string, MarkedKeyRules>();
+
+function keyRules(marker: string): MarkedKeyRules {
+  let rules = markedKeyRules.get(marker);
+  if (!rules) {
+    rules = {
+      whole: new RegExp(String.raw`\b${recoveryKey(`[\\s${marker}]`)}\b`, 'g'),
+      marked: new RegExp(
+        `(?:${REDACTED}|${BASE58}+)?(?:${marker}(?:${REDACTED}|${BASE58}+)?)+`,
+        'g',
+      ),
+    };
+    markedKeyRules.set(marker, rules);
+  }
+  return rules;
+}
+
+/** A recovery key standing as a whole token, for text no marker can be found for. */
+const WHOLE_KEY = new RegExp(
+  String.raw`\b${recoveryKey(String.raw`\s`)}\b`,
   'g',
 );
 
@@ -278,13 +317,6 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, REDACTED],
   // FCM registration tokens, prefix included.
   [/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,64}:APA91[A-Za-z0-9_-]{16,}/g, REDACTED],
-  // A recovery key standing as a whole token, its spaces marked or not. One glued into a
-  // longer token is that token's middle: the long-run rule masks the whole token, and
-  // `/path/to/KEY/file` keeps its path.
-  [
-    new RegExp(String.raw`\b${recoveryKey(`[\\s${KEY_SPACE}]`)}\b`, 'g'),
-    REDACTED,
-  ],
   // Precise locations (m.location geo: URIs).
   [/\bgeo:[-+]?\d[^\s"']*/gi, `geo:${REDACTED}`],
   // APNs device tokens and other long hex secrets (not after "@", "!" or "$": Matrix IDs).
@@ -320,29 +352,19 @@ const ENCODED_HASH_ID =
  */
 export function scrubSecrets(text: string): string {
   // A pass can uncover more: a field or parameter name glued to a token (`…abcdef"passwd":`)
-  // reads as one once the token is masked. Passes repeat until nothing changes, so scrubbed
-  // text scrubs to itself; a line without secrets takes one pass. They end: a pass that
-  // changes the text masks a character that was not masked, or merges masks into a shorter
-  // text, and the loop stops on a pass that does neither.
+  // reads as one once the token is masked. Passes repeat until one changes nothing, so
+  // scrubbed text scrubs to itself; a line without secrets takes one pass. A text still
+  // changing after a few (a chain read one link further each pass) is masked whole, which is
+  // final, so the work stays a few passes long however long the chain.
   let scrubbed = text;
-  for (;;) {
+  for (let pass = 0; pass < MAX_PASSES; pass += 1) {
     const next = scrubOnce(scrubbed);
-    const unmasked = unmaskedLength(next);
-    const before = unmaskedLength(scrubbed);
-    if (
-      next === scrubbed ||
-      unmasked > before ||
-      (unmasked === before && next.length >= scrubbed.length)
-    ) {
+    if (next === scrubbed) {
       return next;
     }
     scrubbed = next;
   }
-}
-
-/** How much of `text` is not a mask. */
-function unmaskedLength(text: string): number {
-  return text.length - REDACTED.length * (text.split(REDACTED).length - 1);
+  return REDACTED;
 }
 
 /** One pass of every rule; see {@link scrubSecrets}. */
@@ -353,11 +375,11 @@ function scrubOnce(text: string): string {
   }
   // The spaces inside a recovery key are marked, so every rule reads the key's groups as the
   // tokens they are while a parameter value runs through all of them; the marked key and
-  // whatever rule took a part of it are masked whole at the end. Text that holds the marker
-  // already is left unmarked, so none of its own characters is taken for one.
-  const marks = !text.includes(KEY_SPACE);
-  if (marks) {
-    scrubbed = markKeys(scrubbed);
+  // whatever rule took a part of it are masked whole at the end.
+  const marker = keyMarker(text);
+  const rules = marker === null ? null : keyRules(marker);
+  if (marker !== null) {
+    scrubbed = markKeys(scrubbed, marker);
   }
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
@@ -366,13 +388,16 @@ function scrubOnce(text: string): string {
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
+  // A recovery key standing as a whole token. One glued into a longer token is that token's
+  // middle: the long-run rule masks the whole token, and `/path/to/KEY/file` keeps its path.
+  scrubbed = scrubbed.replace(rules?.whole ?? WHOLE_KEY, REDACTED);
   scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   // A key the long-run rule could not take (no digit or no capital) is masked alone.
   scrubbed = scrubbed.replace(RECOVERY_KEY, REDACTED);
   // Last, so a field name glued to a token (`…abcdef"passwd":`) reads as one once it is masked.
   scrubbed = maskFields(scrubbed, isSecretName, false);
   scrubbed = maskFields(scrubbed, isOAuthName, true);
-  return marks ? scrubbed.replace(MARKED_KEY, REDACTED) : scrubbed;
+  return rules === null ? scrubbed : scrubbed.replace(rules.marked, REDACTED);
 }
 
 /**
@@ -380,7 +405,7 @@ function scrubOnce(text: string): string {
  * a key-shaped run that overlaps a real key (`Es12\nEs12 3456 …`) cannot leave part of it
  * unmarked; each check reads at most one key's length.
  */
-function markKeys(text: string): string {
+function markKeys(text: string, marker: string): string {
   let out = '';
   let marked = 0;
   for (
@@ -394,8 +419,7 @@ function markKeys(text: string): string {
     if (end > marked) {
       const from = Math.max(at, marked);
       out +=
-        text.slice(marked, from) +
-        text.slice(from, end).replace(/\s/g, KEY_SPACE);
+        text.slice(marked, from) + text.slice(from, end).replace(/\s/g, marker);
       marked = end;
     }
   }

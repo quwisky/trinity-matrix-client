@@ -553,10 +553,23 @@ describe('scrubSecrets', () => {
     "=' = 'password".repeat(10),
     "it's token='a ".repeat(17),
     "token='".repeat(3000),
+    'state=TOKEN: c]passwd:w}',
+    `state=TOKEN: c${']passwd:x'.repeat(8)}}`,
+    `state=TOKEN: c${']passwd:ab'.repeat(200)}}`,
   ])('scrubs a long repeated chain to a fixed point: %s', (line) => {
     const once = scrubSecrets(line);
 
     expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it('masks a spaced recovery key in text that holds a noncharacter already', () => {
+    const scrubbed = scrubSecrets(
+      '\uFDD0 token = EsTz 1234 5678 9ABC DEFG HJKL MNPQ RSTU VWXY Zabc defg hijk',
+    );
+
+    for (const group of ['1234', '5678', 'MNPQ', 'hijk']) {
+      expect(scrubbed).not.toContain(group);
+    }
   });
 
   it.each([
@@ -821,6 +834,10 @@ describe('scrubSecrets', () => {
       "x:'passwd:a}".repeat(5000),
       'token="passwd:'.repeat(4500),
       "token='".repeat(9000),
+      `state=TOKEN: c${']passwd:ab'.repeat(6500)}}`,
+      `state=TOKEN: c${',token:ab'.repeat(7000)}}`,
+      `state=TOKEN: c${']key:ab'.repeat(9000)}}`,
+      `state=TOKEN: c${'}token:ab'.repeat(7000)}}`,
       'x:"token":'.repeat(6000),
       'token= passwd:= '.repeat(4000),
       `${RECOVERY_KEY} `.repeat(1100),
