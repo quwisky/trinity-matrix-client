@@ -779,7 +779,9 @@ describe('TimelineActionsService voice clips', () => {
       isEncryptionEnabledInRoom: () => Promise.resolve(false),
     });
 
-    await firstValueFrom(svc.sendVoiceMessage(Promise.resolve(null)));
+    await firstValueFrom(
+      svc.sendVoiceMessage({ ...recording, blob: new Blob([]) }),
+    );
 
     expect(uploadMedia).not.toHaveBeenCalled();
   });

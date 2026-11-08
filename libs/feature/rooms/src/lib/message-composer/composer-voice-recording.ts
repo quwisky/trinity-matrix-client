@@ -117,27 +117,16 @@ export class ComposerVoiceRecording {
     }
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
-    const conversationAtStop = this.conversation();
-    const clip = this.voiceRecorder
-      .stop()
-      .then((recording) => {
-        if (!recording || recording.blob.size === 0) {
-          return null;
-        }
-        // A voice message is standalone: drop any active reply, as media does. After a
-        // switch the reply on screen belongs to the other conversation, so it stays.
-        if (this.conversation() === conversationAtStop) {
-          this.host().endReply();
-        }
-        return recording;
-      })
-      .catch(() => {
-        this.toast.show('Could not finish that voice recording.', {
-          duration: 4000,
-          variant: 'danger',
-        });
-        return null;
+    // A voice message is standalone: drop any active reply, as media does, now, while the reply
+    // on screen is still this conversation's.
+    this.host().endReply();
+    const clip = this.voiceRecorder.stop().catch(() => {
+      this.toast.show('Could not finish that voice recording.', {
+        duration: 4000,
+        variant: 'danger',
       });
+      return null;
+    });
     // Subscribed now, while this is still the clip's conversation: the send resolves it on subscribe.
     this.timelineActions
       .sendVoiceMessage(clip)

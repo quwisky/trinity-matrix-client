@@ -1104,18 +1104,5 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
         expect.objectContaining({ variant: 'danger' }),
       );
     });
-
-    it('does not send an empty clip', async () => {
-      const { providers, sendVoiceMessage } = voiceProviders({
-        stop: () => Promise.resolve({ ...recording, blob: new Blob([]) }),
-      });
-      const { fixture } = await renderComposer({}, providers);
-      const cmp = fixture.componentInstance;
-      await cmp.startVoiceRecording();
-
-      cmp.stopVoiceRecording();
-
-      await expect(sendVoiceMessage.mock.calls[0][0]).resolves.toBeNull();
-    });
   });
 });
