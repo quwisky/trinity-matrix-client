@@ -436,7 +436,10 @@ async function expectScrollContract(
       '.shell-side',
       '.sidebar',
       '.main',
+      // From 1280px `.chat-body` is `display: contents` and draws no box, so check the
+      // panel slot itself as well.
       '.chat-body',
+      '[data-right-panel-surface]',
     ];
     return selectors.filter((selector) => {
       const element = document.querySelector<HTMLElement>(selector);
@@ -444,6 +447,20 @@ async function expectScrollContract(
     });
   });
   expect(wrapperOverflow).toEqual([]);
+  // Nothing in the conversation column runs past its right edge, nor does the panel while
+  // it is in that column's flow (a drawer is fixed to the window instead).
+  const mainOverflow = await page.locator('.main').evaluate((main) => {
+    const right = main.getBoundingClientRect().right;
+    const panel = main.querySelector('[data-right-panel-surface]');
+    const inFlow = !!panel && getComputedStyle(panel).position === 'static';
+    return {
+      scrolls: main.scrollWidth > main.clientWidth + 1,
+      panelPastEdge: inFlow
+        ? panel.getBoundingClientRect().right > right + 1
+        : false,
+    };
+  });
+  expect(mainOverflow).toEqual({ scrolls: false, panelPastEdge: false });
 
   await expect(page.locator('.chat-members')).toHaveCSS(
     'position',
