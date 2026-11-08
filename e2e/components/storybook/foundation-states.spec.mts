@@ -386,8 +386,9 @@ test.describe('semantic design foundations', () => {
           boxShadow: style.boxShadow,
         };
       });
-      expect(focus.outlineStyle).toBe('none');
-      expect(focus.boxShadow).not.toBe('none');
+      // The composer's inset outline is the one indicator; no shadow ring is layered on it.
+      expect(focus.outlineStyle).toBe('solid');
+      expect(focus.boxShadow).toBe('none');
     });
   }
 

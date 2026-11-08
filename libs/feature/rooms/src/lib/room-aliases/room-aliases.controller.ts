@@ -90,7 +90,10 @@ export class RoomAliasesController {
   );
   readonly aliasForm = form(this.aliasModel, (path) => {
     disabled(path.localpart, {
-      when: () => !this.availability().available || this.adding(),
+      when: () =>
+        (!this.availability().available &&
+          (this.restrictionReason() ?? true)) ||
+        (this.adding() && 'Wait for the address to be added'),
     });
   });
 

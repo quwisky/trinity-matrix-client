@@ -22,14 +22,21 @@ import {
 const CATALOG_STORY =
   '/iframe.html?id=components-control-recipe-matrix--complete-catalog&viewMode=story';
 
+/** A button draws its ring as a shadow; a text field draws the composer's inset outline. */
 async function expectFocusRing(control: Locator): Promise<void> {
   await control.focus();
   await expect(control).toBeFocused();
   await expect
     .poll(() =>
-      control.evaluate((element) => getComputedStyle(element).boxShadow),
+      control.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return (
+          style.boxShadow !== 'none' ||
+          (style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0)
+        );
+      }),
     )
-    .not.toBe('none');
+    .toBe(true);
 }
 
 for (const preview of STORYBOOK_THEME_PREVIEWS) {

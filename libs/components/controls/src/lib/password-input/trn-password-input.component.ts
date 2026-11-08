@@ -3,6 +3,7 @@ import {
   Component,
   ElementRef,
   booleanAttribute,
+  computed,
   contentChild,
   effect,
   input,
@@ -19,6 +20,8 @@ import { TrnInput } from '../input/trn-input';
  * content query, so the page must not bind `[type]`. Signal Forms never writes `type`, so the
  * two do not fight.
  * The button is `type="button"`, so Enter in the field still submits through the page.
+ * While the field is disabled the toggle steps aside for the lock a `trn-field-lock` around
+ * this component draws in the same place.
  */
 @Component({
   selector: 'trn-password-input',
@@ -29,24 +32,30 @@ import { TrnInput } from '../input/trn-input';
   },
   template: `
     <ng-content />
-    <button
-      trnBtn
-      presentation="ghost"
-      shape="icon"
-      size="sm"
-      type="button"
-      class="absolute end-0.5 top-1/2 -translate-y-1/2 pointer-coarse:size-10"
-      [attr.aria-label]="(visible() ? 'Hide ' : 'Show ') + label()"
-      [attr.aria-pressed]="visible()"
-      [disabled]="disabled()"
-      (click)="visible.set(!visible())"
-    >
-      <trn-icon [name]="visible() ? 'eye-off' : 'eye'" motion="pop" />
-    </button>
+    @if (!fieldDisabled()) {
+      <button
+        trnBtn
+        presentation="ghost"
+        shape="icon"
+        size="sm"
+        type="button"
+        class="absolute end-0.5 top-1/2 -translate-y-1/2 pointer-coarse:size-10"
+        [attr.aria-label]="(visible() ? 'Hide ' : 'Show ') + label()"
+        [attr.aria-pressed]="visible()"
+        [disabled]="disabled()"
+        (click)="visible.set(!visible())"
+      >
+        <trn-icon [name]="visible() ? 'eye-off' : 'eye'" motion="pop" />
+      </button>
+    }
   `,
 })
 export class TrnPasswordInputComponent {
   private readonly field = contentChild(TrnInput, { read: ElementRef });
+  private readonly control = contentChild(TrnInput);
+  protected readonly fieldDisabled = computed(
+    () => this.control()?.disabled() ?? false,
+  );
 
   readonly disabled = input(false, { transform: booleanAttribute });
   /** What the field holds, for the button's name: "Show PIN" rather than "Show password". */

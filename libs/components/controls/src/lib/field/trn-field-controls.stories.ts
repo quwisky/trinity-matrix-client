@@ -79,6 +79,17 @@ export const CanonicalStates: Story = {
           <p id="server-name-error" class="text-sm text-danger">Enter a valid server name.</p>
         </trn-field>
 
+        <trn-field>
+          <trn-field-label controlId="room-address">Room address</trn-field-label>
+          <input
+            trnInput
+            id="room-address"
+            disabled
+            value="#trinity:example.org"
+            data-testid="field-input-disabled"
+          />
+        </trn-field>
+
         <div class="grid gap-2">
           <label trnLabel for="room-topic">Room topic</label>
           <textarea

@@ -56,7 +56,9 @@ describe('TrnTextarea', () => {
         `${attention}border-[var(--trinity-state-attention-control-border)]`,
         `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
         `${attention}placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
-        `${attention}disabled:bg-transparent`,
+        `${attention}bg-transparent`,
+        `${attention}disabled:border-[var(--trinity-state-attention-control-border)]`,
+        `${attention}disabled:text-[var(--trinity-state-attention-control-placeholder)]`,
       ]),
     );
     expect(recipe.filter((token) => token.includes('attention'))).toEqual(
@@ -69,8 +71,8 @@ describe('TrnTextarea', () => {
     expect(recipe).toEqual(
       expect.arrayContaining([
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
-        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-state-attention-control-danger)]',
-        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:shadow-[0_0_0_var(--trinity-focus-ring-width)_var(--trinity-focus-ring)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:outline-[color:var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:outline-[color:var(--trinity-focus-ring)]',
       ]),
     );
   });

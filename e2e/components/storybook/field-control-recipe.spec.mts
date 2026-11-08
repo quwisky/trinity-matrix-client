@@ -20,9 +20,9 @@ test('field controls preserve native names, descriptions and validation', async 
   await expect(roomName).toBeFocused();
   await expect
     .poll(() =>
-      roomName.evaluate((element) => getComputedStyle(element).boxShadow),
+      roomName.evaluate((element) => getComputedStyle(element).outlineStyle),
     )
-    .not.toBe('none');
+    .toBe('solid');
 
   const invalid = page.getByRole('textbox', { name: 'Server name' });
   await expect(invalid).toHaveAttribute('aria-invalid', 'true');
