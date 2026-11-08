@@ -93,12 +93,12 @@ describe('mobile attachments', () => {
     await expect(thumbnail).toBeDisplayed({ wait: 30_000 });
     const add = uiSelector('new UiSelector().text("Done")');
     // The grid can draw before it accepts taps, so a first tap may select nothing; tap again
-    // until the selection shows "Done". A registered tap shows it at once, so no deselect.
+    // until the selection shows "Done". A late "Done" may cost a deselect, which the next tap undoes.
     await browser.waitUntil(
       async () => {
         if (await add.isDisplayed()) return true;
         await thumbnail.click();
-        return add.waitForDisplayed({ timeout: 5_000 }).catch(() => false);
+        return add.waitForDisplayed({ timeout: 8_000 }).catch(() => false);
       },
       {
         timeout: 30_000,
