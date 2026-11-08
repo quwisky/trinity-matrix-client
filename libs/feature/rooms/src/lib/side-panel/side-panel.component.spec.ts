@@ -24,6 +24,16 @@ class FramedPanelComponent {
   closed = false;
 }
 
+@Component({
+  imports: [SidePanelComponent, SidePanelEmptyComponent],
+  template: `
+    <trn-side-panel heading="Pinned messages" icon="pin">
+      <trn-side-panel-empty icon="pin" heading="Nothing pinned" body="None." />
+    </trn-side-panel>
+  `,
+})
+class EmptyPanelComponent {}
+
 describe('SidePanelComponent', () => {
   it('puts the header, the strip, the body and the footer in that order', async () => {
     const { container } = await render(FramedPanelComponent, {
@@ -78,10 +88,15 @@ describe('SidePanelComponent', () => {
     const loading = panel.container.querySelector(
       '[data-testid="side-panel-loading"]',
     )!;
-    expect(loading.getAttribute('role')).toBe('status');
     expect(loading.getAttribute('aria-busy')).toBe('true');
     expect(loading.getAttribute('aria-label')).toBe('Loading pins');
-    expect(loading.textContent?.trim()).toBe('Loading pins');
+    // The announcement sits outside the busy region, which would hold it back.
+    const status = panel.container.querySelector(
+      '[data-testid="side-panel-loading-status"]',
+    )!;
+    expect(status.getAttribute('role')).toBe('status');
+    expect(status.textContent?.trim()).toBe('Loading pins');
+    expect(status.closest('[aria-busy="true"]')).toBeNull();
     expect(loading.querySelectorAll('.side-panel__skeleton')).toHaveLength(3);
     expect(panel.container.querySelector('.side-panel__body--scroll')).toBe(
       loading,
@@ -90,6 +105,15 @@ describe('SidePanelComponent', () => {
 });
 
 describe('SidePanelEmptyComponent', () => {
+  it('heads a panel with an h2 and its empty state with an h3 under it', async () => {
+    await render(EmptyPanelComponent, { providers: [provideTrnIcons()] });
+    const headings = screen.getAllByRole('heading');
+    expect(headings.map((h) => [h.tagName, h.textContent?.trim()])).toEqual([
+      ['H2', 'Pinned messages'],
+      ['H3', 'Nothing pinned'],
+    ]);
+  });
+
   it('names the empty panel in a heading and explains it, as a status', async () => {
     const { container } = await render(SidePanelEmptyComponent, {
       inputs: { icon: 'pin', heading: 'No pins', body: 'Pin a message.' },

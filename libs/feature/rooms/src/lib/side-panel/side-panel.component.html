@@ -13,14 +13,18 @@
   <ng-content select="[sidePanelStrip]" />
 </div>
 @if (loading()) {
+  <!-- Outside the busy body: assistive technology holds back what is inside a busy region,
+       the announcement included. -->
+  <span class="sr-only" role="status" data-testid="side-panel-loading-status">{{
+    loadingLabel()
+  }}</span>
   <div
     class="side-panel__body side-panel__body--scroll"
-    role="status"
+    role="group"
     aria-busy="true"
     [attr.aria-label]="loadingLabel()"
     data-testid="side-panel-loading"
   >
-    <span class="sr-only">{{ loadingLabel() }}</span>
     @for (widths of skeleton; track $index) {
       <div class="side-panel__skeleton" aria-hidden="true">
         <span class="side-panel__skeleton-avatar"></span>
