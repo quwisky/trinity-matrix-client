@@ -423,10 +423,14 @@ test.describe('Room settings', () => {
       'Members — since they joined',
     );
     await expect(
-      page.getByText("Your role cannot change this room's join rule."),
+      page.getByRole('paragraph').filter({
+        hasText: "Your role cannot change this room's join rule.",
+      }),
     ).toBeVisible();
     await expect(
-      page.getByText("Your role cannot change this room's history visibility."),
+      page.getByRole('paragraph').filter({
+        hasText: "Your role cannot change this room's history visibility.",
+      }),
     ).toBeVisible();
     await expect(page.getByTestId('room-settings-access-actions')).toHaveCount(
       0,

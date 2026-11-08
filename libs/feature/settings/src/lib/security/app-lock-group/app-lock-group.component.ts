@@ -18,6 +18,7 @@ import {
   TrnSwitchComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
@@ -61,6 +62,7 @@ type AppLockView = 'controls' | 'pin-unreadable' | 'keyring' | 'hidden';
   templateUrl: './app-lock-group.component.html',
   providers: [AppLockFlows],
   imports: [
+    TrnFieldLockComponent,
     AppLockNotificationTextComponent,
     NgTemplateOutlet,
     TrnButton,

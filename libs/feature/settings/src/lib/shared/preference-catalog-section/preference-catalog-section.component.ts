@@ -13,6 +13,7 @@ import {
   TrnSwitchComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import {
   INSTALLATION_PREFERENCE_CONTEXT,
   PreferenceStoreService,
@@ -31,7 +32,12 @@ const SAVE_FAILED_MESSAGE = 'This preference could not be saved. Try again.';
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'block' },
   templateUrl: './preference-catalog-section.component.html',
-  imports: [TrnSelectComponent, TrnSettingsRowComponent, TrnSwitchComponent],
+  imports: [
+    TrnFieldLockComponent,
+    TrnSelectComponent,
+    TrnSettingsRowComponent,
+    TrnSwitchComponent,
+  ],
 })
 export class PreferenceCatalogSectionComponent {
   private readonly store = inject(PreferenceStoreService);

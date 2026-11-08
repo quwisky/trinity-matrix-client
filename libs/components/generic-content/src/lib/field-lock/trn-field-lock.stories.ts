@@ -7,6 +7,7 @@ import {
 import {
   TrnInput,
   TrnPasswordInputComponent,
+  TrnSelectComponent,
   TrnTextarea,
 } from '@trinity/components/controls';
 import { provideTrnIcons } from '@trinity/components/foundations';
@@ -22,6 +23,7 @@ const meta: Meta<TrnFieldLockComponent> = {
         TrnFieldLockComponent,
         TrnInput,
         TrnPasswordInputComponent,
+        TrnSelectComponent,
         TrnTextarea,
       ],
     }),
@@ -54,6 +56,17 @@ export const Disabled: Story = {
           <trn-password-input>
             <input trnInput disabled aria-label="Password" value="secret" />
           </trn-password-input>
+        </trn-field-lock>
+        <span id="field-lock-join-label">Who can join</span>
+        <trn-field-lock>
+          <trn-select
+            aria-labelledby="field-lock-join-label"
+            [options]="[{ value: 'invite', label: 'Invite only' }]"
+            value="invite"
+            [disabled]="true"
+            disabledReason="Only admins can change who can join"
+            data-testid="field-lock-select"
+          />
         </trn-field-lock>
         <trn-field-lock>
           <textarea trnTextarea disabled aria-label="Topic">A room topic</textarea>

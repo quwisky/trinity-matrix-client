@@ -10,13 +10,15 @@
       description="This controls the space itself. Rooms inside it keep their own access settings."
       labelId="space-settings-join-label"
     >
-      <trn-select
-        class="w-48 max-sm:w-full"
-        aria-labelledby="space-settings-join-label"
-        [options]="draft.joinRuleOptions()"
-        [formField]="draft.form.joinRule"
-        data-testid="space-settings-join-rule"
-      />
+      <trn-field-lock class="w-48 max-sm:w-full">
+        <trn-select
+          aria-labelledby="space-settings-join-label"
+          [options]="draft.joinRuleOptions()"
+          [formField]="draft.form.joinRule"
+          [disabledReason]="draft.permissions().joinRule.reason"
+          data-testid="space-settings-join-rule"
+        />
+      </trn-field-lock>
     </trn-settings-row>
     @if (!draft.mayEditJoinRule()) {
       <p class="space-settings__restriction space-settings__note">

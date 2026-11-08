@@ -3,6 +3,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  forwardRef,
   input,
   model,
 } from '@angular/core';
@@ -15,6 +16,11 @@ import {
   HlmSelectTrigger,
   HlmSelectValue,
 } from '@trinity/helm/select';
+import {
+  TRN_LOCKABLE_CONTROL,
+  trnLockReason,
+  type TrnLockableControl,
+} from '../input/trn-lockable-control';
 import {
   trnSelectHelmSize,
   trnSelectTriggerRecipe,
@@ -54,6 +60,12 @@ export interface TrnSelectOption<T> {
     '[attr.data-size]': 'size()',
     '[attr.data-invalid]': 'invalid() ? "true" : null',
   },
+  providers: [
+    {
+      provide: TRN_LOCKABLE_CONTROL,
+      useExisting: forwardRef(() => TrnSelectComponent),
+    },
+  ],
   imports: [
     HlmSelect,
     HlmSelectTrigger,
@@ -107,7 +119,9 @@ export interface TrnSelectOption<T> {
     </hlm-select>
   `,
 })
-export class TrnSelectComponent<T> implements FormValueControl<T | null> {
+export class TrnSelectComponent<T>
+  implements FormValueControl<T | null>, TrnLockableControl
+{
   readonly ariaLabelledby = input<string | null>(null, {
     alias: 'aria-labelledby',
   });
@@ -125,6 +139,12 @@ export class TrnSelectComponent<T> implements FormValueControl<T | null> {
    * reaches the control; without it a gated field would render enabled.
    */
   readonly disabled = input<boolean>(false);
+  /** Why the select is disabled, for `trn-field-lock`; a Signal Forms reason is used otherwise. */
+  readonly disabledReason = input<string | null>(null);
+  /** Taken from the schema with `disabled`: the messages its `disabled(path, { when })` rules return. */
+  readonly disabledReasons = input<readonly { readonly message?: string }[]>(
+    [],
+  );
 
   /** Ordinal sizes implemented by the current select trigger. */
   readonly size = input<TrnSelectSize>('md');
@@ -134,6 +154,14 @@ export class TrnSelectComponent<T> implements FormValueControl<T | null> {
 
   /** Shown in the trigger until something is chosen. Every call site sets one. */
   readonly placeholder = input<string>('');
+
+  readonly multiline = false;
+  readonly lockReason = trnLockReason(
+    this.disabled,
+    computed(() => this.size() !== 'sm'),
+    this.disabledReason,
+    this.disabledReasons,
+  );
 
   /** Private vendor adapter; neither `default` nor the trigger class is public API. */
   protected readonly helmSize = computed(() => trnSelectHelmSize(this.size()));

@@ -425,7 +425,9 @@ test.describe('Space settings', () => {
       page.getByTestId('space-settings-join-rule').getByRole('combobox'),
     ).toBeDisabled();
     await expect(
-      page.getByText("Your role cannot change this room's join rule."),
+      page.getByRole('paragraph').filter({
+        hasText: "Your role cannot change this room's join rule.",
+      }),
     ).toBeVisible();
     await expect(
       page.getByText(/Rooms inside it keep their own access/),

@@ -9,7 +9,11 @@ import {
   output,
   viewChild,
 } from '@angular/core';
-import { TrnActionAvailability, TrnButton } from '@trinity/components/controls';
+import {
+  TrnActionAvailability,
+  TrnButton,
+  TrnInput,
+} from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   AvatarComponent,
@@ -63,6 +67,7 @@ export interface RoomHeaderActingAs {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     NgTemplateOutlet,
+    TrnInput,
     MatrixLinkDirective,
     PageHeaderComponent,
     TrnButton,

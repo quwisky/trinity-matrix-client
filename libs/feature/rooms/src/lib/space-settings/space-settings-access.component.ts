@@ -9,7 +9,10 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import {
+  TrnFieldLockComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import { SpaceSettingsDraftService } from './space-settings-draft.service';
 
 /** Existing Space join policy, isolated from Room history and restriction creation. */
@@ -17,6 +20,7 @@ import { SpaceSettingsDraftService } from './space-settings-draft.service';
   selector: 'trn-space-settings-access',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnFieldLockComponent,
     FormField,
     FormRoot,
     TrnActionAvailability,

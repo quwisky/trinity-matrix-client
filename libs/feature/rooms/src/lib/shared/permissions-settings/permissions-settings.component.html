@@ -20,14 +20,16 @@
               view().editable ? (item.reason ?? undefined) : undefined
             "
           >
-            <trn-select
-              class="w-48 max-sm:w-full"
-              [aria-labelledby]="'permissions-label-' + item.row.id"
-              [options]="optionsFor(item)"
-              [value]="choiceOf(item)"
-              [disabled]="!item.editable || saving()"
-              (valueChange)="choose(item, $event)"
-            />
+            <trn-field-lock class="w-48 max-sm:w-full">
+              <trn-select
+                [aria-labelledby]="'permissions-label-' + item.row.id"
+                [options]="optionsFor(item)"
+                [value]="choiceOf(item)"
+                [disabled]="!item.editable || saving()"
+                [disabledReason]="lockReasonFor(item)"
+                (valueChange)="choose(item, $event)"
+              />
+            </trn-field-lock>
           </trn-settings-row>
           @if (customText().get(item.row.id) !== undefined) {
             <div class="permissions__custom">

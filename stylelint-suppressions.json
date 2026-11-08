@@ -181,7 +181,7 @@
   },
   "libs/feature/rooms/src/lib/sticker-picker/sticker-picker.component.scss": {
     "declaration-property-value-disallowed-list": {
-      "count": 14
+      "count": 13
     }
   },
   "libs/feature/rooms/src/lib/styles/_mixins.scss": {

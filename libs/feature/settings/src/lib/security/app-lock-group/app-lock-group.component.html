@@ -28,14 +28,17 @@
           labelId="app-lock-after-label"
           data-testid="app-lock-after"
         >
-          <trn-select
-            aria-labelledby="app-lock-after-label"
-            [options]="lockAfterOptions"
-            [value]="shownLockAfter()"
-            [disabled]="busy()"
-            (valueChange)="changeLockAfter($event)"
-            data-testid="app-lock-after-select"
-          />
+          <trn-field-lock>
+            <trn-select
+              aria-labelledby="app-lock-after-label"
+              [options]="lockAfterOptions"
+              [value]="shownLockAfter()"
+              [disabled]="busy()"
+              disabledReason="Wait for this change to save"
+              (valueChange)="changeLockAfter($event)"
+              data-testid="app-lock-after-select"
+            />
+          </trn-field-lock>
         </trn-settings-row>
         <trn-app-lock-notification-text
           [value]="shownNotificationText()"
