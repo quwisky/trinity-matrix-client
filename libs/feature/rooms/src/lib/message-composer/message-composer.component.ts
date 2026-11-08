@@ -345,6 +345,7 @@ export class MessageComposerComponent {
     viewChild<ElementRef<HTMLElement>>('previewPanel');
   /** Caret reads, splices, focus and auto-grow — everything that touches the textarea. */
   private readonly field: ComposerTextField;
+  private readonly composerDrafts: ComposerDrafts;
   private readonly fileInput =
     viewChild<ElementRef<HTMLInputElement>>('fileInput');
   private readonly photoCaptureInput =
@@ -522,8 +523,7 @@ export class MessageComposerComponent {
         )?.nativeElement.click(),
     });
 
-    // Unassigned on purpose: its effects are its whole lifetime.
-    new ComposerDrafts({
+    this.composerDrafts = new ComposerDrafts({
       roomId: this.roomId,
       accountId: this.accountId,
       editing: this.editing,
@@ -742,6 +742,7 @@ export class MessageComposerComponent {
     if (!value) {
       return;
     }
+    this.composerDrafts.reportNow();
     this.submitText.emit({
       text: value,
       mentions: this.menus.activeMentions(),

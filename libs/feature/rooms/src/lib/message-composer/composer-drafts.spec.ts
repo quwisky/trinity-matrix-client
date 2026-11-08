@@ -22,7 +22,7 @@ function setup(
   const saved = new Map<string, string>(initial.stored ? [initial.stored] : []);
   const calls: string[] = [];
   const emitted: string[] = [];
-  TestBed.runInInjectionContext(
+  const drafts = TestBed.runInInjectionContext(
     () =>
       new ComposerDrafts({
         ...inputs,
@@ -39,7 +39,7 @@ function setup(
       }),
   );
   TestBed.tick();
-  return { ...inputs, text, saved, calls, emitted };
+  return { ...inputs, drafts, text, saved, calls, emitted };
 }
 
 describe('ComposerDrafts', () => {
@@ -136,5 +136,18 @@ describe('ComposerDrafts', () => {
     s.composeDraft.set('external');
     TestBed.tick();
     expect(s.text()).toBe('external');
+  });
+
+  it('reports nothing into the next account when it switches in the task of a send', () => {
+    const s = setup({ roomId: '!a' });
+    s.composeDraft.set('managed');
+    TestBed.tick();
+    s.emitted.length = 0;
+
+    s.text.set('typed for @a');
+    s.accountId.set('@b:hs');
+    s.drafts.reportNow();
+
+    expect(s.emitted).toEqual([]);
   });
 });

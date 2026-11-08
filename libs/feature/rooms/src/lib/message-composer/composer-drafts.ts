@@ -60,6 +60,7 @@ export class ComposerDrafts {
   private wasEditTargetId: string | null = null;
   private wasRoomId: string | null | undefined = undefined;
   private wasConversation: string | undefined = undefined;
+  private reported: string | null = null;
 
   constructor(private readonly ports: ComposerDraftsPorts) {
     const {
@@ -83,6 +84,7 @@ export class ComposerDrafts {
         const prev = this.wasRoomId;
         this.wasRoomId = id;
         this.wasConversation = conversation;
+        this.reported = null;
         untracked(() => {
           ports.leaveRoom(prev);
           // Drafts only apply to compose mode; in edit mode `text` is the edit body.
@@ -143,7 +145,7 @@ export class ComposerDrafts {
           if (composeDraft() === null && !editing()) {
             store.set(id, value);
           } else if (composeDraft() !== null) {
-            ports.emitDraft(value);
+            this.report(value);
           }
         }
       });
@@ -163,5 +165,26 @@ export class ComposerDrafts {
         }
       });
     });
+  }
+
+  /**
+   * Report the typed text to the Conversation now. A send can take the draft in the same task
+   * as the last keystroke; reported later, that keystroke would put the sent text back.
+   */
+  reportNow(): void {
+    const id = this.ports.roomId();
+    if (
+      this.ports.composeDraft() !== null &&
+      id != null &&
+      conversationOf(this.ports.accountId(), id) === this.wasConversation
+    ) {
+      this.report(this.ports.text());
+    }
+  }
+
+  private report(value: string): void {
+    if (value === this.reported) return;
+    this.reported = value;
+    this.ports.emitDraft(value);
   }
 }

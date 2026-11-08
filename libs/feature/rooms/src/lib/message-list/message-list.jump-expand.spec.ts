@@ -26,6 +26,7 @@ import {
 } from '../testing/conversation-timeline.stub';
 import { MessageListComponent } from './message-list.component';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 function msg(id: string, ts: number): MessageView {
   return {
@@ -57,6 +58,8 @@ const many = (n: number): MessageView[] =>
   Array.from({ length: n }, (_, i) => msg(`$${i}`, 1000 + i * 10_000));
 
 describe('MessageListComponent — jump targets start expanded', () => {
+  compileMessageListBeforeTests();
+
   const scrollIntoViewOwn = Object.getOwnPropertyDescriptor(
     Element.prototype,
     'scrollIntoView',

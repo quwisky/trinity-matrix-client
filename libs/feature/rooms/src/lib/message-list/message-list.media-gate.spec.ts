@@ -35,6 +35,7 @@ import {
 import { MessageListComponent } from './message-list.component';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 function message(id: string, media: PresentedMediaReference | null = null) {
   return {
@@ -70,6 +71,8 @@ const PICTURE = {
 } as PresentedMediaReference;
 
 describe('MessageListComponent and the images of its rows', () => {
+  compileMessageListBeforeTests();
+
   let resolveMedia: Mock<
     (media: PresentedMediaReference, variant: string) => Observable<string>
   >;

@@ -111,11 +111,23 @@ for (const [name, use] of [
       await page.getByTestId('rail-rooms').click();
       const channel = page.locator('.channel', { hasText: roomName }).first();
       await expect(channel).toBeVisible({ timeout: 30_000 });
+      // A room this short still pages back once for older history. While that page is out,
+      // "Loading older messages…" sits above the rows and moves them all down by its height.
+      const backfill = page.waitForResponse(
+        (res) =>
+          res.url().includes(`${encodeURIComponent(room_id)}/messages`) &&
+          res.url().includes('dir=b'),
+        { timeout: 30_000 },
+      );
       await channel.click();
       await expect(
         page.locator('.msg__text', { hasText: bodies[2] }),
       ).toBeVisible({ timeout: 30_000 });
       await settleOpenedRoom(page);
+      await (await backfill).finished();
+      await expect(page.locator('.load-older')).toHaveCount(0, {
+        timeout: 10_000,
+      });
       const cluster = page.getByTestId('read-receipts').first();
       await expect(cluster).toBeVisible({ timeout: 20_000 });
       const closed = await measure(page);

@@ -25,6 +25,7 @@ import {
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 type ListOptions = NonNullable<
   Parameters<typeof render<MessageListComponent>>[1]
@@ -105,6 +106,8 @@ const afterDivider = (el: Element | null | undefined): Element | null => {
 };
 
 describe('MessageListComponent with windowing off', () => {
+  compileMessageListBeforeTests();
+
   afterEach(() => vi.unstubAllGlobals());
 
   beforeEach(() => {

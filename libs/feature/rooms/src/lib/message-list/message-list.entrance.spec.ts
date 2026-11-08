@@ -15,6 +15,7 @@ import {
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 const motion = vi.hoisted(() => ({ reduced: false }));
 vi.mock('@trinity/util/ui', async (importActual) => ({
@@ -57,6 +58,8 @@ const resizeEntry = (target: Element, height: number): ResizeObserverEntry =>
   }) as unknown as ResizeObserverEntry;
 
 describe('message list — new messages slide in', () => {
+  compileMessageListBeforeTests();
+
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {

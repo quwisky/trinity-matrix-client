@@ -89,6 +89,7 @@ import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { roomSummary } from '../testing/room-summary.fixture';
+import { compileBeforeTests } from '../testing/test-bed';
 import { type RenderedRoomSurface } from './room-surface-lifecycle';
 import { UserPickerService } from '../user-picker/user-picker.service';
 import { QuickSwitcherService } from '../quick-switcher/quick-switcher.service';
@@ -110,6 +111,14 @@ const ROOM: RoomSummary = roomSummary({
 });
 
 beforeEach(() => setRouteRoom(null));
+
+compileBeforeTests(() => {
+  const { fixture } = buildPage();
+  fixture.debugElement.injector
+    .get(RoomSurfaceLifecycle)
+    .transition({ kind: 'open-members' });
+  return fixture;
+});
 
 interface BuildOptions {
   /** Render the real space rail instead of a mock, so its entries can be activated. */
