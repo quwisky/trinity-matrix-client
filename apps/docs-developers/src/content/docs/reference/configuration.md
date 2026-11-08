@@ -18,7 +18,7 @@ Production mode also sets matrix-js-sdk console logging. `main.ts` passes `matri
 
 Nothing records console output: Trinity keeps no diagnostic log. See [diagnostics](../diagnostics/#diagnostic-log).
 
-`issueTracker.repositoryUrl` names the GitHub repository in which Report a bug opens a pre-filled issue (`BUG_REPORT_CONFIG` in `@trinity/platform-native`), from Settings › Advanced, the sign-in screen, System status and the desktop title bar alike. A fork sets its own repository, or `null` to leave the GitHub step out.
+`issueTracker.repositoryUrl` names the GitHub repository in which Report a bug opens a pre-filled issue (`BUG_REPORT_CONFIG` in `@trinity/platform-native`), from Settings › Advanced, the sign-in screen, System status and the desktop title bar alike. A fork sets its own repository, or `null` to hide Report a bug everywhere.
 
 A push gateway URL and public application identifier are configuration; FCM/APNs credentials and deployment procedures are not application source and do not belong in public documentation.
 

@@ -227,7 +227,8 @@ describe('Trinity application provider composition', () => {
           routes: [],
           pushConfig: null,
           matrixSdkLogLevel: 'warn',
-          issueRepositoryUrl: null,
+          issueRepositoryUrl:
+            'https://github.com/quwisky/trinity-matrix-client',
           buildInfo: {} as BuildInfo,
           releaseNotes: [],
           dialogLoaders: {
@@ -246,6 +247,36 @@ describe('Trinity application provider composition', () => {
       expect(TestBed.inject(BUG_REPORT_LAUNCHER)).toBe(
         TestBed.inject(ReportBugLauncherAdapter),
       );
+    } finally {
+      TestBed.resetTestingModule();
+      configureMatrixSdkLogging('debug');
+    }
+  });
+
+  it('offers no Report a bug when the build names no repository', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideTrinityApplication({
+          routes: [],
+          pushConfig: null,
+          matrixSdkLogLevel: 'warn',
+          issueRepositoryUrl: null,
+          buildInfo: {} as BuildInfo,
+          releaseNotes: [],
+          dialogLoaders: {
+            settings: () => NEVER,
+            encryption: { unlock: () => NEVER, verify: () => NEVER },
+            reportBug: () => NEVER,
+            whatsNew: () => NEVER,
+            addToImagePack: () => NEVER,
+            imagePackEditor: () => NEVER,
+          },
+        }),
+      ],
+    });
+
+    try {
+      expect(TestBed.inject(BUG_REPORT_LAUNCHER, null)).toBeNull();
     } finally {
       TestBed.resetTestingModule();
       configureMatrixSdkLogging('debug');
@@ -394,7 +425,8 @@ describe('Trinity application provider composition', () => {
           routes: [],
           pushConfig: null,
           matrixSdkLogLevel: 'warn',
-          issueRepositoryUrl: null,
+          issueRepositoryUrl:
+            'https://github.com/quwisky/trinity-matrix-client',
           buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
           releaseNotes: [],
           dialogLoaders: {

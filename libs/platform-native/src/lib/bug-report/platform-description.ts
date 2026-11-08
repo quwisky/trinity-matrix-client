@@ -38,7 +38,7 @@ export function readPlatformFacts(): PlatformFacts {
   return { host: 'web', userAgent, desktopPlatform: null };
 }
 
-/** One line for the log header and the issue's Environment field. */
+/** One line for the issue's Environment field. */
 export function describePlatform(facts: PlatformFacts): string {
   switch (facts.host) {
     case 'desktop': {

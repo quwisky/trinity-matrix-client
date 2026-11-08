@@ -14,9 +14,11 @@ import {
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
-import { BUG_REPORT_CONFIG } from '@trinity/platform-native';
+import {
+  BUG_REPORT_CONFIG,
+  ExternalBrowserService,
+} from '@trinity/platform-native';
 import type { ReleaseNote } from '@trinity/data-access/whats-new';
-import { ExternalBrowserService } from '@trinity/platform-native';
 
 /** The notes of the releases a device has not seen yet, newest first, shown after an update. */
 @Component({

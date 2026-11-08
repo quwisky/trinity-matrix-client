@@ -192,7 +192,15 @@ export function provideTrinityApplication(
       provide: REPORT_BUG_DIALOG_COMPONENT,
       useValue: options.dialogLoaders.reportBug,
     },
-    { provide: BUG_REPORT_LAUNCHER, useExisting: ReportBugLauncherAdapter },
+    // Without a repository Report a bug has nothing to do, so every entry point hides.
+    ...(options.issueRepositoryUrl === null
+      ? []
+      : [
+          {
+            provide: BUG_REPORT_LAUNCHER,
+            useExisting: ReportBugLauncherAdapter,
+          },
+        ]),
     {
       provide: ADD_TO_IMAGE_PACK_DIALOG,
       useValue: options.dialogLoaders.addToImagePack,

@@ -53,6 +53,7 @@ import { TrustDevicesService, TrustService } from '@trinity/data-access/trust';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   AppConfigService,
+  BUG_REPORT_CONFIG,
   BUILD_INFO,
   ExternalBrowserService,
   FeatureFlagsService,
@@ -322,6 +323,10 @@ const SETUPS: Record<string, () => Setup> = {
   advanced: () => ({
     providers: [
       MockProvider(AppConfigService, { exportJson: () => '{"version":1}' }),
+      {
+        provide: BUG_REPORT_CONFIG,
+        useValue: { issueRepositoryUrl: 'https://github.com/o/r' },
+      },
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
       FILE_EXPORT,

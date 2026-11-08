@@ -113,12 +113,6 @@ describe('ReportBugDialogComponent', () => {
     ).toBe(true);
   });
 
-  it('leaves GitHub out when the build names no repository', async () => {
-    await setup({ repository: null });
-
-    expect(screen.queryByTestId('report-bug-github')).toBeNull();
-  });
-
   it('waits for the facts before offering GitHub', async () => {
     await setup({ facts: NEVER });
 

@@ -4,6 +4,7 @@ import { TrnAlertService, TrnToastService } from '@trinity/components/overlay';
 import {
   APP_CONFIG_ENTRIES,
   AppConfigService,
+  BUG_REPORT_CONFIG,
   CONFIG_EXPORT_VERSION,
   type ConfigEntry,
   type ConfigValidation,
@@ -248,6 +249,31 @@ describe('AdvancedSettingsComponent', () => {
       }),
     ];
   }
+
+  it('hides Report a problem when the build names no repository', async () => {
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: realConfig(),
+    });
+
+    expect(
+      container.querySelector('[data-testid="advanced-report-bug"]'),
+    ).toBeNull();
+  });
+
+  it('offers Report a problem when the build names a repository', async () => {
+    const { container } = await render(AdvancedSettingsComponent, {
+      providers: [
+        ...realConfig(),
+        {
+          provide: BUG_REPORT_CONFIG,
+          useValue: { issueRepositoryUrl: 'https://github.com/o/r' },
+        },
+      ],
+    });
+    expect(
+      container.querySelector('[data-testid="advanced-report-bug"]'),
+    ).not.toBeNull();
+  });
 
   it('renders the live config as pretty-printed JSON', async () => {
     const { container } = await render(AdvancedSettingsComponent, {
