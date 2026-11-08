@@ -14,6 +14,7 @@ import { AppLockService } from '@trinity/data-access/app-lock';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import type { ComposerAttachmentsHost } from './composer-attachments.service';
+import { conversationOf } from './composer-drafts';
 
 /**
  * The voice-clip workflow of {@link ComposerAttachmentsService}: the microphone, the recording
@@ -76,7 +77,7 @@ export class ComposerVoiceRecording {
       return;
     }
     this.voiceStarting = true;
-    const roomAtStart = this.host().roomId();
+    const conversationAtStart = this.conversation();
     try {
       await this.voiceRecorder.start();
     } catch {
@@ -88,11 +89,12 @@ export class ComposerVoiceRecording {
       return;
     }
     this.voiceStarting = false;
-    // The view may have been torn down, the room switched or the app locked during acquisition:
-    // don't leave a stream open, and never bind the clip to a room the user has since left.
+    // The view may have been torn down, the conversation switched or the app locked during
+    // acquisition: don't leave a stream open, and never bind the clip to a conversation the user
+    // has since left. The same room under another account is another conversation.
     if (
       this.destroyed ||
-      this.host().roomId() !== roomAtStart ||
+      this.conversation() !== conversationAtStart ||
       this.appLock.locked()
     ) {
       this.voiceRecorder.cancel();
@@ -115,10 +117,16 @@ export class ComposerVoiceRecording {
     }
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
+    const conversationAtStop = this.conversation();
     void this.voiceRecorder
       .stop()
       .then((recording) => {
-        if (!recording || recording.blob.size === 0) {
+        // The send resolves the active conversation, so a switch mid-stop would post as the other account.
+        if (
+          !recording ||
+          recording.blob.size === 0 ||
+          this.conversation() !== conversationAtStop
+        ) {
           return;
         }
         // A voice message is standalone: drop any active reply, as media does.
@@ -151,6 +159,11 @@ export class ComposerVoiceRecording {
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
     this.voiceRecorder.cancel();
+  }
+
+  private conversation(): string {
+    const host = this.host();
+    return conversationOf(host.accountId(), host.roomId());
   }
 
   private clearVoiceTimer(): void {
