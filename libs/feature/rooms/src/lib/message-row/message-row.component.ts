@@ -20,6 +20,7 @@ import { AvatarComponent } from '@trinity/components/generic-content';
 import { MatrixHtmlDirective } from '../message-presentation/matrix-html.directive';
 import {
   MessageSwipeDirective,
+  SWIPE_BACK_EDGE_PX,
   SWIPE_DEAD_ZONE_PX,
   SWIPE_SLOP_PX,
   type SwipeDirection,
@@ -140,7 +141,7 @@ const LONG_PRESS_MS = 500;
 /** How far the pointer may drift before the press is a scroll instead. Must equal the swipe's slop. */
 const LONG_PRESS_SLOP_PX = SWIPE_SLOP_PX;
 
-export { SWIPE_DEAD_ZONE_PX, type SwipeDirection };
+export { SWIPE_BACK_EDGE_PX, SWIPE_DEAD_ZONE_PX, type SwipeDirection };
 
 /** The semantic action a row resolved from its affordance when a swipe committed. */
 export type MessageSwipeAction = 'edit' | 'reply';

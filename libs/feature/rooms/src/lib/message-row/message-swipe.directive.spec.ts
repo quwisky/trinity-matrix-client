@@ -1,6 +1,7 @@
 import { Component, signal, viewChild } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { HapticsService } from '@trinity/platform-native';
 import {
   MessageSwipeDirective,
   type SwipeDirection,
@@ -47,7 +48,7 @@ describe('MessageSwipeDirective', () => {
     return { host: fixture.componentInstance, el };
   }
 
-  it('arms, tracks and emits once the drag passes a quarter of the row', () => {
+  it('arms, tracks and emits once the drag passes the commit distance', () => {
     const { host, el } = setup();
 
     expect(host.gesture().arm(touch('pointerdown', 300))).toBe(true);
@@ -70,6 +71,23 @@ describe('MessageSwipeDirective', () => {
     host.direction.set('off');
     TestBed.tick();
     expect(host.gesture().arm(touch('pointerdown', 300))).toBe(false);
+  });
+
+  it('ticks once as the drag crosses the commit point, not on every move past it', () => {
+    const { host } = setup();
+    const tick = vi.spyOn(TestBed.inject(HapticsService), 'thresholdReached');
+
+    host.gesture().arm(touch('pointerdown', 300));
+    host.gesture().track(touch('pointermove', 340));
+    expect(tick).not.toHaveBeenCalled();
+    host.gesture().track(touch('pointermove', 370));
+    host.gesture().track(touch('pointermove', 400));
+    expect(tick).toHaveBeenCalledTimes(1);
+
+    // Pulling back under it and crossing again is a second decision, so a second tick.
+    host.gesture().track(touch('pointermove', 330));
+    host.gesture().track(touch('pointermove', 380));
+    expect(tick).toHaveBeenCalledTimes(2);
   });
 
   it('cancel() puts the row back and forgets the drag', () => {

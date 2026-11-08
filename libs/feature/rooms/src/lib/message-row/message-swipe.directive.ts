@@ -6,26 +6,42 @@ import {
   input,
   output,
 } from '@angular/core';
+import { HapticsService } from '@trinity/platform-native';
+import {
+  DRAWER_OUTER_EDGE_PX,
+  NATIVE_HISTORY_EDGE_PX,
+} from '../rooms/drawer-swipe.directive';
 
 /**
- * How far in from either viewport edge a message swipe refuses to START.
+ * How far in from the RIGHT viewport edge a message swipe refuses to start, in either direction.
  *
- * The shell's drawer opens in a 24px band inside a 32px native-history strip, and native
- * recognisers are outside CSS, so the only lever is refusing to arm through that region, measured
- * at `pointerdown` because that is the only moment the decision can be made without having already
- * competed. Wider than the drawer's zone and the platform regions (widths Apple and Google
- * do not publish), chosen with margin. `message-row.swipe.spec.ts` pins that it is never narrower
- * than the drawer's; a device confirms it clears the platform's.
+ * The shell's drawer opens in a 24px band inside a 32px native-history strip (WebKit Forward,
+ * Android's right-edge Back), and native recognisers are outside CSS, so the only lever is refusing
+ * to arm through that region, measured at `pointerdown` because that is the only moment the
+ * decision can be made without having already competed. Both directions: the drawer arms on this
+ * same `pointerdown` whichever way the finger then goes, and an armed row stops its propagation.
+ * `message-row.swipe.spec.ts` pins that it is never narrower than the drawer's.
  */
-export const SWIPE_DEAD_ZONE_PX = 56;
+export const SWIPE_DEAD_ZONE_PX = DRAWER_OUTER_EDGE_PX;
 
-/** How far a row must travel, as a fraction of its own width, before the action commits. */
-const SWIPE_COMMIT_FRACTION = 0.25;
+/**
+ * How far in from the LEFT viewport edge a RIGHTWARD swipe refuses to start: iOS's Back and
+ * Android's left-edge Back are rightward edge pans. The same 32px strip the drawer leaves to native
+ * history on the right. A leftward swipe has no competitor at that edge, so it gets no zone there.
+ */
+export const SWIPE_BACK_EDGE_PX = NATIVE_HISTORY_EDGE_PX;
 
-/** How far the pointer may drift vertically before the drag is a scroll instead. */
-const SWIPE_VERTICAL_SLOP_PX = 12;
+/**
+ * How far a row must travel before releasing it acts. Fixed, not a share of the row: a quarter of
+ * a phone-width row was ~90px, too far for a thumb. About one and a half 44px touch targets.
+ */
+const SWIPE_COMMIT_PX = 64;
 
-/** Horizontal travel that makes a drag definitely a swipe; the row's long-press slop. */
+/** A quicker release commits short of {@link SWIPE_COMMIT_PX}: average speed, and the least travel that counts. */
+const SWIPE_FLICK_PX_PER_MS = 0.4;
+const SWIPE_FLICK_MIN_PX = 32;
+
+/** Travel that decides the axis; the row's long-press slop, so a decided swipe has already cancelled the press. */
 export const SWIPE_SLOP_PX = 10;
 
 /** Which way a row is dragged to act on it, as resolved by whoever renders the row. */
@@ -42,8 +58,9 @@ export type SwipeDirection = 'off' | 'left' | 'right';
 export class MessageSwipeDirective {
   private readonly el =
     inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
-  private start: { x: number; y: number; id: number } | null = null;
-  /** True once a drag has passed the slop and is definitely this gesture, not a scroll. */
+  private readonly haptics = inject(HapticsService);
+  private start: { x: number; y: number; id: number; t: number } | null = null;
+  /** True once the opening travel was sideways: this gesture, not a scroll. */
   private swiping = false;
 
   readonly direction = input<SwipeDirection>('off', {
@@ -63,19 +80,26 @@ export class MessageSwipeDirective {
 
   /** Arm a sideways drag, if every condition holds; whether it armed decides propagation. */
   arm(event: PointerEvent): boolean {
-    if (this.direction() === 'off' || !this.swipeEnabled()) {
+    const direction = this.direction();
+    if (direction === 'off' || !this.swipeEnabled()) {
       return false;
     }
     // Measured at the START in viewport coordinates, where the competitors live. A drag that
     // begins in the middle and travels INTO an edge is fine: those recognisers are edge-start.
     const width = typeof window === 'undefined' ? 0 : window.innerWidth;
+    const leftZone = direction === 'right' ? SWIPE_BACK_EDGE_PX : 0;
     if (
-      event.clientX <= SWIPE_DEAD_ZONE_PX ||
+      event.clientX <= leftZone ||
       width - event.clientX <= SWIPE_DEAD_ZONE_PX
     ) {
       return false;
     }
-    this.start = { x: event.clientX, y: event.clientY, id: event.pointerId };
+    this.start = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+      t: event.timeStamp,
+    };
     this.swiping = false;
     // Without capture, a drag drifting off a one-line continuation row never sees its `pointerup`
     // and leaves the row translated. The host, not `event.target`: the deepest hit element (a link,
@@ -84,35 +108,44 @@ export class MessageSwipeDirective {
     return true;
   }
 
-  /** Track an armed drag, or abandon it if it turns out to be a scroll. */
+  /** Track an armed drag, or abandon it if it opens as a scroll. */
   track(event: PointerEvent): void {
     const start = this.start;
     if (!start || event.pointerId !== start.id) {
       return;
     }
-    if (Math.abs(event.clientY - start.y) > SWIPE_VERTICAL_SLOP_PX) {
-      this.cancel();
-      return;
-    }
-    const travelled = this.travelled(event);
-    // Press, pause, drag is handled the other way round: the row's long-press timer calls `cancel()`.
-    if (travelled > SWIPE_SLOP_PX) {
+    if (!this.swiping) {
+      const dx = Math.abs(event.clientX - start.x);
+      const dy = Math.abs(event.clientY - start.y);
+      if (Math.max(dx, dy) <= SWIPE_SLOP_PX) {
+        return;
+      }
+      // Decided once, by the dominant axis, as the browser decides its own pan under
+      // `touch-action: pan-y`: a drag it declined to scroll is ours, so later vertical drift
+      // (a thumb's arc) is ignored. A bias here would leave drags neither of us takes.
+      if (dx <= dy) {
+        this.cancel();
+        return;
+      }
+      // Press, pause, drag is handled the other way round: the row's long-press timer calls `cancel()`.
       this.swiping = true;
     }
-    this.paint(travelled);
+    this.paint(this.travelled(event));
   }
 
-  /** Release an armed drag: commit past the threshold, otherwise put the row back. */
+  /** Release an armed drag: commit past the distance or on a flick, otherwise put the row back. */
   release(event: PointerEvent): void {
     const start = this.start;
     if (!start || event.pointerId !== start.id) {
       return;
     }
+    // The release point is the final position: a flick can end well past the last `pointermove`.
     const travelled = this.travelled(event);
-    // The host is the `.msg` that moves; the component around it has no box.
-    const width = this.el.getBoundingClientRect().width;
+    const speed = travelled / Math.max(1, event.timeStamp - start.t);
     const committed =
-      this.swiping && width > 0 && travelled >= width * SWIPE_COMMIT_FRACTION;
+      this.swiping &&
+      (travelled >= SWIPE_COMMIT_PX ||
+        (travelled >= SWIPE_FLICK_MIN_PX && speed >= SWIPE_FLICK_PX_PER_MS));
     this.cancel();
     if (committed) {
       this.swipe.emit();
@@ -152,14 +185,17 @@ export class MessageSwipeDirective {
 
     // How far along the gesture is, 0 to 1: the affordance grows with the drag so a reader can see
     // the action arriving and let go before it does. A property CSS interpolates, not a transition.
-    const commitAt = msg.getBoundingClientRect().width * SWIPE_COMMIT_FRACTION;
     // The clamp is load-bearing: otherwise a long drag scales the icon unbounded.
-    const progress = commitAt > 0 ? Math.min(1, distance / commitAt) : 0;
+    const progress = Math.min(1, distance / SWIPE_COMMIT_PX);
     msg.style.setProperty('--swipe-progress', `${progress.toFixed(3)}`);
 
     // Drives the icon's visibility and the 1:1 follow; the eased spring-back returns when this
     // comes off. Past the threshold, releasing now WILL act.
     msg.classList.add('msg--swiping');
-    msg.classList.toggle('msg--swipe-armed', progress >= 1);
+    const armed = progress >= 1;
+    if (armed && !msg.classList.contains('msg--swipe-armed')) {
+      this.haptics.thresholdReached();
+    }
+    msg.classList.toggle('msg--swipe-armed', armed);
   }
 }
