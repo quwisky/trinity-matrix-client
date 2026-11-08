@@ -457,6 +457,33 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
       expect(changes).toEqual(['typed', 'external']);
       expect(cmp.text()).toBe('external');
     });
+
+    it('clears a managed draft sent before change detection reported the last keystroke', async () => {
+      const { fixture, container } = await renderComposer({
+        roomId: '!a:hs',
+        composeDraft: 'one',
+      });
+      const cmp = fixture.componentInstance;
+      // A host that owns the draft, as the Conversation does: reports land in it, and it
+      // clears it as soon as it takes the send.
+      cmp.composeDraftChange.subscribe((draft) =>
+        fixture.componentRef.setInput('composeDraft', draft),
+      );
+      cmp.submitText.subscribe(() =>
+        fixture.componentRef.setInput('composeDraft', ''),
+      );
+
+      const textarea = container.querySelector(
+        'textarea',
+      ) as HTMLTextAreaElement;
+      textarea.value = 'one two';
+      cmp.onInput({ target: textarea } as unknown as Event);
+      cmp.submit(); // Enter in the same task as the keystroke
+      fixture.detectChanges();
+      fixture.detectChanges(); // the mirror's write back to the box
+
+      expect(cmp.text()).toBe('');
+    });
   });
 
   describe('typing notifications', () => {
