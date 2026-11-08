@@ -20,7 +20,7 @@ import {
 import {
   buildRoomSummary,
   compareRoomSummaries,
-  countsMoved,
+  sdkMovedRow,
   decryptionChangesRow,
   directMapOf,
   isJoinedSpace,
@@ -332,7 +332,7 @@ export function projectSelectedRooms(
           ? undefined
           : cache.rows.get(room.roomId);
       const summary =
-        kept && kept.directUserId === directUserId && !countsMoved(room, kept)
+        kept && kept.directUserId === directUserId && !sdkMovedRow(room, kept)
           ? kept
           : buildRoomSummary(
               room,

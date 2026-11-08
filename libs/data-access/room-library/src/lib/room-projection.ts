@@ -254,11 +254,14 @@ export function reuseUnchanged(
 }
 
 /**
- * The SDK's unread or member counts no longer match the row's. A sync updates them without an
- * event naming the room, possibly after this room's row was rebuilt mid-sync.
+ * The SDK's unread or member counts, or the room's activity time, no longer match the row's. A
+ * sync updates the counts without an event naming the room, possibly after this room's row was
+ * rebuilt mid-sync, and a thread's metadata update (`ThreadEvent.Update`, which the client does
+ * not re-emit) can move its latest reply.
  */
-export function countsMoved(room: Room, row: RoomSummary): boolean {
+export function sdkMovedRow(room: Room, row: RoomSummary): boolean {
   return (
+    roomActivityTs(room) !== row.activityTs ||
     room.getJoinedMemberCount() !== row.memberCount ||
     room.getUnreadNotificationCount(NotificationCountType.Total) !==
       row.unreadCount ||

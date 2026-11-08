@@ -47,7 +47,7 @@ import {
   compareRoomSummaries,
   decryptionChangesRow,
   directMapOf,
-  countsMoved,
+  sdkMovedRow,
   isMarkedUnread,
   reuseUnchanged,
   sameRooms,
@@ -820,7 +820,7 @@ export class RoomLibraryService {
       let resort = false;
       rooms = previousRooms.map((row) => {
         const room = byId.get(row.id) as Room;
-        if (!this.dirtyRooms.has(row.id) && !countsMoved(room, row)) return row;
+        if (!this.dirtyRooms.has(row.id) && !sdkMovedRow(room, row)) return row;
         rebuilt.push(room);
         const next = build(room);
         resort ||= next !== row && sortKeyChanged(row, next);

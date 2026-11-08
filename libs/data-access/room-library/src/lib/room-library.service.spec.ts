@@ -415,13 +415,15 @@ describe('RoomLibraryService', () => {
         '!b:hs': 0,
         '!c:hs': 0,
       };
-      const built: string[] = [];
+      const built = new Set<string>();
       const make = (id: string) => {
         const room = fakeRoom({ roomId: id, name: id });
-        // Only a summary build reads the activity time, so it counts builds.
-        room.getLastActiveTimestamp = () => {
-          built.push(id);
-          return activity[id];
+        room.getLastActiveTimestamp = () => activity[id];
+        // Only a summary build reads the marked-unread flag, so it counts builds.
+        const accountData = room.getAccountData;
+        room.getAccountData = (type: string) => {
+          built.add(id);
+          return accountData(type);
         };
         room.getUnreadNotificationCount = (type?: string) =>
           type === 'highlight' ? 0 : unread[id];
@@ -455,7 +457,7 @@ describe('RoomLibraryService', () => {
         },
         /** End the sync and return the rooms it rebuilt. */
         endSync: async () => {
-          built.length = 0;
+          built.clear();
           emit(ClientEvent.Sync);
           await windowEnds();
           return [...built].sort();
@@ -524,6 +526,15 @@ describe('RoomLibraryService', () => {
 
       expect(await endSync()).toEqual(['!c:hs']);
       expect(svc.rooms().find((r) => r.id === '!c:hs')?.unreadCount).toBe(4);
+    });
+
+    it('moves a room whose thread metadata moved its latest reply, with no timeline event', async () => {
+      const { activity, endSync, ids } = setupMany();
+
+      activity['!c:hs'] = 400;
+
+      expect(await endSync()).toEqual(['!c:hs']);
+      expect(ids()).toEqual(['!c:hs', '!a:hs', '!b:hs']);
     });
 
     it('picks up a member count the SDK changed after the room was rebuilt', async () => {

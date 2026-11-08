@@ -837,6 +837,24 @@ describe('SelectedRoomLibraryService', () => {
       expect(harness.service.view().invitations).toBe(before.invitations);
     });
 
+    it('re-sorts a row whose thread metadata moved its latest reply, with no timeline event', async () => {
+      vi.useFakeTimers();
+      const { a, aRooms, harness, summariesBuilt } = large();
+
+      // `ThreadEvent.Update` reaches only the Room, never the client.
+      Object.assign(aRooms[150], {
+        getThreads: () => [{ replyToEvent: { getTs: () => 5 } }],
+      });
+      a.emit(ClientEvent.Sync);
+      await flushProjection();
+
+      expect(summariesBuilt()).toBe(1);
+      expect(harness.service.view().rooms[0]).toMatchObject({
+        id: '!a-150:hs',
+        activityTs: 5,
+      });
+    });
+
     it('rebuilds the row of a room a timeline event named at the next sync', async () => {
       vi.useFakeTimers();
       const { a, aRooms, measure, summariesBuilt } = large();
