@@ -103,7 +103,7 @@ describe('UnsentDraftsWriter', () => {
     expect(drafts.has(ROOM_DRAFT)).toBe(false);
   });
 
-  it('does not add a text the draft already holds, as after a rejected send', async () => {
+  it('does not add a text the draft already holds', async () => {
     const { writer, drafts, steps } = setup({ [ROOM_DRAFT]: 'see you' });
 
     await writer.writeBack([unsent('see you')]);
@@ -122,48 +122,49 @@ describe('UnsentDraftsWriter', () => {
     expect(drafts.get(ROOM_DRAFT)).toBe('looks ok to me\n\nsee you\n\nok');
   });
 
-  it('releases the waiting record of each text it writes back, even one the draft holds', async () => {
-    const { writer } = setup({ [ROOM_DRAFT]: 'see you' });
+  it('keeps a room message by its txn id, and releases a thread reply it puts in the draft', async () => {
+    const { writer, drafts } = setup({ [ROOM_DRAFT]: 'typed' });
     const store = TestBed.inject(DraftStoreService);
+    const hold = vi.spyOn(store, 'holdWaiting');
     const release = vi.spyOn(store, 'releaseWaiting');
+    vi.spyOn(store, 'pendingMessages').mockReturnValue(new Map());
 
     await writer.writeBack([
       unsent('see you', null, 'txn-1'),
       unsent('in the thread', '$root', 'txn-2'),
     ]);
 
-    expect(release.mock.calls).toEqual([
-      [ROOM_DRAFT, 'txn-1'],
-      [threadDraftKey('$root'), 'txn-2'],
+    expect(hold.mock.calls).toEqual([
+      [ROOM_DRAFT, 'txn-1', { body: 'see you' }],
     ]);
+    expect(release.mock.calls).toEqual([[threadDraftKey('$root'), 'txn-2']]);
+    expect(drafts.get(ROOM_DRAFT)).toBe('typed');
   });
 
-  it.each([
-    ['/shrug hi', 'hi ¯\\_(ツ)_/¯'],
-    ['/plain **x**', '**x**'],
-  ])(
-    'puts a waiting %s into the composer once after a handover and a reload',
-    async (typed, unsentText) => {
-      stored.clear();
-      const page = new DraftStoreService();
-      await page.init();
-      page.holdWaiting(ROOM_DRAFT, 'txn-1', typed);
-      TestBed.configureTestingModule({
-        providers: [
-          UnsentDraftsWriter,
-          { provide: DraftStoreService, useValue: page },
-        ],
-      });
+  it('shows a room message held at send as a held message after a handover and a reload, never in the box', async () => {
+    stored.clear();
+    const page = new DraftStoreService();
+    await page.init();
+    const content = { msgtype: 'm.text', body: 'hi ¯\\_(ツ)_/¯' };
+    page.holdWaiting(ROOM_DRAFT, 'txn-1', { body: '/shrug hi', content });
+    TestBed.configureTestingModule({
+      providers: [
+        UnsentDraftsWriter,
+        { provide: DraftStoreService, useValue: page },
+      ],
+    });
 
-      await TestBed.inject(UnsentDraftsWriter).writeBack([
-        unsent(unsentText, null, 'txn-1'),
-      ]);
-      const reloaded = new DraftStoreService();
-      await reloaded.init();
+    await TestBed.inject(UnsentDraftsWriter).writeBack([
+      unsent('hi ¯\\_(ツ)_/¯', null, 'txn-1'),
+    ]);
+    const reloaded = new DraftStoreService();
+    await reloaded.init();
 
-      expect(reloaded.get(ROOM_DRAFT)).toBe(unsentText);
-    },
-  );
+    expect(reloaded.get(ROOM_DRAFT)).toBe('');
+    expect([...reloaded.pendingMessages(ROOM_DRAFT)]).toEqual([
+      ['txn-1', { body: '/shrug hi', content }],
+    ]);
+  });
 
   it('still writes the drafts to storage when every message reached the server', async () => {
     // A draft typed in the last moments before a handover is still waiting for its debounce.

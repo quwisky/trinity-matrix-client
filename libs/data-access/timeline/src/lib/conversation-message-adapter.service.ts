@@ -214,14 +214,19 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
           const waiting =
             text === null
               ? isWaitingToSend(event)
-              : keepWhileWaiting(
-                  this.drafts,
-                  request.threadRootId
-                    ? threadDraftKey(request.threadRootId)
-                    : conversationDraftKey(request.key),
-                  event,
-                  text,
-                );
+              : request.threadRootId
+                ? keepWhileWaiting(
+                    this.drafts,
+                    threadDraftKey(request.threadRootId),
+                    event,
+                    text,
+                  )
+                : keepWhileWaiting(
+                    this.drafts,
+                    conversationDraftKey(request.key),
+                    event,
+                    { body: text, content: event.getContent() },
+                  );
           return of(
             waiting
               ? this.applied('retry')

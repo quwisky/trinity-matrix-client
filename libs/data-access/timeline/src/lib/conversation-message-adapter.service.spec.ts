@@ -307,7 +307,10 @@ describe('MatrixConversationMessageAdapter', () => {
       expect(drafts.holdWaiting).toHaveBeenCalledWith(
         conversationDraftKey(KEY),
         'txn-1',
-        '/me waves',
+        {
+          body: '/me waves',
+          content: expect.objectContaining({ body: 'waves' }),
+        },
       );
       echo.setStatus(EventStatus.SENDING);
       expect(drafts.releaseWaiting).not.toHaveBeenCalled();

@@ -99,7 +99,7 @@ test.describe('Session lock', () => {
     await expect(page).toHaveURL(onRoom, { timeout: 60_000 });
   });
 
-  test('"Use here" puts a message the first tab could not send into the second tab’s composer', async ({
+  test('"Use here" shows a message the first tab could not send as a failed message, which Retry sends once', async ({
     page,
     request,
   }) => {
@@ -119,6 +119,21 @@ test.describe('Session lock', () => {
       },
     );
     expect(created.ok()).toBe(true);
+    const { room_id: roomId } = (await created.json()) as { room_id: string };
+    /** How many times the homeserver has the message. */
+    const copies = async (): Promise<number> => {
+      const res = await request.get(
+        `${session.hs as string}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/messages?dir=b&limit=50`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const { chunk } = (await res.json()) as {
+        chunk: { type: string; content: { body?: string } }[];
+      };
+      return chunk.filter(
+        (event) =>
+          event.type === 'm.room.message' && event.content.body === unsent,
+      ).length;
+    };
     await login(page, session);
     await openRoom(page, roomName);
     // Hold every send of the first tab, so the message stays on its way through the handover.
@@ -136,10 +151,20 @@ test.describe('Session lock', () => {
 
     await waitForRooms(second.page, 60_000);
     await openRoom(second.page, roomName);
-    await expect(second.page.getByTestId('composer-input')).toHaveValue(
-      unsent,
-      { timeout: 30_000 },
-    );
+    // The message comes back in the timeline, kept by its own id, never in the text box.
+    const failed = second.page.locator('.msg', { hasText: unsent });
+    await expect(failed.getByText(/Failed to send/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(second.page.getByTestId('composer-input')).toHaveValue('');
+    expect(await copies()).toBe(0);
+
+    await failed.getByText(/Failed to send/).click();
+
+    await expect.poll(copies, { timeout: 60_000 }).toBe(1);
+    await expect(second.page.getByText(/Failed to send/)).toHaveCount(0);
+    await expect(second.page.getByTestId('composer-input')).toHaveValue('');
+    expect(await copies()).toBe(1);
   });
 
   test('closing the first tab lets the waiting tab start by itself', async ({

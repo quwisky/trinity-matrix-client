@@ -21,29 +21,36 @@ export function unsentDraftKey(message: PendingTextMessage): string {
 }
 
 /**
- * Text a handover could not get onto the homeserver goes back into its composer draft, so the
- * tab that takes over shows it ready to send again. The store holds plain strings, so the plain
- * body is kept; it is the composer's own markdown source.
+ * Text a handover could not get onto the homeserver is kept for the tab that takes over. A room
+ * message stays held by its txn id, which that tab's timeline shows as a failed message with
+ * Retry; a thread reply goes back into its composer draft. The plain body is kept; it is the
+ * composer's own markdown source.
  */
 @Injectable({ providedIn: 'root' })
 export class UnsentDraftsWriter {
   private readonly drafts = inject(DraftStoreService);
 
   /**
-   * Put each text after the draft it lands in, then write the drafts to storage. Never rejects.
-   * Writes even with nothing to add: a draft typed just before the handover may still be
-   * waiting for the store's debounce. Does nothing while the store has not loaded the stored
-   * drafts yet (a handover during startup): it would join the text to drafts it cannot see.
+   * Keep each text, then write the drafts to storage. Never rejects. Writes even with nothing to
+   * add: a draft typed just before the handover may still be waiting for the store's debounce.
+   * Does nothing while the store has not loaded the stored drafts yet (a handover during
+   * startup): it would write over drafts it cannot see.
    */
   writeBack(messages: readonly PendingTextMessage[]): Promise<void> {
     if (!this.drafts.isInitialised()) return Promise.resolve();
     for (const message of messages) {
       const key = unsentDraftKey(message);
+      const text = message.text.trim();
+      if (message.threadRootId === null && message.txnId) {
+        // The composer's own hold carries the event as built; keep that one.
+        if (!this.drafts.pendingMessages(key).has(message.txnId)) {
+          this.drafts.holdWaiting(key, message.txnId, { body: text });
+        }
+        continue;
+      }
       // This copy replaces the waiting record, which holds the typed text and could differ.
       if (message.txnId) this.drafts.releaseWaiting(key, message.txnId);
       const existing = this.drafts.get(key).trimEnd();
-      const text = message.text.trim();
-      // A rejected send may already have put its text back (ConversationCompose.restore).
       if (holdsText(existing, text)) continue;
       this.drafts.set(key, existing ? `${existing}\n\n${text}` : text);
     }

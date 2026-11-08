@@ -1,5 +1,11 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { type MatrixClient, type MatrixEvent, type Room } from 'matrix-js-sdk';
+import {
+  EventStatus,
+  EventType,
+  MatrixEvent,
+  type MatrixClient,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   type Observable,
   catchError,
@@ -14,6 +20,7 @@ import {
 } from 'rxjs';
 import {
   editMessageContent,
+  isWaitingToSend,
   renderMarkdown,
   replyMessageContent,
   replyTextArt,
@@ -22,7 +29,10 @@ import {
 } from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackEditorService } from '@trinity/data-access/media';
-import { DraftStoreService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  type PendingMessage,
+} from '@trinity/platform-native';
 import {
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
@@ -31,7 +41,8 @@ import {
 import { shownContent } from './shields';
 import { conversationDraftKey } from './conversation-draft-key';
 import { sendEdit } from './edit-echo';
-import { keepWhileWaiting } from './waiting-draft';
+import { holdUntilSettled } from './waiting-draft';
+import { type ConversationKey } from './conversation-messages';
 
 class MissingLocalEchoError extends Error {
   constructor() {
@@ -45,6 +56,8 @@ class MatrixConversationTextSender implements ConversationTextSender {
   // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
   private readonly drafts = inject(DraftStoreService);
+  /** Txn ids of sends not settled yet, which may have no echo while a reply target loads. */
+  private readonly inFlight = new Set<string>();
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
     const client = this.matrix.clientFor(request.key.accountId);
@@ -52,8 +65,21 @@ class MatrixConversationTextSender implements ConversationTextSender {
     if (!client || !room || client.getUserId() !== request.key.accountId) {
       return this.settled(of({ kind: 'rejected', retryable: false }));
     }
-    let txnId: string | null = null;
-    let localEventId: string | null = null;
+    const txnId = client.makeTxnId();
+    const localEventId = `~${room.roomId}:${txnId}`;
+    const draftKey = conversationDraftKey(request.key);
+    // A new message is kept by its txn id from the moment it leaves the draft; an edit's text
+    // belongs to the message it changes.
+    const held = request.intent.kind !== 'edit';
+    const kept: PendingMessage = {
+      body: request.body,
+      mentions: [...request.mentions],
+      ...(request.intent.kind === 'reply' && {
+        replyTo: request.intent.eventId,
+      }),
+    };
+    if (held) this.drafts.holdWaiting(draftKey, txnId, kept);
+    this.inFlight.add(txnId);
     let fetchingTarget = false;
     let settled = false;
     const outcome = this.replyTarget(client, room, request, (fetching) => {
@@ -61,16 +87,22 @@ class MatrixConversationTextSender implements ConversationTextSender {
     }).pipe(
       switchMap((target) => {
         const content = this.content(request, room, target);
-        const id = client.makeTxnId();
-        txnId = id;
-        localEventId = `~${room.roomId}:${id}`;
         const send = () =>
-          client.sendMessage(room.roomId, content as never, id);
-        return from(
-          request.intent.kind === 'edit'
-            ? sendEdit(client, room, request.intent.eventId, id, send)
-            : send(),
-        );
+          client.sendMessage(room.roomId, content as never, txnId);
+        if (request.intent.kind === 'edit') {
+          return from(
+            sendEdit(client, room, request.intent.eventId, txnId, send),
+          );
+        }
+        const sent = send();
+        const echo = room.getEventForTxnId(txnId);
+        if (echo) {
+          holdUntilSettled(this.drafts, draftKey, echo, {
+            ...kept,
+            content: content as Record<string, unknown>,
+          });
+        }
+        return from(sent);
       }),
       map(({ event_id }) => {
         if (!event_id || !room.findEventById(event_id)) {
@@ -82,18 +114,18 @@ class MatrixConversationTextSender implements ConversationTextSender {
         if (error instanceof MissingLocalEchoError) {
           return throwError(() => error);
         }
-        const waiting = keepWhileWaiting(
-          this.drafts,
-          conversationDraftKey(request.key),
-          txnId ? room.getEventForTxnId(txnId) : undefined,
-          request.body,
-        );
-        return of(
-          waiting
-            ? ({ kind: 'queued' } as const)
-            : ({ kind: 'rejected', retryable: true } as const),
-        );
+        const echo = room.getEventForTxnId(txnId);
+        if (held && echo?.status === EventStatus.NOT_SENT) {
+          return of(
+            isWaitingToSend(echo)
+              ? ({ kind: 'queued' } as const)
+              : ({ kind: 'failed' } as const),
+          );
+        }
+        if (held) this.drafts.releaseWaiting(draftKey, txnId);
+        return of({ kind: 'rejected', retryable: true } as const);
       }),
+      finalize(() => this.inFlight.delete(txnId)),
       tap({
         next: () => (settled = true),
         error: () => (settled = true),
@@ -106,11 +138,10 @@ class MatrixConversationTextSender implements ConversationTextSender {
         // Nothing has been sent while the reply target is still being fetched.
         if (fetchingTarget) {
           settled = true;
+          if (held) this.drafts.releaseWaiting(draftKey, txnId);
           return true;
         }
-        const localEcho = localEventId
-          ? room.findEventById(localEventId)
-          : undefined;
+        const localEcho = room.findEventById(localEventId);
         if (!localEcho) return false;
         try {
           client.cancelPendingEvent(localEcho);
@@ -123,6 +154,59 @@ class MatrixConversationTextSender implements ConversationTextSender {
         }
       },
     };
+  }
+
+  /**
+   * A reload drops the SDK's echoes, so each message still held for the conversation becomes a
+   * failed echo again, as the SDK restores its own pending events: Retry resends it under its
+   * txn id, which the homeserver de-duplicates, and Delete cancels it. One the timeline already
+   * shows as sent is let go.
+   */
+  restore(key: ConversationKey): void {
+    const client = this.matrix.clientFor(key.accountId);
+    const room = client?.getRoom(key.roomId);
+    if (!client || !room || client.getUserId() !== key.accountId) return;
+    const draftKey = conversationDraftKey(key);
+    const sent = new Set(
+      room
+        .getLiveTimeline()
+        .getEvents()
+        .map((event) => event.getUnsigned().transaction_id),
+    );
+    for (const [txnId, held] of this.drafts.pendingMessages(draftKey)) {
+      if (this.inFlight.has(txnId) || room.getEventForTxnId(txnId)) continue;
+      if (sent.has(txnId)) {
+        this.drafts.releaseWaiting(draftKey, txnId);
+        continue;
+      }
+      // Held before it was built: rebuilt as sent, a reply without the quote of its target.
+      const content =
+        held.content ??
+        this.content(
+          {
+            key,
+            body: held.body,
+            mentions: held.mentions ?? [],
+            intent: held.replyTo
+              ? { kind: 'reply', eventId: held.replyTo }
+              : { kind: 'message' },
+          },
+          room,
+          undefined,
+        );
+      const echo = new MatrixEvent({
+        type: EventType.RoomMessage,
+        content,
+        event_id: `~${room.roomId}:${txnId}`,
+        sender: key.accountId,
+        room_id: room.roomId,
+        origin_server_ts: Date.now(),
+      });
+      echo.setTxnId(txnId);
+      echo.setStatus(EventStatus.NOT_SENT);
+      room.addPendingEvent(echo, txnId);
+      holdUntilSettled(this.drafts, draftKey, echo, held);
+    }
   }
 
   private settled(

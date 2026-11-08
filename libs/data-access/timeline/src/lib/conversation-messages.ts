@@ -14,7 +14,9 @@ export type ConversationMessageFailure =
   | 'invalid-reaction'
   | 'not-allowed'
   | 'event-not-retryable'
-  | 'request-rejected';
+  | 'request-rejected'
+  /** A failed message cannot go back to the composer while another message is edited. */
+  | 'edit-in-progress';
 
 export type ConversationMessageOutcome =
   | {
@@ -38,6 +40,8 @@ export interface ConversationMessages {
   redact(messageId: string): Observable<ConversationMessageOutcome>;
   retry(messageId: string): Observable<ConversationMessageOutcome>;
   cancel(messageId: string): Observable<ConversationMessageOutcome>;
+  /** Cancel a failed message and put its text, and the reply it made, back into the draft. */
+  toComposer(messageId: string): Observable<ConversationMessageOutcome>;
   acknowledge(messageId: string): Observable<ConversationMessageOutcome>;
 }
 

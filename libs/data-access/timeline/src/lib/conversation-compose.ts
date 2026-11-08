@@ -3,7 +3,7 @@ import { Observable, defaultIfEmpty, defer, finalize, of, take } from 'rxjs';
 import { type Mention } from '@trinity/util/matrix';
 import { type ConversationState } from './conversation-runtime.service';
 import { type ConversationKey } from './conversation-messages';
-import { appendDraft, putBackDraft, withoutSent } from './draft-text';
+import { appendDraft } from './draft-text';
 
 export type ConversationComposeIntent =
   | { readonly kind: 'message' }
@@ -36,6 +36,9 @@ export interface ConversationTextSendRequest {
 export type ConversationTextDelivery =
   | { readonly kind: 'accepted'; readonly eventId: string }
   | { readonly kind: 'queued' }
+  /** Refused, and its failed echo keeps the text, with Retry and Delete. */
+  | { readonly kind: 'failed' }
+  /** Nothing was sent and nothing kept it: the text goes back into the draft. */
   | { readonly kind: 'rejected'; readonly retryable: boolean };
 
 export interface ConversationTextSendOperation {
@@ -46,6 +49,8 @@ export interface ConversationTextSendOperation {
 
 export interface ConversationTextSender {
   send(request: ConversationTextSendRequest): ConversationTextSendOperation;
+  /** Show again the messages a reload took off the timeline before the homeserver had them. */
+  restore?(key: ConversationKey): void;
 }
 
 export interface ConversationCompose {
@@ -74,12 +79,8 @@ interface ConversationComposePorts {
   readonly initialDraft: string;
   readonly initialSnapshot?: ConversationComposeSnapshot;
   persistDraft(draft: string): void;
-  /** The persisted draft, which still holds a message in flight that the box no longer shows. */
-  readDraft(): string;
-  /** Put a failed message back once this handle is retired: into a newer live one, or storage. */
-  putBackRetired(failed: string): void;
-  /** Drop a sent message once this handle is retired: from a newer live one, or storage. */
-  dropSentRetired(sent: string): void;
+  /** Put an unsent message back once this handle is retired: into a newer live one, or storage. */
+  putBackRetired(unsent: string): void;
   persistSnapshot(snapshot: ConversationComposeSnapshot | null): void;
   setTyping(typing: boolean): void;
   send(request: ConversationTextSendRequest): ConversationTextSendOperation;
@@ -139,28 +140,20 @@ export class ConversationComposeController {
   /**
    * Add `text` to the message draft, even while an edit is in progress: the edit's end shows it.
    * Not a user edit, so it leaves {@link revision} alone: a send in flight still settles as
-   * it would have, and its text stays in the persisted draft until it does.
+   * it would have.
    */
   keepMessageDraft(text: string): void {
-    this.messageDraftState.set(appendDraft(this.messageDraftState(), text));
-    this.ports.persistDraft(appendDraft(this.ports.readDraft(), text));
+    this.writeMessageDraft(appendDraft(this.messageDraftState(), text));
   }
 
-  /**
-   * Drop a message another handle for this room sent from the front of this one's draft, which
-   * read it from storage while it was sending. A box the person has changed keeps their text;
-   * storage drops it either way.
-   */
-  dropSent(sent: string): void {
-    this.messageDraftState.set(withoutSent(this.messageDraftState(), sent));
-    this.ports.persistDraft(withoutSent(this.ports.readDraft(), sent));
+  /** Put a message nothing sent back in front of the message draft. Not a user edit either. */
+  putBack(unsent: string): void {
+    this.writeMessageDraft(appendDraft(unsent, this.messageDraftState()));
   }
 
-  /** Put a failed message back in front of the message draft. Not a user edit either. */
-  putBack(failed: string): void {
-    // Storage, not the box: while this handle's own send is in flight only storage holds it.
-    this.messageDraftState.set(putBackDraft(this.messageDraftState(), failed));
-    this.ports.persistDraft(putBackDraft(this.ports.readDraft(), failed));
+  private writeMessageDraft(draft: string): void {
+    this.messageDraftState.set(draft);
+    this.ports.persistDraft(draft);
   }
 
   private setDraft(draft: string): void {
@@ -235,9 +228,8 @@ export class ConversationComposeController {
         intent,
       });
       this.sendingState.set(true);
-      if (intent.kind !== 'edit') {
-        this.messageDraftState.set('');
-      }
+      // The text leaves the draft now; until it is on the server the sender keeps it by txn id.
+      if (intent.kind !== 'edit') this.writeMessageDraft('');
       let settled = false;
 
       return new Observable<ConversationTextSendOutcome>((subscriber) => {
@@ -250,18 +242,11 @@ export class ConversationComposeController {
           .subscribe({
             next: (outcome) => {
               settled = true;
-              if (outcome.kind !== 'rejected') {
-                // Storage drops the sent text even if a reply or edit began meanwhile, or a
-                // reload would offer it again; only the box waits on the revision.
-                if (intent.kind !== 'edit') {
-                  if (this.ports.state() === 'retired') {
-                    this.ports.dropSentRetired(draft);
-                  } else {
-                    this.ports.persistDraft(
-                      withoutSent(this.ports.readDraft(), draft),
-                    );
-                  }
-                }
+              if (outcome.kind === 'failed') {
+                // Its failed echo holds the text and the reply now, not this draft.
+                if (this.revision === revision) this.finishIntent();
+                subscriber.next(this.rejected('send-rejected', true));
+              } else if (outcome.kind !== 'rejected') {
                 if (this.revision === revision) this.finishIntent();
                 subscriber.next(
                   outcome.kind === 'queued'
@@ -303,7 +288,7 @@ export class ConversationComposeController {
     revision: number,
   ): void {
     if (intent.kind === 'edit') return;
-    // Never skipped: text typed or kept since the send goes after the failed one. A retired
+    // Never skipped: text typed or kept since the send goes after the unsent one. A retired
     // handle's box is gone, and a newer one for the room would overwrite its storage write.
     if (this.ports.state() === 'retired') {
       this.ports.putBackRetired(draft);

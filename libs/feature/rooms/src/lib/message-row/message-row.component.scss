@@ -416,13 +416,10 @@
     flex-wrap: wrap;
   }
 
-  .msg__retry,
+  .msg__failed,
   .msg__waiting {
     flex-basis: 100%;
     margin-left: var(--message-body-indent);
-  }
-
-  .msg__waiting {
     display: flex;
     align-items: center;
     gap: var(--trinity-space-2);

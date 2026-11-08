@@ -14,6 +14,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter, take } from 'rxjs';
 import {
   TrnAlertService,
   TrnSurfaceService,
@@ -48,6 +49,7 @@ import {
   buildRowCapsMap,
   addableImages,
   dispatchSharedRowAction,
+  isComposerText,
 } from '../shared/row-actions';
 import {
   type MessageLongPressContext,
@@ -76,7 +78,7 @@ import {
 /** A composer the host renders outside the list, which takes the list's quotes and dropped files. */
 export type ComposerHost = Pick<
   MessageComposerComponent,
-  'insertQuote' | 'stageFiles'
+  'insertQuote' | 'stageFiles' | 'focus'
 >;
 
 /** How {@link MessageListBase.jumpTo} reaches a row already in the DOM. */
@@ -124,6 +126,8 @@ export abstract class MessageListBase {
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   /** False where threads cannot nest (inside a thread): no thread action, summaries or connectors. */
   readonly canThread = input(true);
+  /** Offer Edit on a failed message, raised as {@link editUnsent}. */
+  readonly canEditUnsent = input(false);
   /** The summaries rows show: none while {@link canThread} is off. */
   protected readonly shownThreadSummaries = computed(() =>
     this.canThread() ? this.threadSummaries() : NO_THREAD_SUMMARIES,
@@ -249,6 +253,8 @@ export abstract class MessageListBase {
   }>();
   readonly retry = output<string>();
   readonly cancelSend = output<string>();
+  /** Put a failed message back into the composer. */
+  readonly editUnsent = output<string>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
@@ -688,6 +694,7 @@ export abstract class MessageListBase {
         canRedactOthers: this.canRedactOthers(),
         canPin: this.canPin(),
         canThread: this.canThread(),
+        canEditUnsent: this.canEditUnsent(),
         pinnedIds: this.pinnedIds(),
         canAddToEmoji: addableImages(
           this.addToEmoji,
@@ -794,6 +801,14 @@ export abstract class MessageListBase {
       case 'cancel':
         this.cancelSend.emit(row.id);
         break;
+      case 'discard':
+        this.onDiscard(row);
+        break;
+      case 'to-composer':
+        this.editUnsent.emit(row.id);
+        // The row and its focused button are about to go; the text is in the composer now.
+        this.composerTarget()?.focus();
+        break;
       case 'jump':
         this.jumpToRequested(action.id);
         break;
@@ -807,6 +822,25 @@ export abstract class MessageListBase {
         break;
       }
     }
+  }
+
+  /** A failed message's Delete: its text exists nowhere else, so it is confirmed. */
+  private onDiscard(row: MessageRow): void {
+    this.alert
+      .confirm$({
+        header: 'Delete unsent message',
+        message: isComposerText(row)
+          ? 'This message was never sent, and its text will be lost. To change it instead, choose Edit.'
+          : 'This message was never sent and will be removed.',
+        confirmText: 'Delete',
+        variant: 'danger',
+      })
+      .pipe(
+        filter((confirmed) => confirmed),
+        take(1),
+        takeUntilDestroyed(this.listDestroyRef),
+      )
+      .subscribe(() => this.cancelSend.emit(row.id));
   }
 
   onDelete(row: MessageRow): void {

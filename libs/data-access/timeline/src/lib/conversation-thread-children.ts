@@ -119,7 +119,14 @@ export function createConversationThreadChildren(
             map((outcome) =>
               outcome.kind === 'applied'
                 ? applied(operation)
-                : rejected(operation, outcome.failure, outcome.retryable),
+                : rejected(
+                    operation,
+                    // Only a failed message going back to the composer is refused for an edit.
+                    outcome.failure === 'edit-in-progress'
+                      ? 'not-allowed'
+                      : outcome.failure,
+                    outcome.retryable,
+                  ),
             ),
           );
         });

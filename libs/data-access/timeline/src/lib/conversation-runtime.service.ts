@@ -11,7 +11,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { EMPTY, Observable, defer, of } from 'rxjs';
+import { EMPTY, Observable, defer, of, tap } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   MediaPipeline,
@@ -21,6 +21,7 @@ import {
 } from '@trinity/data-access/media';
 import {
   DraftStoreService,
+  holdsText,
   PrivacySettingsService,
 } from '@trinity/platform-native';
 import {
@@ -52,7 +53,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
-import { appendDraft, putBackDraft, withoutSent } from './draft-text';
+import { appendDraft } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -153,6 +154,15 @@ export class ConversationRuntime {
       this.matrix.accountIds();
       untracked(() => this.retireDetached());
     });
+    // A room can open after its handle: a reload without a sync cache, a link before the first
+    // sync. Held messages show once it is there; restoring twice adds nothing.
+    effect(() => {
+      const handle = this.focusedHandle();
+      const kind = handle?.timeline.loadState().kind;
+      if (handle && (kind === 'ready' || kind === 'empty')) {
+        untracked(() => this.textSender.restore?.(handle.key));
+      }
+    });
   }
 
   readonly focused = this.focusedHandle.asReadonly();
@@ -228,6 +238,7 @@ export class ConversationRuntime {
     // The list reports only changes, and showing the same room again may change nothing.
     entry.handle.timeline.setLiveView(this.listView);
     this.focusedHandle.set(entry.handle);
+    this.textSender.restore?.(entry.handle.key);
     return entry.handle;
   }
 
@@ -407,24 +418,13 @@ export class ConversationRuntime {
       initialDraft: this.initialDraft(immutableKey, draftKey),
       initialSnapshot: this.composeSnapshots.get(draftKey),
       persistDraft: (draft) => this.drafts.set(draftKey, draft),
-      readDraft: () => this.drafts.get(draftKey),
-      putBackRetired: (failed) => {
+      putBackRetired: (unsent) => {
         const live = this.entry(immutableKey);
-        if (live) live.composeController.putBack(failed);
+        if (live) live.composeController.putBack(unsent);
         else {
           this.drafts.set(
             draftKey,
-            putBackDraft(this.drafts.get(draftKey), failed),
-          );
-        }
-      },
-      dropSentRetired: (sent) => {
-        const live = this.entry(immutableKey);
-        if (live) live.composeController.dropSent(sent);
-        else {
-          this.drafts.set(
-            draftKey,
-            withoutSent(this.drafts.get(draftKey), sent),
+            appendDraft(unsent, this.drafts.get(draftKey)),
           );
         }
       },
@@ -506,6 +506,38 @@ export class ConversationRuntime {
             ? this.messageAdapter.cancel({ key: immutableKey, messageId })
             : of(rejected('cancel', 'conversation-unavailable')),
         ),
+      toComposer: (messageId: string) =>
+        defer(() => {
+          if (state() !== 'focused') {
+            return of(rejected('cancel', 'conversation-unavailable'));
+          }
+          const echoPrefix = `~${immutableKey.roomId}:`;
+          const txnId = messageId.startsWith(echoPrefix)
+            ? messageId.slice(echoPrefix.length)
+            : null;
+          const held =
+            txnId && this.drafts.pendingMessages(draftKey).get(txnId);
+          if (!txnId || !held) {
+            return of(rejected('cancel', 'message-unavailable'));
+          }
+          // The box holds the edit's body, and the edit would take the reply this text was for.
+          if (composeController.compose.intent().kind === 'edit') {
+            return of(rejected('cancel', 'edit-in-progress'));
+          }
+          return this.messageAdapter
+            .cancel({ key: immutableKey, messageId })
+            .pipe(
+              tap((outcome) => {
+                if (outcome.kind !== 'applied') return;
+                this.drafts.releaseWaiting(draftKey, txnId);
+                if (!holdsText(composeController.compose.draft(), held.body)) {
+                  composeController.putBack(held.body);
+                }
+                // The reply the text was written for wins over one begun since.
+                if (held.replyTo) composeController.beginReply(held.replyTo);
+              }),
+            );
+        }),
       acknowledge: (messageId: string) =>
         defer(() =>
           state() === 'focused'
@@ -818,6 +850,12 @@ export class ConversationRuntime {
         defer(
           () =>
             focused()?.messages.cancel(messageId) ?? of(unavailable('cancel')),
+        ),
+      toComposer: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.toComposer(messageId) ??
+            of(unavailable('cancel')),
         ),
       acknowledge: (messageId) =>
         defer(

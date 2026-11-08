@@ -72,6 +72,7 @@ function setup({
     content: { msgtype: 'm.text', body: 'hello' },
   });
   failedEcho.setTxnId('txn-1');
+  failedEcho.setStatus(EventStatus.SENDING);
   const room = {
     ...sourceRoom,
     getEventForTxnId: vi.fn((txnId: string) =>
@@ -179,7 +180,7 @@ describe('MatrixConversationTextSender', () => {
     ).resolves.toEqual({ kind: 'rejected', retryable: true });
   });
 
-  it('queues a send that failed offline and keeps its text for after a reload', async () => {
+  it('queues a send that failed offline and keeps it by txn id for after a reload', async () => {
     const { sender, drafts } = setup({
       failure: new ConnectionError('offline'),
     });
@@ -194,14 +195,18 @@ describe('MatrixConversationTextSender', () => {
         }).outcome,
       ),
     ).resolves.toEqual({ kind: 'queued' });
-    expect(drafts.holdWaiting).toHaveBeenCalledWith(
+    expect(drafts.holdWaiting).toHaveBeenLastCalledWith(
       conversationDraftKey(KEY),
       'txn-1',
-      'hello',
+      expect.objectContaining({
+        body: 'hello',
+        content: expect.objectContaining({ body: 'hello' }),
+      }),
     );
+    expect(drafts.releaseWaiting).not.toHaveBeenCalled();
   });
 
-  it('still rejects a send the server refused, keeping nothing aside', async () => {
+  it('reports a send the server refused as a failed message, keeping it by txn id', async () => {
     const { sender, drafts } = setup({
       failure: new MatrixError({ errcode: 'M_FORBIDDEN' }, 403),
     });
@@ -215,8 +220,31 @@ describe('MatrixConversationTextSender', () => {
           intent: { kind: 'message' },
         }).outcome,
       ),
-    ).resolves.toEqual({ kind: 'rejected', retryable: true });
-    expect(drafts.holdWaiting).not.toHaveBeenCalled();
+    ).resolves.toEqual({ kind: 'failed' });
+    expect(drafts.holdWaiting).toHaveBeenCalledWith(
+      conversationDraftKey(KEY),
+      'txn-1',
+      expect.objectContaining({ body: 'hello' }),
+    );
+    expect(drafts.releaseWaiting).not.toHaveBeenCalled();
+  });
+
+  it('lets go of a send that left no echo, whose text goes back to the draft', async () => {
+    const { sender, drafts } = setup({ rejected: true });
+
+    await firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'hello',
+        mentions: [],
+        intent: { kind: 'message' },
+      }).outcome,
+    );
+
+    expect(drafts.releaseWaiting).toHaveBeenCalledWith(
+      conversationDraftKey(KEY),
+      'txn-1',
+    );
   });
 
   it('rejects an action context for a different Account even when the Room id matches', async () => {
@@ -515,5 +543,274 @@ describe('MatrixConversationTextSender', () => {
 
     expect(operation.cancel()).toBe(false);
     subscription.unsubscribe();
+  });
+});
+
+describe('a sent message, kept by its txn id until the homeserver has it', () => {
+  const BOB = '@bob:example.org';
+  const MESSAGE = { mentions: [], intent: { kind: 'message' } } as const;
+
+  /** Like the SDK: a send adds a SENDING echo at once and settles it later. */
+  function sdkRoom(accountId: string) {
+    const echoes = new Map<string, MatrixEvent>();
+    const live: MatrixEvent[] = [];
+    const settle = new Map<
+      string,
+      { sent(): void; fail(error: Error): void }
+    >();
+    let next = 0;
+    const room = {
+      roomId: KEY.roomId,
+      getEventForTxnId: (txnId: string) => echoes.get(txnId),
+      findEventById: (id: string) =>
+        [...echoes.values(), ...live].find((event) => event.getId() === id),
+      getLiveTimeline: () => ({ getEvents: () => live }),
+      addPendingEvent: vi.fn((event: MatrixEvent, txnId: string) =>
+        echoes.set(txnId, event),
+      ),
+    };
+    const client = {
+      getUserId: () => accountId,
+      getRoom: () => room,
+      makeTxnId: () => `txn-${++next}`,
+      // A reply target the room does not hold stays loading.
+      fetchRoomEvent: vi.fn(() => new Promise<never>(() => undefined)),
+      sendMessage: vi.fn((roomId: string, content: object, txnId: string) => {
+        const echo = new MatrixEvent({
+          type: 'm.room.message',
+          content: content as IEvent['content'],
+          event_id: `~${roomId}:${txnId}`,
+          sender: accountId,
+          room_id: roomId,
+        });
+        echo.setTxnId(txnId);
+        echo.setStatus(EventStatus.SENDING);
+        echoes.set(txnId, echo);
+        return new Promise((resolve, reject) =>
+          settle.set(txnId, {
+            sent: () => {
+              echo.setStatus(EventStatus.SENT);
+              resolve({ event_id: echo.getId() });
+            },
+            fail: (error) => {
+              echo.error = error as never;
+              echo.setStatus(EventStatus.NOT_SENT);
+              reject(error);
+            },
+          }),
+        );
+      }),
+    };
+    return { room, client, live, echoes, settle };
+  }
+
+  async function setup(
+    rooms: Record<string, ReturnType<typeof sdkRoom>>,
+    drafts?: DraftStoreService,
+  ) {
+    TestBed.configureTestingModule({
+      providers: [
+        ...(drafts ? [{ provide: DraftStoreService, useValue: drafts }] : []),
+        {
+          provide: MatrixClientService,
+          useValue: { clientFor: (id: string) => rooms[id]?.client },
+        },
+        {
+          provide: ImagePackEditorService,
+          useValue: { emoticons: signal(new Map()) },
+        },
+      ],
+    });
+    const store = TestBed.inject(DraftStoreService);
+    if (!drafts) await store.init();
+    return { sender: TestBed.inject(CONVERSATION_TEXT_SENDER), store };
+  }
+
+  /** The stored drafts as a reloaded page reads them, with the SDK's echoes gone. */
+  async function reload(store: DraftStoreService) {
+    await store.flush();
+    TestBed.resetTestingModule();
+    const reloaded = new DraftStoreService();
+    await reloaded.init();
+    const fresh = sdkRoom(KEY.accountId);
+    return { fresh, ...(await setup({ [KEY.accountId]: fresh }, reloaded)) };
+  }
+
+  const held = (
+    store: DraftStoreService,
+    accountId: string = KEY.accountId,
+  ) => [
+    ...store
+      .pendingMessages(conversationDraftKey({ ...KEY, accountId }))
+      .keys(),
+  ];
+
+  afterEach(() => localStorage.clear());
+
+  it('lets each of two sends go by its own id when they settle out of order', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    const first = firstValueFrom(
+      sender.send({ key: KEY, body: 'same', ...MESSAGE }).outcome,
+    );
+    const second = firstValueFrom(
+      sender.send({ key: KEY, body: 'same', ...MESSAGE }).outcome,
+    );
+    expect(held(store)).toEqual(['txn-1', 'txn-2']);
+
+    sdk.settle.get('txn-2')?.sent();
+    await second;
+    expect(held(store)).toEqual(['txn-1']);
+
+    sdk.settle.get('txn-1')?.sent();
+    await expect(first).resolves.toMatchObject({ kind: 'accepted' });
+    expect(held(store)).toEqual([]);
+  });
+
+  it('shows a failed send again after a reload, ready to Retry under its txn id', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    const outcome = firstValueFrom(
+      sender.send({ key: KEY, body: 'hello **you**', ...MESSAGE }).outcome,
+    );
+    sdk.settle
+      .get('txn-1')
+      ?.fail(new MatrixError({ errcode: 'M_FORBIDDEN' }, 403));
+    await expect(outcome).resolves.toEqual({ kind: 'failed' });
+    const sentContent = sdk.client.sendMessage.mock.calls[0][1];
+
+    const after = await reload(store);
+    after.sender.restore?.(KEY);
+    after.sender.restore?.(KEY); // a second handle for the room adds nothing
+
+    expect(after.fresh.room.addPendingEvent).toHaveBeenCalledOnce();
+    const [echo, txnId] = after.fresh.room.addPendingEvent.mock.calls[0];
+    expect(txnId).toBe('txn-1');
+    expect(echo.getTxnId()).toBe('txn-1');
+    expect(echo.getId()).toBe(`~${KEY.roomId}:txn-1`);
+    expect(echo.status).toBe(EventStatus.NOT_SENT);
+    expect(echo.getContent()).toEqual(sentContent);
+    expect(after.store.get(conversationDraftKey(KEY))).toBe('');
+
+    // Retry resends that echo; once the homeserver has it, it is let go.
+    echo.setStatus(EventStatus.SENDING);
+    expect(held(after.store)).toEqual(['txn-1']);
+    echo.setStatus(EventStatus.SENT);
+    expect(held(after.store)).toEqual([]);
+  });
+
+  it('lets go of a held message the timeline already shows as sent', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    void firstValueFrom(
+      sender.send({ key: KEY, body: 'hello', ...MESSAGE }).outcome,
+    );
+
+    const after = await reload(store);
+    after.fresh.live.push(
+      new MatrixEvent({
+        type: 'm.room.message',
+        event_id: '$remote',
+        content: { msgtype: 'm.text', body: 'hello' },
+        unsigned: { transaction_id: 'txn-1' },
+      }),
+    );
+    after.sender.restore?.(KEY);
+
+    expect(after.fresh.room.addPendingEvent).not.toHaveBeenCalled();
+    expect(held(after.store)).toEqual([]);
+  });
+
+  it('keeps one account’s failed message out of another account in the same room', async () => {
+    const alice = sdkRoom(KEY.accountId);
+    const bob = sdkRoom(BOB);
+    const { sender, store } = await setup({
+      [KEY.accountId]: alice,
+      [BOB]: bob,
+    });
+    const outcome = firstValueFrom(
+      sender.send({ key: KEY, body: 'alice only', ...MESSAGE }).outcome,
+    );
+    alice.settle
+      .get('txn-1')
+      ?.fail(new MatrixError({ errcode: 'M_FORBIDDEN' }, 403));
+    await outcome;
+
+    sender.restore?.({ accountId: BOB, roomId: KEY.roomId });
+
+    expect(bob.room.addPendingEvent).not.toHaveBeenCalled();
+    expect(held(store, BOB)).toEqual([]);
+    expect(held(store)).toEqual(['txn-1']);
+  });
+
+  it('keeps the reply target and mentions from the moment it sends', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    const mentions = [{ userId: '@bob:hs', display: '@Bob' }];
+
+    void firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'reply @Bob',
+        mentions,
+        intent: { kind: 'reply', eventId: '$target' },
+      }).outcome,
+    );
+
+    expect(
+      store.pendingMessages(conversationDraftKey(KEY)).get('txn-1'),
+    ).toMatchObject({ body: 'reply @Bob', replyTo: '$target', mentions });
+  });
+
+  it('rebuilds a reply held before it was built as a reply, with its mentions', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    store.holdWaiting(conversationDraftKey(KEY), 'txn-9', {
+      body: 'reply @Bob',
+      replyTo: '$target',
+      mentions: [{ userId: '@bob:hs', display: '@Bob' }],
+    });
+
+    sender.restore?.(KEY);
+
+    const [echo] = sdk.room.addPendingEvent.mock.calls[0];
+    expect(echo.getContent()['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$target' },
+    });
+    expect(echo.getContent()['m.mentions']).toEqual({
+      user_ids: ['@bob:hs'],
+    });
+  });
+
+  it('shows a held message once its room arrives, after a restore that found no room', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    store.holdWaiting(conversationDraftKey(KEY), 'txn-9', { body: 'kept' });
+    const getRoom = vi.spyOn(sdk.client, 'getRoom');
+    getRoom.mockReturnValueOnce(null as never);
+
+    sender.restore?.(KEY);
+    expect(sdk.room.addPendingEvent).not.toHaveBeenCalled();
+    sender.restore?.(KEY);
+
+    expect(sdk.room.addPendingEvent).toHaveBeenCalledOnce();
+  });
+
+  it('shows no failed copy of a reply still waiting for its target to load', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender } = await setup({ [KEY.accountId]: sdk });
+    const sending = sender
+      .send({
+        key: KEY,
+        body: 'reply text',
+        mentions: [],
+        intent: { kind: 'reply', eventId: '$not-loaded' },
+      })
+      .outcome.subscribe();
+
+    sender.restore?.(KEY);
+
+    expect(sdk.room.addPendingEvent).not.toHaveBeenCalled();
+    sending.unsubscribe();
   });
 });

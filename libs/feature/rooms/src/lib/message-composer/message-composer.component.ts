@@ -656,6 +656,11 @@ export class MessageComposerComponent {
     this.formatting.insertQuote(block);
   }
 
+  /** Put focus in the text field. */
+  focus(): void {
+    queueMicrotask(() => this.field.focus());
+  }
+
   onTogglePreview(): void {
     this.formatting.onTogglePreview();
   }
