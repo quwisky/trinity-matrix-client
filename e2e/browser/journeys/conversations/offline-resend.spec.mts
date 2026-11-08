@@ -96,6 +96,55 @@ test.describe('Offline resend', () => {
     expect(await room.bodies()).toEqual([first, second]);
   });
 
+  test('a refused message stays out of the box, survives a reload, and Retry sends it once', async ({
+    page,
+    request,
+  }) => {
+    const runId = `${testResourceId('run')}r`;
+    const room = await seed(request, session.hs as string, runId);
+    const refused = `refused ${runId}`;
+    const deleted = `deleted ${runId}`;
+    const composer = page.getByTestId('composer-input');
+    const sendRoute = '**/_matrix/client/v3/rooms/*/send/**';
+
+    await login(page, room.reader);
+    await openNamedRoom(page, room.roomName);
+    await page.route(sendRoute, (route) =>
+      route.fulfill({
+        status: 403,
+        json: { errcode: 'M_FORBIDDEN', error: 'refused for the test' },
+      }),
+    );
+    for (const text of [refused, deleted]) {
+      await sendComposerLines(page, [text]);
+      await expect(
+        page.locator('.msg', { hasText: text }).getByText(/Failed to send/),
+      ).toBeVisible({ timeout: 30_000 });
+    }
+    await expect(composer).toHaveValue('');
+    await page.unroute(sendRoute);
+
+    await page.reload();
+    await openNamedRoom(page, room.roomName);
+    await expect(composer).toHaveValue('');
+    const failed = page.locator('.msg', { hasText: refused });
+    await expect(failed.getByText(/Failed to send/)).toBeVisible({
+      timeout: 30_000,
+    });
+    await page
+      .locator('.msg', { hasText: deleted })
+      .getByTestId('msg-delete-unsent')
+      .click();
+    await expect(page.locator('.msg', { hasText: deleted })).toHaveCount(0);
+    await failed.getByText(/Failed to send/).click();
+
+    await expect.poll(room.bodies, { timeout: 60_000 }).toEqual([refused]);
+    await expect(page.locator('.msg', { hasText: refused })).toHaveCount(1);
+    await expect(page.getByText(/Failed to send/)).toHaveCount(0);
+    await expect(composer).toHaveValue('');
+    expect(await room.bodies()).toEqual([refused]);
+  });
+
   test('a cancelled offline message is never sent', async ({
     page,
     request,
