@@ -96,7 +96,7 @@ test.describe('Offline resend', () => {
     expect(await room.bodies()).toEqual([first, second]);
   });
 
-  test('a refused message stays out of the box, survives a reload, and Retry sends it once', async ({
+  test('a refused message stays out of the box and survives a reload, then Retry sends it once, Delete asks first and Edit takes it back', async ({
     page,
     request,
   }) => {
@@ -104,6 +104,7 @@ test.describe('Offline resend', () => {
     const room = await seed(request, session.hs as string, runId);
     const refused = `refused ${runId}`;
     const deleted = `deleted ${runId}`;
+    const edited = `edited ${runId}`;
     const composer = page.getByTestId('composer-input');
     const sendRoute = '**/_matrix/client/v3/rooms/*/send/**';
 
@@ -115,7 +116,7 @@ test.describe('Offline resend', () => {
         json: { errcode: 'M_FORBIDDEN', error: 'refused for the test' },
       }),
     );
-    for (const text of [refused, deleted]) {
+    for (const text of [refused, deleted, edited]) {
       await sendComposerLines(page, [text]);
       await expect(
         page.locator('.msg', { hasText: text }).getByText(/Failed to send/),
@@ -135,13 +136,28 @@ test.describe('Offline resend', () => {
       .locator('.msg', { hasText: deleted })
       .getByTestId('msg-delete-unsent')
       .click();
+    // Its text exists nowhere else, so Delete asks first.
+    const confirm = page
+      .locator('[role="dialog"], [role="alertdialog"]')
+      .filter({ hasText: 'Delete unsent message' });
+    await expect(confirm).toContainText('its text will be lost');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
     await expect(page.locator('.msg', { hasText: deleted })).toHaveCount(0);
     await failed.getByText(/Failed to send/).click();
 
     await expect.poll(room.bodies, { timeout: 60_000 }).toEqual([refused]);
     await expect(page.locator('.msg', { hasText: refused })).toHaveCount(1);
-    await expect(page.getByText(/Failed to send/)).toHaveCount(0);
     await expect(composer).toHaveValue('');
+    expect(await room.bodies()).toEqual([refused]);
+
+    // Edit takes the last one out of the timeline and back into the box, to change it.
+    await page
+      .locator('.msg', { hasText: edited })
+      .getByTestId('msg-edit-unsent')
+      .click();
+    await expect(composer).toHaveValue(edited);
+    await expect(page.locator('.msg', { hasText: edited })).toHaveCount(0);
+    await expect(page.getByText(/Failed to send/)).toHaveCount(0);
     expect(await room.bodies()).toEqual([refused]);
   });
 

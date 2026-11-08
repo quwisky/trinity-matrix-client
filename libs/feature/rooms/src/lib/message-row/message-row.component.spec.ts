@@ -1172,24 +1172,49 @@ describe('MessageRowComponent', () => {
     expect(action).toHaveBeenCalledWith({ type: 'cancel' });
   });
 
-  it('offers Retry and a named Delete on a failed message', async () => {
+  it('offers Retry, Edit and a named Delete on a failed message', async () => {
     const action = vi.fn();
     const { container } = await renderRow(
-      { row: row({ status: 'failed', body: 'see you soon' }) },
+      {
+        row: row({ status: 'failed', body: 'see you soon' }),
+        caps: caps({ toComposer: true }),
+      },
       { action },
     );
 
     fireEvent.click(container.querySelector('.msg__retry') as HTMLElement);
     expect(action).toHaveBeenCalledWith({ type: 'retry' });
+    const edit = container.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-edit-unsent"]',
+    );
+    expect(edit?.textContent?.trim()).toBe('Edit');
+    expect(edit?.getAttribute('aria-label')).toMatch(
+      /^Edit unsent message in the composer, .*see you soon$/,
+    );
+    fireEvent.click(edit as HTMLElement);
+    expect(action).toHaveBeenCalledWith({ type: 'to-composer' });
     const remove = container.querySelector<HTMLButtonElement>(
       '[data-testid="msg-delete-unsent"]',
     );
     expect(remove?.textContent?.trim()).toBe('Delete');
     expect(remove?.getAttribute('aria-label')).toMatch(
-      /^Delete unsent message, .*see you soon$/,
+      /^Delete unsent message and its text, .*see you soon$/,
     );
     fireEvent.click(remove as HTMLElement);
-    expect(action).toHaveBeenCalledWith({ type: 'cancel' });
+    expect(action).toHaveBeenCalledWith({ type: 'discard' });
+  });
+
+  it('offers no Edit for a failed message where the composer cannot take it back', async () => {
+    const { container } = await renderRow({
+      row: row({ status: 'failed' }),
+    });
+
+    expect(
+      container.querySelector('[data-testid="msg-edit-unsent"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="msg-delete-unsent"]'),
+    ).not.toBeNull();
   });
 
   it('hides the waiting state in read-only mode', async () => {

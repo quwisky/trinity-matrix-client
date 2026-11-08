@@ -14,6 +14,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { filter, take } from 'rxjs';
 import {
   TrnAlertService,
   TrnSurfaceService,
@@ -124,6 +125,8 @@ export abstract class MessageListBase {
   readonly threadSummaries = input<Record<string, ThreadSummary>>({});
   /** False where threads cannot nest (inside a thread): no thread action, summaries or connectors. */
   readonly canThread = input(true);
+  /** Offer Edit on a failed message, raised as {@link editUnsent}. */
+  readonly canEditUnsent = input(false);
   /** The summaries rows show: none while {@link canThread} is off. */
   protected readonly shownThreadSummaries = computed(() =>
     this.canThread() ? this.threadSummaries() : NO_THREAD_SUMMARIES,
@@ -249,6 +252,8 @@ export abstract class MessageListBase {
   }>();
   readonly retry = output<string>();
   readonly cancelSend = output<string>();
+  /** Put a failed message back into the composer. */
+  readonly editUnsent = output<string>();
   readonly deleteMessage = output<string>();
   readonly react = output<{ id: string; key: string }>();
   /** A `matrix.to` permalink clicked in a message body, for the host to route in-app. */
@@ -688,6 +693,7 @@ export abstract class MessageListBase {
         canRedactOthers: this.canRedactOthers(),
         canPin: this.canPin(),
         canThread: this.canThread(),
+        canEditUnsent: this.canEditUnsent(),
         pinnedIds: this.pinnedIds(),
         canAddToEmoji: addableImages(
           this.addToEmoji,
@@ -794,6 +800,12 @@ export abstract class MessageListBase {
       case 'cancel':
         this.cancelSend.emit(row.id);
         break;
+      case 'discard':
+        this.onDiscard(row);
+        break;
+      case 'to-composer':
+        this.editUnsent.emit(row.id);
+        break;
       case 'jump':
         this.jumpToRequested(action.id);
         break;
@@ -807,6 +819,24 @@ export abstract class MessageListBase {
         break;
       }
     }
+  }
+
+  /** A failed message's Delete: its text exists nowhere else, so it is confirmed. */
+  private onDiscard(row: MessageRow): void {
+    this.alert
+      .confirm$({
+        header: 'Delete unsent message',
+        message:
+          'This message was never sent, and its text will be lost. To change it instead, choose Edit.',
+        confirmText: 'Delete',
+        variant: 'danger',
+      })
+      .pipe(
+        filter((confirmed) => confirmed),
+        take(1),
+        takeUntilDestroyed(this.listDestroyRef),
+      )
+      .subscribe(() => this.cancelSend.emit(row.id));
   }
 
   onDelete(row: MessageRow): void {

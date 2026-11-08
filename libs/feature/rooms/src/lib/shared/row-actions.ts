@@ -66,6 +66,8 @@ export interface RowCapsPolicy {
   readonly pinnedIds: readonly string[];
   /** Whether this message has an image (its sticker, or an emoji) to offer for the personal pack. */
   readonly canAddToEmoji: (message: MessageView) => boolean;
+  /** Whether a failed message can go back into this host's composer. */
+  readonly canEditUnsent?: boolean;
 }
 
 /** One row's capabilities under a host's {@link RowCapsPolicy}. */
@@ -93,6 +95,8 @@ export function buildRowCaps(
     addToEmoji: !unsent && policy.canAddToEmoji(message),
     isOwn: message.isOwn,
     readOnly: false,
+    toComposer:
+      !!policy.canEditUnsent && message.isOwn && message.status === 'failed',
   };
 }
 
@@ -208,6 +212,7 @@ export function sameRowCaps(a: MessageRowCaps, b: MessageRowCaps): boolean {
     a.saveMedia === b.saveMedia &&
     a.canForward === b.canForward &&
     a.addToEmoji === b.addToEmoji &&
+    a.toComposer === b.toComposer &&
     a.isOwn === b.isOwn &&
     a.readOnly === b.readOnly
   );

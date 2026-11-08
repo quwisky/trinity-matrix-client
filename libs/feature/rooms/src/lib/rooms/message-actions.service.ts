@@ -403,6 +403,14 @@ export class MessageActionsService {
     );
   }
 
+  /** Put a failed message back into the composer, to change it and send it again. */
+  onEditUnsent(messageId: string): void {
+    this.runMessageAction(
+      this.messageCommands.toComposer(messageId),
+      'Could not move the message back to the composer.',
+    );
+  }
+
   onCancel(messageId: string): void {
     this.runMessageAction(
       this.messageCommands.cancel(messageId),

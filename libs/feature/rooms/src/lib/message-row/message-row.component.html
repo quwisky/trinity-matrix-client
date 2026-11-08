@@ -284,12 +284,27 @@
         >
           Failed to send — retry
         </button>
+        @if (caps().toComposer) {
+          <button
+            type="button"
+            class="msg__cancel msg__target"
+            data-testid="msg-edit-unsent"
+            [attr.aria-label]="
+              'Edit unsent message in the composer, ' + rowLabel()
+            "
+            (click)="action.emit({ type: 'to-composer' })"
+          >
+            Edit
+          </button>
+        }
         <button
           type="button"
           class="msg__cancel msg__target"
           data-testid="msg-delete-unsent"
-          [attr.aria-label]="'Delete unsent message, ' + rowLabel()"
-          (click)="action.emit({ type: 'cancel' })"
+          [attr.aria-label]="
+            'Delete unsent message and its text, ' + rowLabel()
+          "
+          (click)="action.emit({ type: 'discard' })"
         >
           Delete
         </button>

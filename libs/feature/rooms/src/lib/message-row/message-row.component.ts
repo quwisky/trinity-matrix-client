@@ -106,6 +106,8 @@ export interface MessageRowCaps {
   isOwn?: boolean;
   /** Hide the hover toolbar + retry affordance (view-only thread panel). */
   readOnly: boolean;
+  /** Offer Edit on a failed message: its host can put it back into the composer. */
+  toComposer?: boolean;
 }
 
 /** The concrete message and press point a mobile action sheet must preserve. */
@@ -121,6 +123,10 @@ export type MessageRowAction =
   | MessageAction
   | { type: 'retry' }
   | { type: 'cancel' }
+  /** Discard a failed message and its text, once confirmed. */
+  | { type: 'discard' }
+  /** Put a failed message back into the composer to change it. */
+  | { type: 'to-composer' }
   | { type: 'jump'; id: string }
   /** Show this message's earlier versions; raised by the "(edited)" marker, which is part of the row, not `MessageAction`. */
   | { type: 'edit-history' }

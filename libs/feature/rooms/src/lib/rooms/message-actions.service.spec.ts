@@ -76,6 +76,9 @@ describe('MessageActionsService', () => {
   const cancel = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
     applied('cancel'),
   );
+  const toComposer = vi.fn<() => Observable<ConversationMessageOutcome>>(() =>
+    applied('cancel'),
+  );
   const isPinned = vi.fn(() => false);
   const pin = vi.fn(() =>
     of({ kind: 'applied' as const, operation: 'pin' as const }),
@@ -119,7 +122,7 @@ describe('MessageActionsService', () => {
     key,
     media: { send: mediaSend },
     compose,
-    messages: { redact, toggleReaction, retry, cancel },
+    messages: { redact, toggleReaction, retry, cancel, toComposer },
     timeline: { messages: timelineMessages },
   };
   // The runtime's `focused()` follows the room the person is in; tests move it to another room.
@@ -162,7 +165,7 @@ describe('MessageActionsService', () => {
             )(mentions),
           setTyping: (typing: boolean) => currentCompose().setTyping(typing),
         },
-        messages: { redact, toggleReaction, retry, cancel },
+        messages: { redact, toggleReaction, retry, cancel, toComposer },
         pins: { isPinned, pin, unpin },
       }),
     },
@@ -239,6 +242,7 @@ describe('MessageActionsService', () => {
     setDraft.mockReset();
     cancelIntent.mockReset();
     retry.mockReset().mockImplementation(() => applied('retry'));
+    toComposer.mockReset().mockImplementation(() => applied('cancel'));
     roomEncrypted = false;
     focusedConversation = conversation;
     draft.set('');
@@ -475,6 +479,31 @@ describe('MessageActionsService', () => {
       expect(setDraft).not.toHaveBeenCalled();
       expect(cancelIntent).not.toHaveBeenCalled();
       expect(submitText).not.toHaveBeenCalled();
+    });
+
+    it('goes back to the composer on Edit, through the runtime, which owns the draft', () => {
+      const { actions } = build();
+
+      actions.onEditUnsent('~!r:hs:txn-1');
+
+      expect(toComposer).toHaveBeenCalledExactlyOnceWith('~!r:hs:txn-1');
+      expect(setDraft).not.toHaveBeenCalled();
+    });
+
+    it('says so when it cannot take a message back to the composer', () => {
+      const { actions } = build();
+      toComposer.mockReturnValueOnce(
+        of({
+          kind: 'rejected',
+          operation: 'cancel',
+          failure: 'message-unavailable',
+          retryable: false,
+        }),
+      );
+
+      actions.onEditUnsent('~!r:hs:txn-1');
+
+      expect(toastShow).toHaveBeenCalled();
     });
 
     it('is removed on Delete without touching the box', () => {

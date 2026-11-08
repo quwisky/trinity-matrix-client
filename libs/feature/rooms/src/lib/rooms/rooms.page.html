@@ -256,6 +256,8 @@
             (sendSticker)="messageActions.onSendSticker($event)"
             (retry)="messageActions.onRetry($event)"
             (cancelSend)="messageActions.onCancel($event)"
+            [canEditUnsent]="true"
+            (editUnsent)="messageActions.onEditUnsent($event)"
             (deleteMessage)="messageActions.onDelete($event)"
             (react)="messageActions.onReact($event)"
             (matrixLink)="messageActions.onMatrixLink($event)"

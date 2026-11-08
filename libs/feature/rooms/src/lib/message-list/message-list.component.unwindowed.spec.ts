@@ -1108,6 +1108,34 @@ describe('MessageListComponent with windowing off', () => {
       expect(deleted).toEqual(['$2']);
     });
 
+    it('discards an unsent message only when the confirm dialog is accepted, saying its text goes', async () => {
+      const cmp = await make();
+      const confirm = TestBed.inject(TrnAlertService).confirm$;
+      const cancelled: string[] = [];
+      cmp.cancelSend.subscribe((id) => cancelled.push(id));
+
+      vi.mocked(confirm).mockReturnValueOnce(of(false));
+      cmp.onRowAction(row('$1'), { type: 'discard' });
+      expect(cancelled).toEqual([]);
+      expect(vi.mocked(confirm).mock.lastCall?.[0].message).toMatch(
+        /text will be lost/,
+      );
+
+      vi.mocked(confirm).mockReturnValueOnce(of(true));
+      cmp.onRowAction(row('$2'), { type: 'discard' });
+      expect(cancelled).toEqual(['$2']);
+    });
+
+    it('hands an unsent message back to the composer', async () => {
+      const cmp = await make();
+      const edited: string[] = [];
+      cmp.editUnsent.subscribe((id) => edited.push(id));
+
+      cmp.onRowAction(row('$1'), { type: 'to-composer' });
+
+      expect(edited).toEqual(['$1']);
+    });
+
     it('copies a message body to the clipboard', async () => {
       const cmp = await make();
       const writeText = vi.fn();

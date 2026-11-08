@@ -288,6 +288,9 @@ export const SHARED_MOCKS: Provider[] = [
         cancel: vi.fn(() =>
           of({ kind: 'applied' as const, operation: 'cancel' as const }),
         ),
+        toComposer: vi.fn(() =>
+          of({ kind: 'applied' as const, operation: 'cancel' as const }),
+        ),
         acknowledge: vi.fn(() =>
           of({ kind: 'applied' as const, operation: 'receipt' as const }),
         ),
