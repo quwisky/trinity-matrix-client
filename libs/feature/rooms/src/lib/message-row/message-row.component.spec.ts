@@ -1172,6 +1172,26 @@ describe('MessageRowComponent', () => {
     expect(action).toHaveBeenCalledWith({ type: 'cancel' });
   });
 
+  it('offers Retry and a named Delete on a failed message', async () => {
+    const action = vi.fn();
+    const { container } = await renderRow(
+      { row: row({ status: 'failed', body: 'see you soon' }) },
+      { action },
+    );
+
+    fireEvent.click(container.querySelector('.msg__retry') as HTMLElement);
+    expect(action).toHaveBeenCalledWith({ type: 'retry' });
+    const remove = container.querySelector<HTMLButtonElement>(
+      '[data-testid="msg-delete-unsent"]',
+    );
+    expect(remove?.textContent?.trim()).toBe('Delete');
+    expect(remove?.getAttribute('aria-label')).toMatch(
+      /^Delete unsent message, .*see you soon$/,
+    );
+    fireEvent.click(remove as HTMLElement);
+    expect(action).toHaveBeenCalledWith({ type: 'cancel' });
+  });
+
   it('hides the waiting state in read-only mode', async () => {
     const { container } = await renderRow({
       row: row({ status: 'waiting' }),
