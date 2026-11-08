@@ -16,6 +16,7 @@ import { TimelineScrollActivity } from '../shared/timeline-scroll-activity';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 /** The fixed estimate an unmeasured row is counted at with the flag off. */
 const EST = 64;
@@ -58,6 +59,8 @@ function resizeEntry(target: Element, height: number): ResizeObserverEntry {
 }
 
 describe('MessageListComponent: blank rows while scrolling fast', () => {
+  compileMessageListBeforeTests();
+
   let clock: number;
   let st: number;
   const ownScrollIntoView = Element.prototype.scrollIntoView;

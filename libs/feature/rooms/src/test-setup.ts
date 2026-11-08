@@ -1,44 +1,10 @@
 import '../../../../test-setup.base';
-import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideTrnIcons } from '@trinity/components/foundations';
-import { RoomActionPermissionsService } from '@trinity/data-access/room-administration';
-import {
-  ROOM_LIBRARY_GOVERNANCE_POLICY,
-  type RoomLibraryGovernancePolicy,
-} from '@trinity/data-access/room-library';
-import { CONVERSATION_PRIVACY_PREFERENCES } from '@trinity/data-access/timeline';
-import { providePrivacyPreferenceSet } from '@trinity/platform-native';
 import { beforeEach } from 'vitest';
+import { featureRoomsTestProviders } from './lib/testing/test-providers';
 
 beforeEach(() => {
-  TestBed.configureTestingModule({
-    providers: [
-      provideTrnIcons(),
-      providePrivacyPreferenceSet(CONVERSATION_PRIVACY_PREFERENCES),
-      {
-        provide: ROOM_LIBRARY_GOVERNANCE_POLICY,
-        useFactory: (): RoomLibraryGovernancePolicy => {
-          const permissions = inject(RoomActionPermissionsService);
-          return {
-            authorize: (key, action) => {
-              const availability =
-                action === 'invite'
-                  ? permissions.roomFor(key).invite
-                  : permissions.roomFor(key).curateSpace;
-              return availability.available
-                ? { kind: 'allowed' }
-                : {
-                    kind: 'rejected',
-                    reason:
-                      availability.reason ?? 'This room action is unavailable.',
-                  };
-            },
-          };
-        },
-      },
-    ],
-  });
+  TestBed.configureTestingModule({ providers: featureRoomsTestProviders() });
 });
 
 // jsdom has no ResizeObserver. This controllable stub lets the message-list tests

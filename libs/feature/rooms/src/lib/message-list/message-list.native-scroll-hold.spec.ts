@@ -14,6 +14,7 @@ import { messageView } from '../testing/message-view.fixture';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { MessageListComponent } from './message-list.component';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 const IPHONE =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
@@ -44,6 +45,8 @@ const page = () =>
  * measurements in the pull request, and `timeline-older-touch.spec.mts` for the layout in Chromium.
  */
 describe('message list on iOS: older history under a finger', () => {
+  compileMessageListBeforeTests();
+
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {

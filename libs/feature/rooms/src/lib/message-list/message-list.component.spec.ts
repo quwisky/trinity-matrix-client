@@ -26,6 +26,7 @@ import {
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 import { messageView } from '../testing/message-view.fixture';
 import { provideRoomMessageListCommands } from './message-list-commands';
+import { compileMessageListBeforeTests } from '../testing/test-bed';
 
 function msg(
   id: string,
@@ -54,6 +55,8 @@ const notAtBottom = (cmp: MessageListComponent): boolean =>
   (cmp as unknown as { notAtBottom: () => boolean }).notAtBottom();
 
 describe('MessageListComponent', () => {
+  compileMessageListBeforeTests();
+
   beforeEach(() => {
     const compose = new ConversationComposeStub();
     TestBed.overrideProvider(ConversationRuntime, {

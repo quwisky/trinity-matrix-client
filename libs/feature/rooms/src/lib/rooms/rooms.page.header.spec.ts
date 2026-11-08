@@ -79,6 +79,7 @@ import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { roomSummary } from '../testing/room-summary.fixture';
+import { compileBeforeTests } from '../testing/test-bed';
 
 const BOB: MemberSummary = {
   userId: '@bob:hs',
@@ -371,6 +372,11 @@ function renderHeader(
   lastRender = { fixture, activeAccountId: vm.activeAccountId };
   return fixture.nativeElement as HTMLElement;
 }
+
+compileBeforeTests(() => {
+  renderHeader(0);
+  return lastFixture;
+});
 
 describe('RoomsPage user panel presence', () => {
   const panelPresence = () =>
