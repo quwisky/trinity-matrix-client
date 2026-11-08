@@ -2,7 +2,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  computed,
   effect,
   inject,
 } from '@angular/core';
@@ -14,7 +13,6 @@ import {
 } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   BUG_REPORT_LAUNCHER,
   getTrinityDesktopBridge,
@@ -44,7 +42,6 @@ const TITLE_ROW_CLASS = 'trn-title-row';
 export class TitleBarComponent {
   private readonly body = inject(DOCUMENT).body;
   private readonly bridge = getTrinityDesktopBridge();
-  private readonly diagnosticLog = inject(DiagnosticLogService);
   private readonly bugReport = inject(BUG_REPORT_LAUNCHER, { optional: true });
 
   protected readonly titleBar = inject(TitleBarState);
@@ -54,16 +51,8 @@ export class TitleBarComponent {
   // anything but 'row' keeps the OS bar's assumption: no row.
   protected readonly visible =
     this.bridge?.capabilities.titleBar?.mode === 'row';
-  /**
-   * Report a bug, while "Keep a diagnostic log" is known to be on. Hidden while the setting
-   * is still being read.
-   */
-  protected readonly canReportBug = computed(
-    () =>
-      this.bugReport !== null &&
-      this.diagnosticLog.settingKnown() &&
-      this.diagnosticLog.keepLog(),
-  );
+  /** Report a bug, wherever the app provides a way to open it. */
+  protected readonly canReportBug = this.bugReport !== null;
 
   constructor() {
     if (!this.visible) return;
