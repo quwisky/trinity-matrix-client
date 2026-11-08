@@ -1,5 +1,5 @@
-import { ApplicationRef, signal, type Signal } from '@angular/core';
-import { SIGNAL, type ReactiveNode } from '@angular/core/primitives/signals';
+import { ApplicationRef, signal } from '@angular/core';
+import { liveConsumers } from '@trinity/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
@@ -143,14 +143,6 @@ function setup(options: { allowed?: boolean; hierarchyError?: Error } = {}) {
   };
 }
 
-/** How many live watchers (effects) a signal feeds. */
-function liveConsumers(source: Signal<unknown>): number {
-  let count = 0;
-  let link = (source[SIGNAL] as ReactiveNode).consumers;
-  for (; link; link = link.nextConsumer) count += 1;
-  return count;
-}
-
 describe('SpaceContentsService', () => {
   it('does not leave a watcher behind for each closed observation', async () => {
     const { service, accountIds } = setup();
@@ -292,6 +284,28 @@ describe('SpaceContentsService', () => {
       expect(client.getRoomHierarchy).toHaveBeenCalledTimes(1);
       expect(snapshots.at(-1)?.candidates[0]?.name).toBe('Renamed');
       expect(snapshots.at(-1)?.items).toHaveLength(2);
+      subscription.unsubscribe();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rebuilds the local candidates once per burst of unrelated Room events', async () => {
+    vi.useFakeTimers();
+    try {
+      const { service, candidate, handlers } = setup();
+      const snapshots: SpaceContentsSnapshot[] = [];
+      const subscription = service
+        .observe(TARGET)
+        .subscribe((snapshot) => snapshots.push(snapshot));
+      await vi.advanceTimersByTimeAsync(1_000);
+      const before = snapshots.length;
+
+      const onName = handlers.get(RoomEvent.Name) as (room: unknown) => void;
+      for (let index = 0; index < 20; index += 1) onName(candidate);
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      expect(snapshots.length - before).toBeLessThanOrEqual(2);
       subscription.unsubscribe();
     } finally {
       vi.useRealTimers();

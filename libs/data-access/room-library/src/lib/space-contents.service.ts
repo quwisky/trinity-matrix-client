@@ -259,8 +259,13 @@ export class SpaceContentsService {
       }),
       switchMap(() => this.load(target, client)),
     );
+    // A sync batch can announce many unrelated Rooms; rebuild the candidates once per burst.
     const local = invalidations.pipe(
       filter((refetch) => !refetch),
+      throttleTime(HIERARCHY_REFRESH_MS, asyncScheduler, {
+        leading: true,
+        trailing: true,
+      }),
       map(() => null),
     );
     return merge(hierarchy, local).pipe(
