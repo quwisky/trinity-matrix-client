@@ -94,6 +94,11 @@
           (pollEnd)="pollEnd.emit($event)"
         />
       }
+      @if (row.id === leadingRowId()) {
+        @if (leadingDividerLabel(); as label) {
+          <trn-timeline-divider kind="replies" [label]="label" />
+        }
+      }
     } @empty {
       @if (settled() && !introShown()) {
         <trn-empty-state body="No messages yet." />

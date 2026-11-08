@@ -126,6 +126,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/message-reply-preview/message-reply-preview.component.scss',
   'libs/feature/rooms/src/lib/message-row/message-row.component.scss',
   'libs/feature/rooms/src/lib/message-search/message-search.component.scss',
+  'libs/feature/rooms/src/lib/message-search/search-sender-picker/search-sender-picker.component.scss',
   'libs/feature/rooms/src/lib/message-thread-summary/message-thread-summary.component.scss',
   'libs/feature/rooms/src/lib/message-time/message-time.component.scss',
   'libs/feature/rooms/src/lib/message-toolbar/message-toolbar.component.scss',

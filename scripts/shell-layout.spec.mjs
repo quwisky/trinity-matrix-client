@@ -61,6 +61,11 @@ describe('modern room shell layout contracts', () => {
     expect(memberTs).toMatch(/const HEADER_PX = 36;/);
     expect(memberTs).toMatch(/const FIRST_HEADER_PX = 28;/);
     expect(memberTs).toMatch(/const ROW_PX = 44;/);
+    // A row with a status line is a second fixed height, bound by the template.
+    expect(memberTs).toMatch(/const STATUS_ROW_PX = 52;/);
+    expect(
+      read('libs/feature/rooms/src/lib/member-list/member-list.component.html'),
+    ).toContain('[style.height.px]="row.status ? statusRowPx : rowPx"');
     expect(memberCss).toMatch(
       /\.members__section-label\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*36px;/s,
     );

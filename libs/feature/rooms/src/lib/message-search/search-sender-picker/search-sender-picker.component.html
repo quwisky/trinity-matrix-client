@@ -1,0 +1,43 @@
+<input
+  trnInput
+  type="search"
+  class="w-full"
+  placeholder="Find a person"
+  aria-label="Find a person"
+  autocomplete="off"
+  data-autofocus
+  [value]="query()"
+  (input)="query.set($any($event.target).value)"
+/>
+<div class="picker__options" role="group" aria-label="From">
+  <button
+    type="button"
+    class="picker__option"
+    [attr.aria-pressed]="selected() === null"
+    (click)="picked.emit(null)"
+  >
+    Anyone
+  </button>
+  @for (member of options(); track member.userId) {
+    <button
+      type="button"
+      class="picker__option"
+      data-testid="search-sender-option"
+      [attr.aria-pressed]="member.userId === selected()"
+      (click)="pick(member)"
+    >
+      {{ member.roomDisplayName }}
+    </button>
+  }
+</div>
+<!-- Always present, so the count is announced as typing narrows it. -->
+<p
+  class="picker__more"
+  [class.sr-only]="!more()"
+  role="status"
+  data-testid="search-sender-more"
+>
+  @if (more(); as left) {
+    {{ left }} more. Type a name to narrow the list.
+  }
+</p>

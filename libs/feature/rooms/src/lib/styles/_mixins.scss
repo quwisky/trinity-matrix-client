@@ -222,3 +222,19 @@ $below-md: '(max-width: 767.98px)';
   text-transform: uppercase;
   color: var(--trinity-text-muted);
 }
+
+/// A strip field with a search icon inside it, ahead of the text. The input takes `ps-8` so
+/// its text clears the icon: the recipe's own padding is a utility this layer cannot beat.
+@mixin panel-search-field {
+  position: relative;
+  display: block;
+
+  > trn-icon {
+    position: absolute;
+    inset-inline-start: 10px;
+    top: 50%;
+    color: var(--trinity-text-muted);
+    pointer-events: none;
+    translate: 0 -50%;
+  }
+}

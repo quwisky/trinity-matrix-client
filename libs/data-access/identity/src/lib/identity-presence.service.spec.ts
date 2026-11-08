@@ -163,6 +163,53 @@ describe('IdentityPresenceService', () => {
       expect(details()).toBe(before);
     });
 
+    it('peeks a roster member without caching them, and bumps a revision on each change', async () => {
+      const { svc, client } = setup();
+      seed(client, 'online');
+      svc.runProjection().subscribe();
+      const before = svc.revision();
+      const seen = computed(() => {
+        svc.revision();
+        return svc.peekDetails('@a:hs')?.state ?? null;
+      });
+      expect(seen()).toBe(toPresenceState('online'));
+
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'offline',
+        presenceStatusMsg: '',
+        lastActiveAgo: 0,
+        lastPresenceTs: NOW,
+        currentlyActive: false,
+      });
+      presenceHandler(client)(undefined, {
+        userId: '@a:hs',
+        presence: 'offline',
+      });
+      await Promise.resolve();
+
+      expect(svc.revision()).toBeGreaterThan(before);
+      expect(seen()).toBe(toPresenceState('offline'));
+      // Nothing is left behind for the peeked user.
+      expect(
+        (svc as unknown as { details: Map<string, unknown> }).details.has(
+          '@a:hs',
+        ),
+      ).toBe(false);
+    });
+
+    it('peeks null for a user the server never reported (SDK default offline)', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'offline',
+        lastActiveAgo: 0,
+        lastPresenceTs: 0,
+      });
+      svc.runProjection().subscribe();
+      expect(svc.peekDetails('@a:hs')).toBeNull();
+    });
+
     it('is null for a user with no presence event (SDK default offline)', () => {
       const { svc, client } = setup();
       client.getUser.mockReturnValue({

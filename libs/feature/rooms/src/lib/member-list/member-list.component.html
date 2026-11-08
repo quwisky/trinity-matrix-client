@@ -11,10 +11,11 @@
 >
   <label sidePanelStrip class="members__filter">
     <span class="sr-only">Filter members</span>
+    <trn-icon name="search" size="sm" />
     <input
       trnInput
       type="search"
-      class="w-full"
+      class="w-full ps-8"
       placeholder="Filter members"
       autocomplete="off"
       [value]="query()"
@@ -64,7 +65,7 @@
       [style.height.px]="topPadPx()"
     ></div>
 
-    @for (section of windowedSections(); track section.role) {
+    @for (section of windowedSections(); track section.key) {
       <div
         class="members__section"
         role="group"
@@ -87,11 +88,15 @@
               <button
                 type="button"
                 class="member"
-                [style.height.px]="rowPx"
+                [style.height.px]="row.status ? statusRowPx : rowPx"
                 [class.member--offline]="row.presence === 'offline'"
                 [trnTooltip]="row.member.userId"
                 position="left"
-                [attr.aria-label]="'View ' + row.member.roomDisplayName"
+                [attr.aria-label]="
+                  'View ' +
+                  row.member.roomDisplayName +
+                  (row.status ? ', ' + row.status : '')
+                "
                 (click)="selectMember.emit(row.member)"
                 data-testid="member-row"
               >
@@ -100,7 +105,7 @@
                   [initial]="row.member.roomInitial"
                   [name]="row.member.roomDisplayName"
                   size="lg"
-                  [presence]="row.presence"
+                  [presence]="row.presence === 'offline' ? null : row.presence"
                 />
                 <span class="member__body">
                   <span
@@ -111,6 +116,11 @@
                     [class.member__name--moderator]="row.role === 'moderator'"
                     >{{ row.member.roomDisplayName }}</span
                   >
+                  @if (row.status) {
+                    <span class="member__status" data-testid="member-status">{{
+                      row.status
+                    }}</span>
+                  }
                 </span>
               </button>
             </li>

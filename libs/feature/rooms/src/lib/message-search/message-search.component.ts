@@ -1,4 +1,3 @@
-import { type Subscription } from 'rxjs';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -21,9 +20,11 @@ import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   type LoadedMessageSearch,
   type MessageHit,
+  type MessageSearchFilter,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
-import { initialOf } from '@trinity/util/matrix';
+import { RoomMembersService } from '@trinity/data-access/room-administration';
+import { initialOf, startOfNextLocalDay } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { BannerComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
@@ -33,12 +34,27 @@ import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
+import {
+  groupResultsByDay,
+  resultTimeStyle,
+  type ResultGroup,
+} from './result-days';
+import { ServerSearch } from './server-search';
+import {
+  SearchSenderPickerComponent,
+  type SenderFilter,
+} from './search-sender-picker/search-sender-picker.component';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
   text: string;
   match: boolean;
 }
+
+/** Waits this long after the last keystroke before asking the homeserver across rooms. */
+const ALL_ROOMS_DEBOUNCE_MS = 400;
+/** The count is announced once it holds this long, not once per keystroke. */
+const COUNT_ANNOUNCE_MS = 1_000;
 
 /**
  * In-room message search for the rooms shell's right-hand panel slot, scoped to the
@@ -74,6 +90,7 @@ interface HighlightPart {
     TrnSpinnerComponent,
     TrnButton,
     TrnInput,
+    SearchSenderPickerComponent,
   ],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
@@ -84,9 +101,12 @@ export class MessageSearchComponent {
   private readonly conversations = inject(ConversationRuntime);
   private readonly search = this.conversations.search;
   private readonly timeline = this.conversations.timeline;
+  private readonly roomMembers = inject(RoomMembersService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly queryField =
     viewChild<ElementRef<HTMLInputElement>>('queryField');
+  private readonly senderChip =
+    viewChild<ElementRef<HTMLButtonElement>>('senderChip');
 
   constructor() {
     // Closed or replaced after a press or key inside it, the panel would otherwise stay in
@@ -96,12 +116,59 @@ export class MessageSearchComponent {
     // A changed query invalidates any server results; fall back to instant local.
     effect(() => {
       this.query();
+      this.sender();
       untracked(() => {
-        this.cancelServer();
-        this.resetServer();
+        this.server.reset();
         this.selectedId.set(null);
       });
     });
+    // Across rooms only the homeserver can answer, so ask it once typing pauses.
+    effect((onCleanup) => {
+      const term = this.query().trim();
+      if (this.scope() !== 'all-rooms' || !term) {
+        return;
+      }
+      this.sender();
+      untracked(() => this.pending.set(true));
+      const timer = setTimeout(
+        () =>
+          untracked(() => {
+            this.pending.set(false);
+            this.searchServer();
+          }),
+        ALL_ROOMS_DEBOUNCE_MS,
+      );
+      onCleanup(() => {
+        clearTimeout(timer);
+        this.pending.set(false);
+      });
+    });
+    effect((onCleanup) => {
+      const count = this.resultCount();
+      if (!count) {
+        // Cleared at once, so the strip never keeps reading an old count.
+        untracked(() => this.countAnnouncement.set(''));
+        return;
+      }
+      const timer = setTimeout(
+        () => this.countAnnouncement.set(count),
+        COUNT_ANNOUNCE_MS,
+      );
+      onCleanup(() => clearTimeout(timer));
+    });
+    // Day groups move at local midnight: "Today" becomes "Yesterday" while the panel is open.
+    let midnight: ReturnType<typeof setTimeout> | undefined;
+    const atMidnight = () => {
+      midnight = setTimeout(
+        () => {
+          this.now.set(Date.now());
+          atMidnight();
+        },
+        startOfNextLocalDay(Date.now()) - Date.now() + 1_000,
+      );
+    };
+    atMidnight();
+    this.destroyRef.onDestroy(() => clearTimeout(midnight));
     afterNextRender(() => {
       // Skip when opened by typing in the header search field, so typing isn't interrupted.
       const active = document.activeElement;
@@ -118,17 +185,45 @@ export class MessageSearchComponent {
   readonly roomId = input.required<string>();
 
   readonly selected = output<string>();
+  /** A result from another room: the host opens that room at the message. */
+  readonly selectedElsewhere = output<{ roomId: string; eventId: string }>();
   readonly dismissed = output<void>();
 
   readonly query = model('');
 
-  readonly serverMode = signal(false);
-  private readonly serverHits = signal<readonly MessageHit[]>([]);
-  readonly serverNextBatch = signal<string | null>(null);
-  readonly serverCount = signal(0);
-  readonly searching = signal(false);
+  /** Search this room's loaded history, or every room the homeserver can index. */
+  readonly scope = signal<'room' | 'all-rooms'>('room');
+  /** Narrow the results to one author; null for anyone. */
+  readonly sender = signal<SenderFilter | null>(null);
+
+  /** The room's members, for the "From:" menu. */
+  protected readonly members = computed(() =>
+    this.roomMembers.membersFor(this.roomId())(),
+  );
+
+  protected readonly placeholder = computed(() =>
+    this.scope() === 'room' ? 'Search this conversation' : 'Search all rooms',
+  );
+
+  /** The homeserver's search: its pages, count, and whether it is running or failed. */
+  protected readonly server = new ServerSearch(
+    (term, nextBatch, filter) =>
+      this.search.searchServer(term, nextBatch, filter),
+    this.destroyRef,
+    () => this.serverRefusedRoom.set(this.roomId()),
+  );
+  readonly serverMode = this.server.active;
+  readonly serverNextBatch = this.server.nextBatch;
+  readonly serverCount = this.server.count;
+  readonly searching = this.server.searching;
   readonly loadingHistory = signal(false);
-  private readonly error = signal<string | null>(null);
+  private readonly historyError = signal<string | null>(null);
+
+  /** The From picker is open under the chips. */
+  protected readonly pickingSender = signal(false);
+
+  /** When "today" is, for the day groups; moved on at local midnight. */
+  private readonly now = signal(Date.now());
 
   /**
    * Instant client-side results over the loaded, decrypted timeline. Reading
@@ -137,7 +232,7 @@ export class MessageSearchComponent {
    */
   private readonly loaded = computed<LoadedMessageSearch>(() => {
     this.timeline.messages();
-    return this.search.searchLoaded(this.query());
+    return this.search.searchLoaded(this.query(), this.sender()?.id ?? null);
   });
 
   /** The room the server search found encrypted where the loaded view did not. */
@@ -148,9 +243,48 @@ export class MessageSearchComponent {
   );
   readonly scanned = computed(() => this.loaded().scanned);
 
-  readonly results = computed<readonly MessageHit[]>(() =>
-    this.serverMode() ? this.serverHits() : this.loaded().hits,
+  readonly results = computed<readonly MessageHit[]>(() => {
+    if (this.serverMode()) {
+      return this.server.hits();
+    }
+    return this.scope() === 'room' ? this.loaded().hits : [];
+  });
+
+  /** Searching with nothing to show yet: the panel shows its skeleton rows. */
+  protected readonly loading = computed(
+    () => (this.searching() || this.pending()) && !this.results().length,
   );
+
+  /** "7 results" in the header, once there is a query and an answer for it. */
+  protected readonly resultCount = computed(() => {
+    if (!this.query().trim() || this.loading()) {
+      return '';
+    }
+    const loaded = this.results().length;
+    const morePages = this.serverMode() && !!this.serverNextBatch();
+    // The homeserver counts before it filters senders, so with "From:" set its count says
+    // nothing: show what has loaded, and a "+" while pages remain.
+    if (morePages && this.sender()) {
+      // Nothing kept yet is not "0+": the empty state says to load more instead.
+      return loaded ? `${loaded}+ results` : '';
+    }
+    // Otherwise its count is approximate; once every page is in, count the hits.
+    const count = morePages ? Math.max(this.serverCount(), loaded) : loaded;
+    return `${count} ${count === 1 ? 'result' : 'results'}`;
+  });
+
+  /** The settled {@link resultCount}, for the live region; equal text announces nothing. */
+  protected readonly countAnnouncement = signal('');
+
+  /** The results by when they were sent: today, yesterday, the last week, then by month. */
+  protected readonly groups = computed<readonly ResultGroup<MessageHit>[]>(() =>
+    groupResultsByDay(this.results(), this.now(), (ts, withYear) =>
+      this.fmt.month(ts, withYear),
+    ),
+  );
+
+  /** An all-rooms search is waiting for typing to pause; the panel shows it loading. */
+  protected readonly pending = signal(false);
 
   /** The result picked last, still marked after the jump. */
   protected readonly selectedId = signal<string | null>(null);
@@ -163,12 +297,24 @@ export class MessageSearchComponent {
         body: 'Type a word or phrase to find the messages that contain it.',
       };
     }
-    if (this.searching()) {
+    if (this.searching() || this.pending() || this.server.error()) {
       return null;
+    }
+    if (this.scope() === 'all-rooms' && !this.serverMode()) {
+      return null;
+    }
+    if (this.serverMode() && this.serverNextBatch()) {
+      return {
+        title: 'No matches yet',
+        body: 'None of the messages searched so far match. Load more to search older ones.',
+      };
     }
     return {
       title: 'No results',
-      body: `Nothing here matches “${term}”. Try other words.`,
+      body:
+        this.scope() === 'room'
+          ? `Nothing in this room matches “${term}”. Try other words.`
+          : `Nothing in the rooms your homeserver can search matches “${term}”. Encrypted rooms are searched only in their own panel.`,
     };
   });
 
@@ -177,56 +323,63 @@ export class MessageSearchComponent {
   }
 
   searchServer(): void {
-    const term = this.query().trim();
-    if (!term) {
-      return;
-    }
-    this.cancelServer();
-    this.serverMode.set(true);
-    this.inFlight = runWithBusy(this.search.searchServer(term), {
-      busy: this.searching,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe((page) => {
-      if (page.encrypted) {
-        this.serverRefusedRoom.set(this.roomId());
-        this.serverMode.set(false);
-        return;
-      }
-      this.serverHits.set(page.hits);
-      this.serverCount.set(page.count);
-      this.serverNextBatch.set(page.nextBatch);
-    });
+    this.server.run(this.query().trim(), this.filter());
   }
 
   loadMoreServer(): void {
-    const term = this.query().trim();
-    const next = this.serverNextBatch();
-    if (!term || !next) {
-      return;
-    }
-    this.cancelServer();
-    this.inFlight = runWithBusy(this.search.searchServer(term, next), {
-      busy: this.searching,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe((page) => {
-      this.serverHits.update((hits) => [...hits, ...page.hits]);
-      this.serverNextBatch.set(page.nextBatch);
-    });
+    this.server.more();
   }
 
   loadOlderHistory(): void {
     runWithBusy(this.search.loadOlder(), {
       busy: this.loadingHistory,
-      error: this.error,
+      error: this.historyError,
       destroyRef: this.destroyRef,
     }).subscribe();
   }
 
   select(hit: MessageHit): void {
     this.selectedId.set(hit.eventId);
-    this.selected.emit(hit.eventId);
+    if (hit.roomId === this.roomId()) {
+      this.selected.emit(hit.eventId);
+    } else {
+      this.selectedElsewhere.emit({ roomId: hit.roomId, eventId: hit.eventId });
+    }
+  }
+
+  setScope(scope: 'room' | 'all-rooms'): void {
+    if (scope === this.scope()) {
+      return;
+    }
+    this.scope.set(scope);
+    this.server.reset();
+  }
+
+  setSender(sender: SenderFilter | null): void {
+    this.sender.set(sender);
+    this.closePicker();
+  }
+
+  /** Close the From picker and put focus back on the chip that opened it. */
+  closePicker(): void {
+    this.pickingSender.set(false);
+    this.senderChip()?.nativeElement.focus();
+  }
+
+  /** A result's time: the clock for today and yesterday, the weekday within a week. */
+  protected timeOf(ts: number): string {
+    switch (resultTimeStyle(ts, this.now())) {
+      case 'time':
+        return this.fmt.time(ts);
+      case 'weekday':
+        return this.fmt.weekday(ts);
+      default:
+        return this.fmt.dateOnly(ts);
+    }
+  }
+
+  private filter(): MessageSearchFilter {
+    return { scope: this.scope(), sender: this.sender()?.id ?? null };
   }
 
   dismiss(): void {
@@ -259,19 +412,4 @@ export class MessageSearchComponent {
   }
 
   readonly initialOf = initialOf;
-
-  /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
-  private inFlight: Subscription | null = null;
-
-  private cancelServer(): void {
-    this.inFlight?.unsubscribe();
-    this.inFlight = null;
-  }
-
-  private resetServer(): void {
-    this.serverMode.set(false);
-    this.serverHits.set([]);
-    this.serverNextBatch.set(null);
-    this.serverCount.set(0);
-  }
 }

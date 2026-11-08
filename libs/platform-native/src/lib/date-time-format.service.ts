@@ -77,6 +77,21 @@ function usable(
   return accepted.length ? accepted : undefined;
 }
 
+const YEAR_SECONDS = 365 * 86_400;
+
+/** Each relative unit, its size in seconds, and where the next, larger unit takes over. */
+const RELATIVE_UNITS: readonly (readonly [
+  Intl.RelativeTimeFormatUnit,
+  number,
+  number,
+])[] = [
+  ['minute', 60, 3_600],
+  ['hour', 3_600, 86_400],
+  ['day', 86_400, 7 * 86_400],
+  ['week', 7 * 86_400, 30 * 86_400],
+  ['month', 30 * 86_400, YEAR_SECONDS],
+];
+
 /**
  * Every rendered timestamp goes through here: clock style (12/24-hour) and date order,
  * persisted per device in Capacitor `Preferences` (non-secret).
@@ -166,6 +181,47 @@ export class DateTimeFormatService {
   /** A numeric date alone. */
   dateOnly(ts: number): string {
     return formatDateOnly(ts, this.prefs());
+  }
+
+  /**
+   * How long ago `ts` was, from `now`, in the reader's language: "now", "2 min. ago",
+   * "yesterday", "3 wk. ago", "2 yr. ago". The largest unit that fits, so old activity never
+   * reads as hundreds of days.
+   */
+  relative(ts: number, now: number): string {
+    const format = new Intl.RelativeTimeFormat(
+      this.prefs().locales as string[],
+      {
+        numeric: 'auto',
+        style: 'short',
+      },
+    );
+    // A future time is clock skew between devices: read it as now.
+    const seconds = Math.min(0, Math.round((ts - now) / 1000));
+    const past = Math.abs(seconds);
+    if (past < 45) return format.format(0, 'second');
+    // Round first, then check the unit still fits: 59.5 minutes is "1 hr.", not "60 min.".
+    for (const [unit, size, next] of RELATIVE_UNITS) {
+      // Rounded as a magnitude: Math.round(-59.5) is -59.
+      const count = Math.round(past / size);
+      if (count * size < next) return format.format(-count, unit);
+    }
+    return format.format(-Math.round(past / YEAR_SECONDS), 'year');
+  }
+
+  /** The short weekday, as "Wed", in the reader's language. */
+  weekday(ts: number): string {
+    return new Intl.DateTimeFormat(this.prefs().locales as string[], {
+      weekday: 'short',
+    }).format(ts);
+  }
+
+  /** The month, with the year when asked, as "October" or "October 2025". */
+  month(ts: number, withYear: boolean): string {
+    return new Intl.DateTimeFormat(this.prefs().locales as string[], {
+      month: 'long',
+      ...(withYear ? { year: 'numeric' } : {}),
+    }).format(ts);
   }
 
   /** How `ts` would read under `time`, for previewing an option the user has not picked. */

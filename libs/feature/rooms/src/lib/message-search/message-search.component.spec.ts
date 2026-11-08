@@ -9,8 +9,9 @@ import {
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
@@ -19,6 +20,7 @@ function hit(over: Partial<MessageHit> = {}): MessageHit {
   return {
     eventId: '$e:hs',
     roomId: '!r:hs',
+    roomName: 'General',
     sender: '@alice:hs',
     senderName: 'Alice',
     senderAvatarMxc: null,
@@ -43,6 +45,7 @@ function loaded(over: Partial<LoadedMessageSearch> = {}): LoadedMessageSearch {
 describe('MessageSearchComponent', () => {
   /** What the panel announced: it is presentational, so these ARE its contract. */
   let selected: string[];
+  let elsewhere: { roomId: string; eventId: string }[];
   let dismissals: number;
   let searchLoadedMessages: Mock;
   let searchServerMessages: Mock;
@@ -61,6 +64,8 @@ describe('MessageSearchComponent', () => {
       inputs: { roomId: '!r:hs', ...extraInputs },
       on: {
         selected: (eventId: string) => selected.push(eventId),
+        selectedElsewhere: (hit: { roomId: string; eventId: string }) =>
+          elsewhere.push(hit),
         dismissed: () => {
           dismissals += 1;
         },
@@ -68,6 +73,15 @@ describe('MessageSearchComponent', () => {
       imports: [MockComponent(AvatarComponent)],
       providers: [
         MockProvider(ConversationTimelineStub, { messages: signal([]) }),
+        MockProvider(RoomMembersService, {
+          membersFor: () =>
+            signal([
+              {
+                userId: '@bo:hs',
+                roomDisplayName: 'Bo',
+              } as never,
+            ]),
+        }),
         {
           provide: ConversationRuntime,
           useFactory: () => ({
@@ -90,6 +104,7 @@ describe('MessageSearchComponent', () => {
 
   beforeEach(() => {
     selected = [];
+    elsewhere = [];
     dismissals = 0;
     searchLoadedMessages = vi.fn(() => loaded());
     searchServerMessages = vi.fn(() =>
@@ -310,7 +325,10 @@ describe('MessageSearchComponent', () => {
     c.searchServer();
     fixture.detectChanges();
 
-    expect(searchServerMessages).toHaveBeenCalledWith('hello');
+    expect(searchServerMessages).toHaveBeenCalledWith('hello', undefined, {
+      scope: 'room',
+      sender: null,
+    });
     expect(c.serverMode()).toBe(true);
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1']);
     expect(c.serverCount()).toBe(3);
@@ -362,7 +380,10 @@ describe('MessageSearchComponent', () => {
     );
     c.loadMoreServer();
 
-    expect(searchServerMessages).toHaveBeenLastCalledWith('hello', 'b2');
+    expect(searchServerMessages).toHaveBeenLastCalledWith('hello', 'b2', {
+      scope: 'room',
+      sender: null,
+    });
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1', '$s2']);
     expect(c.serverNextBatch()).toBeNull();
   });
@@ -451,6 +472,387 @@ describe('MessageSearchComponent', () => {
 
       expect(c.results().map((h) => h.eventId)).toEqual(['$new']);
       expect(c.serverNextBatch()).toBeNull();
+    });
+  });
+
+  describe('filters, day groups and the count', () => {
+    it('counts the results in the header once there is a query', async () => {
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('.side-panel-header__subtitle')?.textContent,
+      ).toBe('2 results');
+    });
+
+    it('groups results by day, newest first', async () => {
+      const now = Date.now();
+      const { fixture, container, c } = await build(
+        loaded({
+          hits: [
+            hit({ eventId: '$today', ts: now }),
+            hit({ eventId: '$week', ts: now - 3 * 86_400_000 }),
+          ],
+        }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+
+      const groups = [...container.querySelectorAll('.ms-group')].map((g) =>
+        g.textContent?.trim(),
+      );
+      expect(groups).toEqual(['Today', 'Last week']);
+    });
+
+    it('narrows the loaded search to one author', async () => {
+      const { fixture, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@bo:hs', name: 'Bo' });
+      fixture.detectChanges();
+
+      expect(searchLoadedMessages).toHaveBeenLastCalledWith('hello', '@bo:hs');
+    });
+
+    it('asks the homeserver across every room once typing pauses', async () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture, c } = await build(loaded());
+        c.setScope('all-rooms');
+        setQuery('hello', c);
+        fixture.detectChanges();
+        expect(searchServerMessages).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(400);
+
+        expect(searchServerMessages).toHaveBeenCalledWith('hello', undefined, {
+          scope: 'all-rooms',
+          sender: null,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('opens a result from another room through the host', async () => {
+      const { fixture, container, c } = await build(loaded());
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({
+          hits: [
+            hit({ eventId: '$far', roomId: '!other:hs', roomName: 'Far' }),
+          ],
+          count: 1,
+          nextBatch: null,
+        }),
+      );
+      setQuery('hello', c);
+      c.setScope('all-rooms');
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="result-room"]')?.textContent,
+      ).toBe('Far');
+      fireEvent.click(container.querySelector('[data-testid="result"]')!);
+      expect(elsewhere).toEqual([{ roomId: '!other:hs', eventId: '$far' }]);
+      expect(selected).toEqual([]);
+    });
+
+    it('marks the last opened result as current', async () => {
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$1' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+      fireEvent.click(container.querySelector('[data-testid="result"]')!);
+      fixture.detectChanges();
+
+      expect(
+        container
+          .querySelector('[data-testid="result"]')
+          ?.getAttribute('aria-current'),
+      ).toBe('true');
+    });
+  });
+
+  describe('review fixes', () => {
+    it('says a failed server search failed, and retries it', async () => {
+      searchServerMessages.mockReturnValueOnce(
+        throwError(() => new Error('M_UNKNOWN: boom')),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      const alert = container.querySelector('[data-testid="search-error"]');
+      expect(alert?.textContent).toContain('Try again');
+      expect(alert?.textContent).not.toContain('M_UNKNOWN');
+      expect(container.textContent).not.toContain('No results');
+
+      searchServerMessages.mockReturnValueOnce(
+        of<ServerMessageSearch>({ hits: [hit()], count: 1, nextBatch: null }),
+      );
+      fireEvent.click(
+        container.querySelector<HTMLButtonElement>(
+          '[data-testid="search-retry"]',
+        )!,
+      );
+      fixture.detectChanges();
+      expect(searchServerMessages).toHaveBeenCalledTimes(2);
+      expect(
+        container.querySelector('[data-testid="search-error"]'),
+      ).toBeNull();
+      expect(container.querySelectorAll('[data-testid="result"]')).toHaveLength(
+        1,
+      );
+    });
+
+    it('counts loaded hits with a "+" while a sender filter has more pages', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({
+          hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })],
+          // Synapse counts before it filters senders.
+          count: 40,
+          nextBatch: 'b2',
+        }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@alice:hs', name: 'Alice' });
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('.side-panel-header__subtitle')?.textContent,
+      ).toBe('2+ results');
+    });
+
+    it('notes that encrypted rooms are left out of an all-rooms search with results', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({ hits: [hit()], count: 1, nextBatch: null }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setScope('all-rooms');
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="all-rooms-note"]')?.textContent,
+      ).toContain('Encrypted rooms aren’t included');
+    });
+
+    it('announces the result count politely, once typing settles', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const { fixture, container, c } = await build(
+          loaded({ hits: [hit({ eventId: '$1' })] }),
+        );
+        const live = () =>
+          container.querySelector('[data-testid="search-count-status"]');
+        setQuery('h', c);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(500);
+        setQuery('hello', c);
+        fixture.detectChanges();
+        expect(live()?.textContent?.trim()).toBe('');
+
+        vi.advanceTimersByTime(1_000);
+        fixture.detectChanges();
+        expect(live()?.getAttribute('role')).toBe('status');
+        expect(live()?.textContent?.trim()).toBe('1 result');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears the count announcement when the query is cleared', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const { fixture, container, c } = await build(
+          loaded({ hits: [hit({ eventId: '$1' })] }),
+        );
+        const live = () =>
+          container.querySelector('[data-testid="search-count-status"]');
+        setQuery('hello', c);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(1_000);
+        fixture.detectChanges();
+        expect(live()?.textContent?.trim()).toBe('1 result');
+
+        setQuery('', c);
+        fixture.detectChanges();
+        expect(live()?.textContent?.trim()).toBe('');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps the count announcement outside the body the skeleton replaces', async () => {
+      const { container } = await build(loaded());
+      const live = container.querySelector(
+        '[data-testid="search-count-status"]',
+      );
+      expect(live).not.toBeNull();
+      expect(live?.closest('.side-panel__body')).toBeNull();
+    });
+
+    it('keeps the instant results until the homeserver answers', async () => {
+      const reply = new Subject<ServerMessageSearch>();
+      searchServerMessages.mockReturnValue(reply);
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$loaded' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+      expect(c.results().map((h) => h.eventId)).toEqual(['$loaded']);
+      expect(container.querySelectorAll('[data-testid="result"]')).toHaveLength(
+        1,
+      );
+
+      reply.next({
+        hits: [hit({ eventId: '$s1' })],
+        count: 1,
+        nextBatch: null,
+      });
+      fixture.detectChanges();
+      expect(c.results().map((h) => h.eventId)).toEqual(['$s1']);
+    });
+
+    it('drops the server summary while its search has failed', async () => {
+      searchServerMessages.mockReturnValueOnce(
+        of<ServerMessageSearch>({ hits: [hit()], count: 3, nextBatch: 'b2' }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      fixture.detectChanges();
+      c.searchServer();
+      searchServerMessages.mockReturnValueOnce(
+        throwError(() => new Error('boom')),
+      );
+      c.loadMoreServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="search-error"]'),
+      ).not.toBeNull();
+      expect(
+        container.querySelector('[data-testid="server-summary"]'),
+      ).toBeNull();
+    });
+
+    it('quotes what the sender filter kept, not the homeserver count, in the summary', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({
+          hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })],
+          count: 40,
+          nextBatch: 'b2',
+        }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@alice:hs', name: 'Alice' });
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      const summary = container.querySelector(
+        '[data-testid="server-summary"]',
+      )?.textContent;
+      expect(summary).toContain('2+');
+      expect(summary).not.toContain('40');
+    });
+
+    it('says "No matches yet" and offers more when a filtered page kept nothing', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({ hits: [], count: 40, nextBatch: 'b2' }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@alice:hs', name: 'Alice' });
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('.side-panel-header__subtitle')?.textContent ??
+          '',
+      ).not.toContain('0+');
+      expect(container.textContent).toContain('No matches yet');
+      expect(container.textContent).not.toContain('No results');
+      expect(
+        container.querySelector('[data-testid="load-more-server"]'),
+      ).not.toBeNull();
+    });
+
+    it('returns focus to the From chip when the picker closes', async () => {
+      const { fixture, container, c } = await build(loaded());
+      const chip = container.querySelector<HTMLButtonElement>(
+        '[data-testid="search-sender"]',
+      )!;
+      fireEvent.click(chip);
+      fixture.detectChanges();
+      c.setSender({ id: '@bo:hs', name: 'Bo' });
+      fixture.detectChanges();
+      expect(document.activeElement).toBe(chip);
+
+      fireEvent.click(chip);
+      fixture.detectChanges();
+      const field = container.querySelector<HTMLInputElement>(
+        'trn-search-sender-picker input',
+      )!;
+      fireEvent.keyDown(field, { key: 'Escape' });
+      fixture.detectChanges();
+      expect(container.querySelector('trn-search-sender-picker')).toBeNull();
+      expect(document.activeElement).toBe(chip);
+    });
+
+    it('opens a person picker from the From chip instead of a menu of everyone', async () => {
+      const { fixture, container } = await build(loaded());
+      const chip = container.querySelector<HTMLButtonElement>(
+        '[data-testid="search-sender"]',
+      )!;
+      expect(chip.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(chip);
+      fixture.detectChanges();
+      expect(chip.getAttribute('aria-expanded')).toBe('true');
+      expect(
+        container.querySelector('trn-search-sender-picker'),
+      ).not.toBeNull();
+    });
+
+    it('moves "Today" to "Yesterday" at local midnight while the panel is open', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      try {
+        vi.setSystemTime(new Date(2026, 10, 8, 23, 50));
+        const { fixture, container, c } = await build(
+          loaded({
+            hits: [hit({ ts: new Date(2026, 10, 8, 23, 0).getTime() })],
+          }),
+        );
+        setQuery('hello', c);
+        fixture.detectChanges();
+        const groups = () =>
+          [...container.querySelectorAll('.ms-group')].map((g) =>
+            g.textContent?.trim(),
+          );
+        expect(groups()).toEqual(['Today']);
+
+        vi.advanceTimersByTime(15 * 60_000);
+        fixture.detectChanges();
+        expect(groups()).toEqual(['Yesterday']);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

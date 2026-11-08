@@ -17,6 +17,8 @@ import {
   releaseInputTargetOnDestroy,
 } from '@trinity/components/overlay';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { initialOf } from '@trinity/util/matrix';
+import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
@@ -37,6 +39,7 @@ import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted
     UnencryptedMarkComponent,
     SidePanelComponent,
     SidePanelEmptyComponent,
+    AvatarComponent,
     TrnIconComponent,
     TrnButton,
     TrnTooltip,
@@ -53,6 +56,7 @@ export class PinnedMessagesPanelComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly pinned = this.pins.messages;
+  protected readonly initialOf = initialOf;
   /** Every pin is still being fetched, so there is nothing yet to show in its place. */
   protected readonly loading = computed(() => {
     const pins = this.pinned();
@@ -71,6 +75,11 @@ export class PinnedMessagesPanelComponent {
     // Closed or replaced after a press or key inside it, the panel would otherwise stay in
     // memory, detached, as the CDK's last input target until the next one.
     releaseInputTargetOnDestroy();
+  }
+
+  /** Fetch the pins that failed to load again. */
+  retry(): void {
+    this.pins.retryFailed();
   }
 
   jumpTo(eventId: string): void {

@@ -141,6 +141,26 @@ export class ThreadViewComponent implements OnDestroy {
   /** The thread's messages, root first, then replies. */
   readonly messages = computed(() => this.openedThread()?.messages() ?? []);
 
+  /** The thread is named by its root's text, as in the threads list. */
+  protected readonly title = computed(() => {
+    const root = this.messages().find((m) => m.id === this.rootEventId());
+    const summary = this.conversations.threads.summaries()[this.rootEventId()];
+    return root?.body.trim() || summary?.rootPreview || 'Thread';
+  });
+
+  /** "12 replies" under the root; the summary counts replies not yet paged in. */
+  protected readonly repliesLabel = computed(() => {
+    const loaded = this.messages().filter(
+      (m) => m.id !== this.rootEventId(),
+    ).length;
+    const count = Math.max(
+      loaded,
+      this.conversations.threads.summaries()[this.rootEventId()]?.replyCount ??
+        0,
+    );
+    return count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : null;
+  });
+
   /** The oldest loaded reply; null while only the root has loaded. */
   private readonly oldestReplyId = computed(
     () =>

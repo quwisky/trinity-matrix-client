@@ -54,6 +54,23 @@ async function setDisplayName(
   );
 }
 
+/** Report a user online, so the list's presence grouping does not hang on whether the
+ * homeserver happened to record any activity for them. The no-presence "Members" path is
+ * covered by the member-list component spec. */
+async function setOnline(
+  request: APIRequestContext,
+  hs: string,
+  actor: ApiUser,
+): Promise<void> {
+  const res = await request.put(
+    `${hs}/_matrix/client/v3/presence/${encodeURIComponent(actor.userId)}/status`,
+    { headers: actor.headers, data: { presence: 'online' } },
+  );
+  if (!res.ok()) {
+    throw new Error(await describeFailure('set presence', res));
+  }
+}
+
 /** Merge one user's power level into a room's `m.room.power_levels` (preserving the
  * rest of the content), as the admin. Drives the live-promotion re-partition. */
 async function setPowerLevel(
@@ -196,7 +213,7 @@ function sectionFor(page: Page, roleWord: string): Locator {
 test.describe('Member role sections', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('groups members under Owner / Moderator / Member headers', async ({
+  test('groups members under Owners, Moderators and, by presence, Online', async ({
     page,
     request,
   }) => {
@@ -209,6 +226,7 @@ test.describe('Member role sections', () => {
       [50, 0],
     );
     const [moderator, plain] = extras;
+    await setOnline(request, session.hs as string, plain);
 
     await login(page, reader);
     await openRoomWithMembers(page, roomName);
@@ -221,11 +239,11 @@ test.describe('Member role sections', () => {
     // Three sections, highest role first, each showing its count. The reader CREATED
     // this room, so they are the owner rather than merely an admin — the distinction
     // this list exists to make, and one a power level alone cannot express.
-    await expect(page.locator('.members__section-label')).toHaveText([
-      'Owners — 1',
-      'Moderators — 1',
-      'Members — 1',
-    ]);
+    // Below moderator, members are listed by presence once the homeserver reports it.
+    await expect(page.locator('.members__section-label')).toHaveText(
+      ['Owners — 1', 'Moderators — 1', 'Online — 1'],
+      { timeout: 20_000 },
+    );
 
     // These are inputs to the virtual window, not merely visual preferences. Assert the
     // browser's actual boxes so a density or box-model change cannot make its spacers drift.
@@ -249,7 +267,7 @@ test.describe('Member role sections', () => {
     expect(groupLabels).toEqual([
       'Owners, 1 member',
       'Moderators, 1 member',
-      'Members, 1 member',
+      'Online, 1 member',
     ]);
 
     // The right member sits under the right header. User IDs now live in the design
@@ -265,7 +283,7 @@ test.describe('Member role sections', () => {
         .filter({ hasText: moderator.name }),
     ).toHaveCount(1);
     await expect(
-      sectionFor(page, 'Member')
+      sectionFor(page, 'Online')
         .getByTestId('member-row')
         .filter({ hasText: plain.name }),
     ).toHaveCount(1);
@@ -439,6 +457,7 @@ test.describe('Member role sections', () => {
       [0],
     );
     const [plain] = extras;
+    await setOnline(request, session.hs as string, plain);
 
     await login(page, reader);
     await openRoomWithMembers(page, roomName);
@@ -446,10 +465,10 @@ test.describe('Member role sections', () => {
     await expect(page.locator('.members .member')).toHaveCount(2, {
       timeout: 20_000,
     });
-    await expect(page.locator('.members__section-label')).toHaveText([
-      'Owners — 1',
-      'Members — 1',
-    ]);
+    await expect(page.locator('.members__section-label')).toHaveText(
+      ['Owners — 1', 'Online — 1'],
+      { timeout: 20_000 },
+    );
 
     // Promote the plain member to moderator server-side; the open client should
     // re-partition once the power-levels change syncs (assertion auto-retries).

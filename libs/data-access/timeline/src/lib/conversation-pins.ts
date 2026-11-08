@@ -12,6 +12,7 @@ export interface PinnedMessageView {
   readonly status: 'loaded' | 'loading' | 'unavailable' | 'failed';
   readonly sender: string;
   readonly senderName: string;
+  readonly senderAvatarMxc: string | null;
   readonly body: string;
   readonly ts: number;
   /** The unencrypted mark for the message's text, as its timeline row carries it. */

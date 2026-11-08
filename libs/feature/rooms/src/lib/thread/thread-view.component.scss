@@ -5,4 +5,9 @@
     --room-pane-surface: var(--trinity-surface-sidebar);
     --composer-safe-bottom: 0px;
   }
+
+  // A landscape notch at the screen's right edge would otherwise sit over the composer.
+  .thread__footer {
+    padding-right: env(safe-area-inset-right);
+  }
 }

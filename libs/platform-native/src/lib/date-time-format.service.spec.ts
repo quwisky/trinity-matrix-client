@@ -187,4 +187,42 @@ describe('DateTimeFormatService', () => {
     expect(svc.prefs().locales).toBeUndefined();
     expect(() => new Intl.DateTimeFormat(undefined)).not.toThrow();
   });
+
+  describe('relative and calendar labels', () => {
+    const NOW = new Date(2026, 10, 8, 12).getTime();
+    const ago = (ms: number) => NOW - ms;
+    const MIN = 60_000;
+    const DAY = 86_400_000;
+
+    it('reads how long ago in the largest unit that fits, past days too', () => {
+      const svc = make();
+      (svc as unknown as { _locales: { set(v: string[]): void } })._locales.set(
+        ['en'],
+      );
+      expect(svc.relative(ago(10_000), NOW)).toBe('now');
+      // A sender's clock ahead of ours is not "in 2 min.".
+      expect(svc.relative(ago(-2 * MIN), NOW)).toBe('now');
+      expect(svc.relative(ago(2 * MIN), NOW)).toBe('2 min. ago');
+      expect(svc.relative(ago(59.5 * MIN), NOW)).toBe('1 hr. ago');
+      expect(svc.relative(ago(3 * 60 * MIN), NOW)).toBe('3 hr. ago');
+      expect(svc.relative(ago(1 * DAY), NOW)).toBe('yesterday');
+      expect(svc.relative(ago(3 * DAY), NOW)).toBe('3 days ago');
+      expect(svc.relative(ago(14 * DAY), NOW)).toBe('2 wk. ago');
+      expect(svc.relative(ago(90 * DAY), NOW)).toBe('3 mo. ago');
+      expect(svc.relative(ago(800 * DAY), NOW)).toBe('2 yr. ago');
+    });
+
+    it('follows the reader’s locale', () => {
+      const svc = make();
+      (svc as unknown as { _locales: { set(v: string[]): void } })._locales.set(
+        ['de'],
+      );
+      expect(svc.relative(ago(3 * DAY), NOW)).toBe('vor 3 Tagen');
+      expect(svc.weekday(new Date(2026, 10, 4).getTime())).toBe('Mi');
+      expect(svc.month(new Date(2026, 9, 1).getTime(), false)).toBe('Oktober');
+      expect(svc.month(new Date(2025, 9, 1).getTime(), true)).toBe(
+        'Oktober 2025',
+      );
+    });
+  });
 });

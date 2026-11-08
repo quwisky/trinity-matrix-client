@@ -1,28 +1,18 @@
 @use '../styles/mixins' as *;
 
 @layer components {
+  .threads__section {
+    @include panel-section-label;
+
+    &:first-child {
+      padding-top: var(--trinity-space-3);
+    }
+  }
+
   .thread-item {
     @include panel-row;
 
     align-items: flex-start;
-  }
-
-  .thread-item__avatars {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-  }
-
-  // Overlap the avatar cluster into a compact stack.
-  .thread-item__avatar:not(:first-child) {
-    margin-inline-start: calc(-1 * var(--trinity-space-3));
-  }
-
-  .thread-item__more {
-    margin-inline-start: var(--trinity-space-2);
-    font-size: var(--trinity-panel-meta-size);
-    font-weight: 600;
-    color: var(--trinity-text-muted);
   }
 
   .thread-item__body {
@@ -31,7 +21,7 @@
 
   .thread-item__head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: var(--trinity-space-3);
     min-width: 0;
   }
@@ -39,32 +29,31 @@
   .thread-item__root {
     @include panel-row-name;
 
-    flex: 1;
     min-width: 0;
   }
 
-  .thread-item__time {
-    @include panel-row-meta;
-
+  .thread-item__badge {
     flex: none;
   }
 
   .thread-item__meta {
     @include panel-row-meta;
-
-    display: flex;
-    align-items: baseline;
-    gap: var(--trinity-space-2);
   }
 
-  .thread-item__count {
+  // 20px avatars overlapping by 6px, each ringed in the panel colour.
+  .thread-item__stack {
+    display: inline-flex;
     flex: none;
+    margin-top: var(--trinity-space-1);
   }
 
-  .thread-item__last {
-    @include ellipsis;
+  .thread-item__participant {
+    border-radius: var(--trinity-shape-person-radius);
+    box-shadow: 0 0 0 2px
+      var(--side-panel-surface, var(--trinity-surface-sidebar));
 
-    flex: 1;
-    min-width: 0;
+    &:not(:first-child) {
+      margin-inline-start: calc(-1 * var(--trinity-panel-avatar-overlap));
+    }
   }
 }

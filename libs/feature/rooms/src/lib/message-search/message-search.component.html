@@ -1,18 +1,21 @@
 <trn-side-panel
   heading="Search"
+  [subtitle]="resultCount()"
   icon="search"
   closeLabel="Close search"
-  [loading]="searching() && !results().length"
+  [loading]="loading()"
   loadingLabel="Searching messages"
   (closed)="dismiss()"
 >
-  <div sidePanelStrip>
+  <label sidePanelStrip class="ms-field">
+    <trn-icon name="search" size="sm" />
     <input
       #queryField
       trnInput
+      class="w-full ps-8"
       data-autofocus
-      placeholder="Search this conversation"
-      aria-label="Search this conversation"
+      [placeholder]="placeholder()"
+      [attr.aria-label]="placeholder()"
       autocapitalize="off"
       autocorrect="off"
       inputmode="text"
@@ -20,95 +23,183 @@
       (input)="onInput($event)"
       (keydown.escape)="dismiss()"
     />
+  </label>
+  <div sidePanelStrip class="ms-chips" role="group" aria-label="Search filters">
+    <button
+      type="button"
+      class="ms-chip"
+      [attr.aria-pressed]="scope() === 'room'"
+      data-testid="search-scope-room"
+      (click)="setScope('room')"
+    >
+      This room
+    </button>
+    <button
+      type="button"
+      class="ms-chip"
+      [attr.aria-pressed]="scope() === 'all-rooms'"
+      data-testid="search-scope-all"
+      (click)="setScope('all-rooms')"
+    >
+      All rooms
+    </button>
+    <button
+      type="button"
+      class="ms-chip"
+      [class.ms-chip--on]="sender() !== null"
+      #senderChip
+      [attr.aria-expanded]="pickingSender()"
+      aria-controls="search-sender-picker"
+      data-testid="search-sender"
+      (click)="pickingSender.set(!pickingSender())"
+    >
+      From: {{ sender()?.name ?? 'anyone' }}
+    </button>
   </div>
+  @if (pickingSender()) {
+    <trn-search-sender-picker
+      sidePanelStrip
+      id="search-sender-picker"
+      [members]="members()"
+      [selected]="sender()?.id ?? null"
+      (picked)="setSender($event)"
+      (dismissed)="closePicker()"
+    />
+  }
+  <!-- In the strip, which stays while the body swaps for skeleton rows. -->
+  <p
+    sidePanelStrip
+    class="sr-only"
+    role="status"
+    data-testid="search-count-status"
+  >
+    {{ countAnnouncement() }}
+  </p>
 
-  @if (encrypted()) {
-    <trn-banner variant="neutral" data-testid="e2ee-note">
-      <trn-icon trnBannerIcon name="lock" />
-      Encrypted room — searching the {{ scanned() }} loaded
-      {{ scanned() === 1 ? 'message' : 'messages' }} only.
-      <span trnBannerActions>
-        <button
-          trnBtn
-          variant="secondary"
-          presentation="outline"
-          size="sm"
-          [disabled]="loadingHistory()"
-          (click)="loadOlderHistory()"
-          data-testid="load-older"
-        >
-          @if (loadingHistory()) {
-            <trn-spinner />
-          }
-          Load older messages
-        </button>
-      </span>
-    </trn-banner>
-  } @else if (query().trim()) {
-    <trn-banner variant="neutral">
-      @if (serverMode()) {
-        <span data-testid="server-summary">
-          Showing {{ serverCount() }} server
-          {{ serverCount() === 1 ? 'result' : 'results' }} from the full
-          history.
-        </span>
-      } @else {
+  @if (scope() === 'room') {
+    @if (encrypted()) {
+      <trn-banner variant="neutral" data-testid="e2ee-note">
+        <trn-icon trnBannerIcon name="lock" />
+        Encrypted room — searching the {{ scanned() }} loaded
+        {{ scanned() === 1 ? 'message' : 'messages' }} only.
         <span trnBannerActions>
           <button
             trnBtn
             variant="secondary"
             presentation="outline"
             size="sm"
-            [disabled]="searching()"
-            (click)="searchServer()"
-            data-testid="search-server"
+            [disabled]="loadingHistory()"
+            (click)="loadOlderHistory()"
+            data-testid="load-older"
           >
-            @if (searching()) {
+            @if (loadingHistory()) {
               <trn-spinner />
-            } @else {
-              <trn-icon name="server" />
             }
-            Search all messages
+            Load older messages
           </button>
         </span>
+      </trn-banner>
+    } @else if (query().trim() && !server.error()) {
+      @if (serverMode()) {
+        @if (resultCount(); as count) {
+          <trn-banner variant="neutral">
+            <span data-testid="server-summary">
+              Showing {{ count }} from the full history.
+            </span>
+          </trn-banner>
+        }
+      } @else {
+        <trn-banner variant="neutral">
+          <span trnBannerActions>
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="outline"
+              size="sm"
+              [disabled]="searching()"
+              (click)="searchServer()"
+              data-testid="search-server"
+            >
+              @if (searching()) {
+                <trn-spinner />
+              } @else {
+                <trn-icon name="server" />
+              }
+              Search all messages
+            </button>
+          </span>
+        </trn-banner>
       }
+    }
+  }
+
+  @if (server.error(); as failure) {
+    <trn-banner variant="neutral" role="alert" data-testid="search-error">
+      <trn-icon trnBannerIcon name="cloud-off" />
+      {{ failure }}
+      <span trnBannerActions>
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="outline"
+          size="sm"
+          data-testid="search-retry"
+          (click)="server.retry()"
+        >
+          Try again
+        </button>
+      </span>
     </trn-banner>
   }
 
-  @for (hit of results(); track hit.eventId) {
-    <button
-      type="button"
-      class="ms-row"
-      [class.ms-row--selected]="hit.eventId === selectedId()"
-      [attr.aria-current]="hit.eventId === selectedId() ? 'true' : null"
-      (click)="select(hit)"
-      data-testid="result"
-    >
-      <trn-avatar
-        [mxc]="hit.senderAvatarMxc"
-        [initial]="initialOf(hit.senderName)"
-        [name]="hit.senderName"
-        size="lg"
-      />
-      <span class="ms-body">
-        <span class="ms-head">
-          <span class="ms-name">{{ hit.senderName }}</span>
-          <span class="ms-time">{{ fmt.dateTime(hit.ts) }}</span>
-          @if (hit.shield; as shield) {
-            <trn-unencrypted-mark [shield]="shield" />
-          }
-        </span>
-        <p class="ms-snippet">
-          @for (part of highlight(hit.snippet); track $index) {
-            @if (part.match) {
-              <mark>{{ part.text }}</mark>
-            } @else {
-              <span>{{ part.text }}</span>
+  @if (scope() === 'all-rooms' && results().length) {
+    <p class="ms-note" data-testid="all-rooms-note">
+      Encrypted rooms aren’t included: your homeserver can’t read them.
+    </p>
+  }
+
+  @for (group of groups(); track group.label) {
+    <h3 class="ms-group">{{ group.label }}</h3>
+    @for (hit of group.hits; track hit.eventId) {
+      <button
+        type="button"
+        class="ms-row"
+        [class.ms-row--selected]="hit.eventId === selectedId()"
+        [attr.aria-current]="hit.eventId === selectedId() ? 'true' : null"
+        (click)="select(hit)"
+        data-testid="result"
+      >
+        <trn-avatar
+          [mxc]="hit.senderAvatarMxc"
+          [initial]="initialOf(hit.senderName)"
+          [name]="hit.senderName"
+          size="lg"
+        />
+        <span class="ms-body">
+          <span class="ms-head">
+            <span class="ms-name">{{ hit.senderName }}</span>
+            <span class="ms-time">{{ timeOf(hit.ts) }}</span>
+            @if (hit.roomId !== roomId()) {
+              <span class="ms-room" data-testid="result-room">{{
+                hit.roomName
+              }}</span>
             }
-          }
-        </p>
-      </span>
-    </button>
+            @if (hit.shield; as shield) {
+              <trn-unencrypted-mark [shield]="shield" />
+            }
+          </span>
+          <p class="ms-snippet">
+            @for (part of highlight(hit.snippet); track $index) {
+              @if (part.match) {
+                <mark>{{ part.text }}</mark>
+              } @else {
+                <span>{{ part.text }}</span>
+              }
+            }
+          </p>
+        </span>
+      </button>
+    }
   } @empty {
     @if (emptyState(); as empty) {
       <trn-side-panel-empty

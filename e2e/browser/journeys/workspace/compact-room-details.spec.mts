@@ -1087,7 +1087,9 @@ for (const viewport of [
       });
 
       const header = thread.locator('trn-side-panel-header');
+      // Named by its root message, with the room's name after it.
       const heading = header.getByRole('heading');
+      await expect(heading).toContainText(`thread root ${runId}`);
       await expect(heading).toContainText(roomName);
       await expect(header.locator('.side-panel-header__subtitle')).toHaveText(
         roomName,
