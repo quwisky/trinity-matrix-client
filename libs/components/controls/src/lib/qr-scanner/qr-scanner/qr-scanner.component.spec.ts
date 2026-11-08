@@ -1,4 +1,4 @@
-import { signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
@@ -7,6 +7,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnButton } from '../../button/trn-button';
 import { QrScannerComponent } from './qr-scanner.component';
 import { QR_SCANNER_SUSPENDED } from './qr-scanner-suspended';
+
+/** Removes the scanner on `cancelled`, as Link device and device verification do. */
+@Component({
+  imports: [QrScannerComponent],
+  template: `@if (open()) {
+    <trn-qr-scanner (cancelled)="open.set(false)" />
+  }`,
+})
+class SuspendedScannerHostComponent {
+  readonly open = signal(true);
+}
 
 describe('QrScannerComponent', () => {
   beforeEach(() => {
@@ -142,6 +153,22 @@ describe('QrScannerComponent', () => {
 
     expect(getUserMedia).not.toHaveBeenCalled();
     expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it('lets a host remove a scanner created while suspended without a change-detection error', async () => {
+    const getUserMedia = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const errors = vi.spyOn(console, 'error');
+
+    const { container, fixture } = await render(SuspendedScannerHostComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: signal(true) }],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.open()).toBe(false);
+    expect(container.querySelector('trn-qr-scanner')).toBeNull();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it('closes a camera that opens after the scan was cancelled and never attaches it', async () => {
