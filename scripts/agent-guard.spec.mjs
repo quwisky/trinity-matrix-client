@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { check } from './agent-guard.mjs';
 
 const guard = join(import.meta.dirname, 'agent-guard.mjs');
 const repo = mkdtempSync(join(tmpdir(), 'agent-guard-'));
@@ -240,6 +241,24 @@ describe('agent-guard PreToolUse hook', () => {
       ).status,
     ).toBe(0);
     expect(hook(`grep -rn 'bash -c "gh pr merge 5"' docs`).status).toBe(0);
+  });
+
+  it.each([
+    ['a chain of shell keywords', `${'then '.repeat(30)}x gh`],
+    ['a run of backticks', `echo ${'`'.repeat(20_000)} gh`],
+    ['escaped quotes', `echo ${'\\"'.repeat(10_000)} gh`],
+    [
+      'a long pull request body',
+      `gh pr create --draft --body-file - <<'EOF'\n${'then do if else while until the change explains why\n'.repeat(2_000)}EOF`,
+    ],
+  ])('reads %s in linear time', (_, command) => {
+    const start = performance.now();
+    check({ cwd: repo, tool_name: 'Bash', tool_input: { command } });
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it('still sees gh after an escaped quote', () => {
+    expect(hook('echo \\" ; gh pr merge 5').status).toBe(2);
   });
 
   it('blocks Release-As footers and tool attribution in commit messages', () => {

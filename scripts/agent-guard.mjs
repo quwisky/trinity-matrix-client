@@ -69,7 +69,9 @@ const gitCommand = (names) =>
 
 /** The command with quoted text blanked, so a PR body or grep pattern is not a command. */
 const unquoted = (command) =>
-  command.replace(/"(?:\\.|[^"\\])*"|'[^']*'/g, '""');
+  command.replace(/\\.|"(?:\\.|[^"\\])*"|'[^']*'/g, (text) =>
+    text[0] === '\\' ? text : '""',
+  );
 
 export function liveOwner(file) {
   try {
@@ -101,12 +103,13 @@ function checkoutBusy(command, dir) {
 
 /**
  * Command position: the start, a separator or backtick, then any `VAR=value`, `{`, `!` or
- * wrapper (`time`, `env`, `xargs`, `then`, …) with its arguments.
+ * wrapper (`time`, `env`, `xargs`, `then`, …) with its flags and numbers. Wrapper arguments
+ * stay that narrow so the pattern runs in linear time; `sudo -u bob gh` is missed.
  */
-const AT_COMMAND = String.raw`(?:^|[;&|(\n\`]\s*)(?:(?:\w+=\S*|[{!]|(?:command|do|elif|else|env|eval|exec|if|nice|nohup|sudo|then|time|timeout|until|while|xargs)\b[^\n;&|]*?)\s+)*`;
+const AT_COMMAND = String.raw`(?:^|[;&|(\n\`]\s*)(?:(?:\w+=\S*|[{!]|(?:command|do|elif|else|env|eval|exec|if|nice|nohup|sudo|then|time|timeout|until|while|xargs)\b(?:\s+(?:-|\d)\S*)*)\s+)*`;
 
 /** `gh` itself, also written `\gh` or as a path. */
-const GH_WORD = String.raw`${AT_COMMAND}(?:\\|\S*/)?gh`;
+const GH_WORD = String.raw`${AT_COMMAND}(?:\\|(?:[\w.~-]*/)+)?gh`;
 
 /** Repository flags, which gh accepts before and after `pr`. */
 const REPO = String.raw`((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)`;
