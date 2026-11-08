@@ -239,8 +239,11 @@ describe('modern room shell layout contracts', () => {
     );
     expect(body).toContain('flex: 0 1 var(--shell-right-panel-w, 360px)');
     expect(body).not.toContain('box-shadow');
-    // No second rule gives one of them its own width.
-    expect(roomsCss.match(/--shell-right-panel-w/gu)).toHaveLength(1);
+    // One stored width, read twice: the flex basis and the full-height grid column's width.
+    expect(
+      roomsCss.match(/var\(--shell-right-panel-w, 360px\)/gu),
+    ).toHaveLength(2);
+    expect(roomsCss.match(/--shell-right-panel-w/gu)).toHaveLength(2);
     // The roster resizes like every other panel.
     expect(roomsHtml).not.toContain("panel.kind !== 'members'");
   });

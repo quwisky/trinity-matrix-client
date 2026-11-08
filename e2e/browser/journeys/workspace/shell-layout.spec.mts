@@ -785,8 +785,8 @@ test.describe('Modern room shell layout', () => {
     await expect(page.getByTestId('pinned-close')).toBeVisible();
 
     // The room-list and conversation headers share one 48px band: their bottom edges line
-    // up at 1280x800. The side panel sits in the row under the conversation header (its
-    // buttons drive it), so its 48px header starts where that band ends.
+    // up at 1280x800. From 1280px the side panel runs the full height of the room beside the
+    // conversation header, so its 48px header shares that band too.
     const conversationHeader = await page
       .locator('header[data-trn-layout="toolbar"]')
       .boundingBox();
@@ -800,7 +800,10 @@ test.describe('Modern room shell layout', () => {
     expect(sidebarHeader!.height).toBe(48);
     expect(bottom(sidebarHeader)).toBe(bottom(conversationHeader));
     expect(Math.round(panelHeader!.height)).toBe(48);
-    expect(Math.round(panelHeader!.y)).toBe(bottom(conversationHeader));
+    expect(bottom(panelHeader)).toBe(bottom(conversationHeader));
+    expect(Math.round(panelHeader!.x)).toBeGreaterThanOrEqual(
+      Math.round(conversationHeader!.x + conversationHeader!.width),
+    );
     // Off the button, and polled: the ghost recipe transitions its background.
     await page.mouse.move(0, 0);
     await expect

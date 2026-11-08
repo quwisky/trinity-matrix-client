@@ -299,6 +299,46 @@
     min-width: min(320px, 100%);
   }
 
+  // On a wide window the panel runs the full height of the room beside its header rather
+  // than under it, so the two 48px bars share one row. The row of [timeline, panel] becomes
+  // a grid: the header and up to three banners in the first column's rows, the timeline in
+  // the last row, and the divider and panel spanning them all. `auto` tracks: an empty one
+  // takes no width, and the panel's grows to its stored width only from what the timeline's
+  // floor leaves. Narrower, the panel stays in the row under the header.
+  @media #{$xl} {
+    .main {
+      display: grid;
+      grid-template-columns: minmax(min(320px, 100%), 1fr) auto auto;
+      grid-template-rows: auto auto auto auto minmax(0, 1fr);
+    }
+
+    .main > *,
+    .chat-body > * {
+      grid-column: 1;
+    }
+
+    .chat-body {
+      display: contents;
+    }
+
+    .chat-body > * {
+      grid-row: 5;
+      min-height: 0;
+    }
+
+    .chat-body > trn-pane-handle {
+      grid-column: 2;
+      grid-row: 1 / -1;
+    }
+
+    .chat-body > [data-right-panel-surface] {
+      grid-column: 3;
+      grid-row: 1 / -1;
+      width: var(--shell-right-panel-w, 360px);
+      max-width: 100%;
+    }
+  }
+
   // Every surface the slot can show (the roster, threads, a thread, pinned, search) shares
   // one frame and one width, so switching panels never moves the timeline.
   // IN FLOW, sharing the row with the timeline rather than covering it. A panel taking layout
