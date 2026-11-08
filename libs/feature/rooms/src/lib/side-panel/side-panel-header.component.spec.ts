@@ -21,20 +21,35 @@ describe('SidePanelHeaderComponent', () => {
     expect(closed).toHaveBeenCalledOnce();
   });
 
-  it('renders no subtitle by default', async () => {
+  it('renders no subtitle or icon by default', async () => {
     const { container } = await render(SidePanelHeaderComponent, {
       inputs: { title: 'Members' },
       providers: [provideTrnIcons()],
     });
-    expect(container.querySelector('p')).toBeNull();
+    expect(container.querySelector('.side-panel-header__subtitle')).toBeNull();
+    expect(container.querySelector('.side-panel-header__icon')).toBeNull();
   });
 
-  it('shows the subtitle under the title', async () => {
+  it('shows the subtitle inline after the title, inside the heading', async () => {
     await render(SidePanelHeaderComponent, {
       inputs: { title: 'Thread', subtitle: 'General' },
       providers: [provideTrnIcons()],
     });
-    expect(screen.getByText('General')).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Thread General' }),
+    ).toBeTruthy();
+  });
+
+  it('leads the title with the panel icon', async () => {
+    const { container } = await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Members', icon: 'users' },
+      providers: [provideTrnIcons()],
+    });
+    const icon = container.querySelector('.side-panel-header__icon')!;
+    const heading = screen.getByRole('heading', { name: 'Members' });
+    expect(
+      icon.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('names its close button after the panel beside the room, after the title', async () => {

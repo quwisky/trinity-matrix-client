@@ -382,31 +382,29 @@ test.describe('Pin messages', () => {
     await channel.first().click();
     await expect(page.locator('.scroll')).toBeVisible({ timeout: 15_000 });
 
-    // 1. Explicitly open the fixed 240px member column. It does not read
-    //    `--shell-right-panel-w`, so a divider there would move a value while the pane beside
-    //    it stayed put.
+    // 1. Every panel, the roster included, shares one width and one divider: switching from
+    //    the members to the pinned messages keeps both where they were.
     const divider = page.getByRole('separator', { name: 'Panel width' });
     await expect(page.locator('.chat-members')).toBeHidden();
     await page.getByTestId('toggle-members').click();
     await expect(page.locator('.chat-members')).toBeVisible({
       timeout: 10_000,
     });
-    await expect(divider).toHaveCount(0);
+    await expect(divider).toBeVisible();
+    const membersWidth = (await page.locator('.chat-members').boundingBox())!
+      .width;
+    expect(Math.round(membersWidth)).toBe(360);
 
     await page.getByTestId('open-pinned').click();
     const panel = page.getByTestId('pinned-panel');
     await expect(panel).toBeVisible({ timeout: 10_000 });
-    await expect(panel).toHaveAttribute('data-trn-variant', 'neutral');
-    await expect(panel).toHaveAttribute('data-trn-size', 'md');
-    await expect(panel).toHaveAttribute('data-trn-layout', 'fullscreen');
     await expect(divider).toBeVisible();
+    const slot = page.locator('.chat-panel');
+    expect(Math.round((await slot.boundingBox())!.width)).toBe(360);
 
-    // 2. Below the `members` breakpoint the panel is an overlay drawer, and it is NOT the
-    //    240px one the roster uses: a thread or a list of search results in 240px is not
-    //    readable. It was full-screen as a dialog and has to stay so.
+    // 2. Below the `members` breakpoint the panel is an overlay drawer of the same width.
     await page.setViewportSize({ width: 1000, height: 800 });
     await expect(divider).toBeHidden();
-    const width = (await panel.boundingBox())?.width ?? 0;
-    expect(width).toBeGreaterThan(400);
+    expect(Math.round((await slot.boundingBox())!.width)).toBe(360);
   });
 });

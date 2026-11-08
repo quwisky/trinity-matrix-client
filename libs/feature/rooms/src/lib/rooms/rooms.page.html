@@ -286,27 +286,21 @@
           </trn-message-list>
           @if (vm.activeRoom(); as room) {
             @if (shownSurface(); as panel) {
-              @if (panel.kind !== 'members') {
-                <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
-                   where the slot is an overlay drawer rather than a column sharing the row.
-                   `invert` because this handle grows the pane to its RIGHT: dragging left
-                   makes the panel wider.
-
-                   Not for the roster: `.chat-members` is a fixed 240px navigation column
-                   that does not read `--shell-right-panel-w` (and 240 is below this
-                   handle's own minimum), so a handle there would move its `aria-valuenow`
-                   and rewrite the stored width while the pane beside it stayed put. -->
-                <trn-pane-handle
-                  class="hidden members:block"
-                  cssVariable="--shell-right-panel-w"
-                  label="Panel width"
-                  [invert]="true"
-                  [value]="layout.rightPanelWidth()"
-                  [min]="layout.rightPanelBounds.min"
-                  [max]="layout.rightPanelBounds.max"
-                  (committed)="layout.setRightPanelWidth($event)"
-                />
-              }
+              <!-- Between the timeline and the slot. Hidden below the `members` breakpoint,
+                 where the slot is an overlay drawer rather than a column sharing the row.
+                 `invert` because this handle grows the pane to its RIGHT: dragging left
+                 makes the panel wider. Every panel reads the one stored width, so switching
+                 panels never changes it. -->
+              <trn-pane-handle
+                class="pane-handle--panel hidden members:block"
+                cssVariable="--shell-right-panel-w"
+                label="Panel width"
+                [invert]="true"
+                [value]="layout.rightPanelWidth()"
+                [min]="layout.rightPanelBounds.min"
+                [max]="layout.rightPanelBounds.max"
+                (committed)="layout.setRightPanelWidth($event)"
+              />
               <!-- Between md and the `members` breakpoint the slot is an overlay drawer; a
                backdrop (shown only at those widths) dismisses it. At or above it the slot is a
                static column, and below md a page over the room, so there is no backdrop.

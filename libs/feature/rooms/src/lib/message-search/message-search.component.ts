@@ -15,7 +15,7 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
+import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   type LoadedMessageSearch,
@@ -68,7 +68,7 @@ interface HighlightPart {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     UnencryptedMarkComponent,
-    SidePanelHeaderComponent,
+    SidePanelComponent,
     BannerComponent,
     EmptyStateComponent,
     TrnIconComponent,

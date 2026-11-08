@@ -1,19 +1,13 @@
-<div
-  trnOverlaySurface
-  variant="neutral"
-  size="md"
-  layout="fullscreen"
-  class="flex flex-col"
+<trn-side-panel
   data-testid="thread-view"
+  title="Thread"
+  [subtitle]="roomName()"
+  icon="message-square"
+  closeLabel="Close thread"
+  [focusClose]="true"
+  [scroll]="false"
+  (closed)="close()"
 >
-  <trn-side-panel-header
-    title="Thread"
-    [subtitle]="roomName()"
-    closeLabel="Close thread"
-    [focusClose]="true"
-    (closed)="close()"
-  />
-
   @if (loading()) {
     <div class="thread__loading flex-1" role="status">Loading thread…</div>
   } @else {
@@ -57,7 +51,7 @@
     </trn-message-list>
   }
 
-  <div class="thread__footer">
+  <div class="thread__footer" sidePanelFooter>
     <trn-typing-indicator
       [names]="typingNames()"
       [announce]="announceTyping()"
@@ -86,4 +80,4 @@
       (typing)="onTyping($event)"
     />
   </div>
-</div>
+</trn-side-panel>

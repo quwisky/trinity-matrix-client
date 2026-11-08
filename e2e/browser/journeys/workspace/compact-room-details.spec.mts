@@ -1011,13 +1011,13 @@ test.describe('Room panels across widths', () => {
     const backdrop = page.getByTestId('members-backdrop');
 
     // The wide column sits in the row beside the timeline.
-    expect(Math.round((await settled()).width)).toBe(240);
+    expect(Math.round((await settled()).width)).toBe(360);
     await expect(backdrop).toBeHidden();
 
     // The drawer lies over the timeline, against the right edge, with its backdrop.
     await page.setViewportSize({ width: 800, height: 800 });
     let box = await settled();
-    expect(Math.round(box.width)).toBe(240);
+    expect(Math.round(box.width)).toBe(360);
     expect(Math.round(box.x + box.width)).toBe(800);
     await expect(backdrop).toBeVisible();
 
@@ -1030,7 +1030,7 @@ test.describe('Room panels across widths', () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     box = await settled();
-    expect(Math.round(box.width)).toBe(240);
+    expect(Math.round(box.width)).toBe(360);
     expect(await page.evaluate(() => history.length)).toBe(entries);
     expect(page.url()).toBe(url);
   });
@@ -1083,12 +1083,13 @@ for (const viewport of [
       });
 
       const header = thread.locator('trn-side-panel-header');
-      const subtitle = header.locator('p');
-      await expect(
-        header.getByRole('heading', { name: 'Thread' }),
-      ).toBeVisible();
-      await expect(subtitle).toHaveText(roomName);
-      const line = await subtitle.evaluate((el) => ({
+      const heading = header.getByRole('heading');
+      await expect(heading).toContainText(roomName);
+      await expect(header.locator('.side-panel-header__subtitle')).toHaveText(
+        roomName,
+      );
+      // The room's name follows the title on its one line, cut short rather than wrapped.
+      const line = await heading.evaluate((el) => ({
         whiteSpace: getComputedStyle(el).whiteSpace,
         overflow: getComputedStyle(el).overflow,
         height: el.getBoundingClientRect().height,
@@ -1104,25 +1105,30 @@ for (const viewport of [
         ).toBeVisible();
       }
 
-      // No band of the panel's own colour under the composer: the footer, which carries the
-      // composer's inset, reaches the bottom edge of the page in the chat colour.
+      // The slot clears the home indicator once, in the panel's colour, which is also what
+      // the replies and the composer are drawn on: no band of another colour under it.
       const edges = await thread.evaluate((root) => {
+        const slot = root.closest('.chat-panel')!;
         const footer = root.querySelector('.thread__footer')!;
-        // Where the chat colour sits: the footer must match what the replies are drawn on.
         const scroller = root.querySelector('trn-message-list')!;
+        const composer = root.querySelector('trn-message-composer')!;
         return {
           viewportBottom: window.innerHeight,
+          slotBottom: Math.round(slot.getBoundingClientRect().bottom),
           rootBottom: Math.round(root.getBoundingClientRect().bottom),
           footerBottom: Math.round(footer.getBoundingClientRect().bottom),
-          footerBackground: getComputedStyle(footer).backgroundColor,
+          slotBackground: getComputedStyle(slot).backgroundColor,
           scrollerBackground: getComputedStyle(scroller).backgroundColor,
-          rootPaddingBottom: getComputedStyle(root).paddingBottom,
+          composerBackground: getComputedStyle(composer).backgroundColor,
+          slotPaddingBottom: getComputedStyle(slot).paddingBottom,
         };
       });
-      expect(edges.rootBottom).toBe(edges.viewportBottom);
+      expect(edges.slotBottom).toBe(edges.viewportBottom);
+      expect(edges.slotPaddingBottom).toBe('34px');
+      expect(edges.rootBottom).toBe(edges.viewportBottom - 34);
       expect(edges.footerBottom).toBe(edges.rootBottom);
-      expect(edges.rootPaddingBottom).toBe('0px');
-      expect(edges.footerBackground).toBe(edges.scrollerBackground);
+      expect(edges.scrollerBackground).toBe(edges.slotBackground);
+      expect(edges.composerBackground).toBe(edges.slotBackground);
 
       // Keyboard up: the page ends above it and the footer still reaches that edge.
       if (viewport.width < 768) {
@@ -1135,15 +1141,16 @@ for (const viewport of [
         await expect
           .poll(() =>
             thread.evaluate((root) => {
+              const slot = root.closest('.chat-panel')!;
               const footer = root.querySelector('.thread__footer')!;
               return [
-                Math.round(root.getBoundingClientRect().bottom),
+                Math.round(slot.getBoundingClientRect().bottom),
                 Math.round(footer.getBoundingClientRect().bottom),
                 window.innerHeight,
               ];
             }),
           )
-          .toEqual([844 - 266, 844 - 266, 844]);
+          .toEqual([844 - 266, 844 - 266 - 34, 844]);
       }
     });
   });

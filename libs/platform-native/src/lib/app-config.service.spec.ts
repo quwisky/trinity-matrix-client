@@ -377,7 +377,7 @@ describe('AppConfigService', () => {
 
       expect(plan.ok && plan.changes).toEqual([
         { path: 'privacy.linkPreviews', from: true, to: false },
-        { path: 'shell.rightPanelWidth', from: 480, to: 640 },
+        { path: 'shell.rightPanelWidth', from: 360, to: 640 },
         { path: 'shell.sidebarWidth', from: 352, to: 420 },
       ]);
     });

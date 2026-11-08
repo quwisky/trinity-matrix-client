@@ -1,17 +1,16 @@
 @layer components {
-  // Stands in for the replies while the root loads, on the chat surface the list will draw.
+  // The thread draws its replies and composer on the panel's surface; the slot it sits in
+  // already clears the home indicator, so the composer does not pad for it again.
+  :host {
+    --room-pane-surface: var(--trinity-surface-sidebar);
+    --composer-safe-bottom: 0px;
+  }
+
   .thread__loading {
     padding: var(--trinity-space-3) 0 var(--trinity-space-4);
-    background: var(--trinity-surface-workspace);
     color: var(--trinity-text-muted);
     font-size: var(--trinity-type-control-size);
     line-height: var(--trinity-type-control-line-height);
     text-align: center;
-  }
-
-  // The composer footer stays pinned (flex sibling) while the replies scroll;
-  // match the chat surface so it blends with the messages above.
-  .thread__footer {
-    background: var(--trinity-surface-workspace);
   }
 }

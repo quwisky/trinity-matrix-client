@@ -272,12 +272,12 @@ describe('migrated application design-system consumers', () => {
       surfaces
         .map(([, tag]) => tag.match(/\bsize="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual(['lg', ...Array(6).fill('md'), ...Array(2).fill('sm')]);
+    ).toEqual(['lg', ...Array(3).fill('md'), ...Array(2).fill('sm')]);
     expect(
       surfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([...Array(4).fill('fullscreen'), ...Array(5).fill('popover')]);
+    ).toEqual(['fullscreen', ...Array(5).fill('popover')]);
 
     // Room dialogs build on the shared shell, which picks the dialog, sheet or fullscreen
     // presentation itself; none keeps its own surface or its own sheet switch.
@@ -336,19 +336,7 @@ describe('migrated application design-system consumers', () => {
       conversationSurfaces
         .map(([, tag]) => tag.match(/\blayout="([^"]+)"/u)?.[1] ?? 'dynamic')
         .sort(),
-    ).toEqual([
-      'fullscreen',
-      'fullscreen',
-      'fullscreen',
-      'popover',
-      'popover',
-      'popover',
-    ]);
-    for (const [file, tag] of conversationSurfaces.filter(([, tag]) =>
-      /\blayout="fullscreen"/u.test(tag),
-    )) {
-      expect(tag, file).toMatch(/\bclass="[^"]*\bflex\b[^"]*\bflex-col\b/u);
-    }
+    ).toEqual(['popover', 'popover', 'popover']);
   });
 
   it('uses cold finite alert commands and canonical danger variants', () => {

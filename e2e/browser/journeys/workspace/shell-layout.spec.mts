@@ -449,8 +449,9 @@ async function expectScrollContract(
     'position',
     viewport.width >= 1100 ? 'static' : 'fixed',
   );
-  // The roster is a fixed 240px column (border included) however long a member name is.
-  await expect(page.locator('.chat-members')).toHaveCSS('width', '240px');
+  // The roster opens at the shared 360px panel width (border included) however long a
+  // member name is.
+  await expect(page.locator('.chat-members')).toHaveCSS('width', '360px');
   await expectFloatingDockContract(page);
 }
 

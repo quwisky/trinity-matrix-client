@@ -12,7 +12,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
+import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MEMBER_ROLE_ORDER,
@@ -119,7 +119,7 @@ const ROLE_ICON: Record<MemberRole, TrnIconName> = {
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    SidePanelHeaderComponent,
+    SidePanelComponent,
     AvatarComponent,
     TrnIconComponent,
     TrnButton,

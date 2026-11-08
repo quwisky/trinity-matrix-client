@@ -154,37 +154,16 @@ describe('component styling reach', () => {
     expect(unreachable).toEqual([]);
   });
 
-  it('pads both ends of every surface that reaches the screen edge', () => {
-    // `.safe-bottom` sat in global.scss with ZERO call sites while four full-height panels
-    // padded only their top, so on a notched phone the thread composer and the member-info
-    // action row sat under the home indicator. Nothing could catch that: the utility is inert
-    // off a notched device, so it renders identically everywhere a test runs.
-    const panels = [
+  it("pads the room panels' bottom inset in their slot, not in each panel", () => {
+    for (const file of [
       'libs/feature/rooms/src/lib/message-search/message-search.component.html',
       'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
       'libs/feature/rooms/src/lib/thread/threads-list.component.html',
-      // The thread's composer pads the inset itself, in the chat colour: a root `safe-bottom`
-      // doubled it and showed a band of the panel's colour under the composer.
-      // Member info is no longer a screen-edge panel (#1041): as a sheet the sheet frame pads
-      // the safe area, and embedded in settings the settings column does.
-    ];
-
-    const unpadded = panels.filter(
-      (file) => !read(file).includes('safe-bottom'),
-    );
-
-    expect(unpadded).toEqual([]);
-  });
-
-  it('pads the thread bottom inset once, in its composer, not on the thread root', () => {
-    expect(
-      read(
-        'libs/feature/rooms/src/lib/message-composer/message-composer.component.scss',
-      ),
-    ).toContain('env(safe-area-inset-bottom)');
-    expect(
-      read('libs/feature/rooms/src/lib/thread/thread-view.component.html'),
-    ).not.toContain('safe-bottom');
+      'libs/feature/rooms/src/lib/thread/thread-view.component.html',
+      'libs/feature/rooms/src/lib/member-list/member-list.component.html',
+    ]) {
+      expect(read(file), file).not.toContain('safe-bottom');
+    }
   });
 });
 

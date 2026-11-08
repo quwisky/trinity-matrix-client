@@ -60,6 +60,26 @@
     }
   }
 
+  // The panel's start edge: the same 12px grab area, drawn as a 2px accent line on hover and
+  // while dragging, centred on the panel's 1px border.
+  .pane-handle--panel {
+    --pane-handle-line: linear-gradient(
+        var(--trinity-accent),
+        var(--trinity-accent)
+      )
+      center / 2px 100% no-repeat border-box;
+
+    &.pane-handle--dragging {
+      background: var(--pane-handle-line);
+    }
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--pane-handle-line);
+      }
+    }
+  }
+
   .shell-side {
     position: relative;
     display: grid;
@@ -273,37 +293,42 @@
     background: var(--trinity-surface-pane);
   }
 
-  .chat-members {
-    flex: 0 0 240px;
-
-    // The list inside is `width: 100%`, a percentage that cannot size the host, so the
-    // host's automatic minimum is the list's content width: a long member name would
-    // otherwise stretch this column far past its 240px basis.
-    min-width: 0;
-    background: var(--trinity-surface-panel);
-    border-inline-start: 1px solid var(--trinity-border-subtle);
+  // The timeline keeps a readable floor beside a wide panel; the panel is the one that
+  // shrinks. `min()` so it never asks for more than the row has.
+  .chat-body > trn-message-list {
+    min-width: min(320px, 100%);
   }
 
-  // The other surfaces the slot can show — threads, a thread, pinned, search, member info.
-  // 480px is the width they had as `md:w-120` dialog cards.
+  // Every surface the slot can show (the roster, threads, a thread, pinned, search) shares
+  // one frame and one width, so switching panels never moves the timeline.
   // IN FLOW, sharing the row with the timeline rather than covering it. A panel taking layout
   // space resizes the timeline, and a jump issued across that resize would land off screen:
   // `MessageListBase` remembers a recent jump and re-applies it when the scroller's width
   // actually changes, which is what lets the panels take their space.
+  // The bottom inset is cleared here, once, for every panel: the frame's rows and the thread's
+  // composer reach that edge.
+  .chat-members,
   .chat-panel {
     // Shrinkable, not fixed: the stored width is what the user chose, but on a window too
     // narrow to honour it AND leave the timeline its floor, the panel is the one that gives.
     // The stored value is untouched, so widening the window restores it.
-    flex: 0 1 var(--shell-right-panel-w, 480px);
+    flex: 0 1 var(--shell-right-panel-w, 360px);
+
+    // The inner frame is `height: 100%`, a percentage that cannot size the host, so the
+    // host's automatic minimum would otherwise be its content width: a long member name
+    // would stretch the column past its basis.
     min-width: 0;
-    background: var(--trinity-surface-panel);
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--trinity-surface-sidebar);
     border-inline-start: 1px solid var(--trinity-border-subtle);
   }
 
-  // Below the `members` breakpoint the static column would crowd the chat, so present the
-  // member list as a slide-in drawer over the content instead (dismissed by the template's
-  // backdrop). The inner .members is a fixed 240px column, so the drawer host matches that
-  // width. `$below-members` is the shared definition — see its note in _mixins.scss.
+  // Below the `members` breakpoint the static column would crowd the chat, so present every
+  // panel as a slide-in drawer over the content instead (dismissed by the template's
+  // backdrop). `$below-members` is the shared definition — see its note in _mixins.scss.
   @media #{$below-members} {
     .chat-members,
     .chat-panel {
@@ -333,25 +358,10 @@
       // anything in it, so there is no element here to translate and the drawer arrives at the
       // end of the gesture with its entrance animation.
       transform: translateX(var(--drawer-drag, 0));
-    }
 
-    // Where the two drawers part company, on width and on the safe-area insets.
-    // WIDTH: the roster fits 240px; a thread or a search result does not (below md every
-    // panel is a full page instead, see the page rule further down). The dragged width is
-    // deliberately not read at this breakpoint: there is no divider to drag, and a width
-    // chosen on a desktop has nothing to say about a phone.
-    // INSETS: the drawer above takes the top inset; every panel but the thread pads its own
-    // bottom with `safe-bottom` on the root, because its content reaches that edge. The thread's
-    // composer pads the inset itself.
-    // The member list has no `safe-bottom`, so the host takes the bottom inset for it; without
-    // it its last row sits under the home indicator.
-    .chat-members {
-      width: 240px;
-      padding-bottom: env(safe-area-inset-bottom);
-    }
-
-    .chat-panel {
-      width: 480px;
+      // The dragged width is deliberately not read at this breakpoint: there is no divider
+      // to drag, and a width chosen on a desktop has nothing to say about a tablet.
+      width: 360px;
       max-width: 100%;
     }
   }

@@ -1,0 +1,51 @@
+@use '../styles/mixins' as *;
+
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+
+    // A host that embeds the frame on its own surface, as settings does, sets this.
+    background: var(--side-panel-surface, var(--trinity-surface-sidebar));
+    color: var(--trinity-text);
+  }
+
+  // Fields and filters that stay put above the rows. The slot is docked to the screen's right
+  // edge, so only the right cutout can reach it.
+  .side-panel__strip {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-3);
+    padding: var(--trinity-space-3);
+    padding-inline-end: calc(
+      var(--trinity-space-3) + env(safe-area-inset-right)
+    );
+    border-block-end: 1px solid var(--trinity-border-subtle);
+
+    &:not(:has(*)) {
+      display: none;
+    }
+  }
+
+  .side-panel__body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .side-panel__body--scroll {
+    @include scrollable;
+    @include swipe-through;
+
+    gap: var(--trinity-space-1);
+    padding: var(--trinity-space-3);
+    padding-inline-end: calc(
+      var(--trinity-space-3) + env(safe-area-inset-right)
+    );
+  }
+}

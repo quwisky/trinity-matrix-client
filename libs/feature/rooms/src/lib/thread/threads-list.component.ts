@@ -5,15 +5,12 @@ import {
   input,
   output,
 } from '@angular/core';
-import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
+import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnBadge } from '@trinity/components/generic-content';
-import {
-  TrnOverlaySurfaceDirective,
-  releaseInputTargetOnDestroy,
-} from '@trinity/components/overlay';
+import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   type ThreadSummary,
@@ -37,11 +34,10 @@ const MAX_AVATARS = 4;
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     UnencryptedMarkComponent,
-    SidePanelHeaderComponent,
+    SidePanelComponent,
     EmptyStateComponent,
     AvatarComponent,
     TrnBadge,
-    TrnOverlaySurfaceDirective,
   ],
   templateUrl: './threads-list.component.html',
   styleUrl: './threads-list.component.scss',

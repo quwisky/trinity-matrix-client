@@ -9,7 +9,10 @@ import {
   type Signal,
 } from '@angular/core';
 import { TrnButton } from '@trinity/components/controls';
-import { TrnIconComponent } from '@trinity/components/foundations';
+import {
+  TrnIconComponent,
+  type TrnIconName,
+} from '@trinity/components/foundations';
 import { TrnTooltip } from '@trinity/components/generic-content';
 
 /** Whether the room's right-hand slot presents its panel as a page, provided by the slot. */
@@ -18,11 +21,10 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
 );
 
 /**
- * The top bar every right-hand panel shares: a title and a close button. Below md a room panel
- * is a page, so the button leads the bar as a Back arrow, like the room header's. The height
- * grows by the top inset rather than being eaten by it, so on a notched device the bar sits
- * below the cutout at full height. Padding is composed in one declaration; the `.safe-*`
- * helpers would fight Tailwind spacing over the same longhands.
+ * The top bar every right-hand panel shares: the panel's icon, a title with an optional inline
+ * subtitle, and a close button. Below md a room panel is a page, so the button leads the bar as
+ * a Back arrow, like the room header's. Each inline padding composes its spacing and the
+ * safe-area inset in one declaration.
  */
 @Component({
   selector: 'trn-side-panel-header',
@@ -45,12 +47,15 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
         <trn-icon name="arrow-left" size="lg" motion="nudge-left" />
       </button>
     }
-    <div class="min-w-0 flex-1">
-      <h2 class="truncate text-base font-semibold">{{ title() }}</h2>
+    @if (icon(); as name) {
+      <trn-icon class="side-panel-header__icon" [name]="name" size="lg" />
+    }
+    <h2 class="side-panel-header__title">
+      {{ title() }}
       @if (subtitle()) {
-        <p class="truncate text-xs text-muted-foreground">{{ subtitle() }}</p>
+        <span class="side-panel-header__subtitle">{{ subtitle() }}</span>
       }
-    </div>
+    </h2>
     @if (!page()) {
       <button
         trnBtn
@@ -64,7 +69,7 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
         [attr.data-right-panel-focus]="focusClose() ? '' : null"
         (click)="closed.emit()"
       >
-        <trn-icon name="x" size="lg" motion="rotate" />
+        <trn-icon name="x" size="md" motion="rotate" />
       </button>
     }
   `,
@@ -72,8 +77,9 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
 })
 export class SidePanelHeaderComponent {
   readonly title = input.required<string>();
-  /** A secondary line under the title, such as the room a panel belongs to. */
+  /** Muted text after the title, such as the room a thread belongs to or a result count. */
   readonly subtitle = input('');
+  readonly icon = input<TrnIconName | null>(null);
   readonly closeLabel = input('Close');
   readonly closeTestId = input('side-panel-close');
   /** Marks the button as the element the panel focuses when it opens. */
