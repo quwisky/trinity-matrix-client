@@ -218,22 +218,29 @@ export class SelectedRoomLibraryService {
     const mode: SelectedRoomLibraryMode =
       accountIds.size > 1 ? 'mixed' : 'active';
 
+    const previous = untracked(this._view);
+    const publish = (next: SelectedRoomLibraryView): void => {
+      const keys = Object.keys(next) as (keyof SelectedRoomLibraryView)[];
+      if (keys.some((key) => next[key] !== previous[key])) this._view.set(next);
+    };
+
     if (mode === 'active') {
       this.sources.reconcile(accountIds);
-      this._view.set({
+      const spaces = this.activeSpaces.spaces();
+      publish({
         accountIds,
         mode,
         rooms: this.activeRooms.rooms(),
-        spaces: this.activeSpaces.spaces(),
-        spaceChildRoomIdsByAccount: indexSpaceChildrenByAccount(
-          this.activeSpaces.spaces(),
-        ),
+        spaces,
+        spaceChildRoomIdsByAccount:
+          previous.mode === mode && previous.spaces === spaces
+            ? previous.spaceChildRoomIdsByAccount
+            : indexSpaceChildrenByAccount(spaces),
         invitations: this.activeInvites.pendingInvites(),
       });
       return;
     }
 
-    const previous = untracked(this._view);
     const sourceChanged = this.sources.reconcile(accountIds);
     const selectionChanged =
       previous.mode !== mode || previous.accountIds !== accountIds;
@@ -243,14 +250,15 @@ export class SelectedRoomLibraryService {
         : requestedDomains;
     const sources = this.sources.current();
     const activeAccountId = this.matrix.activeUserId();
+    const previousSpaces = {
+      spaces: previous.spaces,
+      childRoomIdsByAccount: previous.spaceChildRoomIdsByAccount,
+    };
     const spaces = domains.has('spaces')
-      ? projectSelectedSpaces(sources, activeAccountId)
-      : {
-          spaces: previous.spaces,
-          childRoomIdsByAccount: previous.spaceChildRoomIdsByAccount,
-        };
+      ? projectSelectedSpaces(sources, activeAccountId, previousSpaces)
+      : previousSpaces;
 
-    const next: SelectedRoomLibraryView = {
+    publish({
       accountIds,
       mode,
       rooms: domains.has('rooms')
@@ -265,10 +273,8 @@ export class SelectedRoomLibraryService {
       spaces: spaces.spaces,
       spaceChildRoomIdsByAccount: spaces.childRoomIdsByAccount,
       invitations: domains.has('invitations')
-        ? projectSelectedInvitations(sources)
+        ? projectSelectedInvitations(sources, previous.invitations)
         : previous.invitations,
-    };
-    const keys = Object.keys(next) as (keyof SelectedRoomLibraryView)[];
-    if (keys.some((key) => next[key] !== previous[key])) this._view.set(next);
+    });
   }
 }

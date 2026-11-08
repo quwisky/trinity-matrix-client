@@ -7,6 +7,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   arrivedInClear,
+  initialOf,
   liveRoomState,
   messagePreview,
   roomAvatarMxc,
@@ -55,12 +56,6 @@ interface ChildEntry {
   id: string;
   order: string;
   name: string;
-}
-
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallback avatars. */
-export function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
 }
 
 /**
@@ -256,6 +251,23 @@ export function reuseUnchanged(
   return Object.keys(previous).length === Object.keys(next).length
     ? previous
     : next;
+}
+
+/**
+ * The SDK's unread or member counts, or the room's activity time, no longer match the row's. A
+ * sync updates the counts without an event naming the room, possibly after this room's row was
+ * rebuilt mid-sync, and a thread's metadata update (`ThreadEvent.Update`, which the client does
+ * not re-emit) can move its latest reply.
+ */
+export function sdkMovedRow(room: Room, row: RoomSummary): boolean {
+  return (
+    roomActivityTs(room) !== row.activityTs ||
+    room.getJoinedMemberCount() !== row.memberCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Total) !==
+      row.unreadCount ||
+    room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
+      row.highlightCount
+  );
 }
 
 /** Same rooms, in the same order, as the same objects: nothing for a consumer to redo. */

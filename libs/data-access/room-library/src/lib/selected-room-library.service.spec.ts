@@ -266,8 +266,8 @@ describe('SelectedRoomLibraryService', () => {
     expect(b.listenerCount()).toBe(0);
 
     const lifetime = harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(10);
-    expect(b.listenerCount()).toBe(10);
+    expect(a.listenerCount()).toBe(16);
+    expect(b.listenerCount()).toBe(16);
 
     lifetime.unsubscribe();
     expect(a.listenerCount()).toBe(0);
@@ -280,9 +280,9 @@ describe('SelectedRoomLibraryService', () => {
     });
 
     harness.service.runProjection().subscribe();
-    expect(a.listenerCount()).toBe(10);
-    expect(b.listenerCount()).toBe(10);
-    expect(a.attachmentCount()).toBe(20);
+    expect(a.listenerCount()).toBe(16);
+    expect(b.listenerCount()).toBe(16);
+    expect(a.attachmentCount()).toBe(32);
   });
 
   it('delegates one Account to active projections without duplicate listeners', () => {
@@ -300,6 +300,17 @@ describe('SelectedRoomLibraryService', () => {
       invitations: [ACTIVE_INVITE],
     });
     expect(client.listenerCount()).toBe(0);
+  });
+
+  it('keeps the one-Account view when a re-run changes none of its rows', () => {
+    const harness = setup();
+    TestBed.tick();
+    const before = harness.service.view();
+
+    harness.accountIds.set(['@active:hs', '@other:hs']);
+    TestBed.tick();
+
+    expect(harness.service.view()).toBe(before);
   });
 
   it('publishes one mixed generation with exact Room, Space, and invite policy', () => {
@@ -370,7 +381,7 @@ describe('SelectedRoomLibraryService', () => {
     ]);
     // Shared SDK events have one listener, rather than one per domain projector.
     expect(a.listenerCount('Room')).toBe(1);
-    expect(a.listenerCount()).toBe(10);
+    expect(a.listenerCount()).toBe(16);
   });
 
   it('locks a mixed-list room the crypto store of its Account has as encrypted when its state lacks the event', async () => {
@@ -750,8 +761,22 @@ describe('SelectedRoomLibraryService', () => {
             `${prefix}${i}` === 'a1' ? unread : {},
           ),
         );
-      const a = fakeClient('@a:hs', roomsOf('a'), ['!a-0:hs']);
-      const b = fakeClient('@b:hs', roomsOf('b'), ['!b-0:hs']);
+      const aRooms = roomsOf('a');
+      const bRooms = roomsOf('b');
+      // Every summary build reads the room's live timeline for its preview.
+      const timelineReads = [...aRooms, ...bRooms].map((room) =>
+        vi.spyOn(room, 'getLiveTimeline'),
+      );
+      const a = fakeClient('@a:hs', aRooms, ['!a-0:hs']);
+      const b = fakeClient(
+        '@b:hs',
+        [
+          ...bRooms,
+          fakeRoom('!space-b:hs', { kind: 'space', children: ['!b-1:hs'] }),
+          fakeRoom('!invite-b:hs', { kind: 'invite' }),
+        ],
+        ['!b-0:hs'],
+      );
       const harness = setup({
         selected: new Set(['@a:hs', '@b:hs']),
         live: ['@a:hs', '@b:hs'],
@@ -769,6 +794,7 @@ describe('SelectedRoomLibraryService', () => {
       published();
       const before = harness.service.view().rooms;
       a.getRooms.mockClear();
+      for (const read of timelineReads) read.mockClear();
       const measure = () => {
         published();
         const kept = new Set(before);
@@ -779,18 +805,66 @@ describe('SelectedRoomLibraryService', () => {
           publishes,
         };
       };
-      return { a, unread, measure };
+      const summariesBuilt = () =>
+        timelineReads.filter((read) => read.mock.calls.length > 0).length;
+      return { a, b, aRooms, harness, unread, measure, summariesBuilt };
     }
 
     it('replaces only the row an incoming message changed', async () => {
       vi.useFakeTimers();
-      const { a, unread, measure } = large();
+      const { a, unread, measure, summariesBuilt } = large();
 
       unread.unread = 1;
       a.emit(ClientEvent.Sync);
       await flushProjection();
 
       expect(measure()).toEqual({ rowsReplaced: 1, publishes: 1 });
+      expect(summariesBuilt()).toBe(1);
+    });
+
+    it('rebuilds no row and publishes nothing for a sync that changes nothing', async () => {
+      vi.useFakeTimers();
+      const { a, b, harness, measure, summariesBuilt } = large();
+      const before = harness.service.view();
+
+      a.emit(ClientEvent.Sync);
+      b.emit(ClientEvent.Sync);
+      await flushProjection();
+
+      expect(measure()).toEqual({ rowsReplaced: 0, publishes: 0 });
+      expect(summariesBuilt()).toBe(0);
+      expect(harness.service.view().spaces).toBe(before.spaces);
+      expect(harness.service.view().invitations).toBe(before.invitations);
+    });
+
+    it('re-sorts a row whose thread metadata moved its latest reply, with no timeline event', async () => {
+      vi.useFakeTimers();
+      const { a, aRooms, harness, summariesBuilt } = large();
+
+      // `ThreadEvent.Update` reaches only the Room, never the client.
+      Object.assign(aRooms[150], {
+        getThreads: () => [{ replyToEvent: { getTs: () => 5 } }],
+      });
+      a.emit(ClientEvent.Sync);
+      await flushProjection();
+
+      expect(summariesBuilt()).toBe(1);
+      expect(harness.service.view().rooms[0]).toMatchObject({
+        id: '!a-150:hs',
+        activityTs: 5,
+      });
+    });
+
+    it('rebuilds the row of a room a timeline event named at the next sync', async () => {
+      vi.useFakeTimers();
+      const { a, aRooms, measure, summariesBuilt } = large();
+
+      a.emit(RoomEvent.Timeline, {}, aRooms[7]);
+      a.emit(ClientEvent.Sync);
+      await flushProjection();
+
+      expect(summariesBuilt()).toBe(1);
+      expect(measure().publishes).toBe(0);
     });
 
     it('does not publish for an event that changes no row', async () => {
@@ -925,7 +999,7 @@ describe('SelectedRoomLibraryService', () => {
     await flushProjection();
 
     expect(first.listenerCount()).toBe(0);
-    expect(replacement.listenerCount()).toBe(10);
+    expect(replacement.listenerCount()).toBe(16);
     expect(
       harness.service
         .view()
@@ -985,9 +1059,9 @@ describe('SelectedRoomLibraryService', () => {
     harness.selected.set(new Set(['@b:hs', '@a:hs']));
     TestBed.tick();
 
-    expect(a.attachmentCount()).toBe(10);
+    expect(a.attachmentCount()).toBe(16);
     expect(a.detachmentCount()).toBe(0);
-    expect(a.listenerCount()).toBe(10);
+    expect(a.listenerCount()).toBe(16);
   });
 
   it('detaches selected sources before returning to one active Account', () => {
@@ -1001,7 +1075,7 @@ describe('SelectedRoomLibraryService', () => {
         ['@b:hs', b],
       ]),
     });
-    expect(a.listenerCount()).toBe(10);
+    expect(a.listenerCount()).toBe(16);
 
     harness.selected.set(new Set(['@a:hs']));
     TestBed.tick();
@@ -1035,8 +1109,8 @@ describe('SelectedRoomLibraryService', () => {
 
     expect(a.listenerCount()).toBe(0);
     expect(b.listenerCount()).toBe(0);
-    expect(a.attachmentCount()).toBe(10);
-    expect(a.detachmentCount()).toBe(10);
+    expect(a.attachmentCount()).toBe(16);
+    expect(a.detachmentCount()).toBe(16);
   });
 
   it('keeps selection commands cold and returns typed unavailable recovery', async () => {

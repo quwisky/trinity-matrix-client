@@ -23,9 +23,9 @@ import {
   MatrixClientService,
   mutualRoomIds,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { initialOf, roomAvatarMxc } from '@trinity/util/matrix';
 import { RoomLibraryService } from './room-library.service';
-import { directMapOf, initialOf, isJoinedSpace } from './room-projection';
+import { directMapOf, isJoinedSpace } from './room-projection';
 
 /** A joined room or space that another person has also joined. */
 export interface CommonRoom {

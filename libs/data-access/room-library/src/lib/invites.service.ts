@@ -11,7 +11,7 @@ import {
   MatrixClientService,
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
-import { roomAvatarMxc } from '@trinity/util/matrix';
+import { initialOf, roomAvatarMxc } from '@trinity/util/matrix';
 
 /** A room we have been invited to but not yet joined (shown in the Invites group). */
 export interface PendingInvite {
@@ -45,7 +45,9 @@ export interface PendingInvite {
 export class InvitesService {
   private readonly matrix = inject(MatrixClientService);
 
-  private readonly _pendingInvites = signal<PendingInvite[]>([]);
+  private readonly _pendingInvites = signal<PendingInvite[]>([], {
+    equal: sameInvites,
+  });
   /** Rooms/spaces we have been invited to; live as the client syncs. */
   readonly pendingInvites = this._pendingInvites.asReadonly();
 
@@ -200,8 +202,17 @@ export function buildInvite(
   };
 }
 
-/** First visible character (sans leading `#`/`@`/`!`), uppercased, for fallbacks. */
-function initialOf(name: string): string {
-  const stripped = name.replace(/^[#@!]+/, '').trim();
-  return (stripped[0] ?? '?').toUpperCase();
+/** Same invites, in the same order, with the same fields: a sync that changed none republishes nothing. */
+export function sameInvites(
+  a: readonly PendingInvite[],
+  b: readonly PendingInvite[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every((x, i) =>
+      (Object.keys(x) as (keyof PendingInvite)[]).every(
+        (key) => x[key] === b[i][key],
+      ),
+    )
+  );
 }

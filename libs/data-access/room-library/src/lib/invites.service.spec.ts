@@ -1,6 +1,6 @@
 import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { RoomEvent, type MatrixClient } from 'matrix-js-sdk';
+import { ClientEvent, RoomEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
@@ -236,6 +236,18 @@ describe('InvitesService', () => {
     await Promise.resolve(); // the refresh is coalesced into a microtask
 
     expect(svc.pendingInvites()).toEqual([]);
+  });
+
+  it('keeps the same invite list across a sync that changes no invite', async () => {
+    const { svc, client } = setup([
+      fakeRoom({ roomId: '!a:hs', name: 'Alpha' }, '@me:hs'),
+    ]);
+    const before = svc.pendingInvites();
+
+    handlerFor(client, ClientEvent.Sync)?.();
+    await Promise.resolve();
+
+    expect(svc.pendingInvites()).toBe(before);
   });
 
   it('detaches listeners and clears the model on teardown', () => {

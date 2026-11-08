@@ -21,6 +21,26 @@ function badgeOf(
   };
 }
 
+/** Same accounts with the same badges: a view republished by a room-list sync is not a change. */
+function sameBadges(
+  a: ReadonlyMap<string, AccountBadge>,
+  b: ReadonlyMap<string, AccountBadge>,
+): boolean {
+  if (a.size !== b.size) return false;
+  for (const [id, x] of a) {
+    const y = b.get(id);
+    if (
+      !y ||
+      x.name !== y.name ||
+      x.initial !== y.initial ||
+      x.avatarMxc !== y.avatarMxc
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /**
  * Owning-account badges: account id to the avatar/initial/name drawn in the corner of a room row,
  * space pill, rail unread chat or switcher result. Shared so every surface badges rows identically.
@@ -37,21 +57,24 @@ export class AccountBadgesService {
   readonly mixed = computed(() => this.selectedLibrary.view().mode === 'mixed');
 
   /** The mixed accounts' badges; empty unless more than one account is being mixed. */
-  readonly badges = computed<ReadonlyMap<string, AccountBadge>>(() => {
-    const badges = new Map<string, AccountBadge>();
-    const view = this.selectedLibrary.view();
-    if (view.mode !== 'mixed') {
+  readonly badges = computed<ReadonlyMap<string, AccountBadge>>(
+    () => {
+      const badges = new Map<string, AccountBadge>();
+      const view = this.selectedLibrary.view();
+      if (view.mode !== 'mixed') {
+        return badges;
+      }
+      // Every account's profile, each read through its OWN client, so a mixed-in account hydrating later
+      // updates its badge (the projection listens per account) instead of keeping its mxid and a hashed letter.
+      const profiles = this.identities.identities();
+      for (const userId of view.accountIds) {
+        const profile = profiles.get(userId);
+        badges.set(userId, badgeOf(userId, profile));
+      }
       return badges;
-    }
-    // Every account's profile, each read through its OWN client, so a mixed-in account hydrating later
-    // updates its badge (the projection listens per account) instead of keeping its mxid and a hashed letter.
-    const profiles = this.identities.identities();
-    for (const userId of view.accountIds) {
-      const profile = profiles.get(userId);
-      badges.set(userId, badgeOf(userId, profile));
-    }
-    return badges;
-  });
+    },
+    { equal: sameBadges },
+  );
 
   /**
    * Every signed-in account's badge, mixed or not. The rail's unread chats list other accounts' chats

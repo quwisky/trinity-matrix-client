@@ -1,10 +1,9 @@
-import { Injectable, computed, inject, signal, untracked } from '@angular/core';
+import { Injectable, inject, signal, untracked } from '@angular/core';
 import {
   ClientEvent,
   EventType,
   HistoryVisibility,
   MatrixEventEvent,
-  NotificationCountType,
   Preset,
   ReceiptType,
   RoomEvent,
@@ -48,6 +47,7 @@ import {
   compareRoomSummaries,
   decryptionChangesRow,
   directMapOf,
+  sdkMovedRow,
   isMarkedUnread,
   reuseUnchanged,
   sameRooms,
@@ -294,14 +294,6 @@ export class RoomLibraryService {
 
   private readonly _rooms = signal<RoomSummary[]>([], { equal: sameRooms });
   readonly rooms = this._rooms.asReadonly();
-
-  /**
-   * App-wide unread total: the sum of every joined room's unread notification count (the
-   * app-icon badge; see AppBadgeService).
-   */
-  readonly totalUnread = computed(() =>
-    this.rooms().reduce((sum, r) => sum + r.unreadCount, 0),
-  );
 
   /**
    * Room ids the `m.direct` account-data map records as direct messages, recomputed on each
@@ -828,7 +820,7 @@ export class RoomLibraryService {
       let resort = false;
       rooms = previousRooms.map((row) => {
         const room = byId.get(row.id) as Room;
-        if (!this.dirtyRooms.has(row.id) && !countsMoved(room, row)) return row;
+        if (!this.dirtyRooms.has(row.id) && !sdkMovedRow(room, row)) return row;
         rebuilt.push(room);
         const next = build(room);
         resort ||= next !== row && sortKeyChanged(row, next);
@@ -887,20 +879,6 @@ export class RoomLibraryService {
       hasUnread: summary.unreadCount > 0 || pending,
     };
   }
-}
-
-/**
- * The SDK's unread or member counts no longer match the row's. A sync updates them without an
- * event naming the room, possibly after this room's row was rebuilt mid-sync.
- */
-function countsMoved(room: Room, row: RoomSummary): boolean {
-  return (
-    room.getJoinedMemberCount() !== row.memberCount ||
-    room.getUnreadNotificationCount(NotificationCountType.Total) !==
-      row.unreadCount ||
-    room.getUnreadNotificationCount(NotificationCountType.Highlight) !==
-      row.highlightCount
-  );
 }
 
 /** Whether `next` sorts by different keys than `previous`; see {@link compareRoomSummaries}. */
