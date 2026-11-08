@@ -21,19 +21,21 @@
 
       <div class="flex flex-col gap-1">
         <label trnLabel for="add-to-pack-shortcode">Shortcode</label>
-        <input
-          trnInput
-          id="add-to-pack-shortcode"
-          autocomplete="off"
-          spellcheck="false"
-          data-autofocus
-          [formField]="addForm.shortcode"
-          [attr.aria-invalid]="shortcodeError() ? 'true' : null"
-          [attr.aria-describedby]="
-            shortcodeError() ? 'add-to-pack-shortcode-error' : null
-          "
-          data-testid="add-to-pack-shortcode"
-        />
+        <trn-field-lock>
+          <input
+            trnInput
+            id="add-to-pack-shortcode"
+            autocomplete="off"
+            spellcheck="false"
+            data-autofocus
+            [formField]="addForm.shortcode"
+            [attr.aria-invalid]="shortcodeError() ? 'true' : null"
+            [attr.aria-describedby]="
+              shortcodeError() ? 'add-to-pack-shortcode-error' : null
+            "
+            data-testid="add-to-pack-shortcode"
+          />
+        </trn-field-lock>
         @if (shortcodeError(); as message) {
           <p
             id="add-to-pack-shortcode-error"

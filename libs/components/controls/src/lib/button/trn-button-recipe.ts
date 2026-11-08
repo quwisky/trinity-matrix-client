@@ -103,7 +103,7 @@ const nonSolidTone = {
 } as const;
 
 /**
- * The keyboard-focus ring for every button but a solid primary one, matching `trnInput`.
+ * The keyboard-focus ring for every button but a solid primary one.
  * `dark:focus-visible:ring-*` out-merges Helm destructive's `dark:focus-visible:ring-destructive/40`.
  */
 const focusRing =

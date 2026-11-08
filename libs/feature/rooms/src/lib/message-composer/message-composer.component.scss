@@ -76,9 +76,9 @@
     // for the buttons against the box's edge, not a measurement: the 40px buttons carry their
     // own hit area and the radius needs a little space inside it.
     padding-inline: var(--trinity-density-composer-field-inset);
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-raised);
+    border: 1px solid var(--trinity-entry-border);
+    border-radius: var(--trinity-entry-radius);
+    background: var(--trinity-entry-surface);
 
     // The field's own area is a press target for the input it draws (see `onFieldPress`), so it
     // must read as one: without this the dead zone shows an arrow while the textarea a pixel
@@ -159,7 +159,7 @@
     color: var(--trinity-text);
 
     // Sender colours in the preview are checked against the field they sit on.
-    --trinity-message-surface: var(--trinity-surface-raised);
+    --trinity-message-surface: var(--trinity-entry-surface);
 
     // The same type as the textarea, because it stands in for it: a different size or leading
     // would change the cell's height on toggle.

@@ -29,6 +29,11 @@ export {
   type TrnFieldLabelEmphasis,
 } from './lib/field/field-label/trn-field-label.component';
 export { TrnInput, type TrnTextControlSize } from './lib/input/trn-input';
+export {
+  TRN_DEFAULT_LOCK_REASON,
+  TRN_LOCKABLE_CONTROL,
+  type TrnLockableControl,
+} from './lib/input/trn-lockable-control';
 export { TrnLabel } from './lib/label/trn-label';
 export { TrnPasswordInputComponent } from './lib/password-input/trn-password-input.component';
 export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.component';

@@ -2,6 +2,7 @@ import {
   booleanAttribute,
   computed,
   Directive,
+  forwardRef,
   inject,
   input,
 } from '@angular/core';
@@ -11,6 +12,12 @@ import {
 } from '@spartan-ng/brain/field';
 import { BrnTextarea } from '@spartan-ng/brain/textarea';
 import { classes } from '@trinity/helm/utils';
+import {
+  trnLockReason,
+  nativeDisabled,
+  TRN_LOCKABLE_CONTROL,
+  type TrnLockableControl,
+} from '../input/trn-lockable-control';
 import {
   trnTextareaRecipe,
   type TrnTextControlSize,
@@ -33,6 +40,12 @@ import {
     '[attr.data-invalid]': 'resolvedInvalid() ? "true" : null',
     '[attr.data-matches-spartan-invalid]': 'resolvedInvalid() ? "true" : null',
   },
+  providers: [
+    {
+      provide: TRN_LOCKABLE_CONTROL,
+      useExisting: forwardRef(() => TrnTextarea),
+    },
+  ],
   hostDirectives: [
     {
       directive: BrnTextarea,
@@ -46,7 +59,7 @@ import {
     },
   ],
 })
-export class TrnTextarea {
+export class TrnTextarea implements TrnLockableControl {
   private readonly fieldControl = inject(BrnFieldControl);
 
   readonly size = input<TrnTextControlSize>('md');
@@ -57,6 +70,20 @@ export class TrnTextarea {
   readonly explicitInvalid = input(false, { transform: booleanAttribute });
   protected readonly resolvedInvalid = computed(
     () => this.explicitInvalid() || Boolean(this.fieldControl.spartanInvalid()),
+  );
+  /** Why the field is disabled, for `trn-field-lock`; a Signal Forms reason is used otherwise. */
+  readonly disabledReason = input<string | null>(null);
+  /** Written by Signal Forms from the schema's `disabled(path, { when })` rules. */
+  readonly disabledReasons = input<readonly { readonly message?: string }[]>(
+    [],
+  );
+  readonly multiline = true;
+  readonly disabled = nativeDisabled();
+  readonly lockReason = trnLockReason(
+    this.disabled,
+    computed(() => this.size() !== 'sm'),
+    this.disabledReason,
+    this.disabledReasons,
   );
 
   constructor() {

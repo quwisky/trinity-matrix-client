@@ -6,6 +6,8 @@
     block-size: auto;
     background: transparent;
 
+    --trinity-entry-surface: var(--trinity-entry-surface-overlay);
+
     // The shell body's own insets: a gap under the header and the title's side inset.
     --settings-layout-inset: var(--trinity-space-4);
     --settings-layout-gutter: var(--trinity-space-5);

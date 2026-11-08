@@ -39,3 +39,4 @@ export {
   TRN_TOOLTIP_SVG_CLASSES,
   TrnTooltip,
 } from './lib/tooltip/trn-tooltip';
+export { TrnFieldLockComponent } from './lib/field-lock/trn-field-lock.component';

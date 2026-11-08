@@ -20,7 +20,10 @@ import {
   type TrnSelectOption,
 } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { BannerComponent } from '@trinity/components/generic-content';
+import {
+  BannerComponent,
+  TrnFieldLockComponent,
+} from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
@@ -48,6 +51,7 @@ const STANDARD: readonly TrnSelectOption<Choice>[] = [
   selector: 'trn-permissions-settings',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnFieldLockComponent,
     BannerComponent,
     TrnButton,
     TrnIconComponent,
@@ -175,6 +179,12 @@ export class PermissionsSettingsComponent {
       );
     }
     return options;
+  }
+
+  /** Why a row's controls are locked: a permission outlasts a save, so it comes first. */
+  protected lockReasonFor(item: PermissionRowView): string | null {
+    if (!item.editable) return item.reason ?? this.view().reason ?? null;
+    return this.saving() ? 'Wait for your changes to save' : null;
   }
 
   protected choiceOf(item: PermissionRowView): Choice {

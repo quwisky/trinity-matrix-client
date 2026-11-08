@@ -97,6 +97,15 @@ const ROLES = [
     text: '--trinity-text',
     on: PANE_GROUNDS,
   },
+  // A field's typed value and placeholder on the entry fill, in the panes and on overlays.
+  {
+    text: '--trinity-text-bright',
+    on: ['--trinity-entry-surface', '--trinity-entry-surface-overlay'],
+  },
+  {
+    text: '--trinity-text-muted',
+    on: ['--trinity-entry-surface', '--trinity-entry-surface-overlay'],
+  },
   // A solid secondary row's label on the neutral fill (`trnBtn shape="row"`), at rest and hovered.
   {
     text: '--trinity-control-secondary-foreground',
@@ -351,6 +360,28 @@ const NON_TEXT_ROLES = [
       '--trinity-chat',
       '--trinity-sidebar',
       '--trinity-surface-raised',
+    ],
+  },
+  // A text field's inset focus and invalid rings sit on its fill, wherever it is drawn.
+  ...['--trinity-focus-ring', '--trinity-danger'].map((foreground) => ({
+    foreground,
+    on: ['--trinity-entry-surface', '--trinity-entry-surface-overlay'],
+  })),
+  // The edge of a text field and of the composer, against their own fills and every surface they
+  // sit on. A disabled field's dashed edge is the muted text role, measured with the text roles.
+  {
+    foreground: '--trinity-entry-border',
+    on: [
+      '--trinity-entry-surface',
+      '--trinity-entry-surface-overlay',
+      '--trinity-surface-workspace',
+      '--trinity-surface-pane',
+      '--trinity-surface-app',
+      '--trinity-surface-sidebar',
+      '--trinity-sidebar',
+      '--trinity-surface-raised',
+      '--trinity-surface-overlay',
+      '--trinity-surface-canvas',
     ],
   },
   // A disabled solid button's border keeps its shape visible: the neutral fill alone is
