@@ -24,6 +24,7 @@ import {
   switchMap,
 } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { signalChanges } from '@trinity/util/ui';
 import { ConversationRuntime } from './conversation-runtime.service';
 import {
   TRIM_HIGH_WATER,
@@ -210,9 +211,10 @@ export class LiveTimelineTrimmer {
         // The window has just been hidden for a while, or the open room's view has settled
         // at the newest messages: trim it now rather than at its next event, which may be
         // hours away.
-        const trimsFocused = toObservable(this.conversations.trimsFocused, {
-          injector: this.injector,
-        }).subscribe((trims) => {
+        const trimsFocused = signalChanges(
+          this.conversations.trimsFocused,
+          this.injector,
+        ).subscribe((trims) => {
           const key = this.conversations.focused()?.key;
           const room =
             trims !== null && key?.accountId === accountId

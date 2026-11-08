@@ -1,5 +1,4 @@
 import {
-  Injector,
   Injectable,
   type Signal,
   type WritableSignal,
@@ -52,7 +51,9 @@ interface WidgetSnapshot {
 export class WidgetsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly appearance = inject(WIDGET_APPEARANCE_PROJECTION);
-  private readonly injector = inject(Injector);
+  // Created once: a `toObservable` made per call would outlive its subscriber until this
+  // root service is destroyed.
+  private readonly accountIds$ = toObservable(this.matrix.accountIds);
   private readonly watched = new Map<string, WatchedRoom>();
 
   /**
@@ -82,9 +83,7 @@ export class WidgetsService {
       watched.canManage.set(snapshot.canManage);
     });
     lifetime.add(
-      toObservable(this.matrix.accountIds, {
-        injector: this.injector,
-      }).subscribe(() => {
+      this.accountIds$.subscribe(() => {
         const nextClient = this.matrix.clientFor(watched.target.accountId);
         if (nextClient === connectedClient) return;
         connectedClient = nextClient;

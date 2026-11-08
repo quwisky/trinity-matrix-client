@@ -1,4 +1,4 @@
-import { Injectable, Injector, inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import {
   EventType,
@@ -137,7 +137,10 @@ export function takesAllowList(rule: JoinRule): boolean {
 export class RoomSettingsService {
   private readonly matrix = inject(MatrixClientService);
   private readonly permissions = inject(RoomActionPermissionsService);
-  private readonly injector = inject(Injector);
+  // Created once: a `toObservable` made per call would outlive its subscriber until this
+  // root service is destroyed.
+  private readonly accountIds$ = toObservable(this.matrix.accountIds);
+  private readonly activeAccount$ = toObservable(this.matrix.activeUserId);
   /** Per client and room: the shared room-encrypted check's latest answer. */
   private readonly encryptionAnswers = new WeakMap<
     MatrixClient,
@@ -488,13 +491,7 @@ export class RoomSettingsService {
    * Account's client and follows Account removal/replacement without ever retargeting.
    */
   observe(target: RoomSettingsTarget): Observable<RoomSettingsSnapshot> {
-    const accountIds = toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    });
-    const activeAccount = toObservable(this.matrix.activeUserId, {
-      injector: this.injector,
-    });
-    return merge(of(null), accountIds, activeAccount).pipe(
+    return merge(of(null), this.accountIds$, this.activeAccount$).pipe(
       switchMap(() => this.observeCurrentClient(target)),
     );
   }
