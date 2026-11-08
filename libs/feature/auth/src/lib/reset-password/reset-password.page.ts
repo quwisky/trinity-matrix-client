@@ -27,10 +27,7 @@ import {
   TrnInput,
   TrnPasswordInputComponent,
 } from '@trinity/components/controls';
-import {
-  TrnFieldLockComponent,
-  TrnSpinnerComponent,
-} from '@trinity/components/generic-content';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnCardImports } from '@trinity/components/navigation-layout';
 import {
   AUTHENTICATION_HOMESERVER_DISCOVERY,
@@ -43,8 +40,6 @@ import { finalize, type Observable } from 'rxjs';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { RESET_PASSWORD_COPY, refusalMessage } from './reset-password.copy';
 
-const BUSY_REASON = 'Wait for this step to finish';
-
 type ResetStep = 'email' | 'sent' | 'password';
 
 /** Reset a forgotten password with a link sent to the account's email address. */
@@ -54,7 +49,6 @@ type ResetStep = 'email' | 'sent' | 'password';
   templateUrl: './reset-password.page.html',
   styleUrl: './reset-password.page.scss',
   imports: [
-    TrnFieldLockComponent,
     AuthCardComponent,
     FormField,
     RouterLink,
@@ -105,7 +99,7 @@ export class ResetPasswordPage {
   protected readonly emailForm = form(this.emailModel, (path) => {
     required(path.email, { message: RESET_PASSWORD_COPY.emailRequired });
     email(path.email, { message: RESET_PASSWORD_COPY.emailInvalid });
-    disabled(path.email, { when: () => this.busy() && BUSY_REASON });
+    disabled(path.email, { when: () => this.busy() });
   });
 
   private readonly passwordModel = signal({
@@ -123,8 +117,8 @@ export class ResetPasswordPage {
         ? undefined
         : { kind: 'passwordMismatch', message: RESET_PASSWORD_COPY.mismatch },
     );
-    disabled(path.password, { when: () => this.busy() && BUSY_REASON });
-    disabled(path.confirmation, { when: () => this.busy() && BUSY_REASON });
+    disabled(path.password, { when: () => this.busy() });
+    disabled(path.confirmation, { when: () => this.busy() });
   });
 
   constructor() {
