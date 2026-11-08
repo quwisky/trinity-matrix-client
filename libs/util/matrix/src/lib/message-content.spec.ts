@@ -7,6 +7,7 @@ import {
   mediaCaptionFields,
   messagePreview,
   parseSlashCommand,
+  placeMentions,
   replyMessageContent,
   replyTextArt,
   slashCommandContent,
@@ -475,6 +476,107 @@ describe('mentions in content builders', () => {
     expect(mentionIds(content)).toEqual(['@alice:hs', '@bob:hs']);
     expect(content['formatted_body']).toContain('matrix.to/#/@alice:hs');
     expect(content['formatted_body']).toContain('matrix.to/#/@bob:hs');
+  });
+
+  it('pills a shorter name on its own text, not inside a longer one', () => {
+    const text = 'hi @Alice and @Al';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@al:hs', display: '@Al' },
+      ALICE,
+    ]) as Record<string, unknown>;
+
+    expect(content['formatted_body']).toContain(
+      'hi <a href="https://matrix.to/#/@alice:hs">@Alice</a> and <a href="https://matrix.to/#/@al:hs">@Al</a>',
+    );
+  });
+
+  /** The formatted body `text` sends with `mentions`. */
+  const pilled = (text: string, mentions: Mention[]): unknown =>
+    (
+      textMessageContent(text, renderMarkdown(text), mentions) as Record<
+        string,
+        unknown
+      >
+    )['formatted_body'];
+  const JO: Mention = { userId: '@jo:hs', display: '@Jo' };
+  const JO_SMITH: Mention = { userId: '@jo.smith:hs', display: '@Jo Smith' };
+
+  it('pills a name and a longer name that starts with it, each on its own text', () => {
+    expect(pilled('@Jo Smith and @Jo', [JO, JO_SMITH])).toContain(
+      '<a href="https://matrix.to/#/@jo.smith:hs">@Jo Smith</a> and <a href="https://matrix.to/#/@jo:hs">@Jo</a>',
+    );
+  });
+
+  it('never pills a name inside any copy of a longer one', () => {
+    const body = pilled('@Jo Smith, @Jo Smith and @Al-Rashid', [
+      JO,
+      JO_SMITH,
+      { userId: '@al:hs', display: '@Al' },
+      { userId: '@alr:hs', display: '@Al-Rashid' },
+    ]);
+
+    expect(body).not.toContain('@jo:hs');
+    expect(body).not.toContain('@al:hs');
+    expect(body).toContain(
+      '<a href="https://matrix.to/#/@alr:hs">@Al-Rashid</a>',
+    );
+  });
+
+  it('pills a shorter name written before a longer one, and several in one text node', () => {
+    const lee: Mention = { userId: '@lee:hs', display: '@Lee' };
+    const annLee: Mention = { userId: '@annlee:hs', display: '@Ann Lee' };
+
+    expect(
+      pilled('@Lee then @Ann Lee, @Jo and @Jo Smith', [
+        lee,
+        annLee,
+        JO,
+        JO_SMITH,
+      ]),
+    ).toContain(
+      '<a href="https://matrix.to/#/@lee:hs">@Lee</a> then ' +
+        '<a href="https://matrix.to/#/@annlee:hs">@Ann Lee</a>, ' +
+        '<a href="https://matrix.to/#/@jo:hs">@Jo</a> and ' +
+        '<a href="https://matrix.to/#/@jo.smith:hs">@Jo Smith</a>',
+    );
+  });
+
+  it('places mentions in a long pasted message in time linear in its length', () => {
+    const text = '@Jo Smith and @Jo, '.repeat(20_000);
+    const started = performance.now();
+    const placed = placeMentions(text, [JO, JO_SMITH]);
+    const elapsed = performance.now() - started;
+
+    expect(placed).toEqual([
+      { mention: JO_SMITH, index: 0 },
+      { mention: JO, index: 14 },
+    ]);
+    // Generous: the per-claim scan this replaced took seconds at this size.
+    expect(elapsed).toBeLessThan(500);
+  });
+
+  it('pills a mention inside markdown emphasis', () => {
+    expect(pilled('_thanks @Alice_', [ALICE])).toContain(
+      '<em>thanks <a href="https://matrix.to/#/@alice:hs">@Alice</a></em>',
+    );
+  });
+
+  it('pills a mention followed directly by more letters, as CJK writes it', () => {
+    expect(
+      pilled('@太郎さん', [{ userId: '@taro:hs', display: '@太郎' }]),
+    ).toContain('<a href="https://matrix.to/#/@taro:hs">@太郎</a>さん');
+  });
+
+  it('leaves a shorter name unpilled when only a longer one is in the text', () => {
+    const text = 'hi @Alice';
+    const content = textMessageContent(text, renderMarkdown(text), [
+      { userId: '@al:hs', display: '@Al' },
+      ALICE,
+    ]) as Record<string, unknown>;
+
+    expect(content['formatted_body']).toContain(
+      'hi <a href="https://matrix.to/#/@alice:hs">@Alice</a>',
+    );
   });
 
   it('HTML-escapes a mention display in the pill', () => {

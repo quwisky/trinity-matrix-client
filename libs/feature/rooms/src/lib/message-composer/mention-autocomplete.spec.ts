@@ -62,3 +62,107 @@ describe('MentionAutocomplete matches', () => {
     ]);
   });
 });
+
+describe('MentionAutocomplete active mentions', () => {
+  /** Type `@query` after `text` and accept the member at `index`. */
+  const pick = (
+    mentions: MentionAutocomplete,
+    text: string,
+    query: string,
+    index = 0,
+  ): string => {
+    const typed = `${text}@${query}`;
+    mentions.sync(typed, typed.length);
+    const splice = mentions.accept(typed, typed.length, index);
+    if (!splice) throw new Error(`no member matches ${query}`);
+    return typed.slice(0, splice.start) + splice.insert;
+  };
+
+  it('targets the member picked last when two share a display name', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Alice', '@a1:x'), member('Alice', '@a2:x')]),
+    );
+    pick(mentions, '', 'Ali', 0); // @a1, then deleted
+    const text = pick(mentions, '', 'Ali', 1); // @a2
+
+    expect(mentions.active(text)).toEqual([
+      { userId: '@a2:x', display: '@Alice' },
+    ]);
+  });
+
+  it('does not find a deleted shorter name inside a longer one', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Al', '@al:x'), member('Alice', '@alice:x')]),
+    );
+    pick(mentions, '', 'Al', 0); // Al, then deleted
+    const text = pick(mentions, '', 'Ali'); // Alice
+
+    expect(mentions.active(text)).toEqual([
+      { userId: '@alice:x', display: '@Alice' },
+    ]);
+  });
+
+  it('keeps both a shorter and a longer name that are both in the text', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Al', '@al:x'), member('Alice', '@alice:x')]),
+    );
+    const text = pick(mentions, pick(mentions, '', 'Ali'), 'Al', 0);
+
+    expect(text).toBe('@Alice @Al ');
+    expect(mentions.active(`${text.trimEnd()}, hi`)).toEqual([
+      { userId: '@alice:x', display: '@Alice' },
+      { userId: '@al:x', display: '@Al' },
+    ]);
+  });
+
+  it('keeps a name and a longer name that starts with it, and drops the shorter once deleted', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Jo Smith', '@js:x'), member('Jo', '@jo:x')]),
+    );
+    const text = pick(mentions, pick(mentions, '', 'Jo', 0), 'Jo', 1);
+
+    expect(text).toBe('@Jo Smith @Jo ');
+    expect(mentions.active(text).map((m) => m.userId)).toEqual([
+      '@js:x',
+      '@jo:x',
+    ]);
+    expect(mentions.active('@Jo Smith ').map((m) => m.userId)).toEqual([
+      '@js:x',
+    ]);
+  });
+
+  it('drops a deleted name that a hyphenated name starts with', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Al', '@al:x'), member('Al-Rashid', '@alr:x')]),
+    );
+    pick(mentions, '', 'Al', 0); // Al, then deleted
+    const text = pick(mentions, '', 'Al-');
+
+    expect(mentions.active(text).map((m) => m.userId)).toEqual(['@alr:x']);
+  });
+
+  it('keeps a mention inside markdown emphasis', () => {
+    const mentions = new MentionAutocomplete(signal([member('Alice')]));
+    const text = pick(mentions, '_thanks ', 'Ali');
+
+    expect(mentions.active(`${text.trimEnd()}_`)).toHaveLength(1);
+  });
+
+  it('keeps a mention followed directly by more letters, as CJK writes it', () => {
+    const mentions = new MentionAutocomplete(signal([member('太郎')]));
+    const text = pick(mentions, '', '太');
+
+    expect(mentions.active(`${text.trimEnd()}さん`)).toHaveLength(1);
+  });
+
+  it('lists a member picked twice once', () => {
+    const mentions = new MentionAutocomplete(
+      signal([member('Alice', '@a1:x')]),
+    );
+    const text = pick(mentions, pick(mentions, '', 'Ali'), 'Ali');
+
+    expect(mentions.active(text)).toEqual([
+      { userId: '@a1:x', display: '@Alice' },
+    ]);
+  });
+});
