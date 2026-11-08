@@ -275,10 +275,10 @@ it('never asks for consent where the keychain works', async () => {
   expect(test.consent.confirm).not.toHaveBeenCalled();
 });
 
-it('empties the push handoff before replacing the live Accounts', async () => {
+it('empties the push handoff of the other Accounts only once the new one is active', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
   const order: string[] = [];
-  vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(
     defer(() => {
       order.push('forget-handoff');
       return of(void 0);
@@ -297,9 +297,15 @@ it('empties the push handoff before replacing the live Accounts', async () => {
     }),
   );
   vi.mocked(matrix.restorePersisted).mockReturnValue(
-    of({ kind: 'ready' as const }),
+    defer(() => {
+      order.push('start');
+      return of({ kind: 'ready' as const });
+    }),
   );
   vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+  vi.mocked(matrix.activateAccount).mockImplementation(() => {
+    order.push('activate');
+  });
 
   await firstValueFrom(
     adapter.establishAccount(
@@ -308,13 +314,180 @@ it('empties the push handoff before replacing the live Accounts', async () => {
     ),
   );
 
-  expect(lifecycle.forgetPushHandoff).toHaveBeenCalledWith();
-  expect(order).toEqual(['forget-handoff', 'unregister', 'persist']);
+  expect(lifecycle.forgetOtherPushHandoffs).toHaveBeenCalledExactlyOnceWith(
+    session.userId,
+  );
+  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
+  expect(order).toEqual([
+    'persist',
+    'start',
+    'unregister',
+    'activate',
+    'forget-handoff',
+  ]);
+});
+
+it("keeps the live Accounts' pushers when saving the replacing Account fails", async () => {
+  const { adapter, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(
+    throwError(() => new DOMException('quota', 'QuotaExceededError')),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.releaseSharedCaches).not.toHaveBeenCalled();
+});
+
+it("keeps the live Accounts' pushers when the replacing Account does not start", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({
+      kind: 'failed' as const,
+      failure: 'transient-network' as const,
+    }),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+});
+
+it("registers the live Accounts' pushers again when placing the replacing Account fails", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(
+    throwError(() => new DOMException('quota', 'QuotaExceededError')),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toMatchObject({ kind: 'failed' });
+
+  expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
+  // The live accounts' handoff entries stay as they were.
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
+  expect(lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
+});
+
+it("registers the live Accounts' pushers again when the replacing sign-in is left before activation", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(NEVER);
+
+  const attempt = adapter
+    .establishAccount(AuthenticatedAccountGrant.issue(session), activeIntent)
+    .subscribe();
+  await settled();
+  expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
+  attempt.unsubscribe();
+
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
+});
+
+it('starts the account without placing it when placement is no longer wanted', async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(AuthenticatedAccountGrant.issue(session), {
+        ...activeIntent,
+        placementWanted: () => false,
+      }),
+    ),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(matrix.restorePersisted).toHaveBeenCalledWith(session, 'background');
+  expect(lifecycle.releaseSharedCaches).not.toHaveBeenCalled();
+  expect(lifecycle.unregisterNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.registerNotifications).not.toHaveBeenCalled();
+  expect(lifecycle.forgetOtherPushHandoffs).not.toHaveBeenCalled();
+  expect(storage.setActiveForEstablishment).not.toHaveBeenCalled();
+  expect(matrix.activateAccount).not.toHaveBeenCalled();
+});
+
+it('still places the account when none is active, wanted or not', async () => {
+  const { adapter, matrix, storage } = setup(null);
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(AuthenticatedAccountGrant.issue(session), {
+        ...activeIntent,
+        placementWanted: () => false,
+      }),
+    ),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(storage.setActiveForEstablishment).toHaveBeenCalledWith(
+    session.userId,
+  );
+  expect(matrix.activateAccount).toHaveBeenCalledWith(
+    session.userId,
+    'replace',
+  );
+});
+
+it("does not register the replaced Accounts' pushers again when left after activation", async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(NEVER);
+
+  const attempt = adapter
+    .establishAccount(AuthenticatedAccountGrant.issue(session), activeIntent)
+    .subscribe();
+  await settled();
+  expect(matrix.activateAccount).toHaveBeenCalled();
+  attempt.unsubscribe();
+
+  expect(lifecycle.registerNotifications).not.toHaveBeenCalled();
 });
 
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {
   const { adapter, matrix, storage, lifecycle } = setup();
-  vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(
+  vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(
     throwError(() => new Error('keychain locked')),
   );
   vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
@@ -339,7 +512,7 @@ it('still signs in and tears pushers down when emptying the push handoff never s
   vi.useFakeTimers();
   try {
     const { adapter, matrix, storage, lifecycle } = setup();
-    vi.mocked(lifecycle.forgetPushHandoff).mockReturnValue(NEVER);
+    vi.mocked(lifecycle.forgetOtherPushHandoffs).mockReturnValue(NEVER);
     vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
     vi.mocked(matrix.restorePersisted).mockReturnValue(
       of({ kind: 'ready' as const }),

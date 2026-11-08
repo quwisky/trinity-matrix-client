@@ -1947,15 +1947,29 @@ describe('LoginPage', () => {
         expect(subtitle(fixture)).toBe(WITH_LOSS);
       });
 
-      it('a device read that fails counts as moving, since a sign-in then would', async () => {
-        const { cmp } = await renderLogin(passwordAuth(READY_OUTCOME), {
+      it('a device read that fails keeps the device, as an unreachable key does', async () => {
+        const auth = passwordAuth(READY_OUTCOME);
+        const { cmp } = await renderLogin(auth, {
           reauth: '@bob:hs',
           record: RECORD,
           reusableFails: true,
           mentionHistory: true,
         });
 
-        expect(cmp.reauthDeletesMentionHistory()).toBe(true);
+        expect(cmp.reauthDeletesMentionHistory()).toBe(false);
+        // …and the page goes on to offer the sign-in rather than stranding.
+        expect(cmp.passwordSupported()).toBe(true);
+        expect(cmp.error()).toBeNull();
+        cmp.loginPassword();
+        expect(auth.loginWithPassword).toHaveBeenLastCalledWith(
+          'https://hs.example',
+          '@bob:hs',
+          '',
+          'add',
+          'OLDDEV',
+          '@bob:hs',
+          undefined,
+        );
       });
 
       it('a plain sign-in has no sentence', async () => {

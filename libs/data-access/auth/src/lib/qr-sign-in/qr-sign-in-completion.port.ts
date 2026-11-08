@@ -41,6 +41,16 @@ export interface QrSignInCompletion {
     metadata: ValidatedAuthMetadata,
     homeserverUrl: string,
   ): Observable<MatrixClient>;
+  /**
+   * Revokes device-grant tokens that arrived after the sign-in was cancelled. Best effort:
+   * it may error, and callers drop the error.
+   */
+  revokeDeviceGrant(
+    tokens: DeviceAccessTokenResponse,
+    clientId: string,
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void>;
   /** Imports the shared secrets and emits whether this device ended verified. */
   importLinkedSecrets(
     client: MatrixClient,

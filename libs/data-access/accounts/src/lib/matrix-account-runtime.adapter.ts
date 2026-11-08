@@ -15,6 +15,7 @@ import {
   Subject,
   catchError,
   defer,
+  finalize,
   map,
   of,
   switchMap,
@@ -164,6 +165,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
       const pending = this.pendingNewAccounts.get(session.userId);
       let replaced: MatrixSession | null = null;
       let novelty: DeviceNovelty = 'unknown';
+      let placed = false;
       const persisted$ =
         intent.accountRecord === 'new' &&
         pending &&
@@ -205,22 +207,26 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   .pipe(map(() => stored)),
               ),
             );
-      const prepare$ =
+      // Runs only once the new account is ready: a failed save or start must leave the
+      // live accounts their pushers.
+      const releaseLiveAccounts$ =
         intent.liveAccounts === 'replace'
           ? defer(() => {
               this.lifecycle.releaseSharedCaches();
-              // Best effort: a refused or stalled handoff write must neither fail nor block
-              // the sign-in, nor skip the pusher teardown.
-              return this.lifecycle.forgetPushHandoff().pipe(
-                timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
-                catchError(() => of(void 0)),
-                switchMap(() => this.lifecycle.unregisterNotifications()),
-              );
+              return this.lifecycle.unregisterNotifications();
             })
           : of(void 0);
+      // Only once the new account is active, so a failed placement leaves the live accounts'
+      // entries as they were. Best effort: a refused or stalled handoff write must neither
+      // fail nor block the sign-in.
+      const forgetReplacedHandoffs$ = defer(() =>
+        this.lifecycle.forgetOtherPushHandoffs(session.userId),
+      ).pipe(
+        timeout(ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister),
+        catchError(() => of(void 0)),
+      );
 
-      return prepare$.pipe(
-        switchMap(() => persisted$),
+      return persisted$.pipe(
         map((stored) => ({ kind: 'persisted' as const, stored })),
         catchError((error: unknown) => this.storageFailure(error)),
         switchMap((persisted) =>
@@ -245,24 +251,37 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           if (started.kind === 'failed') {
             return of(started);
           }
-          if (intent.placement === 'inactive') {
+          // Read at the last moment: whoever asked may have moved on since, and must not
+          // lose the account they use now to this one. With none active, it is placed
+          // anyway: a saved account with no active pointer would block the next launch.
+          placed =
+            intent.placement === 'active' &&
+            (!this.activeAccountId() || (intent.placementWanted?.() ?? true));
+          if (!placed) {
             this.pendingNewAccounts.delete(session.userId);
             return of({ kind: 'ready' as const });
           }
           let activePointerCommitted = false;
+          let pushersRemoved = false;
+          let activated = false;
           return defer(() => {
             if (!this.matrix.clientFor(session.userId)) {
               throw new Error(
                 `Account Runtime cannot commit placement for a non-live Account: ${session.userId}`,
               );
             }
-            return this.storage.setActiveForEstablishment(session.userId).pipe(
+            pushersRemoved = intent.liveAccounts === 'replace';
+            return releaseLiveAccounts$.pipe(
+              switchMap(() =>
+                this.storage.setActiveForEstablishment(session.userId),
+              ),
               tap(() => {
                 activePointerCommitted = true;
                 this.matrix.activateAccount(
                   session.userId,
                   intent.liveAccounts,
                 );
+                activated = true;
               }),
               map(() => ({ kind: 'ready' as const })),
               catchError((error: unknown) =>
@@ -273,6 +292,15 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
                   error,
                 ),
               ),
+              // Failed or left before activation: the live accounts stay, so they get their
+              // pushers back.
+              finalize(() => {
+                if (pushersRemoved && !activated) {
+                  this.lifecycle
+                    .registerNotifications()
+                    .subscribe({ error: () => undefined });
+                }
+              }),
             );
           });
         }),
@@ -281,13 +309,16 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
             this.pendingNewAccounts.delete(session.userId);
           }
         }),
-        switchMap((outcome) =>
-          outcome.kind === 'ready' &&
-          intent.placement === 'active' &&
-          intent.liveAccounts === 'keep'
-            ? this.lifecycle.registerNotifications().pipe(map(() => outcome))
-            : of(outcome),
-        ),
+        switchMap((outcome) => {
+          if (outcome.kind !== 'ready' || !placed) {
+            return of(outcome);
+          }
+          return (
+            intent.liveAccounts === 'keep'
+              ? this.lifecycle.registerNotifications()
+              : forgetReplacedHandoffs$
+          ).pipe(map(() => outcome));
+        }),
       );
     });
   }

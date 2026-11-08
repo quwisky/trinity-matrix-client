@@ -210,8 +210,17 @@ export class QrSignInAdapter {
           kind: 'waiting-for-approval',
           userCode: required(userCode),
         });
+        // The SDK polls for the tokens until the grant expires and cannot be stopped, so
+        // tokens that arrive after a cancel are revoked instead of left as a live session.
         const tokens = required(
-          await run.step(flow.completeLoginOnNewDevice({ clientId })),
+          await run.step(
+            flow.completeLoginOnNewDevice({ clientId }),
+            (late) =>
+              late &&
+              this.completion
+                .revokeDeviceGrant(late, clientId, grantMetadata, homeserverUrl)
+                .subscribe({ error: () => undefined }),
+          ),
         );
         run.emit({ kind: 'signing-in' });
         // The device must exist before shareSecrets: the existing device sends the secrets
@@ -420,9 +429,13 @@ class FlowRun<S extends { kind: string }> {
     }
   }
 
-  async step<T>(work: Promise<T>): Promise<T> {
+  /** `discard` receives a value that arrives after the run ended. */
+  async step<T>(work: Promise<T>, discard?: (value: T) => void): Promise<T> {
     const value = await work;
-    if (this.ended) throw STOPPED;
+    if (this.ended) {
+      discard?.(value);
+      throw STOPPED;
+    }
     return value;
   }
 

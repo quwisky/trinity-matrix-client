@@ -83,6 +83,11 @@ export type AccountEstablishmentIntent =
       readonly placement: 'active';
       readonly liveAccounts: 'keep' | 'replace';
       readonly accountRecord: 'upsert' | 'new';
+      /**
+       * Read just before placement. False keeps the started account live but inactive and
+       * leaves the live accounts as they are: the person who asked has moved on.
+       */
+      readonly placementWanted?: () => boolean;
     }
   | {
       readonly placement: 'inactive';

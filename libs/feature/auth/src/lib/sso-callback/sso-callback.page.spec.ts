@@ -6,6 +6,7 @@ import {
   ReauthAccountMismatchError,
   AuthService,
   OidcStateStore,
+  SignInRedirectService,
   SsoStateStore,
   type OidcStateStash,
   type SsoStateStash,
@@ -14,7 +15,10 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { MockProvider } from 'ng-mocks';
 import { from, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
-import { SsoCallbackPage } from './sso-callback.page';
+import {
+  SsoCallbackPage,
+  UNMATCHED_CALLBACK_WAIT_MS,
+} from './sso-callback.page';
 
 const EMPTY_SSO: SsoStateStash = {
   state: null,
@@ -60,6 +64,10 @@ async function renderPage(opts: {
   ssoPeek?: () => Promise<SsoStateStash>;
   reauthTargets?: readonly string[];
   activeUserId?: string;
+  /** Whether the callback returns as a deep link (native) rather than a page load (web). */
+  deepLink?: boolean;
+  /** Makes the stash clear reject. */
+  clearFails?: boolean;
 }): Promise<{
   fixture: Awaited<ReturnType<typeof render<SsoCallbackPage>>>['fixture'];
   cmp: SsoCallbackPage;
@@ -70,8 +78,12 @@ async function renderPage(opts: {
 }> {
   const navigateByUrl = vi.fn();
   const replaceState = vi.fn();
-  const ssoClear = vi.fn().mockResolvedValue(undefined);
-  const oidcClear = vi.fn().mockResolvedValue(undefined);
+  const clear = () =>
+    opts.clearFails
+      ? vi.fn().mockRejectedValue(new Error('storage locked'))
+      : vi.fn().mockResolvedValue(undefined);
+  const ssoClear = clear();
+  const oidcClear = clear();
   // peek() reads WITHOUT clearing; the page consumes (clear) only once state matches.
   const ssoPeek = opts.ssoPeek
     ? vi.fn(opts.ssoPeek)
@@ -91,6 +103,9 @@ async function renderPage(opts: {
       MockProvider(Location, { replaceState }),
       MockProvider(SsoStateStore, { peek: ssoPeek, clear: ssoClear }),
       MockProvider(OidcStateStore, { peek: oidcPeek, clear: oidcClear }),
+      MockProvider(SignInRedirectService, {
+        callbackIsDeepLink: () => opts.deepLink ?? true,
+      }),
       {
         provide: ActivatedRoute,
         useValue: {
@@ -186,7 +201,7 @@ describe('SsoCallbackPage', () => {
       );
     });
 
-    it('keeps the plain login with an account live, whatever else is signed out', async () => {
+    it('keeps adding an account with an account live, whatever else is signed out', async () => {
       const { cmp, navigateByUrl } = await renderPage({
         auth: {},
         activeUserId: '@live:hs',
@@ -195,7 +210,7 @@ describe('SsoCallbackPage', () => {
 
       cmp.back();
 
-      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login', {
+      expect(navigateByUrl).toHaveBeenCalledExactlyOnceWith('/login?add', {
         replaceUrl: true,
       });
     });
@@ -291,6 +306,41 @@ describe('SsoCallbackPage', () => {
       expect(completeSsoLogin).not.toHaveBeenCalled();
       expect(ssoClear).not.toHaveBeenCalled();
       expect(cmp.error()).toBeNull();
+    });
+
+    it('reports a callback that matches no live stash on web, after a short wait', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { cmp, ssoClear } = await renderPage({
+          auth: {
+            completeSsoLogin: vi.fn(),
+          } as unknown as Partial<AuthService>,
+          params: { loginToken: 'TOKEN', sso_state: 'STALE' },
+          ssoStash: { state: 'EXPECTED', baseUrl: 'https://hs.example' },
+          deepLink: false,
+        });
+        expect(cmp.error()).toBeNull();
+
+        vi.advanceTimersByTime(UNMATCHED_CALLBACK_WAIT_MS);
+
+        expect(cmp.error()).toMatch(/could not be verified/i);
+        expect(ssoClear).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('still exchanges the token when clearing the claimed stash fails', async () => {
+      const completeSsoLogin = vi.fn(() => of(READY_OUTCOME));
+      const { navigateByUrl } = await renderPage({
+        auth: { completeSsoLogin } as unknown as Partial<AuthService>,
+        params: { loginToken: 'TOKEN', sso_state: 'NONCE' },
+        ssoStash: { state: 'NONCE', baseUrl: 'https://hs.example' },
+        clearFails: true,
+      });
+
+      expect(completeSsoLogin).toHaveBeenCalledOnce();
+      expect(navigateByUrl).toHaveBeenCalled();
     });
 
     it('errors when the homeserver is missing from a state-matched stash', async () => {
@@ -512,6 +562,60 @@ describe('SsoCallbackPage', () => {
       expect(completeOidcLogin).not.toHaveBeenCalled();
       expect(oidcClear).not.toHaveBeenCalled(); // the live login's stash survives
       expect(cmp.error()).toBeNull();
+    });
+
+    it('reports a callback that matches no live stash on web, after a short wait', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { cmp, oidcClear } = await renderPage({
+          auth: {
+            completeOidcLogin: vi.fn(),
+          } as unknown as Partial<AuthService>,
+          params: { code: 'CODE', state: 'STALE' },
+          oidcStash: OIDC_STASH,
+          deepLink: false,
+        });
+        expect(cmp.error()).toBeNull();
+
+        vi.advanceTimersByTime(UNMATCHED_CALLBACK_WAIT_MS);
+
+        expect(cmp.error()).toMatch(/could not be verified/i);
+        expect(oidcClear).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('stays silent on a deep link that matches no live stash, however long it waits', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { cmp } = await renderPage({
+          auth: {
+            completeOidcLogin: vi.fn(),
+          } as unknown as Partial<AuthService>,
+          params: { code: 'CODE', state: 'FORGED' },
+          oidcStash: OIDC_STASH,
+        });
+
+        vi.advanceTimersByTime(UNMATCHED_CALLBACK_WAIT_MS * 10);
+
+        expect(cmp.error()).toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('still exchanges the code when clearing the claimed stash fails', async () => {
+      const completeOidcLogin = vi.fn(() => of(READY_OUTCOME));
+      const { navigateByUrl } = await renderPage({
+        auth: { completeOidcLogin } as unknown as Partial<AuthService>,
+        params: { code: 'CODE', state: 'STATE1' },
+        oidcStash: OIDC_STASH,
+        clearFails: true,
+      });
+
+      expect(completeOidcLogin).toHaveBeenCalledOnce();
+      expect(navigateByUrl).toHaveBeenCalled();
     });
 
     it('surfaces a genuine provider error (matching state)', async () => {

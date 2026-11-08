@@ -381,6 +381,26 @@ export class AuthService implements QrSignInCompletion {
     });
   }
 
+  /** Revoke device-grant tokens a cancelled QR sign-in received too late to use. */
+  revokeDeviceGrant(
+    tokens: DeviceAccessTokenResponse,
+    clientId: string,
+    metadata: ValidatedAuthMetadata,
+    homeserverUrl: string,
+  ): Observable<void> {
+    return this.oidc.deviceGrantBinding(metadata, clientId).pipe(
+      catchError(() =>
+        of<OidcSessionBinding>({ issuer: metadata.issuer, clientId }),
+      ),
+      switchMap((binding) =>
+        this.oidc.revokeTokens(homeserverUrl, binding, {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        }),
+      ),
+    );
+  }
+
   /**
    * Import the secrets a QR link shared, cross-sign this device and enable key backup.
    * Emits whether the device ended cross-signed; `false` leaves it to the usual check.

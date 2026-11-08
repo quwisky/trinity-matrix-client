@@ -36,6 +36,7 @@ import {
   type RegistrationPolicy,
 } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
+import { serverNameOfInput } from '@trinity/util/matrix';
 import { shownError } from '@trinity/util/ui';
 
 @Component({
@@ -320,8 +321,6 @@ export class RegistrationPage implements OnDestroy {
     } catch {
       // Domain and MXID inputs are handled below.
     }
-    const trimmed = input.trim().replace(/^@/, '');
-    const colon = trimmed.indexOf(':');
-    return colon >= 0 ? trimmed.slice(colon + 1) : trimmed;
+    return serverNameOfInput(input);
   }
 }

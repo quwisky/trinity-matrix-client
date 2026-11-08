@@ -217,6 +217,26 @@ describe('RegistrationPage', () => {
     });
   });
 
+  it('registers on a server typed with its port, not on the port', async () => {
+    const { fixture, cmp, registration } = await renderPage({
+      homeserver: 'example.org:8448',
+    });
+    cmp.credentialsForm.username().value.set('alice');
+    cmp.credentialsForm.password().value.set('secret');
+    cmp.credentialsForm.confirmPassword().value.set('secret');
+
+    cmp.createAccount();
+    await fixture.whenStable();
+
+    expect(registration.begin).toHaveBeenCalledWith(
+      'https://hs.example',
+      'alice',
+      'secret',
+      'example.org:8448',
+      'replace',
+    );
+  });
+
   it('requires explicit terms consent before submitting the stage', async () => {
     const { fixture, cmp, registration } = await renderPage();
     cmp.started.set(true);

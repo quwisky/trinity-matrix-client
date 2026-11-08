@@ -157,11 +157,25 @@ export class PushHandoffService {
    * the native store refused, so the cleanup that called it can record the residue.
    */
   forget(userId?: string): Observable<void> {
+    return this.forgetEntries(userId);
+  }
+
+  /**
+   * Empty the store but for `keep`, whose entry is written again once emptied: a sign-in
+   * that replaced every other live account. Cold; errors as {@link forget} does.
+   */
+  forgetAllBut(keep: string): Observable<void> {
+    return this.forgetEntries(undefined, keep);
+  }
+
+  private forgetEntries(userId?: string, keep?: string): Observable<void> {
     return defer(() => {
       if (!this.bridge.available) return of(void 0);
       const ids = userId
         ? [userId]
-        : [...this.bindings.keys(), ...this.matrix.accountIds()];
+        : [...this.bindings.keys(), ...this.matrix.accountIds()].filter(
+            (id) => id !== keep,
+          );
       for (const id of ids) {
         const clients = new Set<MatrixClient>();
         const bound = this.bindings.get(id)?.client;
@@ -181,6 +195,12 @@ export class PushHandoffService {
         void this.schedule(() => this.bridge.setNotificationText(text)).catch(
           () => this.mirrorLost.next(),
         );
+      }
+      if (keep) {
+        // Queued after the clear. An account not bound yet is written when it binds.
+        this.bindings.get(keep)?.written.clear();
+        this.writeAccount(keep);
+        this.writeRooms(keep);
       }
       return from(emptied);
     });

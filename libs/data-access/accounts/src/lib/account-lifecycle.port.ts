@@ -9,6 +9,11 @@ export interface AccountLifecyclePort {
    * The first step of signing an account out, ahead of anything that invalidates its token.
    */
   forgetPushHandoff(accountId?: string): Observable<void>;
+  /**
+   * Empty the native push handoff store of every account but `keepAccountId`, whose entry is
+   * written again: a sign-in that replaced every other live account.
+   */
+  forgetOtherPushHandoffs(keepAccountId: string): Observable<void>;
   registerNotifications(): Observable<void>;
   unregisterNotifications(accountId?: string): Observable<void>;
   /** Errors when a token may stay live at the provider, which a reset records as residue. */
@@ -45,6 +50,7 @@ export interface AccountLifecyclePort {
 
 const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   forgetPushHandoff: () => of(void 0),
+  forgetOtherPushHandoffs: () => of(void 0),
   registerNotifications: () => of(void 0),
   unregisterNotifications: () => of(void 0),
   revokeProviderSession: () => of(void 0),

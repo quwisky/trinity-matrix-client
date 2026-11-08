@@ -111,7 +111,7 @@ test.describe('SSO sign-in', () => {
     page,
     authPlatform,
   }) => {
-    // The subtle half of the rule: when a sign-in IS in flight, a mismatched callback has
+    // The subtle half of the rule: when a sign-in IS in flight, a mismatched deep link has
     // to be met with silence rather than an error, and must not consume the stash — the
     // genuine callback is still coming. Getting this wrong turns any forged deep link
     // into a denial of service on a legitimate login.
@@ -177,7 +177,18 @@ test.describe('SSO sign-in', () => {
     const bodyBox = await page.getByTestId('sso-callback-body').boundingBox();
     expect(bodyBox).not.toBeNull();
     expect(bodyBox!.x).toBeGreaterThan(cardBox!.x + 8);
-    await expect(page.getByText('could not be verified')).toHaveCount(0);
+    if (authPlatform.oidcApplicationType === 'web') {
+      // A page load is the only callback the web gets, so after a short wait it says so
+      // and offers Back, still without touching the stash.
+      await expect(page.getByText('could not be verified')).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(
+        page.getByRole('button', { name: 'Back to sign in' }),
+      ).toBeVisible();
+    } else {
+      await expect(page.getByText('could not be verified')).toHaveCount(0);
+    }
     expect(page.url()).not.toContain('/rooms');
 
     // …and the sign-in the user actually started still completes. It could not, if the

@@ -643,6 +643,63 @@ describe('PushHandoffService', () => {
     ]);
   });
 
+  describe('a sign-in that replaced the other accounts', () => {
+    const team = { roomId: '!a:hs', name: 'Team', membership: 'join' } as const;
+
+    it('empties the store and writes the new account again', async () => {
+      const h = setup({
+        clients: [fakeClient('@old:hs', [team]), fakeClient('@me:hs', [team])],
+      });
+      await start(h);
+      const old = h.clients.get('@old:hs')!;
+      h.bridge.setAccount.mockClear();
+      h.bridge.setRooms.mockClear();
+
+      await firstValueFrom(h.service.forgetAllBut('@me:hs'));
+      await flush();
+
+      expect(h.bridge.clear).toHaveBeenCalledOnce();
+      expect(h.bridge.setAccount).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ userId: '@me:hs' }),
+      );
+      expect(h.bridge.setRooms).toHaveBeenCalledExactlyOnceWith('@me:hs', [
+        { roomId: '!a:hs', name: 'Team', direct: false, encrypted: false },
+      ]);
+      expect(h.bridge.clear.mock.invocationCallOrder[0]).toBeLessThan(
+        h.bridge.setAccount.mock.invocationCallOrder[0],
+      );
+
+      // The replaced account is never written again; the new one still is.
+      h.bridge.setAccount.mockClear();
+      old.emit(ClientEvent.Sync, SyncState.Syncing);
+      h.rotations.next({ userId: '@old:hs', accessToken: 'late' });
+      h.rotations.next({ userId: '@me:hs', accessToken: 'rotated' });
+      await flush();
+      expect(h.bridge.setAccount).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ userId: '@me:hs', accessToken: 'rotated' }),
+      );
+    });
+
+    it('keeps the same user bound when it signed in again on a new client', async () => {
+      const h = setup();
+      await start(h);
+      const fresh = fakeClient('@me:hs', [team]);
+      fresh.state.token = 'new-session';
+      h.clients.set('@me:hs', fresh);
+      h.accountIds.set(['@me:hs']);
+      TestBed.tick();
+      await flush();
+      h.bridge.setAccount.mockClear();
+
+      await firstValueFrom(h.service.forgetAllBut('@me:hs'));
+      await flush();
+
+      expect(h.bridge.setAccount).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ accessToken: 'new-session' }),
+      );
+    });
+  });
+
   it('writes a signed-in-again account afresh when only its client changed', async () => {
     const h = setup();
     await start(h);
