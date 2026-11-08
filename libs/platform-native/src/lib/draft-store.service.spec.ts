@@ -295,6 +295,53 @@ describe('DraftStoreService', () => {
       ]);
     });
 
+    it('keeps writing after one write throws synchronously', async () => {
+      const svc = service();
+      await svc.init();
+      let land!: () => void;
+      set
+        .mockImplementationOnce(
+          () => new Promise<void>((resolve) => (land = resolve)),
+        )
+        .mockImplementationOnce(() => {
+          throw new Error('disk gone for a moment');
+        });
+
+      expect(() => {
+        svc.holdWaiting(ROOM, 'txn-1', { body: 'first' });
+        svc.holdWaiting(ROOM, 'txn-2', { body: 'second' });
+        svc.holdWaiting(ROOM, 'txn-3', { body: 'third' });
+      }).not.toThrow();
+      land();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(set).toHaveBeenCalledTimes(3);
+      expect(Object.keys(JSON.parse(lastWrite()[`pending:${ROOM}`]))).toEqual([
+        'txn-1',
+        'txn-2',
+        'txn-3',
+      ]);
+    });
+
+    it('survives a write that throws synchronously when none is in flight', async () => {
+      const svc = service();
+      await svc.init();
+      set.mockImplementationOnce(() => {
+        throw new Error('disk gone for a moment');
+      });
+
+      expect(() =>
+        svc.holdWaiting(ROOM, 'txn-1', { body: 'first' }),
+      ).not.toThrow();
+      svc.holdWaiting(ROOM, 'txn-2', { body: 'second' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(Object.keys(JSON.parse(lastWrite()[`pending:${ROOM}`]))).toEqual([
+        'txn-1',
+        'txn-2',
+      ]);
+    });
+
     it('keeps messages apart per conversation', async () => {
       const svc = service();
       await svc.init();

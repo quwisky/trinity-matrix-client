@@ -365,9 +365,15 @@ export class DraftStoreService implements OnDestroy {
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
       record[key] = text;
     }
-    // Promise.resolve wraps the SDK call: a `.catch` straight onto a non-promise throws
-    // synchronously out of a timer callback, where nothing can catch it.
-    return Promise.resolve(this.persistence.write(JSON.stringify(record))).then(
+    // A synchronous throw, or a `.catch` straight onto a non-promise, would escape a timer
+    // callback, or reject the queue every later write waits on.
+    let written: Promise<void>;
+    try {
+      written = Promise.resolve(this.persistence.write(JSON.stringify(record)));
+    } catch {
+      return Promise.resolve(false);
+    }
+    return written.then(
       () => {
         // The Preferences copy goes only once the file holds the drafts, and then at the
         // first write that succeeds, or a draft cleared since would come back next launch.
