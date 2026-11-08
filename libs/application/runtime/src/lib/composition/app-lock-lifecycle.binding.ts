@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
-import { Injectable, Injector, effect, inject, untracked } from '@angular/core';
+import { Injectable, Injector, inject, untracked } from '@angular/core';
 import { TitleBarState } from '@trinity/application/workspace';
+import { signalChanges } from '@trinity/util/ui';
 import {
   APP_LOCK_CLOCK,
   AppLockService,
@@ -363,16 +364,7 @@ export class AppLockLifecycleBinding {
 
   /** A signal read as a stream of its values, for as long as it is subscribed. */
   private changes<T>(read: () => T): Observable<T> {
-    return new Observable<T>((subscriber) => {
-      const ref = effect(
-        () => {
-          const value = read();
-          untracked(() => subscriber.next(value));
-        },
-        { injector: this.injector },
-      );
-      return () => ref.destroy();
-    });
+    return signalChanges(read, this.injector);
   }
 }
 

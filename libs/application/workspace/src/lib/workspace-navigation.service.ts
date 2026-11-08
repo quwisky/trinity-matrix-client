@@ -3,7 +3,6 @@ import {
   Injectable,
   Injector,
   computed,
-  effect,
   inject,
   signal,
   untracked,
@@ -27,7 +26,11 @@ import {
   CONVERSATION_ATTENTION,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import {
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  signalChanges,
+} from '@trinity/util/ui';
 import {
   EMPTY,
   Observable,
@@ -396,7 +399,7 @@ export class WorkspaceNavigationService {
   private applyPanel(request: PanelRequest): Observable<unknown> {
     return defer(() =>
       this.workflow.busy()
-        ? this.changes(this.workflow.busy).pipe(
+        ? signalChanges(this.workflow.busy, this.injector).pipe(
             filter((busy) => !busy),
             take(1),
           )
@@ -577,27 +580,9 @@ export class WorkspaceNavigationService {
       clear();
       return;
     }
-    this.markedUnreadWait = this.changes(attention.attentive)
+    this.markedUnreadWait = signalChanges(attention.attentive, this.injector)
       .pipe(filter(Boolean), take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe(clear);
-  }
-
-  /**
-   * A signal read as a stream of its values, for as long as it is subscribed. Unlike
-   * `toObservable`, whose watcher lives until this root service's injector is destroyed,
-   * unsubscribing ends the watcher.
-   */
-  private changes<T>(read: () => T): Observable<T> {
-    return new Observable<T>((subscriber) => {
-      const ref = effect(
-        () => {
-          const value = read();
-          untracked(() => subscriber.next(value));
-        },
-        { injector: this.injector },
-      );
-      return () => ref.destroy();
-    });
   }
 
   private seedView(): WorkspaceView {

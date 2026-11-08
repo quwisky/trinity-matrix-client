@@ -1,5 +1,5 @@
-import { signal, type Signal, type WritableSignal } from '@angular/core';
-import { SIGNAL, type ReactiveNode } from '@angular/core/primitives/signals';
+import { signal, type WritableSignal } from '@angular/core';
+import { liveConsumers } from '@trinity/testing';
 import { TestBed } from '@angular/core/testing';
 import { convertToParamMap, type ParamMap } from '@angular/router';
 import {
@@ -378,14 +378,6 @@ function drop(
 }
 
 afterEach(() => TestBed.resetTestingModule());
-
-/** How many live watchers (effects) a signal feeds. */
-function liveConsumers(source: Signal<unknown>): number {
-  let count = 0;
-  let link = (source[SIGNAL] as ReactiveNode).consumers;
-  for (; link; link = link.nextConsumer) count += 1;
-  return count;
-}
 
 describe('WorkspaceNavigationService', () => {
   it('canonicalizes a bare route even when its destination matches the active Workspace', async () => {
