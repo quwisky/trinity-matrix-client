@@ -1,4 +1,4 @@
-import type { DiagnosticReportFacts } from './report-facts';
+import type { BugReportFacts } from './bug-report';
 
 /** Stay well inside what GitHub and browsers accept for one URL. */
 export const GITHUB_ISSUE_URL_LIMIT = 8000;
@@ -10,7 +10,7 @@ const TRIMMED = ' […]';
 export interface BugReportDraft {
   /** The user's "What went wrong?" text, possibly empty. */
   readonly description: string;
-  readonly facts: DiagnosticReportFacts;
+  readonly facts: BugReportFacts;
 }
 
 /**

@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import type { HomeserverInfo } from '@trinity/data-access/homeserver';
 import { NEVER, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { diagnosticAccounts } from './diagnostic-accounts';
+import { bugReportAccounts } from './bug-report-accounts';
 
 const ALICE = {
   userId: '@alice:example.org',
@@ -31,7 +31,7 @@ function info(
   };
 }
 
-describe('diagnosticAccounts', () => {
+describe('bugReportAccounts', () => {
   afterEach(() => vi.useRealTimers());
 
   it('lists accounts active first, with the software their homeserver reports', async () => {
@@ -57,7 +57,7 @@ describe('diagnosticAccounts', () => {
     };
 
     const accounts = await firstValueFrom(
-      diagnosticAccounts(sessions, homeservers),
+      bugReportAccounts(sessions, homeservers),
     );
 
     expect(accounts).toEqual([
@@ -75,7 +75,7 @@ describe('diagnosticAccounts', () => {
     const homeservers = { load: () => NEVER, infos: signal(new Map()) };
 
     const pending = firstValueFrom(
-      diagnosticAccounts(sessions, homeservers, 3_000),
+      bugReportAccounts(sessions, homeservers, 3_000),
     );
     await vi.advanceTimersByTimeAsync(3_000);
 
@@ -89,7 +89,7 @@ describe('diagnosticAccounts', () => {
     const homeservers = { load: vi.fn(), infos: signal(new Map()) };
 
     expect(
-      await firstValueFrom(diagnosticAccounts(sessions, homeservers)),
+      await firstValueFrom(bugReportAccounts(sessions, homeservers)),
     ).toEqual([]);
     expect(homeservers.load).not.toHaveBeenCalled();
   });

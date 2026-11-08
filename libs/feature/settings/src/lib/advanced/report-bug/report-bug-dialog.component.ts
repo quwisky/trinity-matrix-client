@@ -20,13 +20,13 @@ import {
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
-import {
-  DIAGNOSTIC_REPORT_CONFIG,
-  DiagnosticLogService,
-  buildBugReportUrl,
-} from '@trinity/data-access/diagnostic-log';
 import { finalize } from 'rxjs';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  BUG_REPORT_CONFIG,
+  BugReportFactsService,
+  ExternalBrowserService,
+  buildBugReportUrl,
+} from '@trinity/platform-native';
 
 /** The description's ceiling; GitHub gets the rest typed into the issue itself. */
 export const REPORT_DESCRIPTION_MAX_LENGTH = 2000;
@@ -63,12 +63,12 @@ const reportSchema = schema<ReportModel>((path) => {
 })
 export class ReportBugDialogComponent {
   private readonly browser = inject(ExternalBrowserService);
-  private readonly config = inject(DIAGNOSTIC_REPORT_CONFIG);
+  private readonly config = inject(BUG_REPORT_CONFIG);
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
   private readonly model = signal<ReportModel>({ description: '' });
   /** Undefined until the homeservers answer or the probe budget runs out. */
-  private readonly facts = toSignal(inject(DiagnosticLogService).reportFacts());
+  private readonly facts = toSignal(inject(BugReportFactsService).facts());
 
   readonly reportForm = form(this.model, reportSchema);
   readonly showGitHub = this.config.issueRepositoryUrl !== null;

@@ -7,7 +7,6 @@ export type ConfigOwner =
   | 'data-access/whats-new'
   | 'data-access/notifications'
   | 'data-access/room-library'
-  | 'data-access/diagnostic-log'
   | 'data-access/app-lock'
   | 'data-access/trust'
   | 'runtime/projection'
@@ -333,15 +332,14 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'data-access/room-library',
   },
 
-  // — data-access/diagnostic-log —
+  // — platform-native, retired —
   {
     disposition: 'excluded',
     key: 'trinity.diagnostics.keep-log',
-    owner: 'data-access/diagnostic-log',
+    owner: 'platform-native',
     reason:
-      'A per-installation privacy choice about what this device records. A pasted or ' +
-      'imported document must not switch logging on for another device, and an unreadable ' +
-      'value already means off.',
+      'Retired: the Keep a diagnostic log choice, from before the on-device log was removed. ' +
+      'RetiredDiagnosticLogCleanup deletes it at startup; nothing reads it.',
   },
 
   // — data-access/notifications —

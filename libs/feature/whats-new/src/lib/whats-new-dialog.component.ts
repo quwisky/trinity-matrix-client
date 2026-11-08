@@ -14,7 +14,7 @@ import {
   TrnDialogRef,
   TrnDialogShellComponent,
 } from '@trinity/components/overlay';
-import { DIAGNOSTIC_REPORT_CONFIG } from '@trinity/data-access/diagnostic-log';
+import { BUG_REPORT_CONFIG } from '@trinity/platform-native';
 import type { ReleaseNote } from '@trinity/data-access/whats-new';
 import { ExternalBrowserService } from '@trinity/platform-native';
 
@@ -36,7 +36,7 @@ export class WhatsNewDialogComponent {
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly repositoryUrl = inject(DIAGNOSTIC_REPORT_CONFIG).issueRepositoryUrl;
+  readonly repositoryUrl = inject(BUG_REPORT_CONFIG).issueRepositoryUrl;
   readonly releases = input.required<readonly ReleaseNote[]>();
   readonly sections = [
     ['added', 'Added'],

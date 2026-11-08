@@ -1,4 +1,3 @@
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   signal,
   type EnvironmentProviders,
@@ -157,11 +156,6 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(WorkspaceApplicationSurfaceService),
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
-      MockProvider(DiagnosticLogService, {
-        available: signal('persistent' as const).asReadonly(),
-        keepLog: signal(true).asReadonly(),
-        settingKnown: signal(true).asReadonly(),
-      }),
       FILE_EXPORT,
       // The App lock group renders on a host that keeps a PIN (every app but the web).
       MockProvider(AppLockService, {

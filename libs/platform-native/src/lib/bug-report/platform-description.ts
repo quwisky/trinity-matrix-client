@@ -1,9 +1,8 @@
+import { isInstalledNativePlatform, isNativeIos } from '../mobile-os';
 import {
   getTrinityDesktopBridge,
   isElectronRenderer,
-  isInstalledNativePlatform,
-  isNativeIos,
-} from '@trinity/platform-native';
+} from '../trinity-desktop-bridge';
 
 /** What the platform line is built from; read once, described purely. */
 export interface PlatformFacts {

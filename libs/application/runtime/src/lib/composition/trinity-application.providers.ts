@@ -63,7 +63,7 @@ import {
 } from '../application-dialog-loaders';
 import { applicationCapabilityProviders } from './application-capability.providers';
 import { appLockProviders } from './app-lock.providers';
-import { trinityDiagnosticProviders } from './diagnostic-log.providers';
+import { trinityBugReportProviders } from './bug-report.providers';
 import { PreloadAfterFirstNavigation } from './preload-after-first-navigation.strategy';
 import { AccountDeletionLauncherAdapter } from './account-deletion-launcher.adapter';
 import { AccountRemovalLauncherAdapter } from './account-removal-launcher.adapter';
@@ -120,10 +120,8 @@ export function provideTrinityApplication(
   options: TrinityApplicationProviderOptions,
 ): EnvironmentProviders {
   return makeEnvironmentProviders([
-    // SDK logging first: it attaches the diagnostic sink, which the diagnostic log can then
-    // detach again once it reads a stored "off".
     provideMatrixSdkLogging(options.matrixSdkLogLevel),
-    ...trinityDiagnosticProviders({
+    ...trinityBugReportProviders({
       issueRepositoryUrl: options.issueRepositoryUrl,
     }),
     provideZonelessChangeDetection(),

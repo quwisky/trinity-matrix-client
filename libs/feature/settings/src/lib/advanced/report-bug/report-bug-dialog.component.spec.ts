@@ -1,23 +1,19 @@
 import { TestBed } from '@angular/core/testing';
-import {
-  DIAGNOSTIC_ACCOUNT_SOURCE,
-  DIAGNOSTIC_LOG_STORE_FACTORY,
-  DIAGNOSTIC_REPORT_CONFIG,
-  DiagnosticLogService,
-  MemoryLogStore,
-  provideDiagnosticLog,
-  type DiagnosticReportFacts,
-} from '@trinity/data-access/diagnostic-log';
-import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { ExternalBrowserService } from '@trinity/platform-native';
+import {
+  BUG_REPORT_ACCOUNT_SOURCE,
+  BUG_REPORT_CONFIG,
+  BugReportFactsService,
+  ExternalBrowserService,
+  type BugReportFacts,
+} from '@trinity/platform-native';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { NEVER, of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { ReportBugDialogComponent } from './report-bug-dialog.component';
 
-const FACTS: DiagnosticReportFacts = {
+const FACTS: BugReportFacts = {
   version: 'Trinity v0.4.0 · abc1234',
   platform: 'Web, Firefox 141 on Linux',
   homeservers: ['Synapse 1.140.0'],
@@ -25,7 +21,7 @@ const FACTS: DiagnosticReportFacts = {
 const REPOSITORY = 'https://github.com/quwisky/trinity-matrix-client';
 
 interface SetupOptions {
-  readonly facts?: Observable<DiagnosticReportFacts>;
+  readonly facts?: Observable<BugReportFacts>;
   readonly repository?: string | null;
 }
 
@@ -34,12 +30,12 @@ async function setup(options: SetupOptions = {}) {
   const close = vi.fn();
   const rendered = await render(ReportBugDialogComponent, {
     providers: [
-      MockProvider(DiagnosticLogService, {
-        reportFacts: () => options.facts ?? of(FACTS),
+      MockProvider(BugReportFactsService, {
+        facts: () => options.facts ?? of(FACTS),
       }),
       MockProvider(ExternalBrowserService, { open }),
       {
-        provide: DIAGNOSTIC_REPORT_CONFIG,
+        provide: BUG_REPORT_CONFIG,
         useValue: {
           issueRepositoryUrl:
             options.repository === undefined ? REPOSITORY : options.repository,
@@ -189,34 +185,19 @@ describe('ReportBugDialogComponent', () => {
   });
 
   it('opens signed out, on root services alone', async () => {
-    // The sign-in screen opens this with nobody signed in: only the storage boundaries and
-    // the app's account source (an empty registry) are supplied; the services are the root's.
+    // The sign-in screen opens this with nobody signed in: only the app's account source (an
+    // empty registry) is supplied; the services are the root's.
     await render(ReportBugDialogComponent, {
       providers: [
         {
-          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
-          useValue: () => Promise.resolve(new MemoryLogStore()),
-        },
-        {
-          provide: PREFERENCE_STORAGE_ADAPTER,
-          useValue: {
-            read: () => of({ kind: 'missing' } as const),
-            write: () => of({ kind: 'completed' } as const),
-          },
-        },
-        {
-          provide: DIAGNOSTIC_ACCOUNT_SOURCE,
+          provide: BUG_REPORT_ACCOUNT_SOURCE,
           useValue: { accounts: () => of([]) },
         },
         { provide: TrnDialogRef, useValue: { close: vi.fn() } },
-        // Starts the log at app start-up, as the application does.
-        provideDiagnosticLog(),
       ],
     });
 
     expect(screen.getByLabelText('What went wrong?')).toBeTruthy();
-    expect(TestBed.inject(DIAGNOSTIC_REPORT_CONFIG).issueRepositoryUrl).toBe(
-      null,
-    );
+    expect(TestBed.inject(BUG_REPORT_CONFIG).issueRepositoryUrl).toBe(null);
   });
 });

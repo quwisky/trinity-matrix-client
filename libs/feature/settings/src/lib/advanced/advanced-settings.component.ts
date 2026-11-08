@@ -35,7 +35,7 @@ import {
 import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
 import { ConfigApplyReviewComponent } from './config-apply-review.component';
 import { ConfigResetGroupComponent } from './config-reset-group.component';
-import { DiagnosticsGroupComponent } from './diagnostics-group/diagnostics-group.component';
+import { ReportBugGroupComponent } from './report-bug-group/report-bug-group.component';
 import { defer, filter, throwError } from 'rxjs';
 import {
   TrnSettingsGroupComponent,
@@ -91,7 +91,7 @@ function exportFileName(now: Date): string {
     ConfigEditorOutletDirective,
     ConfigApplyReviewComponent,
     ConfigResetGroupComponent,
-    DiagnosticsGroupComponent,
+    ReportBugGroupComponent,
     TrnButton,
     TrnLabel,
     TrnTextarea,

@@ -1,6 +1,8 @@
-import type { DiagnosticAccount } from '@trinity/data-access/diagnostic-log';
 import type { HomeserverInfoService } from '@trinity/data-access/homeserver';
-import type { SessionStorageService } from '@trinity/platform-native';
+import type {
+  BugReportAccount,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import {
   EMPTY,
   catchError,
@@ -16,18 +18,18 @@ import {
 } from 'rxjs';
 
 /** How long a bug report waits for a homeserver's software probe before calling it unknown. */
-export const DIAGNOSTIC_PROBE_BUDGET_MS = 3_000;
+export const BUG_REPORT_PROBE_BUDGET_MS = 3_000;
 
 /**
  * What each signed-in account's homeserver says it runs, active account first, for a bug
  * report's facts.
  * Completes once; a probe that fails or exceeds the budget leaves the software unknown.
  */
-export function diagnosticAccounts(
+export function bugReportAccounts(
   sessions: Pick<SessionStorageService, 'snapshot'>,
   homeservers: Pick<HomeserverInfoService, 'load' | 'infos'>,
-  budgetMs = DIAGNOSTIC_PROBE_BUDGET_MS,
-): Observable<readonly DiagnosticAccount[]> {
+  budgetMs = BUG_REPORT_PROBE_BUDGET_MS,
+): Observable<readonly BugReportAccount[]> {
   return sessions.snapshot().pipe(
     take(1),
     switchMap(({ activeAccountId, accounts }) => {
@@ -37,7 +39,7 @@ export function diagnosticAccounts(
           Number(left.userId === activeAccountId),
       );
       if (ordered.length === 0) {
-        return of<readonly DiagnosticAccount[]>([]);
+        return of<readonly BugReportAccount[]>([]);
       }
       return forkJoin(
         ordered.map((account) =>
@@ -50,7 +52,7 @@ export function diagnosticAccounts(
         ),
       ).pipe(
         map(() =>
-          ordered.map((account): DiagnosticAccount => {
+          ordered.map((account): BugReportAccount => {
             const software = homeservers.infos().get(account.userId)?.software;
             return {
               software: software

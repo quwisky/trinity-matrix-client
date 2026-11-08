@@ -1,4 +1,4 @@
-import { DIAGNOSTIC_REPORT_CONFIG } from '@trinity/data-access/diagnostic-log';
+import { BUG_REPORT_CONFIG } from '@trinity/platform-native';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import type { ReleaseNote } from '@trinity/data-access/whats-new';
 import { ExternalBrowserService } from '@trinity/platform-native';
@@ -33,7 +33,7 @@ async function setup(
     providers: [
       MockProvider(ExternalBrowserService, { open }),
       MockProvider(TrnDialogRef, { close }),
-      { provide: DIAGNOSTIC_REPORT_CONFIG, useValue: { issueRepositoryUrl } },
+      { provide: BUG_REPORT_CONFIG, useValue: { issueRepositoryUrl } },
     ],
   });
   return { ...rendered, open, close };

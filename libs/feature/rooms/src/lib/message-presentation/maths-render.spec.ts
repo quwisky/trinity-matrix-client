@@ -353,7 +353,7 @@ describe('renderMaths (real KaTeX)', () => {
     },
   );
 
-  it('writes nothing to the console, which feeds the diagnostic log', () => {
+  it('writes nothing to the console, which must never hold message content', () => {
     const levels = (['log', 'info', 'warn', 'error', 'debug'] as const).map(
       (level) => vi.spyOn(console, level).mockImplementation(() => undefined),
     );

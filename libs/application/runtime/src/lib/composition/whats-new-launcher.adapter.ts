@@ -6,7 +6,6 @@ import {
 } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   WhatsNewService,
   type ReleaseNote,
@@ -34,7 +33,6 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
   private readonly load = inject(WHATS_NEW_DIALOG_COMPONENT);
   private readonly surfaces = inject(TrnSurfaceService);
   private readonly whatsNew = inject(WhatsNewService);
-  private readonly log = inject(DiagnosticLogService);
   private readonly accounts = inject(AccountRuntimeService);
   private readonly appLock = inject(AppLockService);
   private readonly destroyRef = inject(DestroyRef);
@@ -93,13 +91,8 @@ export class WhatsNewLauncherAdapter implements WhatsNewLauncher {
             }
           });
         },
-        error: () =>
-          this.log.record({
-            level: 'warn',
-            source: 'app',
-            logger: 'whats-new',
-            message: 'The What’s new dialog could not be loaded.',
-          }),
+        // A chunk that fails to load only skips the dialog this time.
+        error: () => undefined,
       });
   }
 }

@@ -13,7 +13,9 @@ import {
   AppConfigService,
   ACCOUNT_REMOVAL_LAUNCHER,
   ACCOUNT_SWITCH_LAUNCHER,
+  BUG_REPORT_CONFIG,
   BUG_REPORT_LAUNCHER,
+  BugReportFactsService,
   CONFIG_EXPORT_VERSION,
   ExternalBrowserService,
   SessionStorageService,
@@ -28,24 +30,15 @@ import {
   signal,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import {
-  DIAGNOSTIC_ACCOUNT_SOURCE,
-  DIAGNOSTIC_LOG_STORE_FACTORY,
-  DIAGNOSTIC_REPORT_CONFIG,
-  DiagnosticLogService,
-  MemoryLogStore,
-} from '@trinity/data-access/diagnostic-log';
 import { TrnDialogRef } from '@trinity/components/overlay';
 import { MockProvider } from 'ng-mocks';
 import {
-  MATRIX_SDK_LOG_SINK,
   configureMatrixSdkLogging,
   matrixSdkLogLevel,
 } from '@trinity/data-access/matrix-client';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
-import { NEVER, firstValueFrom, of } from 'rxjs';
+import { NEVER, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { ACCOUNT_LIFECYCLE_PORT } from '@trinity/data-access/accounts';
 import {
   DEVICE_CONFIRMATION_POLICY,
   TrustDevicesService,
@@ -72,17 +65,15 @@ import { provideTrinityApplication } from './trinity-application.providers';
   template: '<pre data-testid="report-bug-probe">{{ version() }}</pre>',
 })
 class ReportBugDependencyProbeComponent {
-  private readonly log = inject(DiagnosticLogService);
+  private readonly reports = inject(BugReportFactsService);
 
   protected readonly version = signal('');
 
   constructor() {
     inject(ExternalBrowserService);
-    inject(DIAGNOSTIC_REPORT_CONFIG);
+    inject(BUG_REPORT_CONFIG);
     inject(TrnDialogRef);
-    this.log
-      .reportFacts()
-      .subscribe((facts) => this.version.set(facts.version));
+    this.reports.facts().subscribe((facts) => this.version.set(facts.version));
   }
 }
 
@@ -188,72 +179,6 @@ describe('Trinity application provider composition', () => {
     }
   });
 
-  it('starts the diagnostic log at startup and wires the SDK sink into it', async () => {
-    const store = new MemoryLogStore();
-    TestBed.configureTestingModule({
-      providers: [
-        provideTrinityApplication({
-          routes: [],
-          pushConfig: null,
-          matrixSdkLogLevel: 'warn',
-          issueRepositoryUrl:
-            'https://github.com/quwisky/trinity-matrix-client',
-          buildInfo: { version: '1.2.3', commit: 'abc1234', builtAt: '' },
-          releaseNotes: [],
-          dialogLoaders: {
-            settings: () => NEVER,
-            encryption: { unlock: () => NEVER, verify: () => NEVER },
-            reportBug: () => NEVER,
-            whatsNew: () => NEVER,
-            addToImagePack: () => NEVER,
-            imagePackEditor: () => NEVER,
-          },
-        }),
-        {
-          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
-          useValue: () => Promise.resolve(store),
-        },
-        {
-          provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-          useValue: { accounts: () => of([]) },
-        },
-        {
-          provide: PREFERENCE_STORAGE_ADAPTER,
-          useValue: {
-            read: () => of({ kind: 'missing' } as const),
-            write: () => of({ kind: 'completed' } as const),
-          },
-        },
-      ],
-    });
-
-    try {
-      TestBed.inject(EnvironmentInjector);
-      TestBed.inject(MATRIX_SDK_LOG_SINK).write({
-        method: 'debug',
-        logger: 'matrix',
-        args: ['FetchHttpApi: --> GET probe'],
-      });
-
-      // Hiding the page writes the buffered lines to the store at once.
-      window.dispatchEvent(new Event('pagehide'));
-
-      await vi.waitFor(async () => {
-        const { entries } = await store.read();
-        expect(entries.map((entry) => entry.message)).toEqual(
-          expect.arrayContaining([
-            expect.stringMatching(/^app started: Trinity v1\.2\.3 · abc1234/),
-            'FetchHttpApi: --> GET probe',
-          ]),
-        );
-      });
-      expect(matrixSdkLogLevel()).toBe('warn');
-    } finally {
-      TestBed.resetTestingModule();
-      configureMatrixSdkLogging('debug');
-    }
-  });
-
   it('tells notifications nobody is looking while App lock covers the app', () => {
     const status = signal<AppLockStatus>('unknown');
     const key = { accountId: '@me:hs', roomId: '!r:hs' };
@@ -293,32 +218,6 @@ describe('Trinity application provider composition', () => {
       vi.restoreAllMocks();
       TestBed.resetTestingModule();
     }
-  });
-
-  it('stops and resumes the diagnostic log for a factory reset through the account lifecycle port', async () => {
-    const discard = vi.fn(() => of(undefined));
-    const resumeAfterReset = vi.fn(() => of(undefined));
-    TestBed.configureTestingModule({
-      providers: [
-        ...applicationCapabilityProviders({
-          buildInfo: {} as BuildInfo,
-          releaseNotes: [],
-          pushConfig: null,
-        }),
-        {
-          provide: DiagnosticLogService,
-          useValue: { discard, resumeAfterReset },
-        },
-      ],
-    });
-    const port = TestBed.inject(ACCOUNT_LIFECYCLE_PORT);
-
-    await firstValueFrom(port.stopDiagnosticLog());
-    expect(discard).toHaveBeenCalledOnce();
-    expect(resumeAfterReset).not.toHaveBeenCalled();
-    await firstValueFrom(port.resumeDiagnosticLog());
-
-    expect(resumeAfterReset).toHaveBeenCalledOnce();
   });
 
   it('offers Report a bug to the sign-in screen and System status through BUG_REPORT_LAUNCHER', () => {
@@ -507,10 +406,6 @@ describe('Trinity application provider composition', () => {
             imagePackEditor: () => NEVER,
           },
         }),
-        {
-          provide: DIAGNOSTIC_LOG_STORE_FACTORY,
-          useValue: () => Promise.resolve(new MemoryLogStore()),
-        },
         {
           provide: PREFERENCE_STORAGE_ADAPTER,
           useValue: {

@@ -131,8 +131,8 @@ describe('LocalDataWipeService', () => {
       expect(deleted).toContain('trinity-crypto-store-keys');
     });
 
-    it('deletes the diagnostic log even where the browser cannot enumerate', async () => {
-      // The log holds identifiers of the accounts this reset removes. Firefox has no
+    it('deletes the retired diagnostic log even where the browser cannot enumerate', async () => {
+      // It may hold identifiers of the accounts this reset removes. Firefox has no
       // indexedDB.databases(), so only an explicit name reaches it there.
       const { factory, deleted } = fakeIdb(); // no `databases` member
       vi.stubGlobal('indexedDB', factory);

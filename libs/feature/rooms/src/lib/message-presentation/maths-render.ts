@@ -145,7 +145,7 @@ const MATHS_PURIFY_CONFIG = {
 /**
  * KaTeX built-ins replaced for every call; `renderMaths` copies them into a fresh table.
  * - `\message`, `\errmessage` and `\show` write to the console whatever `strict` and `trust` say, and
- *   console output feeds the diagnostic log, which must never hold message content.
+ *   console output must never hold message content.
  * - `\color`, `\textcolor`, `\colorbox` and `\fcolorbox` would paint sender colours past the 3:1
  *   contrast guard; they keep only their content.
  * `\@firstoftwo{A}{B}` expands to `A`; naming every `#n` keeps KaTeX's argument count right.
@@ -250,8 +250,8 @@ export function sanitizeMathsMarkup(markup: string): DocumentFragment {
 
 /**
  * Render one expression. KaTeX's options: no trusted commands (`\href`, `\url`, `\includegraphics`,
- * `\html*`), sizes up to 10em, at most 100 macro expansions, warnings ignored (console warnings feed
- * the diagnostic log, which must never hold message content), and a fresh macro table per call seeded
+ * `\html*`), sizes up to 10em, at most 100 macro expansions, warnings ignored (console output must
+ * never hold message content), and a fresh macro table per call seeded
  * with {@link NEUTRALISED_MACROS}, so a `\gdef` cannot leak into the next expression or message.
  * Anything KaTeX rejects, an expression over {@link MAX_MATHS_SOURCE_LENGTH}, anything painted in
  * KaTeX's error colour (an unknown command, or one `trust: false` refuses such as `\href`; red text

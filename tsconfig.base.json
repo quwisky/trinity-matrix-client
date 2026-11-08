@@ -42,9 +42,6 @@
       "@trinity/data-access/app-lock": [
         "./libs/data-access/app-lock/src/index.ts"
       ],
-      "@trinity/data-access/diagnostic-log": [
-        "./libs/data-access/diagnostic-log/src/index.ts"
-      ],
       "@trinity/data-access/notifications": [
         "./libs/data-access/notifications/src/index.ts"
       ],
