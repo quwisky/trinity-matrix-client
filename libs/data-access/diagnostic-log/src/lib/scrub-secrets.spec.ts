@@ -562,6 +562,14 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets(once)).toBe(once);
   });
 
+  it('masks a text that holds every key marker whole', () => {
+    const markers = Array.from({ length: 32 }, (_, n) =>
+      String.fromCharCode(0xfdd0 + n),
+    ).join('');
+
+    expect(scrubSecrets(`${markers} password=hunter2`)).toBe(REDACTED);
+  });
+
   it('masks a spaced recovery key in text that holds a noncharacter already', () => {
     const scrubbed = scrubSecrets(
       '\uFDD0 token = EsTz 1234 5678 9ABC DEFG HJKL MNPQ RSTU VWXY Zabc defg hijk',
@@ -838,6 +846,10 @@ describe('scrubSecrets', () => {
       `state=TOKEN: c${',token:ab'.repeat(7000)}}`,
       `state=TOKEN: c${']key:ab'.repeat(9000)}}`,
       `state=TOKEN: c${'}token:ab'.repeat(7000)}}`,
+      `"password":"${'key:{'.repeat(13000)}`,
+      `token=${'key:['.repeat(13000)}`,
+      `"password":"${'passwd:{'.repeat(8000)}`,
+      `"password":"${'key:{'.repeat(6500)}${'}'.repeat(6500)}`,
       'x:"token":'.repeat(6000),
       'token= passwd:= '.repeat(4000),
       `${RECOVERY_KEY} `.repeat(1100),

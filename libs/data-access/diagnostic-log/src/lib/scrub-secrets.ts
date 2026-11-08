@@ -268,7 +268,7 @@ const RECOVERY_KEY_AT = new RegExp(recoveryKey(String.raw`\s`), 'y');
  * What stands for a space inside a recovery key while the rules run (see `scrubOnce`); never
  * in the output. The first Unicode noncharacter (U+FDD0 to U+FDEF, kept for internal use)
  * that the text lacks, so none of its own characters is taken for one; null if it has them
- * all.
+ * all, and then the text is masked whole.
  */
 function keyMarker(text: string): string | null {
   for (let code = 0xfdd0; code <= 0xfdef; code += 1) {
@@ -303,12 +303,6 @@ function keyRules(marker: string): MarkedKeyRules {
   }
   return rules;
 }
-
-/** A recovery key standing as a whole token, for text no marker can be found for. */
-const WHOLE_KEY = new RegExp(
-  String.raw`\b${recoveryKey(String.raw`\s`)}\b`,
-  'g',
-);
 
 /** Patterns for token-shaped values, applied after the header and name-based rules. */
 const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
@@ -377,10 +371,12 @@ function scrubOnce(text: string): string {
   // tokens they are while a parameter value runs through all of them; the marked key and
   // whatever rule took a part of it are masked whole at the end.
   const marker = keyMarker(text);
-  const rules = marker === null ? null : keyRules(marker);
-  if (marker !== null) {
-    scrubbed = markKeys(scrubbed, marker);
+  if (marker === null) {
+    // The text holds every marker: its keys cannot be marked, so none of it is kept.
+    return REDACTED;
   }
+  const rules = keyRules(marker);
+  scrubbed = markKeys(scrubbed, marker);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
   // Before the token rules, so each value is read whole, as written.
@@ -390,14 +386,14 @@ function scrubOnce(text: string): string {
   }
   // A recovery key standing as a whole token. One glued into a longer token is that token's
   // middle: the long-run rule masks the whole token, and `/path/to/KEY/file` keeps its path.
-  scrubbed = scrubbed.replace(rules?.whole ?? WHOLE_KEY, REDACTED);
+  scrubbed = scrubbed.replace(rules.whole, REDACTED);
   scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
   // A key the long-run rule could not take (no digit or no capital) is masked alone.
   scrubbed = scrubbed.replace(RECOVERY_KEY, REDACTED);
   // Last, so a field name glued to a token (`…abcdef"passwd":`) reads as one once it is masked.
   scrubbed = maskFields(scrubbed, isSecretName, false);
   scrubbed = maskFields(scrubbed, isOAuthName, true);
-  return rules === null ? scrubbed : scrubbed.replace(rules.marked, REDACTED);
+  return scrubbed.replace(rules.marked, REDACTED);
 }
 
 /**
@@ -521,7 +517,10 @@ function secretFieldEnd(
   inString: boolean,
 ): number {
   let reach = end;
-  let readTo = bareEnd;
+  let bareTo = bareEnd;
+  // An object or array read from inside another ends inside it, and so does a bare value:
+  // neither is read again, so a run of nested values costs one read.
+  let objectTo = start;
   // Each search runs over the value and a margin for a name that runs past it, so a value
   // with no field in it costs its own length, not the rest of the text's.
   for (let from = start; from < reach;) {
@@ -535,10 +534,15 @@ function secretFieldEnd(
     ) {
       const name = match[2] ?? match[4] ?? '';
       const valueStart = from + match.index + match[0].length;
-      const quoted = /^\\*["'{[]/.test(text.slice(valueStart, valueStart + 10));
+      const lead = /^\\*(["'{[])/.exec(
+        text.slice(valueStart, valueStart + 10),
+      )?.[1];
+      const quoted = lead !== undefined;
+      const nested = lead === '{' || lead === '[';
       if (
         !(isSecretName(name) || isOAuthName(name)) ||
-        (!quoted && valueStart < readTo)
+        (!quoted && valueStart < Math.max(bareTo, objectTo)) ||
+        (nested && valueStart < objectTo)
       ) {
         continue;
       }
@@ -550,7 +554,9 @@ function secretFieldEnd(
         continue;
       }
       if (value.bare) {
-        readTo = value.end;
+        bareTo = value.end;
+      } else if (nested) {
+        objectTo = Math.max(objectTo, value.end);
       }
       if (value.end > reach) {
         reach = value.end;
