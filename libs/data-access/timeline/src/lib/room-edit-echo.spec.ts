@@ -350,7 +350,7 @@ describe('a refused edit in the room timeline', () => {
           intent: { kind: 'message' },
         }).outcome,
       ),
-    ).resolves.toEqual({ kind: 'rejected', retryable: true });
+    ).resolves.toEqual({ kind: 'failed' });
 
     expect(room.getEventForTxnId(sentTxnIds[0])?.status).toBe(
       EventStatus.NOT_SENT,

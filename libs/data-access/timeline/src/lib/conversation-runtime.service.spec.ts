@@ -105,11 +105,7 @@ function setup(
   messages: readonly MessageView[] = [],
 ) {
   const controllers = new Map<string, TestConversationTimelineController[]>();
-  const sends = new Subject<
-    | { readonly kind: 'accepted'; readonly eventId: string }
-    | { readonly kind: 'rejected'; readonly retryable: boolean }
-    | { readonly kind: 'queued' }
-  >();
+  const sends = new Subject<ConversationTextDelivery>();
   const sender: ConversationTextSender = senderOverride ?? {
     send: vi.fn(() => ({ outcome: sends, cancel: () => false })),
   };
@@ -1207,13 +1203,22 @@ describe('ConversationRuntime', () => {
         expect(stored()).toBe('caption');
       });
 
-      it('merges into the stored draft of a retired handle, and removes only the sent text', async () => {
+      it('keeps a late caption alone in a retired handle’s stored draft, before and after the send settles', async () => {
         const { sends, outcome, stored } = sending(true);
-        expect(stored()).toBe('text\n\ncaption');
+        expect(stored()).toBe('caption');
 
         sends.next({ kind: 'accepted', eventId: '$sent' });
         await outcome;
 
+        expect(stored()).toBe('caption');
+      });
+
+      it('keeps only the caption when the text fails into a failed message', async () => {
+        const { held, sends, outcome, stored } = sending();
+        sends.next({ kind: 'failed' });
+        await outcome;
+
+        expect(held.compose.draft()).toBe('caption');
         expect(stored()).toBe('caption');
       });
 
@@ -1265,15 +1270,22 @@ describe('ConversationRuntime', () => {
         return { ...fixture, fresh, outcome };
       }
 
-      it('leaves the reopened box and storage without the sent text', async () => {
-        const { fresh, sends, drafts, outcome } = await reopenWhileSending();
-        expect(fresh.compose.draft()).toBe('hi'); // read from storage while it was sending
+      it('shows the text nowhere in the reopened box, so it cannot go out twice', async () => {
+        const { fresh, sends, sender, drafts, outcome } =
+          await reopenWhileSending();
+        expect(fresh.compose.draft()).toBe('');
+        expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+        await expect(firstValueFrom(fresh.compose.submit())).resolves.toEqual({
+          kind: 'rejected',
+          failure: 'empty-draft',
+          retryable: false,
+        });
 
         sends.next({ kind: 'accepted', eventId: '$sent' });
         await outcome;
 
         expect(fresh.compose.draft()).toBe('');
-        expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+        expect(sender.send).toHaveBeenCalledOnce();
       });
 
       it('keeps what the person changed in the reopened box', async () => {
@@ -1363,13 +1375,33 @@ describe('ConversationRuntime', () => {
 
         first.next({ kind: 'rejected', retryable: true });
         await failed;
-        expect(stored(fixture)).toBe('x\n\ny'); // y is still sending; a reload keeps it
+        expect(stored(fixture)).toBe('x'); // y left the draft when it was sent
 
         second.next({ kind: 'accepted', eventId: '$y' });
         await sent;
         expect(live.compose.draft()).toBe('x');
         expect(stored(fixture)).toBe('x');
       });
+
+      for (const failFirst of [true, false]) {
+        it(`leaves the box empty when two sends settle out of order, ${failFirst ? 'failure' : 'success'} first`, async () => {
+          const { fixture, first, second } = twoSends();
+          const failed = sendAndRetire(fixture, 'same');
+          const sent = sendAndRetire(fixture, 'same');
+          const live = fixture.runtime.focus(KEY);
+
+          const settle = [
+            () => first.next({ kind: 'failed' }),
+            () => second.next({ kind: 'accepted', eventId: '$y' }),
+          ];
+          if (!failFirst) settle.reverse();
+          settle.forEach((step) => step());
+          await Promise.all([failed, sent]);
+
+          expect(live.compose.draft()).toBe('');
+          expect(stored(fixture)).toBe('');
+        });
+      }
 
       for (const failFirst of [true, false]) {
         it(`leaves only the failed text when two retired sends settle, ${failFirst ? 'failure' : 'success'} first`, async () => {
@@ -1614,7 +1646,8 @@ describe('ConversationRuntime', () => {
     const outcomePromise = firstValueFrom(command);
     expect(sender.send).toHaveBeenCalledWith(request);
     expect(handle.compose.sending()).toBe(true);
-    expect(persist).not.toHaveBeenCalled();
+    // The text leaves the stored draft with the send, not when it settles.
+    expect(persist).toHaveBeenCalledExactlyOnceWith(expect.any(String), '');
     sends.next({ kind: 'accepted', eventId: '$local-echo' });
     sends.complete();
 
@@ -1625,7 +1658,7 @@ describe('ConversationRuntime', () => {
     expect(handle.compose.draft()).toBe('');
     expect(handle.compose.intent()).toEqual({ kind: 'message' });
     expect(handle.compose.sending()).toBe(false);
-    expect(persist).toHaveBeenCalledWith(expect.any(String), '');
+    expect(persist).toHaveBeenCalledOnce();
   });
 
   it('keeps media transfer cold and binds it to the immutable Account-and-Room handle', async () => {
@@ -1706,6 +1739,70 @@ describe('ConversationRuntime', () => {
     expect(compose.intent()).toEqual({ kind: 'reply', eventId: '$target' });
   });
 
+  it('leaves a failed send to its failed message: the box stays empty and the reply ends', async () => {
+    const { runtime, sends, drafts } = setup(2, undefined, [
+      message('$target'),
+    ]);
+    const key = { accountId: ALICE, roomId: '!room:example.org' };
+    const handle = runtime.focus(key);
+    handle.compose.setDraft('refused');
+    handle.messages.beginReply('$target');
+
+    const outcome = firstValueFrom(handle.compose.submit());
+    sends.next({ kind: 'failed' });
+
+    await expect(outcome).resolves.toEqual({
+      kind: 'rejected',
+      failure: 'send-rejected',
+      retryable: true,
+    });
+    expect(handle.compose.draft()).toBe('');
+    expect(handle.compose.intent()).toEqual({ kind: 'message' });
+    expect(drafts.get(conversationDraftKey(key))).toBe('');
+  });
+
+  it('retries a failed message while editing another without putting its text in the box', async () => {
+    const { runtime, sends, sender, messageAdapter } = setup(2, undefined, [
+      message('$edit'),
+    ]);
+    const handle = runtime.focus({
+      accountId: ALICE,
+      roomId: '!room:example.org',
+    });
+    handle.compose.setDraft('failed text');
+    const outcome = firstValueFrom(handle.compose.submit());
+    sends.next({ kind: 'failed' });
+    await outcome;
+
+    handle.messages.beginEdit('$edit', 'edit body');
+    await firstValueFrom(handle.messages.retry('~!room:example.org:txn-1'));
+    expect(handle.compose.draft()).toBe('edit body');
+    handle.compose.cancelIntent();
+
+    expect(messageAdapter.retry).toHaveBeenCalledOnce();
+    expect(handle.compose.draft()).toBe('');
+    await expect(firstValueFrom(handle.compose.submit())).resolves.toEqual({
+      kind: 'rejected',
+      failure: 'empty-draft',
+      retryable: false,
+    });
+    expect(sender.send).toHaveBeenCalledOnce();
+  });
+
+  it('asks the sender to show held messages again when it opens a conversation', () => {
+    const sender: ConversationTextSender = {
+      send: vi.fn(),
+      restore: vi.fn(),
+    };
+    const { runtime } = setup(2, sender);
+    const key = { accountId: ALICE, roomId: '!room:example.org' };
+
+    runtime.focus(key);
+    runtime.focus(key);
+
+    expect(sender.restore).toHaveBeenCalledExactlyOnceWith(key);
+  });
+
   it('leaves a newer edit alone when an older one is refused', () => {
     const { runtime, sends } = setup(2, undefined, [
       message('$older'),
@@ -1778,7 +1875,7 @@ describe('ConversationRuntime', () => {
     expect(compose.draft()).toBe('  keep me  ');
   });
 
-  it('does not falsely restore a draft when SDK cancellation is indeterminate', () => {
+  it('does not restore a draft when SDK cancellation is indeterminate: the sender keeps the text', () => {
     const sender: ConversationTextSender = {
       send: vi.fn(() => ({ outcome: NEVER, cancel: () => false })),
     };
@@ -1798,7 +1895,7 @@ describe('ConversationRuntime', () => {
       accountId: ALICE,
       roomId: '!room:example.org',
     });
-    expect(restored.compose.draft()).toBe('durable text');
+    expect(restored.compose.draft()).toBe('');
   });
 
   it('rejects a duplicate interaction without dispatching a second SDK send', async () => {

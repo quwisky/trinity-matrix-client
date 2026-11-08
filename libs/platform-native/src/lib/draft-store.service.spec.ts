@@ -199,7 +199,10 @@ describe('DraftStoreService', () => {
     });
   });
 
-  describe('a text waiting to send offline', () => {
+  describe('a message the homeserver does not have yet', () => {
+    const ROOM = 'conversation:a';
+    const THREAD = '$thread-root';
+
     /** What this store wrote last, handed to a new store as a reloaded page reads it. */
     async function reload(): Promise<DraftStoreService> {
       await vi.advanceTimersByTimeAsync(400);
@@ -209,61 +212,116 @@ describe('DraftStoreService', () => {
       return next;
     }
 
-    it('keeps the waiting text out of the draft while the page lives', async () => {
+    it('keeps a conversation message by txn id, never in the draft, across a reload', async () => {
       const svc = service();
       await svc.init();
+      svc.set(ROOM, 'typed since');
+      const content = { msgtype: 'm.text', body: 'sent' };
 
-      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
-
-      expect(svc.get('conversation:a')).toBe('');
-    });
-
-    it('puts the text back in the draft once after a reload, and drops the record', async () => {
-      const svc = service();
-      await svc.init();
-      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'sent', content });
+      expect(svc.get(ROOM)).toBe('typed since');
 
       const reloaded = await reload();
-      expect(reloaded.get('conversation:a')).toBe('sent offline');
+      expect(reloaded.get(ROOM)).toBe('typed since');
+      expect([...reloaded.pendingMessages(ROOM)]).toEqual([
+        ['txn-1', { body: 'sent', content }],
+      ]);
+    });
+
+    it('writes a held message and its cleared draft at once, not after the debounce', async () => {
+      const svc = service();
+      await svc.init();
+      svc.set(ROOM, 'sent at once');
+      svc.set(ROOM, '');
+      set.mockClear();
+
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'sent at once' });
+      await Promise.resolve();
+
+      const written = JSON.parse(set.mock.lastCall?.[0].value) as Record<
+        string,
+        string
+      >;
+      expect(written[ROOM]).toBeUndefined();
+      expect(JSON.parse(written[`waiting:${ROOM}`])).toEqual({
+        'txn-1': { body: 'sent at once' },
+      });
+    });
+
+    it('keeps messages apart per conversation', async () => {
+      const svc = service();
+      await svc.init();
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'mine' });
+
+      expect(svc.pendingMessages('conversation:b').size).toBe(0);
+    });
+
+    it('migrates a body an older build kept for a conversation into a held message, leaving the draft alone', async () => {
+      get.mockResolvedValue({
+        value: JSON.stringify({
+          [ROOM]: 'typed before the upgrade',
+          [`waiting:${ROOM}`]: JSON.stringify({ 'txn-1': 'sent offline' }),
+        }),
+      });
+      const svc = service();
+
+      await svc.init();
+
+      expect(svc.get(ROOM)).toBe('typed before the upgrade');
+      expect([...svc.pendingMessages(ROOM)]).toEqual([
+        ['txn-1', { body: 'sent offline' }],
+      ]);
+      const written = JSON.parse(set.mock.lastCall?.[0].value) as Record<
+        string,
+        string
+      >;
+      expect(JSON.parse(written[`waiting:${ROOM}`])).toEqual({
+        'txn-1': { body: 'sent offline' },
+      });
+    });
+
+    it('keeps a thread text out of the draft while the page lives', async () => {
+      const svc = service();
+      await svc.init();
+
+      svc.holdWaiting(THREAD, 'txn-1', 'sent offline');
+
+      expect(svc.get(THREAD)).toBe('');
+    });
+
+    it('puts a thread text back in its draft once after a reload, and drops the record', async () => {
+      const svc = service();
+      await svc.init();
+      svc.holdWaiting(THREAD, 'txn-1', 'sent offline');
+
+      const reloaded = await reload();
+      expect(reloaded.get(THREAD)).toBe('sent offline');
 
       const again = await reload();
-      expect(again.get('conversation:a')).toBe('sent offline');
+      expect(again.get(THREAD)).toBe('sent offline');
     });
 
     it('appends the recovered text after a draft the composer already holds', async () => {
       const svc = service();
       await svc.init();
-      svc.set('$thread-root', 'typed since');
-      svc.holdWaiting('$thread-root', 'txn-1', 'first');
-      svc.holdWaiting('$thread-root', 'txn-2', 'second');
+      svc.set(THREAD, 'typed since');
+      svc.holdWaiting(THREAD, 'txn-1', 'first');
+      svc.holdWaiting(THREAD, 'txn-2', 'second');
 
       const reloaded = await reload();
 
-      expect(reloaded.get('$thread-root')).toBe(
-        'typed since\n\nfirst\n\nsecond',
-      );
-    });
-
-    it('does not add a text the draft already holds', async () => {
-      const svc = service();
-      await svc.init();
-      svc.set('conversation:a', 'sent offline');
-      svc.holdWaiting('conversation:a', 'txn-1', 'sent offline');
-
-      const reloaded = await reload();
-
-      expect(reloaded.get('conversation:a')).toBe('sent offline');
+      expect(reloaded.get(THREAD)).toBe('typed since\n\nfirst\n\nsecond');
     });
 
     it('does not add a text of several paragraphs that the draft already is', async () => {
       const svc = service();
       await svc.init();
-      svc.set('conversation:a', 'first part\n\nsecond part');
-      svc.holdWaiting('conversation:a', 'txn-1', 'first part\n\nsecond part');
+      svc.set(THREAD, 'first part\n\nsecond part');
+      svc.holdWaiting(THREAD, 'txn-1', 'first part\n\nsecond part');
 
       const reloaded = await reload();
 
-      expect(reloaded.get('conversation:a')).toBe('first part\n\nsecond part');
+      expect(reloaded.get(THREAD)).toBe('first part\n\nsecond part');
     });
 
     it('keeps a recovered draft when the stored drafts are over the cap, trimming older ones', async () => {
@@ -275,9 +333,9 @@ describe('DraftStoreService', () => {
       );
       get.mockResolvedValue({
         value: JSON.stringify({
-          'conversation:a': 'typed long ago',
+          [THREAD]: 'typed long ago',
           ...older,
-          'waiting:conversation:a': JSON.stringify({ 'txn-1': 'sent offline' }),
+          [`waiting:${THREAD}`]: JSON.stringify({ 'txn-1': 'sent offline' }),
         }),
       });
       const svc = service();
@@ -288,20 +346,20 @@ describe('DraftStoreService', () => {
         string,
         string
       >;
-      expect(written['conversation:a']).toBe('typed long ago\n\nsent offline');
+      expect(written[THREAD]).toBe('typed long ago\n\nsent offline');
       expect(written['conversation:0']).toBeUndefined();
     });
 
-    it('forgets a released text, so a reload brings nothing back', async () => {
+    it('forgets a released message, so a reload brings nothing back', async () => {
       const svc = service();
       await svc.init();
-      svc.holdWaiting('conversation:a', 'txn-1', 'went out');
-      svc.holdWaiting('conversation:a', 'txn-2', 'still waiting');
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'went out' });
+      svc.holdWaiting(ROOM, 'txn-2', { body: 'still waiting' });
 
-      svc.releaseWaiting('conversation:a', 'txn-1');
+      svc.releaseWaiting(ROOM, 'txn-1');
       const reloaded = await reload();
 
-      expect(reloaded.get('conversation:a')).toBe('still waiting');
+      expect([...reloaded.pendingMessages(ROOM).keys()]).toEqual(['txn-2']);
     });
   });
 

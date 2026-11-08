@@ -12,8 +12,19 @@ const DRAFTS_FILE = {
 const PERSIST_DEBOUNCE_MS = 400;
 /** Bound the stored set so stale drafts can't grow without limit. */
 const MAX_DRAFTS = 200;
-/** Prefixes the draft key of a conversation's record of texts waiting to send offline. */
+/** Prefixes the draft key of a conversation's record of messages not on the server yet. */
 const WAITING = 'waiting:';
+/** `conversationDraftKey`'s prefix; a legacy thread composer's key is a bare event id. */
+const CONVERSATION = 'conversation:';
+
+/**
+ * A message the main composer sent and the homeserver does not have yet, kept by its txn id
+ * apart from the draft. `content` is the event as built, absent while its reply target loads.
+ */
+export interface PendingMessage {
+  readonly body: string;
+  readonly content?: Record<string, unknown>;
+}
 
 /** Where the drafts map is persisted, as one JSON string. */
 interface DraftPersistence {
@@ -62,6 +73,24 @@ function parseDrafts(value: string | null): [string, string][] {
   try {
     return Object.entries(JSON.parse(value) as Record<string, unknown>).filter(
       (entry): entry is [string, string] => typeof entry[1] === 'string',
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** A record's entries: a body string (thread or legacy) or a {@link PendingMessage}. */
+function parseRecord(
+  value: string | null,
+): [string, string | PendingMessage][] {
+  if (!value) return [];
+  try {
+    return Object.entries(JSON.parse(value) as Record<string, unknown>).filter(
+      (entry): entry is [string, string | PendingMessage] =>
+        typeof entry[1] === 'string' ||
+        (typeof entry[1] === 'object' &&
+          entry[1] !== null &&
+          typeof (entry[1] as { body?: unknown }).body === 'string'),
     );
   } catch {
     return [];
@@ -156,30 +185,34 @@ export class DraftStoreService implements OnDestroy {
   }
 
   /**
-   * Keep the text of a message waiting to send offline until {@link releaseWaiting}. The
-   * composer does not show it: the message is already in the timeline. Only after a reload,
-   * which drops the SDK's unsent echo, does {@link init} put it back into the draft.
+   * Keep a message the homeserver does not have yet until {@link releaseWaiting}, keyed by its
+   * txn id. The composer never shows it: the message is in the timeline. A {@link PendingMessage}
+   * outlives a reload, which drops the SDK's echo, so the timeline can show it again; a plain
+   * body (the legacy thread composer) goes back into its draft at the next {@link init}.
    */
-  holdWaiting(key: string, txnId: string, body: string): void {
+  holdWaiting(key: string, txnId: string, body: string | PendingMessage): void {
     const record = this.waitingRecord(key);
     record.set(txnId, body);
-    this.drafts.set(WAITING + key, JSON.stringify(Object.fromEntries(record)));
-    this.schedulePersist();
+    this.writeRecord(key, record);
+    // Written now, with the draft it just left: a reload inside the debounce would otherwise lose
+    // the message, or bring its text back in the box.
+    void this.flush();
   }
 
-  /** The waiting message went out, was cancelled or was refused: forget its text. */
+  /** The message went out, was cancelled or was deleted: forget it. */
   releaseWaiting(key: string, txnId: string): void {
     const record = this.waitingRecord(key);
     if (!record.delete(txnId)) return;
-    if (record.size) {
-      this.drafts.set(
-        WAITING + key,
-        JSON.stringify(Object.fromEntries(record)),
-      );
-    } else {
-      this.drafts.delete(WAITING + key);
+    this.writeRecord(key, record);
+  }
+
+  /** The messages held for a conversation by txn id, oldest first. */
+  pendingMessages(key: string): ReadonlyMap<string, PendingMessage> {
+    const pending = new Map<string, PendingMessage>();
+    for (const [txnId, held] of this.waitingRecord(key)) {
+      if (typeof held !== 'string') pending.set(txnId, held);
     }
-    this.schedulePersist();
+    return pending;
   }
 
   /**
@@ -215,21 +248,53 @@ export class DraftStoreService implements OnDestroy {
     return this.persist().then(() => undefined);
   }
 
-  private waitingRecord(key: string): Map<string, string> {
-    return new Map(parseDrafts(this.drafts.get(WAITING + key) ?? null));
+  private waitingRecord(key: string): Map<string, string | PendingMessage> {
+    return new Map(parseRecord(this.drafts.get(WAITING + key) ?? null));
+  }
+
+  private writeRecord(
+    key: string,
+    record: ReadonlyMap<string, string | PendingMessage>,
+  ): void {
+    if (record.size) {
+      this.drafts.set(
+        WAITING + key,
+        JSON.stringify(Object.fromEntries(record)),
+      );
+    } else {
+      this.drafts.delete(WAITING + key);
+    }
+    this.schedulePersist();
   }
 
   /**
-   * At load nothing can be waiting yet, so every stored record was left by a page that has
-   * gone, and its echo with it. Append each text to its draft once, then drop the record.
+   * At load nothing is on its way yet, so every record was left by a page that has gone, and
+   * its echoes with it. A conversation's messages stay held for its timeline to show again, a
+   * bare body an older build kept there included. A thread's bodies are appended to its draft
+   * once, and that record dropped.
    */
   private recoverWaiting(): boolean {
     let recovered = false;
     for (const [recordKey, value] of [...this.drafts]) {
       if (!recordKey.startsWith(WAITING)) continue;
       const key = recordKey.slice(WAITING.length);
+      const record = parseRecord(value);
+      if (key.startsWith(CONVERSATION)) {
+        if (record.every(([, held]) => typeof held !== 'string')) continue;
+        const upgraded = record.map(([txnId, held]) => [
+          txnId,
+          typeof held === 'string' ? { body: held } : held,
+        ]);
+        this.drafts.set(
+          recordKey,
+          JSON.stringify(Object.fromEntries(upgraded)),
+        );
+        recovered = true;
+        continue;
+      }
       let draft = this.get(key).trimEnd();
-      for (const [, body] of parseDrafts(value)) {
+      for (const [, held] of record) {
+        const body = typeof held === 'string' ? held : held.body;
         if (!holdsText(draft, body))
           draft = draft ? `${draft}\n\n${body}` : body;
       }

@@ -52,7 +52,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
-import { appendDraft, putBackDraft, withoutSent } from './draft-text';
+import { appendDraft } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -407,24 +407,13 @@ export class ConversationRuntime {
       initialDraft: this.initialDraft(immutableKey, draftKey),
       initialSnapshot: this.composeSnapshots.get(draftKey),
       persistDraft: (draft) => this.drafts.set(draftKey, draft),
-      readDraft: () => this.drafts.get(draftKey),
-      putBackRetired: (failed) => {
+      putBackRetired: (unsent) => {
         const live = this.entry(immutableKey);
-        if (live) live.composeController.putBack(failed);
+        if (live) live.composeController.putBack(unsent);
         else {
           this.drafts.set(
             draftKey,
-            putBackDraft(this.drafts.get(draftKey), failed),
-          );
-        }
-      },
-      dropSentRetired: (sent) => {
-        const live = this.entry(immutableKey);
-        if (live) live.composeController.dropSent(sent);
-        else {
-          this.drafts.set(
-            draftKey,
-            withoutSent(this.drafts.get(draftKey), sent),
+            appendDraft(unsent, this.drafts.get(draftKey)),
           );
         }
       },
@@ -586,6 +575,7 @@ export class ConversationRuntime {
     const account = this.entries.get(key.accountId) ?? new Map();
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
+    this.textSender.restore?.(immutableKey);
     return entry;
   }
 
