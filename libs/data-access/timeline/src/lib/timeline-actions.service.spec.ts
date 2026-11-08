@@ -713,23 +713,88 @@ describe('TimelineActionsService voice clips', () => {
   }
 
   it('encrypts a clip for a room the crypto store has as encrypted when its state lacks the event', async () => {
-    const { svc, uploadMedia } = setupVoice({
+    const { svc, uploadMedia, client } = setupVoice({
       isEncryptionEnabledInRoom: () => Promise.resolve(true),
     });
 
     await firstValueFrom(svc.sendVoiceMessage(recording));
 
-    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+    expect(uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      undefined,
+      undefined,
+      client,
+    );
   });
 
   it('encrypts a clip when the crypto store fails to answer', async () => {
-    const { svc, uploadMedia } = setupVoice({
+    const { svc, uploadMedia, client } = setupVoice({
       isEncryptionEnabledInRoom: () => Promise.reject(new Error('store')),
     });
 
     await firstValueFrom(svc.sendVoiceMessage(recording));
 
-    expect(uploadMedia).toHaveBeenCalledWith(expect.any(File), true);
+    expect(uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      true,
+      undefined,
+      undefined,
+      client,
+    );
+  });
+
+  it('sends a clip still being encoded to the conversation it was subscribed in', async () => {
+    const { svc, uploadMedia, client } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.resolve(false),
+    });
+    let finish!: (clip: typeof recording) => void;
+    const sent = firstValueFrom(
+      svc.sendVoiceMessage(new Promise((resolve) => (finish = resolve))),
+    );
+    const other = {
+      getCrypto: () => undefined,
+      sendMessage: vi.fn(),
+    };
+    TestBed.inject(ConversationActionContextService).bind(() => ({
+      client: other as unknown as MatrixClient,
+      room: { roomId: '!other:hs' } as unknown as Room,
+    }));
+    finish(recording);
+    await sent;
+
+    expect(uploadMedia).toHaveBeenCalledWith(
+      expect.any(File),
+      false,
+      undefined,
+      undefined,
+      client,
+    );
+    expect(client.sendMessage).toHaveBeenCalledWith('!r:hs', expect.anything());
+    expect(other.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing for a clip that comes back empty', async () => {
+    const { svc, uploadMedia } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.resolve(false),
+    });
+
+    await firstValueFrom(
+      svc.sendVoiceMessage({ ...recording, blob: new Blob([]) }),
+    );
+
+    expect(uploadMedia).not.toHaveBeenCalled();
+  });
+
+  it('sends nothing when the clip could not be encoded', async () => {
+    const { svc, uploadMedia, client } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.resolve(false),
+    });
+
+    await firstValueFrom(svc.sendVoiceMessage(Promise.resolve(null)));
+
+    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
   });
 
   it('refuses to upload a clip when the crypto store is unavailable', async () => {

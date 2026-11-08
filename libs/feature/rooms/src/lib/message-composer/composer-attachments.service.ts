@@ -66,7 +66,7 @@ import {
  * once via {@link ComposerAttachmentsService.connect} and called synchronously.
  */
 export interface ComposerAttachmentsHost {
-  /** Active room/thread id — a recording is abandoned if it changes mid-acquisition. */
+  /** Active room/thread id — with `accountId`, the conversation a recording belongs to. */
   readonly roomId: Signal<string | null>;
   /** Account the composer sends as — whose homeserver's upload limit applies. */
   readonly accountId: Signal<string | null>;

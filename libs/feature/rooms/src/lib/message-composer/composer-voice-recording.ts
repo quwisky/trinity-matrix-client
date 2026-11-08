@@ -14,6 +14,7 @@ import { AppLockService } from '@trinity/data-access/app-lock';
 import { VoiceRecorderService } from '@trinity/platform-native';
 import { TimelineActionsService } from '@trinity/data-access/timeline';
 import type { ComposerAttachmentsHost } from './composer-attachments.service';
+import { conversationOf } from './composer-drafts';
 
 /**
  * The voice-clip workflow of {@link ComposerAttachmentsService}: the microphone, the recording
@@ -76,7 +77,7 @@ export class ComposerVoiceRecording {
       return;
     }
     this.voiceStarting = true;
-    const roomAtStart = this.host().roomId();
+    const conversationAtStart = this.conversation();
     try {
       await this.voiceRecorder.start();
     } catch {
@@ -88,11 +89,12 @@ export class ComposerVoiceRecording {
       return;
     }
     this.voiceStarting = false;
-    // The view may have been torn down, the room switched or the app locked during acquisition:
-    // don't leave a stream open, and never bind the clip to a room the user has since left.
+    // The view may have been torn down, the conversation switched or the app locked during
+    // acquisition: don't leave a stream open, and never bind the clip to a conversation the user
+    // has since left. The same room under another account is another conversation.
     if (
       this.destroyed ||
-      this.host().roomId() !== roomAtStart ||
+      this.conversation() !== conversationAtStart ||
       this.appLock.locked()
     ) {
       this.voiceRecorder.cancel();
@@ -115,32 +117,27 @@ export class ComposerVoiceRecording {
     }
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
-    void this.voiceRecorder
-      .stop()
-      .then((recording) => {
-        if (!recording || recording.blob.size === 0) {
-          return;
-        }
-        // A voice message is standalone: drop any active reply, as media does.
-        this.host().endReply();
-        this.timelineActions
-          .sendVoiceMessage(recording)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({
-            error: () =>
-              this.toast.show('Could not send that voice message.', {
-                duration: 4000,
-                variant: 'danger',
-              }),
-          });
-      })
-      // Zoneless: an unhandled rejection here would go nowhere at all.
-      .catch(() =>
-        this.toast.show('Could not finish that voice recording.', {
-          duration: 4000,
-          variant: 'danger',
-        }),
-      );
+    // A voice message is standalone: drop any active reply, as media does, now, while the reply
+    // on screen is still this conversation's.
+    this.host().endReply();
+    const clip = this.voiceRecorder.stop().catch(() => {
+      this.toast.show('Could not finish that voice recording.', {
+        duration: 4000,
+        variant: 'danger',
+      });
+      return null;
+    });
+    // Subscribed now, while this is still the clip's conversation: the send resolves it on subscribe.
+    this.timelineActions
+      .sendVoiceMessage(clip)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () =>
+          this.toast.show('Could not send that voice message.', {
+            duration: 4000,
+            variant: 'danger',
+          }),
+      });
   }
 
   /** Abort the recording, discarding the clip. */
@@ -151,6 +148,11 @@ export class ComposerVoiceRecording {
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
     this.voiceRecorder.cancel();
+  }
+
+  private conversation(): string {
+    const host = this.host();
+    return conversationOf(host.accountId(), host.roomId());
   }
 
   private clearVoiceTimer(): void {
