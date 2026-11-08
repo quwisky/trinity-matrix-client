@@ -661,6 +661,9 @@ for (const viewport of [
         await expectSettled(page);
         // History Back draws no slide: the platform's own swipe already did.
         await page.goBack();
+        // The mouse is still where the opener was: once the page goes, that button's hover
+        // tooltip opens and, at 390px, covers the next header action.
+        await page.mouse.move(0, 0);
         await expect(panel).toBeHidden();
         await expect(page.locator('trn-room-header')).not.toHaveAttribute(
           'inert',
