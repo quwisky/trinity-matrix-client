@@ -366,7 +366,7 @@ class IdentifierRedactor implements LogRedactor {
     text = text.replace(EMAIL, (match) =>
       this.placeholder(
         this.emails,
-        match.toLowerCase().replace('%40', '@'),
+        match.toLowerCase().replaceAll('%40', '@'),
         (n) => `email${n}@example.invalid`,
       ),
     );

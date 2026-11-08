@@ -314,7 +314,7 @@ describe('scrubSecrets', () => {
 
   it('masks a secret whose JSON value was cut off', () => {
     expect(scrubSecrets('{"password":"hunter2 and more')).toBe(
-      `{"password":"${REDACTED}"`,
+      `{"password":"${REDACTED}`,
     );
   });
 
@@ -368,7 +368,7 @@ describe('scrubSecrets', () => {
   it.each([
     [String.raw`password="a\"b c"`, `password="${REDACTED}"`],
     [String.raw`password='it\'s secret'`, `password='${REDACTED}'`],
-    ['password="unterminated value', `password="${REDACTED}"`],
+    ['password="unterminated value', `password="${REDACTED}`],
     ['secret="line1\nline2" done', `secret="${REDACTED}" done`],
     ['password = "hunter2"', `password = "${REDACTED}"`],
     ['access_token = hunter2&x=1', `access_token = ${REDACTED}&x=1`],
@@ -396,41 +396,41 @@ describe('scrubSecrets', () => {
   it.each([
     [
       '{"url":"https://x/?code=","password":"hunter2"}',
-      `{"url":"https://x/?code=${REDACTED}","password":"${REDACTED}"}`,
+      `{"url":"https://x/?code=","password":"${REDACTED}"}`,
     ],
     [
       '{"url":"https://x/?token=","recovery_passphrase":"open sesame","n":1}',
-      `{"url":"https://x/?token=${REDACTED}","recovery_passphrase":"${REDACTED}","n":1}`,
+      `{"url":"https://x/?token=","recovery_passphrase":"${REDACTED}","n":1}`,
     ],
     [
       '{"url":"https://x/cb?state=&code=","body":"hello secret message"}',
-      `{"url":"https://x/cb?state=${REDACTED}&code=${REDACTED}","body":"${REDACTED}"}`,
+      `{"url":"https://x/cb?state=&code=","body":"${REDACTED}"}`,
     ],
     [
       "{'url': 'https://x/?code=', 'password': 'hunter2'}",
-      `{'url': 'https://x/?code=${REDACTED}', 'password': '${REDACTED}'}`,
+      `{'url': 'https://x/?code=', 'password': '${REDACTED}'}`,
     ],
     [
       String.raw`{"m":"{\"url\":\"https://x/?code=\",\"password\":\"hunter2\"}"}`,
-      String.raw`{"m":"{\"url\":\"https://x/?code=${REDACTED}\",\"password\":\"${REDACTED}\"}"}`,
+      String.raw`{"m":"{\"url\":\"https://x/?code=\",\"password\":\"${REDACTED}\"}"}`,
     ],
     [
       '{"url":"https://x/?code=" , "password":"hunter2"}',
-      `{"url":"https://x/?code=${REDACTED}" , "password":"${REDACTED}"}`,
+      `{"url":"https://x/?code=" , "password":"${REDACTED}"}`,
     ],
-    ['{"a":["?code=" ,"x"]}', `{"a":["?code=${REDACTED}" ,"x"]}`],
-    ['{"a":"?code="\n}', `{"a":"?code=${REDACTED}"\n}`],
+    ['{"a":["?code=" ,"x"]}', `{"a":["?code=" ,"x"]}`],
+    ['{"a":"?code="\n}', `{"a":"?code="\n}`],
     [
       `{"cmd":"curl 'https://x/?code=' -d password=hunter2 -H x"}`,
-      `{"cmd":"curl 'https://x/?code=${REDACTED}' -d password=${REDACTED} -H x"}`,
+      `{"cmd":"curl 'https://x/?code=' -d password=${REDACTED} -H x"}`,
     ],
     [
       String.raw`{"m":"{\"u\":\"?code=\"} tail"}`,
-      String.raw`{"m":"{\"u\":\"?code=${REDACTED}\"} tail"}`,
+      String.raw`{"m":"{\"u\":\"?code=\"} tail"}`,
     ],
     [
       String.raw`{"url":"https://x/?access_token=\"","access_token":"s"}`,
-      String.raw`{"url":"https://x/?access_token=\"${REDACTED}\"","access_token":"${REDACTED}"}`,
+      String.raw`{"url":"https://x/?access_token=\"${REDACTED}","access_token":"${REDACTED}"}`,
     ],
     [
       String.raw`{"url":"https://x/?code=\\","password":"hunter2"}`,
@@ -527,6 +527,45 @@ describe('scrubSecrets', () => {
 
     expect(once).not.toContain(secret);
     expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it.each([
+    'passwd =e"token":"adbeefcafebabedeadbeefcafebabe12"token":hunter2',
+    "token='passwd:token=}'hunter2",
+    '"token":"syt_abcdefghijkl"password":"hunter2"',
+  ])('masks a field glued to a masked value: %s', (line) => {
+    const once = scrubSecrets(line);
+
+    expect(once).not.toContain('hunter2');
+    expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it('masks a spaced key that a key-shaped run just before it overlaps', () => {
+    const once = scrubSecrets(
+      'token=Es12\nEs123456789ABCDEFGHJKLMNPQRSTUVWXYZabcde fghi jkmn',
+    );
+
+    expect(once).not.toContain('jkmn');
+  });
+
+  it.each([
+    "token='".repeat(17),
+    "=' = 'password".repeat(10),
+    "it's token='a ".repeat(17),
+    "token='".repeat(3000),
+  ])('scrubs a long repeated chain to a fixed point: %s', (line) => {
+    const once = scrubSecrets(line);
+
+    expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it.each([
+    'a\uE000b',
+    'hello \uE000 world',
+    'Es12\uE0003456',
+    'icon \uFDD0 here',
+  ])('leaves private-use characters as they are: %s', (line) => {
+    expect(scrubSecrets(line)).toBe(line);
   });
 
   it.each([
@@ -778,6 +817,10 @@ describe('scrubSecrets', () => {
       'password=\\"x\\"'.repeat(5000),
       'password=\\"x"'.repeat(5000),
       'token=passwd:'.repeat(5000),
+      "token='passwd:".repeat(4500),
+      "x:'passwd:a}".repeat(5000),
+      'token="passwd:'.repeat(4500),
+      "token='".repeat(9000),
       'x:"token":'.repeat(6000),
       'token= passwd:= '.repeat(4000),
       `${RECOVERY_KEY} `.repeat(1100),

@@ -1082,6 +1082,14 @@ describe('createLogRedactor', () => {
       );
     });
 
+    it('reads every escaped "@" in an address the same way', () => {
+      const redactor = createLogRedactor(CORPUS_CONTEXT);
+
+      expect(redactor.redact('x%40y%40gmail.com and x%40y@gmail.com')).toBe(
+        'email1@example.invalid and email1@example.invalid',
+      );
+    });
+
     it('leaves Matrix IDs and URLs with userinfo to their own rules', () => {
       const redactor = createLogRedactor(CORPUS_CONTEXT);
 
