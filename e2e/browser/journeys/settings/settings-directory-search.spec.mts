@@ -124,7 +124,7 @@ test.describe('Settings directory search', () => {
     expect(clipped).toBe(false);
   });
 
-  test('a phone sheet draws part results and its chip row in the sheet colours', async ({
+  test('a phone sheet draws part results in the sheet colours and its chip row in the content colour', async ({
     page,
   }) => {
     await page.goto('/settings/appearance');
@@ -146,14 +146,15 @@ test.describe('Settings directory search', () => {
     await expect(result).toHaveCSS('color', bright);
 
     // The sticky chip row covers content scrolling under it, so it is opaque, and in
-    // the sheet's own surface colour rather than a darker strip.
+    // the content's own colour rather than a band across it.
     await result.click();
     const chips = page.locator('.settings-layout__chips');
     await expect(chips).toBeVisible();
-    const sheet = await page
-      .getByTestId('dialog-surface')
+    const content = await page
+      .getByTestId('settings-detail')
       .evaluate((el) => getComputedStyle(el).backgroundColor);
-    await expect(chips).toHaveCSS('background-color', sheet);
+    expect(content).not.toBe('rgba(0, 0, 0, 0)');
+    await expect(chips).toHaveCSS('background-color', content);
   });
 
   test.describe('Pixel 5 routed history', () => {

@@ -11,25 +11,15 @@
     --settings-layout-gutter: var(--trinity-space-5);
   }
 
-  // One surface with the header, as in every other dialog, split by a hairline; the nav keeps
-  // a fixed width.
+  // The nav shares the shell's surface with the header, as in every other dialog; the content
+  // keeps the app ground of the full-screen layer, so settings reads the same in each. The nav
+  // keeps a fixed width.
   :host(:not([data-presentation='fullscreen'])) {
-    .settings-layout__nav,
-    .settings-layout__content {
-      background: transparent;
-    }
-
-    // The sticky chip row stays opaque over the content scrolling under it, in the
-    // shell's surface rather than the pane colour of the full-screen layer.
-    .settings-layout__chips {
-      background: var(--trinity-surface-overlay);
-    }
-
     .settings-layout__nav {
       flex-basis: 16rem;
       min-inline-size: 0;
       padding-inline: var(--settings-layout-gutter);
-      border-inline-end: 1px solid var(--trinity-border-subtle);
+      background: transparent;
     }
 
     .settings-layout__nav-inner {
@@ -48,10 +38,6 @@
       :is(.settings-layout__nav, .settings-layout__column) {
         padding-inline: var(--settings-layout-gutter);
         padding-block-start: var(--settings-layout-inset);
-      }
-
-      .settings-layout__nav {
-        border-inline-end: 0;
       }
     }
   }

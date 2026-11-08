@@ -277,7 +277,7 @@ describe('TrnSettingsLayoutComponent', () => {
         css,
       )?.[1] ?? '';
 
-    it('puts the nav on the app ground and the content on the pane', async () => {
+    it('puts the nav and the content on the app ground', async () => {
       const { container } = await render(SettingsLayoutHostComponent, {
         providers: [provideTrnIcons()],
       });
@@ -294,8 +294,24 @@ describe('TrnSettingsLayoutComponent', () => {
       expect(rule('.settings-layout__group-label')).toContain(
         'text-transform: uppercase',
       );
+      // Full-screen gives both panes one ground, so a hairline marks the split.
+      expect(nav).toContain(
+        'border-inline-end: 1px solid var(--trinity-border-subtle)',
+      );
       expect(rule('.settings-layout__content')).toContain(
-        'background: var(--trinity-surface-pane)',
+        'background: var(--trinity-surface-app)',
+      );
+      // The sticky chip row matches the content scrolling under it; a compact nav fills the
+      // width alone, so it drops the hairline.
+      const compact = readFileSync(
+        join(import.meta.dirname, 'trn-settings-layout.compact.scss'),
+        'utf8',
+      );
+      expect(compact).toMatch(
+        /\.settings-layout__chips\s*\{[^}]*background: var\(--trinity-surface-app\)/u,
+      );
+      expect(compact).toMatch(
+        /\[data-compact='true'\] \.settings-layout__nav\s*\{[^}]*border-inline-end: 0/u,
       );
       expect(rule('.settings-layout__column')).toContain(
         'max-inline-size: 740px',

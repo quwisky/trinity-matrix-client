@@ -17,13 +17,6 @@
     box-shadow: var(--trinity-shadow-overlay);
   }
 
-  // A framed layout's panes are transparent on the shell; the page moving over needs a fill.
-  :host(:not([data-presentation='fullscreen']))
-    :is([data-pane-slide], [data-pane-swipe])
-    .settings-layout__content {
-    background: var(--trinity-surface-overlay);
-  }
-
   [data-pane-slide='open'] .settings-layout__nav,
   [data-pane-swipe] .settings-layout__nav,
   [data-pane-slide='close'] .settings-layout__content {
