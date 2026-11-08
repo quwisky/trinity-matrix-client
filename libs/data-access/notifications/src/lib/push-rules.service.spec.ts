@@ -1,7 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { firstValueFrom } from 'rxjs';
-import { RuleId } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  EventType,
+  RuleId,
+  type MatrixEvent,
+} from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PushRulesService, type PushRuleToggle } from './push-rules.service';
@@ -24,6 +29,8 @@ function setup(
       },
     },
     setPushRuleEnabled,
+    on: vi.fn(),
+    off: vi.fn(),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -34,7 +41,11 @@ function setup(
       }),
     ],
   });
-  return { svc: TestBed.inject(PushRulesService), setPushRuleEnabled };
+  return {
+    svc: TestBed.inject(PushRulesService),
+    setPushRuleEnabled,
+    instance,
+  };
 }
 
 function toggleFor(svc: PushRulesService, id: RuleId): PushRuleToggle {
@@ -56,6 +67,22 @@ function byLabel(svc: PushRulesService, label: string): PushRuleToggle {
 const MENTIONS_LABEL = 'When someone mentions my name';
 
 describe('PushRulesService', () => {
+  it('moves its revision when the account’s push rules sync, and only then', () => {
+    const { svc, instance } = setup();
+    svc.connect();
+    const handler = instance.on.mock.calls.find(
+      (call) => call[0] === ClientEvent.AccountData,
+    )?.[1] as (event: MatrixEvent) => void;
+    const event = (type: string) => ({ getType: () => type }) as MatrixEvent;
+
+    const before = svc.revision();
+    handler(event('m.direct'));
+    expect(svc.revision()).toBe(before);
+    handler(event(EventType.PushRules));
+    expect(svc.revision()).toBeGreaterThan(before);
+    svc.disconnect();
+  });
+
   it('exposes a non-empty ordered catalog of toggles', () => {
     const { svc } = setup();
     expect(svc.toggles.length).toBeGreaterThan(0);

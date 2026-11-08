@@ -272,9 +272,12 @@ export class TrustUsersService {
         );
       }
       // Settle the re-read before completing, so the caller's busy state outlasts it.
+      // After an Account switch the projection shows another Account, so skip the re-read.
       return from(
         run(crypto).then(() =>
-          this.states.has(userId) ? this.read(userId, client) : undefined,
+          this.states.has(userId) && this.projection.client() === client
+            ? this.read(userId, client)
+            : undefined,
         ),
       );
     }).pipe(recoverTrustOperation(operation));

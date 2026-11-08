@@ -34,6 +34,7 @@ const reactionSetOn = vi.fn(() => of(undefined));
 const reactionConnect = vi.fn();
 const reactionDisconnect = vi.fn();
 const activeAccount = signal<string | null>('@me:hs');
+const pushRevision = signal(0);
 
 beforeEach(() => {
   soundEnabled.set(true);
@@ -55,7 +56,12 @@ async function build(over: { setOn?: Mock } = {}) {
   const toastShow = vi.fn();
   const { fixture } = await render(NotificationsSectionComponent, {
     providers: [
-      MockProvider(PushRulesService, { toggles: TOGGLES, isOn, setOn }),
+      MockProvider(PushRulesService, {
+        toggles: TOGGLES,
+        isOn,
+        setOn,
+        revision: pushRevision.asReadonly(),
+      }),
       MockProvider(NotificationSoundService, {
         enabled: soundEnabled.asReadonly(),
         setOn: soundSetOn,
@@ -86,7 +92,7 @@ async function build(over: { setOn?: Mock } = {}) {
       MockProvider(TrnToastService, { show: toastShow }),
     ],
   });
-  return { cmp: fixture.componentInstance, fixture, setOn, toastShow };
+  return { cmp: fixture.componentInstance, fixture, setOn, isOn, toastShow };
 }
 
 /** Only the switches rendered for push-rule toggles (excludes the sound one). */
@@ -265,6 +271,144 @@ describe('NotificationsSectionComponent', () => {
       expect.any(String),
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  it('shows the new account’s toggles after an account switch', async () => {
+    const { cmp, fixture, isOn } = await build();
+    expect(cmp.checked(TOGGLES[0])).toBe(true);
+
+    isOn.mockImplementation(
+      (t: PushRuleToggle) => t.id === '.m.rule.roomnotif',
+    );
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[0])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('refreshes the toggles when the account’s push rules sync', async () => {
+    const { cmp, fixture, isOn } = await build();
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+
+    isOn.mockImplementation(() => true);
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('keeps a pending toggle’s new value when the rules sync mid-write', async () => {
+    const { cmp, fixture, isOn } = await build({ setOn: vi.fn(() => NEVER) });
+
+    cmp.toggle(TOGGLES[0], false);
+    isOn.mockImplementation(() => true);
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[0])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('keeps a written toggle’s value until the sync carries it', async () => {
+    const { cmp, fixture, isOn } = await build();
+    const sync = () => {
+      pushRevision.update((n) => n + 1);
+      fixture.detectChanges();
+    };
+
+    cmp.toggle(TOGGLES[1], true); // resolves at once; the local rules are still old
+    sync();
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+
+    isOn.mockImplementation(() => true); // the write's echo
+    sync();
+    isOn.mockImplementation((t: PushRuleToggle) => t.id === '.m.rule.master');
+    sync(); // a later change from elsewhere shows again
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('keeps the last write when an older sync lands after two quick writes', async () => {
+    const { cmp, fixture, isOn } = await build();
+
+    cmp.toggle(TOGGLES[1], true);
+    cmp.toggle(TOGGLES[1], false);
+    isOn.mockImplementation(() => true); // the first write's echo, after the second resolved
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('forgets an unsynced write on an account switch', async () => {
+    const { cmp, fixture } = await build();
+
+    cmp.toggle(TOGGLES[0], false); // the new account's master toggle reads on
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[0])).toBe(true);
+  });
+
+  it('expects no sync when the echo arrived before the write resolved', async () => {
+    const write = new Subject<void>();
+    const { cmp, fixture, isOn } = await build({ setOn: vi.fn(() => write) });
+
+    cmp.toggle(TOGGLES[1], true);
+    isOn.mockImplementation(() => true);
+    write.next();
+    write.complete();
+    isOn.mockImplementation(() => false); // another device turns it off again
+    pushRevision.update((n) => n + 1);
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+  });
+
+  it('shows the synced value once a write’s echo is overdue', async () => {
+    const { cmp } = await build();
+    vi.useFakeTimers();
+    try {
+      cmp.toggle(TOGGLES[1], true);
+      expect(cmp.checked(TOGGLES[1])).toBe(true);
+
+      vi.advanceTimersByTime(10_000);
+
+      expect(cmp.checked(TOGGLES[1])).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the last successful write when a later one fails', async () => {
+    const setOn = vi
+      .fn()
+      .mockReturnValueOnce(of(undefined))
+      .mockReturnValueOnce(throwError(() => new Error('nope')));
+    const { cmp, fixture } = await build({ setOn });
+
+    cmp.toggle(TOGGLES[1], true);
+    cmp.toggle(TOGGLES[1], false);
+    pushRevision.update((n) => n + 1); // still the rules from before the first write
+    fixture.detectChanges();
+
+    expect(cmp.checked(TOGGLES[1])).toBe(true);
+  });
+
+  it('does not let the previous account’s failed toggle write touch the new account', async () => {
+    const write = new Subject<void>();
+    const { cmp, fixture, toastShow } = await build({
+      setOn: vi.fn(() => write),
+    });
+
+    cmp.toggle(TOGGLES[1], true);
+    activeAccount.set('@other:hs');
+    fixture.detectChanges();
+    write.error(new Error('old account failed'));
+
+    expect(cmp.isPending(TOGGLES[1])).toBe(false);
+    expect(cmp.checked(TOGGLES[1])).toBe(false);
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('ignores a change while the same toggle’s write is in flight', async () => {

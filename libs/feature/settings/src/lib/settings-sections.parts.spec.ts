@@ -213,7 +213,10 @@ const SETUPS: Record<string, () => Setup> = {
   },
   notifications: () => ({
     providers: [
-      MockProvider(PushRulesService, { toggles: [] }),
+      MockProvider(PushRulesService, {
+        toggles: [],
+        revision: signal(0).asReadonly(),
+      }),
       MockProvider(NotificationSoundService, {
         enabled: signal(true).asReadonly(),
         connect: () => undefined,

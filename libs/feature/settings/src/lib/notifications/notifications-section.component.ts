@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { TrnSwitchComponent } from '@trinity/components/controls';
@@ -25,6 +26,9 @@ import {
   TrnToastService,
 } from '@trinity/components/overlay';
 import { Subject, takeUntil } from 'rxjs';
+
+/** How long a written toggle waits for its sync echo before the synced value shows again. */
+const SYNC_ECHO_LIMIT_MS = 10_000;
 
 /**
  * Notifications settings sub-page: account-level toggles for which events notify,
@@ -58,9 +62,17 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   private readonly state = signal<ReadonlyMap<string, boolean>>(new Map());
   /** Rule ids whose write is in flight. */
   private readonly pending = signal<ReadonlySet<string>>(new Set());
-  private reactionAccountId: string | null | undefined;
-  /** Emits on an account switch; releases the previous account's reaction write. */
-  private readonly reactionAccountSwitches = new Subject<void>();
+  /**
+   * Written values the synced rules don't show yet, by rule id. The SDK updates its local
+   * rules only from the sync echo, so an earlier sync would otherwise flip the toggle back.
+   */
+  private readonly awaitingSync = new Map<
+    string,
+    { readonly value: boolean; readonly timer: ReturnType<typeof setTimeout> }
+  >();
+  private accountId: string | null | undefined;
+  /** Emits on an account switch; releases the previous account's writes. */
+  private readonly accountSwitches = new Subject<void>();
 
   /**
    * Key for the sound switch in the same optimistic maps as the rule toggles. Not a rule id:
@@ -71,34 +83,28 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   protected readonly reactionsKey = 'reaction-notifications';
 
   constructor() {
+    // Re-read the rule toggles on every sync of the account's rules and on a switch; a
+    // toggle keeps its written value until the sync carries it.
     effect(() => {
       const accountId = this.matrix.activeUserId();
-      if (
-        this.reactionAccountId !== undefined &&
-        this.reactionAccountId !== accountId
-      ) {
-        this.reactionAccountSwitches.next();
-        this.state.update((current) => {
-          const next = new Map(current);
-          next.delete(this.reactionsKey);
-          return next;
-        });
-        this.pending.update((current) => {
-          const next = new Set(current);
-          next.delete(this.reactionsKey);
-          return next;
-        });
-      }
-      this.reactionAccountId = accountId;
+      this.push.revision();
+      untracked(() => {
+        const switched =
+          this.accountId !== undefined && this.accountId !== accountId;
+        if (switched) {
+          this.accountSwitches.next();
+          this.pending.set(new Set());
+          this.forgetAllSyncs();
+        }
+        this.accountId = accountId;
+        this.readToggles(switched);
+      });
     });
+    this.destroyRef.onDestroy(() => this.forgetAllSyncs());
   }
 
   ngOnInit(): void {
-    const seeded = new Map<string, boolean>();
-    for (const toggle of this.toggles) {
-      seeded.set(toggle.id, this.push.isOn(toggle));
-    }
-    this.state.set(seeded);
+    this.push.connect();
     // Tracks account data, so a value that arrives after this page has rendered (a cold
     // load, or a change made on another device) still shows.
     this.sound.connect();
@@ -106,6 +112,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.push.disconnect();
     this.sound.disconnect();
     this.reactions.disconnect();
   }
@@ -131,17 +138,27 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(this.soundKey, on);
     this.setPending(this.soundKey, true);
+    const accountId = this.matrix.activeUserId();
     this.sound
       .setOn(on)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: () => this.setPending(this.soundKey, false),
+        next: () => {
+          if (this.isCurrentAccount(accountId)) {
+            this.setPending(this.soundKey, false);
+          }
+        },
         error: () => {
-          this.setState(this.soundKey, !on);
-          this.setPending(this.soundKey, false);
-          this.toast.show('Could not update your notification settings.', {
-            variant: 'danger',
-          });
+          if (this.isCurrentAccount(accountId)) {
+            this.setState(this.soundKey, !on);
+            this.setPending(this.soundKey, false);
+            this.toast.show('Could not update your notification settings.', {
+              variant: 'danger',
+            });
+          }
         },
       });
   }
@@ -166,17 +183,17 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     this.reactions
       .setOn(on)
       .pipe(
-        takeUntil(this.reactionAccountSwitches),
+        takeUntil(this.accountSwitches),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({
         next: () => {
-          if (this.isCurrentReactionWrite(accountId)) {
+          if (this.isCurrentAccount(accountId)) {
             this.setPending(this.reactionsKey, false);
           }
         },
         error: () => {
-          if (this.isCurrentReactionWrite(accountId)) {
+          if (this.isCurrentAccount(accountId)) {
             this.setState(this.reactionsKey, !on);
             this.setPending(this.reactionsKey, false);
             this.toast.show('Could not update your notification settings.', {
@@ -188,7 +205,7 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
   }
 
   /** The switch effect runs later than the signal changes, so also compare the account. */
-  private isCurrentReactionWrite(accountId: string | null): boolean {
+  private isCurrentAccount(accountId: string | null): boolean {
     return this.matrix.activeUserId() === accountId;
   }
 
@@ -207,20 +224,71 @@ export class NotificationsSectionComponent implements OnInit, OnDestroy {
     }
     this.setState(toggle.id, on);
     this.setPending(toggle.id, true);
+    const accountId = this.matrix.activeUserId();
     this.push
       .setOn(toggle, on)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        takeUntil(this.accountSwitches),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
-        next: () => this.setPending(toggle.id, false),
+        next: () => {
+          if (this.isCurrentAccount(accountId)) {
+            // Unless already synced; an earlier write's echo still due may undo even that.
+            if (
+              this.awaitingSync.has(toggle.id) ||
+              this.push.isOn(toggle) !== on
+            ) {
+              this.awaitSync(toggle.id, on);
+            }
+            this.setPending(toggle.id, false);
+          }
+        },
         error: () => {
-          this.setState(toggle.id, !on); // revert the optimistic flip
-          this.setPending(toggle.id, false);
-          this.toast.show('Could not update your notification settings.', {
-            duration: 4000,
-            variant: 'danger',
-          });
+          if (this.isCurrentAccount(accountId)) {
+            this.setState(toggle.id, !on); // revert the optimistic flip
+            this.setPending(toggle.id, false);
+            this.toast.show('Could not update your notification settings.', {
+              duration: 4000,
+              variant: 'danger',
+            });
+          }
         },
       });
+  }
+
+  /** Show each rule toggle as synced, unless it has a write in flight or awaiting its echo. */
+  private readToggles(fresh: boolean): void {
+    const pending = this.pending();
+    const next = new Map(fresh ? [] : this.state());
+    for (const toggle of this.toggles) {
+      if (pending.has(toggle.id)) continue;
+      const synced = this.push.isOn(toggle);
+      const written = this.awaitingSync.get(toggle.id);
+      if (!written || written.value === synced) {
+        this.forgetSync(toggle.id);
+        next.set(toggle.id, synced);
+      }
+    }
+    this.state.set(next);
+  }
+
+  private awaitSync(id: string, value: boolean): void {
+    this.forgetSync(id);
+    const timer = setTimeout(() => {
+      this.awaitingSync.delete(id);
+      this.readToggles(false);
+    }, SYNC_ECHO_LIMIT_MS);
+    this.awaitingSync.set(id, { value, timer });
+  }
+
+  private forgetSync(id: string): void {
+    clearTimeout(this.awaitingSync.get(id)?.timer);
+    this.awaitingSync.delete(id);
+  }
+
+  private forgetAllSyncs(): void {
+    for (const id of [...this.awaitingSync.keys()]) this.forgetSync(id);
   }
 
   private setState(id: string, on: boolean): void {
