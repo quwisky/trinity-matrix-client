@@ -11,6 +11,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
+import { TrnInput } from '@trinity/components/controls';
 import {
   PERSONAL_IMAGE_PACK_ID as PERSONAL,
   type ImagePack,
@@ -28,7 +29,12 @@ import { StickerImageComponent } from '../sticker-image/sticker-image.component'
 @Component({
   selector: 'trn-sticker-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AddImagesTileComponent, EmptyStateComponent, StickerImageComponent],
+  imports: [
+    AddImagesTileComponent,
+    EmptyStateComponent,
+    StickerImageComponent,
+    TrnInput,
+  ],
   templateUrl: './sticker-picker.component.html',
   styleUrl: './sticker-picker.component.scss',
 })

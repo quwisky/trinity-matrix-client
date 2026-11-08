@@ -262,7 +262,7 @@ describe('cascade layer contract', () => {
 
     const overrides = layerBodies('apps/trinity/src/global.scss', 'overrides');
     expect(rulePaths(overrides)).toEqual([
-      "button:disabled:not([data-trn-selection-locked]), [aria-disabled='true']:not([data-trn-selection-locked])",
+      "button:disabled:not( [data-trn-selection-locked], [data-slot='select-trigger'] ), [aria-disabled='true']:not([data-trn-selection-locked])",
       '[data-trn-selection-locked]',
       ":is(button, a)[trnBtn][data-trn-presentation='solid']:not( [data-trn-variant='secondary'], [data-trn-shape='tile'] ):is(:disabled, [aria-disabled='true'])",
       ":is(button, a)[trnBtn][data-trn-presentation='solid']:not( [data-trn-variant='secondary'], [data-trn-shape='tile'] ):is(:disabled, [aria-disabled='true']) > &:is(:not(:focus-visible), [data-trn-variant='primary'])",

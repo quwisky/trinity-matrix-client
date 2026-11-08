@@ -6,13 +6,15 @@
   >
     <trn-settings-group title="Joining">
       <trn-settings-row label="Who can join" labelId="room-settings-join-label">
-        <trn-select
-          class="w-48 max-sm:w-full"
-          aria-labelledby="room-settings-join-label"
-          [options]="draft.joinRuleOptions()"
-          [formField]="draft.form.joinRule"
-          data-testid="room-settings-join-rule"
-        />
+        <trn-field-lock class="w-48 max-sm:w-full">
+          <trn-select
+            aria-labelledby="room-settings-join-label"
+            [options]="draft.joinRuleOptions()"
+            [formField]="draft.form.joinRule"
+            [disabledReason]="draft.permissions().joinRule.reason"
+            data-testid="room-settings-join-rule"
+          />
+        </trn-field-lock>
       </trn-settings-row>
       @if (!draft.mayEditJoinRule()) {
         <p class="room-settings__restriction room-settings__note">
@@ -59,13 +61,15 @@
         label="Who can read history"
         labelId="room-settings-history-label"
       >
-        <trn-select
-          class="w-48 max-sm:w-full"
-          aria-labelledby="room-settings-history-label"
-          [options]="draft.historyOptions()"
-          [formField]="draft.form.historyVisibility"
-          data-testid="room-settings-history"
-        />
+        <trn-field-lock class="w-48 max-sm:w-full">
+          <trn-select
+            aria-labelledby="room-settings-history-label"
+            [options]="draft.historyOptions()"
+            [formField]="draft.form.historyVisibility"
+            [disabledReason]="draft.permissions().history.reason"
+            data-testid="room-settings-history"
+          />
+        </trn-field-lock>
       </trn-settings-row>
       @if (!draft.mayEditHistory()) {
         <p class="room-settings__restriction room-settings__note">

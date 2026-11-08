@@ -9,6 +9,7 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import { TrnSettingsRowComponent } from '@trinity/components/overlay';
 import {
   AppearanceSettingsController,
@@ -29,7 +30,12 @@ export interface AppearancePreferenceField {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './appearance-preference-field.component.html',
   host: { class: 'block' },
-  imports: [SaveFailureComponent, TrnSelectComponent, TrnSettingsRowComponent],
+  imports: [
+    TrnFieldLockComponent,
+    SaveFailureComponent,
+    TrnSelectComponent,
+    TrnSettingsRowComponent,
+  ],
 })
 export class AppearancePreferenceFieldComponent {
   private readonly controller = inject(AppearanceSettingsController);

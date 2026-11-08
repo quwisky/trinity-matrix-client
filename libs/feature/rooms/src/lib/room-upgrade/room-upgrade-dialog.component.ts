@@ -16,6 +16,7 @@ import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogActions,
   TrnDialogDismiss,
@@ -111,6 +112,7 @@ function list(items: readonly string[]): string {
   selector: 'trn-room-upgrade-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnFieldLockComponent,
     FormField,
     FormRoot,
     TrnButton,
@@ -142,7 +144,9 @@ export class RoomUpgradeDialogComponent {
   readonly busy = signal(false);
   // Nothing is editable mid-run; the values were captured at submit.
   readonly upgradeForm = form(this.model, (path) => {
-    disabled(path.version, { when: () => this.busy() });
+    disabled(path.version, {
+      when: () => this.busy() && 'Wait for the upgrade to finish',
+    });
   });
   readonly error = signal<string | null>(null);
   readonly inviteMembers = computed(() => this.model().inviteMembers);

@@ -15,7 +15,7 @@ import { TrnAnchoredOverlayDirective } from '@trinity/components/overlay';
 let nextId = 0;
 
 /**
- * Wraps a field that can be disabled and, while it is, draws a lock that says why.
+ * Wraps a field or select that can be disabled and, while it is, draws a lock that says why.
  * A small (`sm`) field reports no reason, so it keeps only its dashed look.
  */
 @Component({

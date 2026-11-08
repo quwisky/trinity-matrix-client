@@ -17,12 +17,14 @@
 
       <div class="flex flex-col gap-1 text-sm">
         <span id="room-upgrade-version-label" class="font-medium">Version</span>
-        <trn-select
-          aria-labelledby="room-upgrade-version-label"
-          [options]="versionOptions()"
-          [formField]="upgradeForm.version"
-          data-testid="room-upgrade-version"
-        />
+        <trn-field-lock>
+          <trn-select
+            aria-labelledby="room-upgrade-version-label"
+            [options]="versionOptions()"
+            [formField]="upgradeForm.version"
+            data-testid="room-upgrade-version"
+          />
+        </trn-field-lock>
       </div>
 
       @if (creators(); as creators) {

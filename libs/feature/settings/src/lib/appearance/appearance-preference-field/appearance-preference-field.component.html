@@ -4,16 +4,22 @@
   [description]="model().editor.description"
 >
   <div class="min-w-0">
-    <trn-select
-      class="w-48 max-sm:w-full"
-      [attr.data-testid]="field().testId"
-      [aria-labelledby]="field().headingId"
-      [placeholder]="'Select ' + model().editor.label.toLowerCase()"
-      [options]="options()"
-      [value]="model().value()"
-      [disabled]="hydrationBusy() || status().busy()"
-      (valueChange)="update($event)"
-    />
+    <trn-field-lock class="w-48 max-sm:w-full">
+      <trn-select
+        [attr.data-testid]="field().testId"
+        [aria-labelledby]="field().headingId"
+        [placeholder]="'Select ' + model().editor.label.toLowerCase()"
+        [options]="options()"
+        [value]="model().value()"
+        [disabled]="hydrationBusy() || status().busy()"
+        [disabledReason]="
+          hydrationBusy()
+            ? 'Wait while your settings load'
+            : 'Wait for this change to save'
+        "
+        (valueChange)="update($event)"
+      />
+    </trn-field-lock>
     @if (status().failed()) {
       <trn-save-failure
         class="mt-2 justify-end"

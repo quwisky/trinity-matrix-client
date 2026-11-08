@@ -38,17 +38,19 @@
           [description]="entry.editor.description"
           [attr.data-testid]="entry.editor.testId"
         >
-          <trn-select
-            #control
-            class="w-48 max-sm:w-full"
-            [attr.data-testid]="entry.editor.testId + '-select'"
-            [aria-labelledby]="entry.editor.testId + '-heading'"
-            [placeholder]="'Select ' + entry.editor.label.toLowerCase()"
-            [options]="selectOptions().get(entry.id) ?? []"
-            [value]="selected(entry)"
-            [disabled]="busy(entry.id)"
-            (valueChange)="choose(entry, $event, control)"
-          />
+          <trn-field-lock class="w-48 max-sm:w-full">
+            <trn-select
+              #control
+              [attr.data-testid]="entry.editor.testId + '-select'"
+              [aria-labelledby]="entry.editor.testId + '-heading'"
+              [placeholder]="'Select ' + entry.editor.label.toLowerCase()"
+              [options]="selectOptions().get(entry.id) ?? []"
+              [value]="selected(entry)"
+              [disabled]="busy(entry.id)"
+              disabledReason="Wait for this change to save"
+              (valueChange)="choose(entry, $event, control)"
+            />
+          </trn-field-lock>
         </trn-settings-row>
         @if (failure(entry.id); as message) {
           <p

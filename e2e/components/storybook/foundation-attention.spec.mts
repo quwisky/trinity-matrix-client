@@ -274,9 +274,10 @@ async function expectAttentionControls(
   expect(selectBorder).toEqual(controlBorder);
   await trigger.focus();
   await expect(trigger).toBeFocused();
+  // Like a field, the trigger draws its ring inside the border and keeps the border itself.
   const selectRing = await expectPaintedRing(trigger, onAttentionRing);
   expect(await computedColour(trigger, 'border-top-color')).toEqual(
-    onAttentionRing,
+    controlBorder,
   );
   await trigger.evaluate((element: HTMLElement) => element.blur());
 

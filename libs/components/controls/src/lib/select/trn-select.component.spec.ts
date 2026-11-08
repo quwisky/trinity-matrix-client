@@ -1,10 +1,12 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, viewChild } from '@angular/core';
+import { disabled, form, FormField } from '@angular/forms/signals';
 import { fireEvent, render } from '@trinity/testing';
 import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   TrnSelectComponent,
   type TrnSelectOption,
 } from './trn-select.component';
+import { TRN_DEFAULT_LOCK_REASON } from '../input/trn-lockable-control';
 import { trnSelectTriggerRecipe } from './trn-select-recipe';
 
 const OPTIONS: readonly TrnSelectOption<string>[] = [
@@ -36,6 +38,21 @@ const OPTIONS: readonly TrnSelectOption<string>[] = [
 class HostComponent {
   readonly options = OPTIONS;
   readonly value = signal('recent');
+}
+
+@Component({
+  imports: [TrnSelectComponent, FormField],
+  template: `<trn-select [options]="options" [formField]="f.order" />`,
+})
+class FormLockHostComponent {
+  readonly options = OPTIONS;
+  readonly saving = signal(false);
+  readonly f = form(signal({ order: 'recent' }), (p) =>
+    disabled(p.order, {
+      when: () => this.saving() && 'Wait for this change to save',
+    }),
+  );
+  readonly select = viewChild.required(TrnSelectComponent<string>);
 }
 
 const trigger = (container: Element) =>
@@ -185,30 +202,66 @@ describe('TrnSelectComponent', () => {
     expect(container.querySelector('[disabled]')).not.toBeNull();
   });
 
+  it('explains a disabled select to its lock, except at the small size', async () => {
+    const { fixture } = await render(TrnSelectComponent<string>, {
+      inputs: { options: [{ value: 'a', label: 'A' }] },
+    });
+    const cmp = fixture.componentInstance;
+    expect(cmp.lockReason()).toBeNull();
+
+    fixture.componentRef.setInput('disabled', true);
+    expect(cmp.lockReason()).toBe(TRN_DEFAULT_LOCK_REASON);
+
+    fixture.componentRef.setInput('size', 'sm');
+    expect(cmp.lockReason()).toBeNull();
+  });
+
+  it('takes a Signal Forms disabled reason for its lock', async () => {
+    const { fixture } = await render(FormLockHostComponent);
+    fixture.componentInstance.saving.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.select().lockReason()).toBe(
+      'Wait for this change to save',
+    );
+  });
+
   it('switches the trigger’s value, placeholder, chevron, border and fill only inside an attention surface', () => {
     const attention = 'in-data-[trn-surface=attention]:';
     const trigger = trnSelectTriggerRecipe().split(' ');
 
-    expect(trigger).toContain('border-[var(--trinity-border-control)]');
+    expect(trigger).toEqual(
+      expect.arrayContaining([
+        'border-[var(--trinity-entry-border)]',
+        'bg-[var(--trinity-entry-surface)]',
+        'rounded-[var(--trinity-entry-radius)]',
+        'focus-visible:ring-0',
+        'focus-visible:outline-[color:var(--trinity-focus-ring)]',
+        'disabled:border-dashed',
+        'disabled:bg-transparent',
+        'disabled:opacity-100',
+      ]),
+    );
     expect(trigger).toEqual(
       expect.arrayContaining([
         `${attention}border-[var(--trinity-state-attention-control-border)]`,
         `${attention}text-[var(--trinity-state-attention-control-foreground)]`,
         `${attention}data-placeholder:text-[var(--trinity-state-attention-control-placeholder)]`,
         `${attention}[&_ng-icon]:text-[var(--trinity-state-attention-control-foreground)]`,
-        // Helm's dark fill and hover are translucent mixes that would tint the accent ground.
+        // The entry fill would tint the accent ground.
+        `${attention}bg-transparent`,
         `${attention}dark:bg-transparent`,
         `${attention}dark:hover:bg-transparent`,
-        // Helm's focus border and halo use `--ring`; the drawn ring takes the surface's.
-        `${attention}focus-visible:border-[var(--trinity-focus-ring)]`,
-        `${attention}focus-visible:ring-[color:var(--trinity-focus-ring)]`,
+        `${attention}disabled:border-[var(--trinity-state-attention-control-border)]`,
+        `${attention}disabled:text-[var(--trinity-state-attention-control-placeholder)]`,
       ]),
     );
     expect(trigger.filter((token) => token.includes('attention'))).toEqual(
       trigger.filter((token) => token.startsWith(attention)),
     );
   });
-  it('switches the invalid trigger’s border and ring to the attention danger role only inside an attention surface', () => {
+  it('switches the invalid trigger’s border and inset ring to the attention danger role only inside an attention surface', () => {
     const trigger = trnSelectTriggerRecipe().split(' ');
 
     // Helm's destructive border and translucent halo fall near 1:1 on the accent.
@@ -216,10 +269,9 @@ describe('TrnSelectComponent', () => {
       expect.arrayContaining([
         'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
         'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:border-[var(--trinity-state-attention-control-danger)]',
-        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]',
-        'in-data-[trn-surface=attention]:dark:data-[matches-spartan-invalid=true]:ring-[color:var(--trinity-state-attention-control-danger)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:outline-[color:var(--trinity-state-attention-control-danger)]',
         // Focused, the danger ring would otherwise out-rank the focus ring.
-        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:ring-[color:var(--trinity-focus-ring)]',
+        'in-data-[trn-surface=attention]:data-[matches-spartan-invalid=true]:focus-visible:outline-[color:var(--trinity-focus-ring)]',
       ]),
     );
     expect(trigger.filter((token) => token.includes('attention'))).toEqual(

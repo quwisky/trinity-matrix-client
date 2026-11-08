@@ -15,7 +15,10 @@ import {
   TrnSettingsGroupComponent,
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
-import { TrnTooltip } from '@trinity/components/generic-content';
+import {
+  TrnFieldLockComponent,
+  TrnTooltip,
+} from '@trinity/components/generic-content';
 import { RoomSettingsDraftService } from './room-settings-draft.service';
 import type { ParentSpace } from './room-settings.models';
 
@@ -24,6 +27,7 @@ import type { ParentSpace } from './room-settings.models';
   selector: 'trn-room-settings-access',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnFieldLockComponent,
     FormField,
     FormRoot,
     TrnActionAvailability,

@@ -3,6 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import {
   TrnInput,
   TrnPasswordInputComponent,
+  TrnSelectComponent,
   TrnTextarea,
 } from '@trinity/components/controls';
 import {
@@ -18,6 +19,7 @@ import { TrnFieldLockComponent } from './trn-field-lock.component';
     TrnFieldLockComponent,
     TrnInput,
     TrnPasswordInputComponent,
+    TrnSelectComponent,
     TrnTextarea,
   ],
   template: `
@@ -32,6 +34,15 @@ import { TrnFieldLockComponent } from './trn-field-lock.component';
         <input trnInput [disabled]="disabled()" />
       </trn-password-input>
     </trn-field-lock>
+    <span id="join-label">Who can join</span>
+    <trn-field-lock data-testid="select">
+      <trn-select
+        aria-labelledby="join-label"
+        [options]="options"
+        [disabled]="disabled()"
+        disabledReason="Only admins can change this"
+      />
+    </trn-field-lock>
     <trn-field-lock data-testid="topic">
       <textarea trnTextarea [disabled]="disabled()"></textarea>
     </trn-field-lock>
@@ -40,6 +51,7 @@ import { TrnFieldLockComponent } from './trn-field-lock.component';
 class HostComponent {
   readonly disabled = signal(false);
   readonly reason = signal('Wait for sign-in to finish');
+  readonly options = [{ value: 'invite', label: 'Invite only' }];
 }
 
 @Component({
@@ -105,6 +117,15 @@ describe('TrnFieldLockComponent', () => {
       'You can’t change this right now',
     );
     expect(lock('topic')?.hasAttribute('data-multiline')).toBe(true);
+  });
+
+  it('locks a disabled select beside the fields', async () => {
+    const { lock, disable } = await setup();
+    await disable();
+
+    expect(lock('select')).toHaveAccessibleDescription(
+      'Only admins can change this',
+    );
   });
 
   it('leaves a small field without a lock', async () => {
