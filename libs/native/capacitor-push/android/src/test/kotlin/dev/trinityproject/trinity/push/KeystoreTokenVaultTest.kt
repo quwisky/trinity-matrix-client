@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import javax.crypto.AEADBadTagException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -31,6 +32,64 @@ class KeystoreTokenVaultTest {
 
         crypto.failing = false
         assertEquals(TokenVaultRead.Record(R0), vault.read(user))
+    }
+
+    @Test
+    fun aRecordSealedUnderAReplacedKeyReadsAsAbsentAndIsRemoved() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String = throw AEADBadTagException("Tag mismatch")
+        }
+
+        assertEquals(TokenVaultRead.Absent, KeystoreTokenVault(preferences, replacedKey).read(user))
+
+        assertFalse(preferences.contains("tokens:$user"))
+    }
+
+    @Test
+    fun aRecordWrittenAfterTheBadTagReadIsKept() {
+        assertTrue(vault.write(user, R0))
+        val stale = preferences.values.getValue("tokens:$user")
+        val fresh = R0.copy(accessToken = "a1", lineage = "L2")
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String {
+                if (stored != stale) return crypto.decrypt(stored)
+                assertTrue(vault.write(user, fresh))
+                throw AEADBadTagException("Tag mismatch")
+            }
+        }
+
+        assertEquals(TokenVaultRead.Record(fresh), KeystoreTokenVault(preferences, replacedKey).read(user))
+
+        assertEquals(TokenVaultRead.Record(fresh), vault.read(user))
+    }
+
+    @Test
+    fun aReplacementThatCannotBeOpenedEitherIsUnavailableNeverAbsent() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String {
+                vault.write(user, R0.copy(accessToken = "a1"))
+                throw AEADBadTagException("Tag mismatch")
+            }
+        }
+
+        assertEquals(TokenVaultRead.Unavailable, KeystoreTokenVault(preferences, replacedKey).read(user))
+
+        assertTrue(preferences.contains("tokens:$user"))
+    }
+
+    @Test
+    fun aRecordRemovedDuringTheBadTagReadIsAbsent() {
+        assertTrue(vault.write(user, R0))
+        val replacedKey = object : ValueCrypto by crypto {
+            override fun decrypt(stored: String): String {
+                assertTrue(vault.remove(user))
+                throw AEADBadTagException("Tag mismatch")
+            }
+        }
+
+        assertEquals(TokenVaultRead.Absent, KeystoreTokenVault(preferences, replacedKey).read(user))
     }
 
     @Test

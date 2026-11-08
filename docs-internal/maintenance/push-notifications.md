@@ -270,7 +270,8 @@ preferences file `trinity_push_tokens`), readable after first unlock, and native
 them on the entry at every read. The entry never holds a refresh token: the vault does. Neither holds crypto
 keys or message history. An account's
 entry is removed as the first step of its sign-out, together with that account's delivered
-pushes. Its vault record goes later, at the registry step of the sign-out, after the token
+pushes; a push still rendering for it checks the entry again at hand-over and shows the
+generic "New message" notification. Its vault record goes later, at the registry step of the sign-out, after the token
 revocation has resolved or been given up, and also when the server ends the session. The store is emptied, with
 every delivered push, by clear-all-data and before a replace sign-in. A handoff failure
 never blocks sign-in or sign-out; the replace sign-in waits for it for at most the
@@ -283,7 +284,9 @@ app-group file
 `push-handoff/rooms.json`. On Android each value is AES-GCM encrypted with a non-exportable
 Android Keystore key and stored in the private preferences file `trinity_push_handoff`
 (`EncryptedSharedPreferences` is deprecated). The vault record is a second Keystore-encrypted
-file, `trinity_push_tokens`, and on iOS the lease files that serialize a refresh are in the app
+file, `trinity_push_tokens`; a record that fails its GCM tag check (sealed under a key the
+alias no longer holds) is removed and reads as absent, so the account gets the ordinary soft
+logout instead of a refresh that can never succeed. On iOS the lease files that serialize a refresh are in the app
 group under `push-handoff/leases/`. Android's lease is held in the process's memory, with no file.
 
 **Refresh before the background.** Each time the app goes to the background,

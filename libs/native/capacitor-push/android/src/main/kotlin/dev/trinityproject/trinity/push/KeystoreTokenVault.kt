@@ -2,6 +2,7 @@ package dev.trinityproject.trinity.push
 
 import android.content.Context
 import android.content.SharedPreferences
+import javax.crypto.AEADBadTagException
 import org.json.JSONObject
 
 /**
@@ -20,19 +21,46 @@ class KeystoreTokenVault internal constructor(
     )
 
     override fun read(userId: String): TokenVaultRead {
+        var stored: String? = null
         return try {
-            val stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
-            decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
+            stored = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
+            open(stored)
+        } catch (error: AEADBadTagException) {
+            // Sealed under a key the alias no longer holds: it can never be opened, so the account
+            // reads as signed out instead of failing on every refresh.
+            discard(userId, stored)
         } catch (error: Exception) {
             // Keystore faults are security and provider exceptions; Android's JSONException is checked.
             TokenVaultRead.Unavailable
         }
     }
 
-    override fun write(userId: String, record: TokenRecord): Boolean = try {
-        preferences.edit().putString(key(userId), crypto.encrypt(encode(record).toString())).commit()
-    } catch (error: Exception) {
-        false
+    private fun open(stored: String): TokenVaultRead =
+        decode(JSONObject(crypto.decrypt(stored)))?.let { TokenVaultRead.Record(it) } ?: TokenVaultRead.Unavailable
+
+    /**
+     * Removes [stale] and reads as Absent. A record written meanwhile stays and is what the read
+     * answers; one that cannot be opened either is Unavailable, never Absent.
+     */
+    private fun discard(userId: String, stale: String?): TokenVaultRead = synchronized(LOCK) {
+        try {
+            val current = preferences.getString(key(userId), null) ?: return TokenVaultRead.Absent
+            if (current != stale) return open(current)
+            // A failed removal leaves it to read as Absent again next time.
+            preferences.edit().remove(key(userId)).commit()
+            TokenVaultRead.Absent
+        } catch (error: Exception) {
+            TokenVaultRead.Unavailable
+        }
+    }
+
+    // Under LOCK so a read discarding an unopenable record cannot remove one written meanwhile.
+    override fun write(userId: String, record: TokenRecord): Boolean = synchronized(LOCK) {
+        try {
+            preferences.edit().putString(key(userId), crypto.encrypt(encode(record).toString())).commit()
+        } catch (error: Exception) {
+            false
+        }
     }
 
     override fun update(userId: String, record: TokenRecord): TokenVaultWrite = synchronized(LOCK) {
