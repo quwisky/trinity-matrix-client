@@ -506,6 +506,25 @@ describe('MessageActionsService', () => {
       expect(toastShow).toHaveBeenCalled();
     });
 
+    it('asks to finish or cancel an edit in progress first', () => {
+      const { actions } = build();
+      toComposer.mockReturnValueOnce(
+        of({
+          kind: 'rejected',
+          operation: 'cancel',
+          failure: 'edit-in-progress',
+          retryable: false,
+        }),
+      );
+
+      actions.onEditUnsent('~!r:hs:txn-1');
+
+      expect(toastShow).toHaveBeenCalledWith(
+        'Finish or cancel your edit first.',
+        expect.anything(),
+      );
+    });
+
     it('is removed on Delete without touching the box', () => {
       const { actions } = build();
       draft.set('typed since');

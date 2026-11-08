@@ -49,6 +49,7 @@ import {
   buildRowCapsMap,
   addableImages,
   dispatchSharedRowAction,
+  isComposerText,
 } from '../shared/row-actions';
 import {
   type MessageLongPressContext,
@@ -77,7 +78,7 @@ import {
 /** A composer the host renders outside the list, which takes the list's quotes and dropped files. */
 export type ComposerHost = Pick<
   MessageComposerComponent,
-  'insertQuote' | 'stageFiles'
+  'insertQuote' | 'stageFiles' | 'focus'
 >;
 
 /** How {@link MessageListBase.jumpTo} reaches a row already in the DOM. */
@@ -805,6 +806,8 @@ export abstract class MessageListBase {
         break;
       case 'to-composer':
         this.editUnsent.emit(row.id);
+        // The row and its focused button are about to go; the text is in the composer now.
+        this.composerTarget()?.focus();
         break;
       case 'jump':
         this.jumpToRequested(action.id);
@@ -826,8 +829,9 @@ export abstract class MessageListBase {
     this.alert
       .confirm$({
         header: 'Delete unsent message',
-        message:
-          'This message was never sent, and its text will be lost. To change it instead, choose Edit.',
+        message: isComposerText(row)
+          ? 'This message was never sent, and its text will be lost. To change it instead, choose Edit.'
+          : 'This message was never sent and will be removed.',
         confirmText: 'Delete',
         variant: 'danger',
       })

@@ -405,10 +405,21 @@ export class MessageActionsService {
 
   /** Put a failed message back into the composer, to change it and send it again. */
   onEditUnsent(messageId: string): void {
-    this.runMessageAction(
-      this.messageCommands.toComposer(messageId),
-      'Could not move the message back to the composer.',
-    );
+    const failed = 'Could not move the message back to the composer.';
+    this.messageCommands
+      .toComposer(messageId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (outcome) => {
+          if (outcome.kind !== 'rejected') return;
+          this.status.showError(
+            outcome.failure === 'edit-in-progress'
+              ? 'Finish or cancel your edit first.'
+              : failed,
+          );
+        },
+        error: () => this.status.showError(failed),
+      });
   }
 
   onCancel(messageId: string): void {

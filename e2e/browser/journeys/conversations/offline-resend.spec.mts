@@ -156,6 +156,7 @@ test.describe('Offline resend', () => {
       .getByTestId('msg-edit-unsent')
       .click();
     await expect(composer).toHaveValue(edited);
+    await expect(composer).toBeFocused();
     await expect(page.locator('.msg', { hasText: edited })).toHaveCount(0);
     await expect(page.getByText(/Failed to send/)).toHaveCount(0);
     expect(await room.bodies()).toEqual([refused]);

@@ -70,6 +70,11 @@ export interface RowCapsPolicy {
   readonly canEditUnsent?: boolean;
 }
 
+/** Text the composer wrote and can take back; media, stickers and voice it cannot. */
+export function isComposerText(message: Pick<MessageView, 'kind'>): boolean {
+  return message.kind === 'text' || message.kind === 'emote';
+}
+
 /** One row's capabilities under a host's {@link RowCapsPolicy}. */
 export function buildRowCaps(
   message: MessageView,
@@ -96,7 +101,10 @@ export function buildRowCaps(
     isOwn: message.isOwn,
     readOnly: false,
     toComposer:
-      !!policy.canEditUnsent && message.isOwn && message.status === 'failed',
+      !!policy.canEditUnsent &&
+      message.isOwn &&
+      message.status === 'failed' &&
+      isComposerText(message),
   };
 }
 

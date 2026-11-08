@@ -1126,14 +1126,60 @@ describe('MessageListComponent with windowing off', () => {
       expect(cancelled).toEqual(['$2']);
     });
 
-    it('hands an unsent message back to the composer', async () => {
+    it('says an unsent attachment will be removed, not that text will be lost', async () => {
       const cmp = await make();
+      const confirm = TestBed.inject(TrnAlertService).confirm$;
+      vi.mocked(confirm).mockReturnValueOnce(of(false));
+
+      cmp.onRowAction({ ...row('$1'), kind: 'image' }, { type: 'discard' });
+
+      const copy = vi.mocked(confirm).mock.lastCall?.[0].message;
+      expect(copy).toBe('This message was never sent and will be removed.');
+    });
+
+    it('offers Edit only on a failed text message of your own', async () => {
+      const { fixture } = await renderUnwindowed({
+        providers: [MockProvider(TrnAlertService)],
+      });
+      fixture.componentRef.setInput('canEditUnsent', true);
+      const cmp = fixture.componentInstance;
+      const editable = (kind: MessageView['kind']): boolean | undefined => {
+        const failed = {
+          ...row('$1'),
+          kind,
+          status: 'failed' as const,
+          isOwn: true,
+        };
+        fixture.componentRef.setInput('messages', [failed]);
+        return cmp.rowCaps(failed).toComposer;
+      };
+
+      expect(editable('text')).toBe(true);
+      expect(editable('emote')).toBe(true);
+      for (const kind of [
+        'image',
+        'video',
+        'audio',
+        'file',
+        'sticker',
+      ] as const) {
+        expect(editable(kind)).toBe(false);
+      }
+    });
+
+    it('hands an unsent message back to the composer, and moves focus there', async () => {
+      const { fixture } = await renderUnwindowed({
+        providers: [MockProvider(TrnAlertService)],
+      });
+      const cmp = fixture.componentInstance;
+      const focus = vi.spyOn(composerOf(fixture), 'focus');
       const edited: string[] = [];
       cmp.editUnsent.subscribe((id) => edited.push(id));
 
       cmp.onRowAction(row('$1'), { type: 'to-composer' });
 
       expect(edited).toEqual(['$1']);
+      expect(focus).toHaveBeenCalledOnce();
     });
 
     it('copies a message body to the clipboard', async () => {
