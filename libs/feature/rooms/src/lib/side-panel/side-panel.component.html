@@ -1,0 +1,18 @@
+@if (showHeader()) {
+  <trn-side-panel-header
+    [title]="title()"
+    [subtitle]="subtitle()"
+    [icon]="icon()"
+    [closeLabel]="closeLabel()"
+    [closeTestId]="closeTestId()"
+    [focusClose]="focusClose()"
+    (closed)="closed.emit()"
+  />
+}
+<div class="side-panel__strip">
+  <ng-content select="[sidePanelStrip]" />
+</div>
+<div class="side-panel__body" [class.side-panel__body--scroll]="scroll()">
+  <ng-content />
+</div>
+<ng-content select="[sidePanelFooter]" />

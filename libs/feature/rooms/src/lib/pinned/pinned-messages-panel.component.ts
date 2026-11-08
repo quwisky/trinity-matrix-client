@@ -5,14 +5,13 @@ import {
   inject,
   output,
 } from '@angular/core';
-import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
+import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
-  TrnOverlaySurfaceDirective,
   TrnToastService,
   releaseInputTargetOnDestroy,
 } from '@trinity/components/overlay';
@@ -35,12 +34,11 @@ import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     UnencryptedMarkComponent,
-    SidePanelHeaderComponent,
+    SidePanelComponent,
     EmptyStateComponent,
     TrnIconComponent,
     TrnButton,
     TrnTooltip,
-    TrnOverlaySurfaceDirective,
   ],
   templateUrl: './pinned-messages-panel.component.html',
   styleUrl: './pinned-messages-panel.component.scss',

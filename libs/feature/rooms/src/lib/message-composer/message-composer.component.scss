@@ -1,7 +1,7 @@
 @layer components {
   :host {
     display: block;
-    background: var(--trinity-surface-workspace);
+    background: var(--room-pane-surface, var(--trinity-surface-workspace));
   }
 
   // A refused capture permission, above the input, with its "Open settings".
@@ -43,10 +43,16 @@
 
     // Bottom padding clears the home indicator (safe-area-inset-bottom). env() is 0 off notched
     // devices. While the iOS keyboard is up the root shrinks by the keyboard less this inset
-    // (`--trinity-keyboard-shrink`), so the input still sits flush above the keyboard.
+    // (`--trinity-keyboard-shrink`), so the input still sits flush above the keyboard. A host
+    // that already clears the inset below the composer sets `--composer-safe-bottom: 0px`.
+    --composer-bottom-inset: var(
+      --composer-safe-bottom,
+      env(safe-area-inset-bottom)
+    );
+
     padding: var(--trinity-space-3)
       var(--trinity-density-composer-padding-inline)
-      calc(var(--trinity-space-5) + env(safe-area-inset-bottom));
+      calc(var(--trinity-space-5) + var(--composer-bottom-inset));
   }
 
   // The field: one box with the insert button, the input and the trailing buttons inside it.

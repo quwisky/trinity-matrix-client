@@ -1,14 +1,46 @@
+@use '../styles/mixins' as *;
+
 @layer components {
   :host {
     display: flex;
     align-items: center;
     gap: var(--trinity-space-3);
     flex: none;
-    min-block-size: 3rem;
-    padding-inline: calc(var(--trinity-space-4) + env(safe-area-inset-left))
-      calc(var(--trinity-space-4) + env(safe-area-inset-right));
+    block-size: 48px;
+    box-sizing: border-box;
+    padding-inline: calc(var(--trinity-space-5) + env(safe-area-inset-left))
+      calc(var(--trinity-space-3) + env(safe-area-inset-right));
     border-block-end: 1px solid var(--trinity-border-subtle);
-    background: var(--trinity-surface-panel);
     color: var(--trinity-text-bright);
+  }
+
+  // A page's Back button leads the bar, so the start inset matches the end one.
+  :host:has(> button:first-child) {
+    padding-inline-start: calc(
+      var(--trinity-space-3) + env(safe-area-inset-left)
+    );
+  }
+
+  .side-panel-header__icon {
+    flex: none;
+    color: var(--trinity-text-muted);
+  }
+
+  .side-panel-header__title {
+    @include ellipsis;
+
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    font-size: var(--trinity-panel-title-size);
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
+
+  .side-panel-header__subtitle {
+    margin-inline-start: var(--trinity-panel-subtitle-gap);
+    font-size: var(--trinity-panel-meta-size);
+    font-weight: 400;
+    color: var(--trinity-text-muted);
   }
 }

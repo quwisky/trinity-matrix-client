@@ -13,6 +13,10 @@ $below-members: '(max-width: 1099.98px)';
 // step with `MD_QUERY` / `BELOW_MD_QUERY` in @trinity/util/ui and `--breakpoint-md`;
 // `scripts/breakpoints.spec.mjs` checks each copy.
 $md: '(min-width: 768px)';
+
+// Tailwind's `xl`: from here a room side panel runs the full height of the room beside its
+// header. Narrower, the header would share its row with the panel and lose the room's name.
+$xl: '(min-width: 1280px)';
 $below-md: '(max-width: 767.98px)';
 
 /// Let the drawer swipe be heard over a scroll container.

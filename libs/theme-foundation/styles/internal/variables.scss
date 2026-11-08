@@ -178,6 +178,12 @@
     --trinity-density-composer-field-inset: 6px;
     --trinity-density-composer-action-size: 40px;
 
+    // The right-hand room panels (members, threads, a thread, pinned, search) share one row
+    // recipe. Their type sits between the 11/13/15px steps, so it has its own rem roles.
+    --trinity-panel-title-size: var(--trinity-text-md);
+    --trinity-panel-meta-size: 0.75rem;
+    --trinity-panel-subtitle-gap: 6px;
+
     // Readable line length for message prose.
     --trinity-measure-prose: 75ch;
 

@@ -201,7 +201,7 @@ function buildPage({
         provide: ShellLayoutService,
         useValue: {
           sidebarWidth: signal(280),
-          rightPanelWidth: signal(480),
+          rightPanelWidth: signal(360),
           sidebarBounds: { min: 240, max: 560 },
           rightPanelBounds: { min: 320, max: 720 },
         },

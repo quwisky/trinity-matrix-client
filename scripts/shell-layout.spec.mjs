@@ -220,27 +220,37 @@ describe('modern room shell layout contracts', () => {
   });
 
   it('sizes the members list to its bordered host instead of overflowing it', () => {
-    // `.chat-members` is 240px border-box with a 1px inline-start border, so a fixed 240px
-    // list inside it overflows by that pixel.
+    // The slot is border-box with a 1px inline-start border, so a fixed-width list inside it
+    // overflows by that pixel.
     const members = ruleBody(
       read('libs/feature/rooms/src/lib/member-list/member-list.component.scss'),
       '.members',
     );
     expect(members).toContain('width: 100%');
-    expect(members).not.toContain('width: 240px');
+    expect(members).not.toMatch(/\bwidth: \d+px/u);
   });
 
-  it('gives every right-hand panel one surface and one inline-start border', () => {
+  it('gives every right-hand panel one surface, one width and one inline-start border', () => {
     expect(globalCss).not.toContain('.panel-header');
-    for (const selector of ['.chat-members', '.chat-panel']) {
-      const body = ruleBody(roomsCss, selector);
-      expect(body, selector).toContain(
-        'background: var(--trinity-surface-panel)',
-      );
-      expect(body, selector).toContain(
-        'border-inline-start: 1px solid var(--trinity-border-subtle)',
-      );
-      expect(body, selector).not.toContain('box-shadow');
-    }
+    const body = ruleBody(roomsCss, '.chat-members,\n  .chat-panel');
+    expect(body).toContain('background: var(--trinity-surface-sidebar)');
+    expect(body).toContain(
+      'border-inline-start: 1px solid var(--trinity-border-subtle)',
+    );
+    expect(body).toContain('flex: 0 1 var(--shell-right-panel-w, 360px)');
+    expect(body).not.toContain('box-shadow');
+    // One stored width, read twice: the flex basis, and the maximum of the full-height grid
+    // track, so a wide stored panel is squeezed against the timeline's floor, never clipped.
+    expect(
+      roomsCss.match(/var\(--shell-right-panel-w, 360px\)/gu),
+    ).toHaveLength(2);
+    expect(roomsCss.match(/--shell-right-panel-w/gu)).toHaveLength(2);
+    expect(roomsCss).toMatch(
+      /minmax\(min\(480px, 100%\), 1fr\) auto\s+minmax\(0, var\(--shell-right-panel-w, 360px\)\)/u,
+    );
+    // The handle follows the panel element across a switch.
+    expect(roomsHtml).toContain('[paneKey]="panel.kind"');
+    // The roster resizes like every other panel.
+    expect(roomsHtml).not.toContain("panel.kind !== 'members'");
   });
 });

@@ -1,20 +1,15 @@
-@if (showHeader()) {
-  <!-- Outside the scroll host: the windowing math measures from the host's own top. -->
-  <trn-side-panel-header
-    title="Members"
-    closeLabel="Close members"
-    closeTestId="close-members"
-    (closed)="dismissed.emit()"
-  />
-}
-<aside
-  class="members"
-  aria-label="Members"
-  #scrollHost
-  (scroll)="onScroll()"
-  data-testid="member-list"
+<!-- The filter strip sits outside the scroll host: the windowing math measures from the
+     host's own top. -->
+<trn-side-panel
+  title="Members"
+  icon="users"
+  closeLabel="Close members"
+  closeTestId="close-members"
+  [showHeader]="showHeader()"
+  [scroll]="false"
+  (closed)="dismissed.emit()"
 >
-  <label class="members__filter">
+  <label sidePanelStrip class="members__filter">
     <span class="sr-only">Filter members</span>
     <input
       trnInput
@@ -29,107 +24,115 @@
     />
   </label>
 
-  @if (availability() !== 'coherent') {
-    <p
-      class="mb-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
-      role="status"
-      data-testid="member-list-freshness"
-    >
-      @if (availability() === 'stale') {
-        Showing the last known member list. Current membership is unavailable.
-      } @else {
-        The member list is unavailable. This does not mean the room is empty.
-      }
-    </p>
-  }
+  <aside
+    class="members"
+    aria-label="Members"
+    #scrollHost
+    (scroll)="onScroll()"
+    data-testid="member-list"
+  >
+    @if (availability() !== 'coherent') {
+      <p
+        class="mb-2 rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
+        role="status"
+        data-testid="member-list-freshness"
+      >
+        @if (availability() === 'stale') {
+          Showing the last known member list. Current membership is unavailable.
+        } @else {
+          The member list is unavailable. This does not mean the room is empty.
+        }
+      </p>
+    }
 
-  <!-- Always rendered, never behind an @if: a live region created at the moment its text
+    <!-- Always rendered, never behind an @if: a live region created at the moment its text
        appears is not yet watched by the screen reader, so nothing is announced. Only the
        text changes. Silent until a filter is typed. -->
-  <p
-    class="sr-only"
-    role="status"
-    aria-live="polite"
-    data-testid="member-filter-status"
-  >
-    {{ filterStatus() }}
-  </p>
-
-  <!-- Spacers keep the scrollbar's true length for the rows outside the window. -->
-  <div
-    class="members__pad"
-    aria-hidden="true"
-    [style.height.px]="topPadPx()"
-  ></div>
-
-  @for (section of windowedSections(); track section.role) {
-    <div
-      class="members__section"
-      role="group"
-      [attr.aria-label]="section.ariaLabel"
+    <p
+      class="sr-only"
+      role="status"
+      aria-live="polite"
+      data-testid="member-filter-status"
     >
-      <!-- The group's aria-label already names the role and count, so hide the
-           visual header (icon included) from assistive tech to avoid a double read. -->
-      @if (section.showHeader) {
-        <span
-          class="category members__section-label member-group__label"
-          aria-hidden="true"
-        >
-          <trn-icon class="members__section-icon" [name]="section.icon" />
-          {{ section.label }} — {{ section.totalRows }}
-        </span>
-      }
-      <ul class="members__list" role="list">
-        @for (row of section.rows; track row.member.userId) {
-          <li class="members__item">
-            <button
-              trnBtn
-              variant="secondary"
-              presentation="ghost"
-              class="member"
-              [style.height.px]="rowPx"
-              [style.padding-inline]="'var(--trinity-density-shell-padding-inline)'"
-              type="button"
-              [class.member--offline]="row.presence === 'offline'"
-              [trnTooltip]="row.member.userId"
-              position="left"
-              [attr.aria-label]="'View ' + row.member.roomDisplayName"
-              (click)="selectMember.emit(row.member)"
-              data-testid="member-row"
-            >
-              <trn-avatar
-                [mxc]="row.member.roomAvatarMxc"
-                [initial]="row.member.roomInitial"
-                [name]="row.member.roomDisplayName"
-                size="lg"
-                [presence]="row.presence"
-              />
-              <span
-                class="member__name"
-                [class.member__name--admin]="
-                  row.role === 'owner' || row.role === 'admin'
-                "
-                [class.member__name--moderator]="row.role === 'moderator'"
-                >{{ row.member.roomDisplayName }}</span
-              >
-            </button>
-          </li>
-        }
-      </ul>
-    </div>
-  } @empty {
-    @if (availability() === 'coherent' && filtering()) {
-      <trn-empty-state
-        layout="line"
-        body="No members match that."
-        data-testid="member-filter-empty"
-      />
-    }
-  }
+      {{ filterStatus() }}
+    </p>
 
-  <div
-    class="members__pad"
-    aria-hidden="true"
-    [style.height.px]="bottomPadPx()"
-  ></div>
-</aside>
+    <!-- Spacers keep the scrollbar's true length for the rows outside the window. -->
+    <div
+      class="members__pad"
+      aria-hidden="true"
+      [style.height.px]="topPadPx()"
+    ></div>
+
+    @for (section of windowedSections(); track section.role) {
+      <div
+        class="members__section"
+        role="group"
+        [attr.aria-label]="section.ariaLabel"
+      >
+        <!-- The group's aria-label already names the role and count, so hide the
+           visual header (icon included) from assistive tech to avoid a double read. -->
+        @if (section.showHeader) {
+          <span
+            class="category members__section-label member-group__label"
+            aria-hidden="true"
+          >
+            <trn-icon class="members__section-icon" [name]="section.icon" />
+            {{ section.label }} — {{ section.totalRows }}
+          </span>
+        }
+        <ul class="members__list" role="list">
+          @for (row of section.rows; track row.member.userId) {
+            <li class="members__item">
+              <button
+                trnBtn
+                variant="secondary"
+                presentation="ghost"
+                class="member"
+                [style.height.px]="rowPx"
+                [style.padding-inline]="'var(--trinity-density-shell-padding-inline)'"
+                type="button"
+                [class.member--offline]="row.presence === 'offline'"
+                [trnTooltip]="row.member.userId"
+                position="left"
+                [attr.aria-label]="'View ' + row.member.roomDisplayName"
+                (click)="selectMember.emit(row.member)"
+                data-testid="member-row"
+              >
+                <trn-avatar
+                  [mxc]="row.member.roomAvatarMxc"
+                  [initial]="row.member.roomInitial"
+                  [name]="row.member.roomDisplayName"
+                  size="lg"
+                  [presence]="row.presence"
+                />
+                <span
+                  class="member__name"
+                  [class.member__name--admin]="
+                    row.role === 'owner' || row.role === 'admin'
+                  "
+                  [class.member__name--moderator]="row.role === 'moderator'"
+                  >{{ row.member.roomDisplayName }}</span
+                >
+              </button>
+            </li>
+          }
+        </ul>
+      </div>
+    } @empty {
+      @if (availability() === 'coherent' && filtering()) {
+        <trn-empty-state
+          layout="line"
+          body="No members match that."
+          data-testid="member-filter-empty"
+        />
+      }
+    }
+
+    <div
+      class="members__pad"
+      aria-hidden="true"
+      [style.height.px]="bottomPadPx()"
+    ></div>
+  </aside>
+</trn-side-panel>

@@ -17,12 +17,17 @@ import { PaneHandleComponent } from './pane-handle.component';
   imports: [PaneHandleComponent],
   template: `
     <div data-shell-root>
-      <div class="sized-pane"></div>
+      @if (first()) {
+        <div class="sized-pane" data-pane="first"></div>
+      } @else {
+        <div class="sized-pane" data-pane="second"></div>
+      }
       @if (show()) {
         <trn-pane-handle
           cssVariable="--w"
           label="Room list width"
           paneSelector=".sized-pane"
+          [paneKey]="first()"
           [value]="value()"
           [min]="200"
           [max]="560"
@@ -38,6 +43,8 @@ class HostComponent {
   readonly invert = signal(false);
   /** So a test can take the handle away mid-gesture, as closing the slot does. */
   readonly show = signal(true);
+  /** Swaps the pane for another element, as switching panels does. */
+  readonly first = signal(true);
   readonly committed: number[] = [];
 }
 
@@ -65,6 +72,39 @@ async function build() {
   return { handle, pane, shell, host: fixture.componentInstance };
 }
 
+/** The test setup's ResizeObserver stub: what each instance watches, and a way to fire it. */
+interface TestRO {
+  observed: Set<Element>;
+  emit(entries: ResizeObserverEntry[]): void;
+}
+const observers = () =>
+  (ResizeObserver as unknown as { instances: TestRO[] }).instances;
+
+function paneObserver(): TestRO {
+  const found = observers().find((o) =>
+    [...o.observed].some((el) => el.classList?.contains('sized-pane')),
+  );
+  if (!found) throw new Error('pane ResizeObserver not found');
+  return found;
+}
+
+/** Tell every pane observer its pane resized. */
+function syncObservers(): void {
+  for (const o of observers()) {
+    o.emit(
+      [...o.observed].map((target) => ({ target }) as ResizeObserverEntry),
+    );
+  }
+}
+
+async function buildWithContainer() {
+  const built = await build();
+  return {
+    ...built,
+    container: built.shell.parentElement as HTMLElement,
+  };
+}
+
 function renderPaneAt(pane: HTMLElement, width: number): void {
   vi.spyOn(pane, 'getBoundingClientRect').mockReturnValue({
     bottom: 0,
@@ -90,6 +130,38 @@ describe('PaneHandleComponent', () => {
     expect(handle.getAttribute('aria-label')).toBe('Room list width');
     // Focusable, or the keyboard path below is unreachable.
     expect(handle.getAttribute('tabindex')).toBe('0');
+  });
+
+  it('keeps its range valid when the pane is squeezed below the minimum', async () => {
+    const { handle, pane } = await build();
+    renderPaneAt(pane, 150);
+    syncObservers();
+    TestBed.tick();
+
+    expect(handle.getAttribute('aria-valuenow')).toBe('150');
+    const min = Number(handle.getAttribute('aria-valuemin'));
+    const max = Number(handle.getAttribute('aria-valuemax'));
+    expect(min).toBeLessThanOrEqual(150);
+    expect(max).toBeGreaterThanOrEqual(min);
+  });
+
+  it('watches the new pane when the one it sized is replaced', async () => {
+    const { handle, host, container } = await buildWithContainer();
+    host.first.set(false);
+    TestBed.tick();
+    await new Promise((resolve) => setTimeout(resolve));
+    TestBed.tick();
+
+    const second = container.querySelector(
+      '[data-pane="second"]',
+    ) as HTMLElement;
+    const observer = paneObserver();
+    expect([...observer.observed]).toEqual([second]);
+
+    renderPaneAt(second, 300);
+    syncObservers();
+    TestBed.tick();
+    expect(handle.getAttribute('aria-valuenow')).toBe('300');
   });
 
   it('moves the CSS property during a drag and commits nothing until release', async () => {

@@ -10,10 +10,16 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--trinity-surface-workspace);
+
+    // `--room-pane-surface` is inherited from a host that draws the list on another surface,
+    // as the thread panel does on the sidebar surface.
+    background: var(--room-pane-surface, var(--trinity-surface-workspace));
 
     // Sender colours in the timeline are checked against the pane it draws, not the canvas.
-    --trinity-message-surface: var(--trinity-surface-workspace);
+    --trinity-message-surface: var(
+      --room-pane-surface,
+      var(--trinity-surface-workspace)
+    );
   }
 
   // Anchors the jump-to-latest pill just above the composer (the scroll region's bottom edge),

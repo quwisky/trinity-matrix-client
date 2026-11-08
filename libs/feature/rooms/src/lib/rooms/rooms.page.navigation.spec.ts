@@ -23,7 +23,10 @@ import {
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, BELOW_MEMBERS_QUERY } from '@trinity/util/ui';
 import { Router } from '@angular/router';
-import { KeyboardShortcutsService } from '@trinity/platform-native';
+import {
+  KeyboardShortcutsService,
+  ShellLayoutService,
+} from '@trinity/platform-native';
 import { type PendingInvite } from '@trinity/data-access/room-library';
 import {
   MatrixClientService,
@@ -884,28 +887,27 @@ describe('RoomsPage mobile navigation', () => {
 
   it('measures the swipe against the drawer that is actually on screen', async () => {
     // NOT `layout.rightPanelWidth()`, which is the width the pane handle drags on a DESKTOP
-    // and which the stylesheet ignores at this breakpoint. Passing it measured a 240px roster
-    // against a 480px default — 80% of its travel to commit, where the rule is 40% — and a
-    // user who had dragged the panel to its 720px maximum made the distance threshold
-    // physically unreachable on a phone.
+    // and which the stylesheet ignores at this breakpoint. A user who had dragged the panel
+    // to its 720px maximum would make the 40% distance threshold unreachable on a tablet.
     const shell = build();
     await settleWorkspace();
     setRouteRoom('!r:hs');
     await settleWorkspace();
     const widthOf = () =>
       (shell.page as unknown as { drawerWidth(): number }).drawerWidth();
+    TestBed.inject(ShellLayoutService).setRightPanelWidth(720);
 
     showSurface(shell, { kind: 'members' });
     await settleWorkspace();
-    expect(widthOf()).toBe(240);
+    expect(widthOf()).toBe(360);
 
     shell.surfaces.transition({ kind: 'clear' });
     await settleWorkspace();
-    expect(widthOf()).toBe(240); // an opening swipe measures the roster it will open
+    expect(widthOf()).toBe(360); // an opening swipe measures the drawer it will open
 
     shell.surfaces.transition({ kind: 'open-threads' });
     await settleWorkspace();
-    expect(widthOf()).toBe(Math.min(480, window.innerWidth));
+    expect(widthOf()).toBe(360);
   });
 
   it('a swipe with no room open opens nothing', () => {

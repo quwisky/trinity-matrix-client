@@ -258,8 +258,7 @@ describe('cascade layer contract', () => {
     expect(components).toContain('.trn-routed-page');
 
     const utilities = layerBodies('apps/trinity/src/global.scss', 'utilities');
-    expect(utilities).not.toContain('.safe-top');
-    expect(utilities).toContain('.safe-bottom');
+    expect(utilities).not.toContain('.safe-');
 
     const overrides = layerBodies('apps/trinity/src/global.scss', 'overrides');
     expect(rulePaths(overrides)).toEqual([

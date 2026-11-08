@@ -93,14 +93,13 @@ import { ExpandedBodiesStore } from './expanded-bodies.store';
  * below md), the timeline, and a member list, wired to live synced rooms.
  */
 /**
- * The drawer widths at the `members` breakpoint, mirroring `rooms.page.scss`.
+ * The drawer width at the `members` breakpoint, mirroring `rooms.page.scss`.
  *
  * Duplicated rather than read from CSS because a gesture threshold has to exist before the
  * drawer does: the opening swipe is measured while there is nothing on screen to measure.
  * The stylesheet is the one that renders them, so these two must not drift from it.
  */
-const MEMBERS_DRAWER_PX = 240;
-const PANEL_DRAWER_PX = 480;
+const PANEL_DRAWER_PX = 360;
 
 @Component({
   selector: 'trn-rooms',
@@ -215,19 +214,11 @@ export class RoomsPage {
    * How wide the drawer actually is at the drawer breakpoint, for the swipe's threshold.
    *
    * NOT `layout.rightPanelWidth()`: that is the width the pane handle drags on a DESKTOP, and
-   * `rooms.page.scss` ignores it below the `members` breakpoint. Using it would measure the
-   * 240px roster against the desktop width, so the 40% commit distance would be wrong, and
-   * unreachable once the panel was dragged wide, leaving only the flick.
-   *
-   * A method rather than a computed: it reads `innerWidth`, which is not a signal, and a
-   * template call is re-evaluated each pass so a rotation is picked up.
+   * `rooms.page.scss` ignores it below the `members` breakpoint. Using it would make the 40%
+   * commit distance unreachable once the panel was dragged wide, leaving only the flick.
+   * Below md an open panel is a page with no close drag, so this is the md+ drawer.
    */
   protected drawerWidth(): number {
-    const panel = this.roomSurfaces.renderedSurface();
-    if (!panel || panel.kind === 'members') {
-      return MEMBERS_DRAWER_PX;
-    }
-    // Below md an open panel is a page with no close drag, so this is the md+ drawer.
     return PANEL_DRAWER_PX;
   }
 

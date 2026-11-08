@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
 import { ThreadCommands } from './thread-commands';
-import { SidePanelHeaderComponent } from '../side-panel/side-panel-header.component';
+import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   MessageGestureSettingsService,
@@ -22,10 +22,7 @@ import {
 import { type SwipeDirection } from '../message-row/message-row.component';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
-import {
-  TrnOverlaySurfaceDirective,
-  releaseInputTargetOnDestroy,
-} from '@trinity/components/overlay';
+import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import {
   ConversationRuntime,
   threadDraftKey,
@@ -53,12 +50,11 @@ import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
   selector: 'trn-thread-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    SidePanelHeaderComponent,
+    SidePanelComponent,
     TypingIndicatorComponent,
     EmptyStateComponent,
     MessageListComponent,
     MessageComposerComponent,
-    TrnOverlaySurfaceDirective,
   ],
   providers: [
     ThreadCommands,

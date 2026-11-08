@@ -120,8 +120,8 @@ test.describe('Pinned messages panel', () => {
     await expect(panel).toBeVisible({ timeout: 30_000 });
     await expect(page.getByTestId('pinned-item')).toHaveCount(2);
 
-    // The panel's top bar: the shared side-panel header, 48px tall with its title inset
-    // 12px from the panel's edge. Measured, because the classes cannot say it: its padding
+    // The panel's top bar: the shared side-panel header, 48px tall with its icon inset
+    // 16px from the panel's edge. Measured, because the classes cannot say it: its padding
     // composes the safe-area insets in one declaration, and jsdom applies no cascade and no
     // layers, so only a browser sees a title that lost its inset to a cascade fight.
     const panelBar = await panel.locator('trn-side-panel-header').boundingBox();
@@ -137,7 +137,13 @@ test.describe('Pinned messages panel', () => {
       .locator('header[data-trn-layout="toolbar"]')
       .boundingBox();
     expect(roomBar!.height).toBe(panelBar!.height);
-    expect(panelTitle!.x - panelBar!.x).toBeCloseTo(12, 0);
+    // The panel's 20px icon leads 16px in from the edge, and the title follows it after 8px.
+    const panelIcon = await panel
+      .locator('trn-side-panel-header .side-panel-header__icon')
+      .boundingBox();
+    expect(panelIcon!.x - panelBar!.x).toBeCloseTo(16, 0);
+    expect(panelIcon!.width).toBe(20);
+    expect(panelTitle!.x - (panelIcon!.x + panelIcon!.width)).toBeCloseTo(8, 0);
     // And the title is centred in the bar rather than riding its top edge.
     const above = panelTitle!.y - panelBar!.y;
     const below =

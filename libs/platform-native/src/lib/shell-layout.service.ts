@@ -32,7 +32,7 @@ const RIGHT_PANEL_KEY = 'trinity.shell.right-panel-width';
 export const DEFAULT_SIDEBAR_WIDTH = 352;
 
 /** The default width of the right-hand panel slot, in px. */
-export const DEFAULT_RIGHT_PANEL_WIDTH = 480;
+export const DEFAULT_RIGHT_PANEL_WIDTH = 360;
 
 /**
  * The rail alone is 72px: under ~200 leaves the room list a sliver; past ~560 it crowds

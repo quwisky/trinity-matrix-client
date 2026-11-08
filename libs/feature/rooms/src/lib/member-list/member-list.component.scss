@@ -1,24 +1,27 @@
 @use '../styles/mixins' as *;
 
 @layer components {
-  // The header sits above the scroll host: windowing offsets are measured from the host's
-  // own scrollTop, so a header that scrolled with the rows would skew them.
+  // The header and filter sit above the scroll host: windowing offsets are measured from the
+  // host's own scrollTop, so anything that scrolled with the rows would skew them.
   :host {
     display: flex;
     flex-direction: column;
   }
 
   .members {
-    @include column(var(--trinity-surface-panel));
+    @include column(transparent);
     @include scrollable;
     @include swipe-through;
 
     flex: 1 1 0;
     min-height: 0;
 
-    // The host owns the 240px (and its 1px border); a fixed 240px here would overflow it.
+    // The slot owns the width (and its 1px border); a fixed width here would overflow it.
     width: 100%;
-    padding: 16px var(--trinity-density-shell-padding-inline);
+    padding: var(--trinity-space-3);
+    padding-inline-end: calc(
+      var(--trinity-space-3) + env(safe-area-inset-right)
+    );
 
     // Windowing changes the rendered height on every scroll step; scroll anchoring would
     // compensate, moving the scroll position and so the window again. The timeline's
@@ -27,10 +30,12 @@
 
     // The presence dot rings itself in the surrounding surface; tell it this panel's
     // surface, else it halos.
-    --trn-presence-ring: var(--trinity-surface-panel);
+    --trn-presence-ring: var(--trinity-surface-sidebar);
   }
 
   :host(.member-list--settings) {
+    --side-panel-surface: transparent;
+
     display: block;
     min-height: 22rem;
     height: min((100dvh - var(--trinity-keyboard-shrink, 0px)) * 0.62, 42rem);
@@ -59,15 +64,8 @@
     flex: 0 0 auto;
   }
 
-  // The filter stays above the sections and does not scroll away with them.
   .members__filter {
-    position: sticky;
-    top: 0;
-    z-index: 1;
     display: block;
-    padding-bottom: 8px;
-    margin-bottom: 4px;
-    background: var(--trinity-surface-panel);
   }
 
   .category {

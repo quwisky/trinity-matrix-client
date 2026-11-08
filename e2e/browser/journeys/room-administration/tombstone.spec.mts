@@ -83,8 +83,10 @@ test.describe('Room tombstone', () => {
     expect(await banner.evaluate((host) => !!host.closest('.chat-body'))).toBe(
       false,
     );
+    // Measured against the conversation column: beside a full-height panel the row is a
+    // grid on `.main`, and `.chat-body` itself draws no box.
     const timelineShare = await page.evaluate(() => {
-      const row = document.querySelector('.chat-body')?.getBoundingClientRect();
+      const row = document.querySelector('.main')?.getBoundingClientRect();
       const list = document
         .querySelector('.chat-body trn-message-list')
         ?.getBoundingClientRect();

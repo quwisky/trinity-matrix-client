@@ -397,26 +397,6 @@
   }
 }
 
-@layer utilities {
-  /*
-   * Safe-area insets (notch / status bar / home indicator). `env(safe-area-inset-*)` is 0 on
-   * web and desktop (and inside Android's keyboard-resized WebView), so these helpers only pad
-   * on notched native devices; index.html sets `viewport-fit=cover`. There is no top helper:
-   * the top inset belongs to whatever bar sits at the top (`--trinity-top-inset`, above).
-   */
-  .safe-bottom {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .safe-left {
-    padding-left: env(safe-area-inset-left);
-  }
-
-  .safe-right {
-    padding-right: env(safe-area-inset-right);
-  }
-}
-
 @layer overrides {
   /* Global CDK overlays (dialogs, the lightbox, the widget frame) start below the desktop
    * title row, so their top controls are not under its drag region or the native window
