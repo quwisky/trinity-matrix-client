@@ -41,13 +41,6 @@ const SWIPE_COMMIT_PX = 64;
 const SWIPE_FLICK_PX_PER_MS = 0.4;
 const SWIPE_FLICK_MIN_PX = 32;
 
-/**
- * How much more sideways than vertical the opening travel must be to be this gesture. The axis is
- * decided once, as the browser decides its own pan under `touch-action: pan-y`: once a drag opened
- * sideways the browser does not scroll it, so later vertical drift (a thumb's arc) is ignored.
- */
-const SWIPE_AXIS_BIAS = 1.2;
-
 /** Travel that decides the axis; the row's long-press slop, so a decided swipe has already cancelled the press. */
 export const SWIPE_SLOP_PX = 10;
 
@@ -127,7 +120,10 @@ export class MessageSwipeDirective {
       if (Math.max(dx, dy) <= SWIPE_SLOP_PX) {
         return;
       }
-      if (dx <= dy * SWIPE_AXIS_BIAS) {
+      // Decided once, by the dominant axis, as the browser decides its own pan under
+      // `touch-action: pan-y`: a drag it declined to scroll is ours, so later vertical drift
+      // (a thumb's arc) is ignored. A bias here would leave drags neither of us takes.
+      if (dx <= dy) {
         this.cancel();
         return;
       }

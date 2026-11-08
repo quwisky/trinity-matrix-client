@@ -178,6 +178,45 @@ async function swipeRow(page: Page, selector: string): Promise<void> {
   );
 }
 
+/**
+ * Press at the first point, move through the rest a frame at a time, run `during` with the
+ * finger still down, then lift. For what can only be read mid-drag.
+ */
+async function holdDrag(
+  page: Page,
+  points: readonly { x: number; y: number }[],
+  during: () => Promise<void>,
+): Promise<void> {
+  const cdp = await page.context().newCDPSession(page);
+  const frame = () =>
+    page.evaluate(
+      () =>
+        new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+    );
+  try {
+    const [first, ...rest] = points;
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchStart',
+      touchPoints: [{ ...first, id: 1 }],
+    });
+    await frame();
+    for (const point of rest) {
+      await cdp.send('Input.dispatchTouchEvent', {
+        type: 'touchMove',
+        touchPoints: [{ ...point, id: 1 }],
+      });
+      await frame();
+    }
+    await during();
+  } finally {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchEnd',
+      touchPoints: [],
+    });
+    await cdp.detach();
+  }
+}
+
 test.use({ ...devices['Pixel 5'] });
 
 test.describe('Swipe a message', () => {
@@ -432,13 +471,29 @@ test.describe('Swipe a message', () => {
     const box = (await page.locator(other).boundingBox())!;
     const y = box.y + box.height / 2;
 
+    const scrollTop = () =>
+      page
+        .locator('.scroll')
+        .first()
+        .evaluate((el) => el.scrollTop);
+    const before = await scrollTop();
+
     // Opens sideways and drifts 40px up on the way, as a thumb pivoting on its joint does.
     // `touch-action: pan-y` lets the browser decline to pan a drag that opened sideways, so
     // the drift neither scrolls the timeline nor cancels the pointer; the gesture ignores it too.
-    await swipe(
+    // Read before the lift: the reply banner that follows resizes the scroller.
+    const startX = box.x + box.width * 0.3;
+    const travel = box.width * 0.45;
+    await holdDrag(
       page,
-      { x: box.x + box.width * 0.3, y },
-      { x: box.x + box.width * 0.75, y: y - 40 },
+      Array.from({ length: 11 }, (_, step) => ({
+        x: Math.round(startX + (travel * step) / 10),
+        y: Math.round(y - (40 * step) / 10),
+      })),
+      async () => {
+        expect(await scrollTop()).toBe(before);
+        await expect(page.locator(`${other}.msg--swipe-armed`)).toHaveCount(1);
+      },
     );
 
     await expect(page.locator('.composer__banner')).toContainText(
@@ -487,14 +542,14 @@ test.describe('Swipe a message', () => {
     await expect(page.locator('.composer__banner')).toHaveCount(0);
   });
 
-  test('refuses to start from either screen edge', async ({
+  // The dead zones. What CI can prove is that the gesture declines to arm inside them;
+  // whether they are WIDE ENOUGH to clear the platform's own edge recognisers is a device
+  // question — a Pixel 5 profile emulates a viewport and a user agent, not WKWebView's or
+  // Android's gesture regions.
+  test('a rightward swipe refuses the back strip and the drawer band', async ({
     page,
     request,
   }) => {
-    // The dead zones. What CI can prove is that the gesture declines to arm inside them;
-    // whether they are WIDE ENOUGH to clear the platform's own edge recognisers is a device
-    // question — a Pixel 5 profile emulates a viewport and a user agent, not WKWebView's or
-    // Android's gesture regions.
     const { other } = await openRoom(page, request, 'd', 'right');
     const row = page.locator(other);
     await row.scrollIntoViewIfNeeded();
@@ -502,25 +557,20 @@ test.describe('Swipe a message', () => {
     const y = box.y + box.height / 2;
     const size = page.viewportSize()!;
 
-    await swipe(page, { x: 4, y }, { x: size.width * 0.8, y });
+    // Inside the 32px strip iOS's and Android's Back pan from.
+    await swipe(page, { x: 30, y }, { x: size.width * 0.8, y });
     await expect(page.locator('.composer__banner')).toHaveCount(0);
 
-    // The positive control, in the same test. Without it every assertion here would pass
-    // just as happily against a gesture that was broken outright, a seed that never applied,
-    // or a room that never opened.
-    // Inside the old 56px zone, past the 32px back-gesture strip a rightward drag avoids, with
-    // margin for device-coordinate rounding.
-    await swipe(page, { x: 44, y }, { x: size.width * 0.85, y });
+    // Just past it. Also the positive control: without it every refusal here would pass as
+    // happily against a gesture that was broken outright or a seed that never applied.
+    await swipe(page, { x: 34, y }, { x: size.width * 0.8, y });
     await expect(page.locator('.composer__banner')).toContainText(
       'Replying to',
       { timeout: 10_000 },
     );
 
-    // The extreme right is native-history territory, so neither gesture claims it here.
-    await swipe(page, { x: size.width - 4, y }, { x: size.width * 0.2, y });
-    await expect(page.locator('.chat-members')).toBeHidden();
-
-    // The drawer owns the adjacent inset band. This goes last because its backdrop covers
+    // Inside 56px of the right edge the row must not arm, or its `stopPropagation` would keep
+    // the drawer from seeing the press. This goes last because the drawer's backdrop covers
     // every row for the rest of the test.
     await swipe(
       page,
@@ -530,6 +580,44 @@ test.describe('Swipe a message', () => {
     await expect(page.locator('.chat-members')).toBeVisible({
       timeout: 10_000,
     });
+  });
+
+  test('a leftward swipe arms at the left edge and refuses the drawer band', async ({
+    page,
+    request,
+  }) => {
+    const { other } = await openRoom(page, request, 'k', 'left');
+    const row = page.locator(other);
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
+    const y = box.y + box.height / 2;
+    const size = page.viewportSize()!;
+
+    // No Back gesture pans leftward from the left edge, so the row arms there. 20px of room
+    // is short of the 32px a flick needs, so arming is all such a start can show.
+    await holdDrag(
+      page,
+      [20, 16, 12, 8, 4, 2].map((x) => ({ x, y })),
+      async () => {
+        await expect
+          .poll(() =>
+            row.evaluate((el) => el.style.getPropertyValue('--swipe-drag')),
+          )
+          .toBe('-18px');
+      },
+    );
+    await expect(page.locator('.composer__banner')).toHaveCount(0);
+
+    // Inside 56px of the right edge: refused, and the drawer gets the press instead.
+    await swipe(
+      page,
+      { x: size.width - DRAWER_OPEN_FROM_RIGHT_PX, y },
+      { x: size.width * 0.2, y },
+    );
+    await expect(page.locator('.chat-members')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator('.composer__banner')).toHaveCount(0);
   });
 
   for (const setting of ['left', 'off'] as const) {

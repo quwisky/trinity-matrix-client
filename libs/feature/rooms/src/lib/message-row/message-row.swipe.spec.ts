@@ -587,6 +587,18 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(swiped).toEqual(['reply']);
     });
 
+    it('takes a drag that opens only just more sideways than vertical', async () => {
+      // The browser pans by the dominant axis, so this drag is not a scroll; it has to be ours.
+      const { msg, swiped } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300, 100));
+      msg.dispatchEvent(touch('pointermove', 313, 112, { t: 100 }));
+      msg.dispatchEvent(touch('pointermove', 380, 140, { t: 600 }));
+      msg.dispatchEvent(touch('pointerup', 380, 140, { t: 1000 }));
+
+      expect(swiped).toEqual(['reply']);
+    });
+
     it('leaves a drag that opens vertically to the scroller', async () => {
       const { msg, swiped } = await renderRow('right');
 
