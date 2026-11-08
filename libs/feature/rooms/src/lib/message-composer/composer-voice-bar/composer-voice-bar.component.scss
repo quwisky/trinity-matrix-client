@@ -12,9 +12,9 @@
     width: 100%;
     min-height: var(--composer-resting-field-height);
     padding-inline: var(--trinity-density-composer-field-inset);
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-shape-container-radius);
-    background: var(--trinity-surface-raised);
+    border: 1px solid var(--trinity-entry-border);
+    border-radius: var(--trinity-entry-radius);
+    background: var(--trinity-entry-surface);
   }
 
   .composer__recording-cancel,

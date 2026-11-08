@@ -27,7 +27,10 @@ import {
   TrnInput,
   TrnPasswordInputComponent,
 } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  TrnFieldLockComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import {
   AuthService,
   AUTHENTICATION_HOMESERVER_DISCOVERY,
@@ -39,12 +42,15 @@ import { ExternalBrowserService } from '@trinity/platform-native';
 import { serverNameOfInput } from '@trinity/util/matrix';
 import { shownError } from '@trinity/util/ui';
 
+const BUSY_REASON = 'Wait for this step to finish';
+
 @Component({
   selector: 'trn-registration',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './registration.page.html',
   styleUrl: './registration.page.scss',
   imports: [
+    TrnFieldLockComponent,
     AuthCardComponent,
     FormField,
     TrnButton,
@@ -116,22 +122,22 @@ export class RegistrationPage implements OnDestroy {
         ? undefined
         : { kind: 'passwordMismatch', message: 'Passwords do not match.' },
     );
-    disabled(path.username, { when: () => this.busy() });
-    disabled(path.password, { when: () => this.busy() });
-    disabled(path.confirmPassword, { when: () => this.busy() });
+    disabled(path.username, { when: () => this.busy() && BUSY_REASON });
+    disabled(path.password, { when: () => this.busy() && BUSY_REASON });
+    disabled(path.confirmPassword, { when: () => this.busy() && BUSY_REASON });
   });
 
   private readonly emailModel = signal({ email: '' });
   readonly emailForm = form(this.emailModel, (path) => {
     required(path.email, { message: 'Enter your email address.' });
     email(path.email, { message: 'Enter a valid email address.' });
-    disabled(path.email, { when: () => this.busy() });
+    disabled(path.email, { when: () => this.busy() && BUSY_REASON });
   });
 
   private readonly tokenModel = signal({ token: '' });
   readonly tokenForm = form(this.tokenModel, (path) => {
     required(path.token, { message: 'Enter the registration token.' });
-    disabled(path.token, { when: () => this.busy() });
+    disabled(path.token, { when: () => this.busy() && BUSY_REASON });
   });
 
   constructor() {

@@ -18,7 +18,7 @@ export type TrnOverlaySurfaceLayout =
  */
 const variantRecipe = {
   neutral:
-    'border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-raised)] text-[var(--trinity-text-bright)]',
+    'border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-raised)] text-[var(--trinity-text-bright)] [--trinity-entry-surface:var(--trinity-entry-surface-overlay)]',
   accent:
     'border-[var(--trinity-state-attention-surface)] bg-[var(--trinity-state-attention-surface)] text-[var(--trinity-state-attention-foreground)] [--trinity-focus-ring:var(--trinity-focus-ring-on-attention)]',
 } as const;

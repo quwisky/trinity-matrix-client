@@ -16,6 +16,7 @@ import {
   validate,
 } from '@angular/forms/signals';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnLabel } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
@@ -28,6 +29,9 @@ import {
 } from '@trinity/data-access/widgets';
 import { firstValueFrom } from 'rxjs';
 
+/** Why the fields are locked for someone who cannot manage widgets here. */
+const NOT_EDITABLE = 'You don’t have permission to add widgets to this room';
+
 interface WidgetDraftModel {
   name: string;
   rawUrl: string;
@@ -38,7 +42,7 @@ const EMPTY_DRAFT: WidgetDraftModel = { name: '', rawUrl: '' };
 @Component({
   selector: 'trn-room-widget-create',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormField, TrnButton, TrnInput, TrnLabel],
+  imports: [TrnFieldLockComponent, FormField, TrnButton, TrnInput, TrnLabel],
   templateUrl: './room-widget-create.component.html',
   styleUrl: './room-widget-create.component.scss',
 })
@@ -60,8 +64,8 @@ export class RoomWidgetCreateComponent {
   });
 
   readonly form = form(this.model, (path) => {
-    disabled(path.name, { when: () => !this.editable() });
-    disabled(path.rawUrl, { when: () => !this.editable() });
+    disabled(path.name, { when: () => !this.editable() && NOT_EDITABLE });
+    disabled(path.rawUrl, { when: () => !this.editable() && NOT_EDITABLE });
     validate(path.name, ({ value }) =>
       validationError(
         validateRoomWidgetDraft({

@@ -1,4 +1,7 @@
-import { EmptyStateComponent } from '@trinity/components/generic-content';
+import {
+  EmptyStateComponent,
+  TrnFieldLockComponent,
+} from '@trinity/components/generic-content';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -25,6 +28,7 @@ import { RoomAliasesController } from './room-aliases.controller';
   templateUrl: './room-aliases.component.html',
   providers: [RoomAliasesController],
   imports: [
+    TrnFieldLockComponent,
     EmptyStateComponent,
     FormField,
     TrnButton,

@@ -2,6 +2,7 @@ import {
   booleanAttribute,
   computed,
   Directive,
+  forwardRef,
   inject,
   input,
 } from '@angular/core';
@@ -11,6 +12,12 @@ import {
 } from '@spartan-ng/brain/field';
 import { BrnInput } from '@spartan-ng/brain/input';
 import { classes } from '@trinity/helm/utils';
+import {
+  trnLockReason,
+  nativeDisabled,
+  TRN_LOCKABLE_CONTROL,
+  type TrnLockableControl,
+} from './trn-lockable-control';
 import {
   trnInputRecipe,
   type TrnTextControlSize,
@@ -36,6 +43,12 @@ export type { TrnTextControlSize } from './trn-text-control-recipe';
     '[attr.data-invalid]': 'resolvedInvalid() ? "true" : null',
     '[attr.data-matches-spartan-invalid]': 'resolvedInvalid() ? "true" : null',
   },
+  providers: [
+    {
+      provide: TRN_LOCKABLE_CONTROL,
+      useExisting: forwardRef(() => TrnInput),
+    },
+  ],
   hostDirectives: [
     {
       directive: BrnInput,
@@ -49,7 +62,7 @@ export type { TrnTextControlSize } from './trn-text-control-recipe';
     },
   ],
 })
-export class TrnInput {
+export class TrnInput implements TrnLockableControl {
   private readonly fieldControl = inject(BrnFieldControl);
 
   readonly size = input<TrnTextControlSize>('md');
@@ -60,6 +73,20 @@ export class TrnInput {
   readonly explicitInvalid = input(false, { transform: booleanAttribute });
   protected readonly resolvedInvalid = computed(
     () => this.explicitInvalid() || Boolean(this.fieldControl.spartanInvalid()),
+  );
+  /** Why the field is disabled, for `trn-field-lock`; a Signal Forms reason is used otherwise. */
+  readonly disabledReason = input<string | null>(null);
+  /** Written by Signal Forms from the schema's `disabled(path, { when })` rules. */
+  readonly disabledReasons = input<readonly { readonly message?: string }[]>(
+    [],
+  );
+  readonly multiline = false;
+  readonly disabled = nativeDisabled();
+  readonly lockReason = trnLockReason(
+    this.disabled,
+    computed(() => this.size() !== 'sm'),
+    this.disabledReason,
+    this.disabledReasons,
   );
 
   constructor() {

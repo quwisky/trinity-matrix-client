@@ -26,8 +26,10 @@ const ASSET_VALUE_FUNCTION =
 
 function themeBlocks(source: string): readonly ThemeBlock[] {
   const blocks: ThemeBlock[] = [];
+  // A selector starts after a brace. Anchored there, `[^{}]*` scans each brace-free run once
+  // instead of again from each of its characters, which timed out under load.
   const selectors = source.matchAll(
-    /(?<selector>[^{}]*\[data-theme(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\]\s]+))?\][^{}]*)\s*\{/gu,
+    /(?<=^|[{}])(?<selector>[^{}]*\[data-theme(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\]\s]+))?\][^{}]*)\s*\{/gu,
   );
 
   for (const match of selectors) {

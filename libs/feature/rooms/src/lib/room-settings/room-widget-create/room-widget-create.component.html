@@ -8,16 +8,18 @@
 
   <div class="room-widget-create__field">
     <label trnLabel for="room-widget-create-name">Name</label>
-    <input
-      #nameInput
-      trnInput
-      id="room-widget-create-name"
-      autocomplete="off"
-      [formField]="form.name"
-      [attr.aria-describedby]="nameError() ? 'room-widget-name-error' : null"
-      (keydown.enter)="onEnter($event)"
-      data-testid="room-widget-create-name"
-    />
+    <trn-field-lock>
+      <input
+        #nameInput
+        trnInput
+        id="room-widget-create-name"
+        autocomplete="off"
+        [formField]="form.name"
+        [attr.aria-describedby]="nameError() ? 'room-widget-name-error' : null"
+        (keydown.enter)="onEnter($event)"
+        data-testid="room-widget-create-name"
+      />
+    </trn-field-lock>
     @if (nameError(); as message) {
       <p
         id="room-widget-name-error"
@@ -31,19 +33,21 @@
 
   <div class="room-widget-create__field">
     <label trnLabel for="room-widget-create-url">HTTPS URL</label>
-    <input
-      #urlInput
-      trnInput
-      id="room-widget-create-url"
-      type="url"
-      inputmode="url"
-      autocomplete="url"
-      placeholder="https://widgets.example/room/$matrix_room_id"
-      [formField]="form.rawUrl"
-      [attr.aria-describedby]="urlError() ? 'room-widget-url-error' : null"
-      (keydown.enter)="onEnter($event)"
-      data-testid="room-widget-create-url"
-    />
+    <trn-field-lock>
+      <input
+        #urlInput
+        trnInput
+        id="room-widget-create-url"
+        type="url"
+        inputmode="url"
+        autocomplete="url"
+        placeholder="https://widgets.example/room/$matrix_room_id"
+        [formField]="form.rawUrl"
+        [attr.aria-describedby]="urlError() ? 'room-widget-url-error' : null"
+        (keydown.enter)="onEnter($event)"
+        data-testid="room-widget-create-url"
+      />
+    </trn-field-lock>
     @if (urlError(); as message) {
       <p
         id="room-widget-url-error"

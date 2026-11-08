@@ -217,7 +217,11 @@ export class AppLockCoverState {
     pattern(path.pin, PIN_PATTERN, { message: 'Enter 4 to 16 digits.' });
     // Also the field's `maxlength`: Signal Forms owns that attribute.
     maxLength(path.pin, PIN_MAX_LENGTH, { message: 'Enter 4 to 16 digits.' });
-    disabled(path.pin, { when: () => this.busy() || this.waiting() });
+    disabled(path.pin, {
+      when: () =>
+        this.waitText() ??
+        (this.busy() && `Wait while ${this.appName} checks your PIN`),
+    });
   });
 
   constructor() {

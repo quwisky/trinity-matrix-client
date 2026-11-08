@@ -30,18 +30,20 @@
         >
           Username
         </trn-field-label>
-        <input
-          trnInput
-          id="registration-username"
-          autocomplete="username"
-          autocapitalize="off"
-          autocorrect="off"
-          [formField]="credentialsForm.username"
-          [attr.aria-describedby]="
-            usernameError ? 'registration-username-error' : null
-          "
-          (keyup.enter)="createAccount()"
-        />
+        <trn-field-lock>
+          <input
+            trnInput
+            id="registration-username"
+            autocomplete="username"
+            autocapitalize="off"
+            autocorrect="off"
+            [formField]="credentialsForm.username"
+            [attr.aria-describedby]="
+              usernameError ? 'registration-username-error' : null
+            "
+            (keyup.enter)="createAccount()"
+          />
+        </trn-field-lock>
         @if (usernameError) {
           <p
             id="registration-username-error"
@@ -61,17 +63,19 @@
         >
           Password
         </trn-field-label>
-        <trn-password-input [disabled]="busy()">
-          <input
-            trnInput
-            id="registration-password"
-            autocomplete="new-password"
-            [formField]="credentialsForm.password"
-            [attr.aria-describedby]="
-              passwordError ? 'registration-password-error' : null
-            "
-          />
-        </trn-password-input>
+        <trn-field-lock>
+          <trn-password-input [disabled]="busy()">
+            <input
+              trnInput
+              id="registration-password"
+              autocomplete="new-password"
+              [formField]="credentialsForm.password"
+              [attr.aria-describedby]="
+                passwordError ? 'registration-password-error' : null
+              "
+            />
+          </trn-password-input>
+        </trn-field-lock>
         @if (passwordError) {
           <p
             id="registration-password-error"
@@ -94,20 +98,22 @@
         >
           Confirm password
         </trn-field-label>
-        <trn-password-input [disabled]="busy()">
-          <input
-            trnInput
-            id="registration-confirm-password"
-            autocomplete="new-password"
-            [formField]="credentialsForm.confirmPassword"
-            [attr.aria-describedby]="
-              confirmPasswordError
-                ? 'registration-confirm-password-error'
-                : null
-            "
-            (keyup.enter)="createAccount()"
-          />
-        </trn-password-input>
+        <trn-field-lock>
+          <trn-password-input [disabled]="busy()">
+            <input
+              trnInput
+              id="registration-confirm-password"
+              autocomplete="new-password"
+              [formField]="credentialsForm.confirmPassword"
+              [attr.aria-describedby]="
+                confirmPasswordError
+                  ? 'registration-confirm-password-error'
+                  : null
+              "
+              (keyup.enter)="createAccount()"
+            />
+          </trn-password-input>
+        </trn-field-lock>
         @if (confirmPasswordError) {
           <p
             id="registration-confirm-password-error"
@@ -149,17 +155,19 @@
             >
               Email address
             </trn-field-label>
-            <input
-              trnInput
-              id="registration-email"
-              type="email"
-              autocomplete="email"
-              [formField]="emailForm.email"
-              [attr.aria-describedby]="
-                emailError ? 'registration-email-error' : null
-              "
-              (keyup.enter)="provideEmail()"
-            />
+            <trn-field-lock>
+              <input
+                trnInput
+                id="registration-email"
+                type="email"
+                autocomplete="email"
+                [formField]="emailForm.email"
+                [attr.aria-describedby]="
+                  emailError ? 'registration-email-error' : null
+                "
+                (keyup.enter)="provideEmail()"
+              />
+            </trn-field-lock>
             @if (emailError) {
               <p
                 id="registration-email-error"
@@ -246,16 +254,18 @@
             >
               Registration token
             </trn-field-label>
-            <input
-              trnInput
-              id="registration-token"
-              autocomplete="off"
-              [formField]="tokenForm.token"
-              [attr.aria-describedby]="
-                tokenError ? 'registration-token-error' : null
-              "
-              (keyup.enter)="submitToken()"
-            />
+            <trn-field-lock>
+              <input
+                trnInput
+                id="registration-token"
+                autocomplete="off"
+                [formField]="tokenForm.token"
+                [attr.aria-describedby]="
+                  tokenError ? 'registration-token-error' : null
+                "
+                (keyup.enter)="submitToken()"
+              />
+            </trn-field-lock>
             @if (tokenError) {
               <p
                 id="registration-token-error"

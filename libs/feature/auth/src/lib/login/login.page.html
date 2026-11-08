@@ -84,17 +84,21 @@
       >
         Homeserver
       </trn-field-label>
-      <input
-        trnInput
-        id="homeserver"
-        autofocus
-        autocapitalize="off"
-        autocorrect="off"
-        placeholder="matrix.org"
-        [formField]="homeserverForm.homeserver"
-        [aria-describedby]="homeserverError() ? 'login-homeserver-error' : null"
-        (keyup.enter)="discover()"
-      />
+      <trn-field-lock>
+        <input
+          trnInput
+          id="homeserver"
+          autofocus
+          autocapitalize="off"
+          autocorrect="off"
+          placeholder="matrix.org"
+          [formField]="homeserverForm.homeserver"
+          [aria-describedby]="
+            homeserverError() ? 'login-homeserver-error' : null
+          "
+          (keyup.enter)="discover()"
+        />
+      </trn-field-lock>
       @if (homeserverError(); as message) {
         <p
           id="login-homeserver-error"
@@ -128,16 +132,18 @@
         <trn-field-label controlId="username" emphasis="strong">
           Username
         </trn-field-label>
-        <input
-          #usernameInput
-          trnInput
-          id="username"
-          autofocus
-          autocapitalize="off"
-          autocorrect="off"
-          [formField]="credentialsForm.username"
-          (keyup.enter)="loginPassword()"
-        />
+        <trn-field-lock>
+          <input
+            #usernameInput
+            trnInput
+            id="username"
+            autofocus
+            autocapitalize="off"
+            autocorrect="off"
+            [formField]="credentialsForm.username"
+            (keyup.enter)="loginPassword()"
+          />
+        </trn-field-lock>
       </trn-field>
 
       <trn-field class="login-card__field" [invalid]="!!credentialsError()">
@@ -148,17 +154,19 @@
         >
           Password
         </trn-field-label>
-        <trn-password-input [disabled]="busy()">
-          <input
-            trnInput
-            id="password"
-            [formField]="credentialsForm.password"
-            [aria-describedby]="
-              credentialsError() ? 'login-credentials-error' : null
-            "
-            (keyup.enter)="loginPassword()"
-          />
-        </trn-password-input>
+        <trn-field-lock>
+          <trn-password-input [disabled]="busy()">
+            <input
+              trnInput
+              id="password"
+              [formField]="credentialsForm.password"
+              [aria-describedby]="
+                credentialsError() ? 'login-credentials-error' : null
+              "
+              (keyup.enter)="loginPassword()"
+            />
+          </trn-password-input>
+        </trn-field-lock>
         @if (credentialsError(); as message) {
           <p
             id="login-credentials-error"

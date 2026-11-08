@@ -25,7 +25,10 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
 import { TrnFieldImports } from '@trinity/components/controls';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  TrnFieldLockComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import {
   TrnAlertService,
   TrnDialogRef,
@@ -43,6 +46,8 @@ import {
   resetPasswordPrompt,
 } from './recovery-reset';
 
+const BUSY_REASON = 'Wait for this step to finish';
+
 /**
  * New-device unlock. The account already has secret storage; the user enters their
  * recovery key to trust this device ({@link TrustService.recoverWithKey} imports the
@@ -58,6 +63,7 @@ import {
   templateUrl: 'encryption-unlock.page.html',
   styleUrls: ['encryption-unlock.page.scss'],
   imports: [
+    TrnFieldLockComponent,
     TrnCardImports,
     FormField,
     NgTemplateOutlet,
@@ -90,7 +96,7 @@ export class EncryptionUnlockPage {
   // Disabled belongs to the schema: Signal Forms owns it and rejects a [disabled] binding
   // at compile time (NG8022). Declared after `busy`, which the schema reads.
   readonly unlockForm = form(this.keyModel, (path) => {
-    disabled(path.recoveryKey, { when: () => this.busy() });
+    disabled(path.recoveryKey, { when: () => this.busy() && BUSY_REASON });
   });
   readonly hasKey = computed(
     () => this.keyModel().recoveryKey.trim().length > 0,

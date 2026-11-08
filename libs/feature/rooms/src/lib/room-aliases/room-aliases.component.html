@@ -124,15 +124,16 @@
         >
         <span class="flex min-w-0 items-center gap-1">
           <span class="text-sm text-muted-foreground">#</span>
-          <input
-            trnInput
-            class="min-w-0 flex-1"
-            [formField]="controller.aliasForm.localpart"
-            placeholder="new-address"
-            autocomplete="off"
-            (keydown.enter)="onEnter($event)"
-            data-testid="room-alias-input"
-          />
+          <trn-field-lock class="min-w-0 flex-1">
+            <input
+              trnInput
+              [formField]="controller.aliasForm.localpart"
+              placeholder="new-address"
+              autocomplete="off"
+              (keydown.enter)="onEnter($event)"
+              data-testid="room-alias-input"
+            />
+          </trn-field-lock>
           @if (controller.serverName(); as server) {
             <span class="max-w-40 text-sm break-all text-muted-foreground"
               >:{{ server }}</span

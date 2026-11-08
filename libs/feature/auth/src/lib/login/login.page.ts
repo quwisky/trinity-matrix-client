@@ -34,7 +34,10 @@ import {
   TrnPasswordInputComponent,
 } from '@trinity/components/controls';
 import { TrnCardImports } from '@trinity/components/navigation-layout';
-import { TrnSpinnerComponent } from '@trinity/components/generic-content';
+import {
+  TrnFieldLockComponent,
+  TrnSpinnerComponent,
+} from '@trinity/components/generic-content';
 import {
   ReauthAccountMismatchError,
   UnacceptableAccountError,
@@ -138,6 +141,7 @@ function hostOf(url: string): string {
   templateUrl: 'login.page.html',
   styleUrl: 'login.page.scss',
   imports: [
+    TrnFieldLockComponent,
     AuthCardComponent,
     FormField,
     QrSignInPanelComponent,
@@ -408,15 +412,22 @@ export class LoginPage {
       'matrix.org',
   });
   readonly homeserverForm = form(this.homeserverModel, (path) => {
-    disabled(path.homeserver, { when: () => this.busy() });
+    disabled(path.homeserver, {
+      when: () => this.busy() && 'Wait while Trinity checks this server',
+    });
   });
   private readonly credentials = signal({ username: '', password: '' });
   readonly credentialsForm = form(this.credentials, (path) => {
     // In re-auth the pre-filled username must stay fixed.
     disabled(path.username, {
-      when: () => this.busy() || !!this.reauthUserId(),
+      when: () =>
+        (!!this.reauthUserId() &&
+          'You’re signing in to this account again, so its username stays the same') ||
+        (this.busy() && 'Wait for sign-in to finish'),
     });
-    disabled(path.password, { when: () => this.busy() });
+    disabled(path.password, {
+      when: () => this.busy() && 'Wait for sign-in to finish',
+    });
   });
 
   /** Step 1: resolve the homeserver and discover its login flows and OIDC config. */

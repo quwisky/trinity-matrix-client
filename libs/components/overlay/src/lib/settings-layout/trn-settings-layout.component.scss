@@ -16,6 +16,11 @@
     min-block-size: 0;
     background: var(--trinity-surface-app);
 
+    // Full screen, the layout paints the app and pane grounds itself, so its fields take the
+    // default entry fill back from the overlay surface around it; framed, it is transparent on
+    // the shell and keeps the overlay's (see the framed sheet).
+    --trinity-entry-surface: var(--trinity-surface-raised);
+
     // A full-screen dialog sits in the overlay container, outside the app root, so the
     // layout gives its own text colour as the dialog shell's surface does.
     color: var(--trinity-text-bright);

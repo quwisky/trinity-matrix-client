@@ -21,6 +21,7 @@ import {
   TrnInput,
   TrnPasswordInputComponent,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import { AppLockService } from '@trinity/data-access/app-lock';
 import { HostLockIntegrationService } from '@trinity/runtime/host';
 import { shownError } from '@trinity/util/ui';
@@ -52,6 +53,7 @@ export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './app-lock-cover.component.html',
   imports: [
+    TrnFieldLockComponent,
     FormField,
     FormRoot,
     TrnButton,

@@ -56,6 +56,20 @@
     --trinity-shape-overlay-radius: var(--trinity-radius-xl);
     --trinity-shape-pane-radius: var(--trinity-radius-xl);
 
+    // Text entry: every text field and the message composer draw this fill, edge and radius, so
+    // the two cannot drift. The edge is its own middle stop, just over 3:1 against every surface
+    // an entry sits on, and so quieter than the control border.
+    --trinity-entry-surface: var(--trinity-surface-raised);
+    --trinity-entry-border: oklch(61% 0.014 60deg);
+    --trinity-entry-radius: var(--trinity-shape-container-radius);
+
+    // On a dialog, sheet or card the overlay is the raised stop itself, so a field there would
+    // lose its fill. Overlay surfaces re-declare `--trinity-entry-surface` to this recessed stop
+    // instead: 5% below the overlay in light mode, the app ground in dark (black with True
+    // black). Its own value, between the hover (94%) and selected (91%) rows and less chromatic,
+    // so a row beside a field never reads as one.
+    --trinity-entry-surface-overlay: oklch(92.5% 0.006 85deg);
+
     // Semantic identity geometry. Selection never changes these roles: people/DMs remain
     // circular, while rooms/spaces remain stable squircles.
     --trinity-shape-person-radius: 50%;
@@ -598,6 +612,8 @@
 
     // Overlay: the pane's hue and chroma, 4% lighter; the border is 10% lighter, the footer the pane.
     --trinity-surface-overlay: oklch(24% 0.005 269deg);
+    --trinity-entry-surface-overlay: var(--trinity-surface-app);
+    --trinity-entry-border: oklch(52.5% 0.008 269deg);
     --trinity-surface-overlay-footer: var(--trinity-surface-pane);
     --trinity-border-overlay: oklch(30% 0.005 269deg);
     --trinity-overlay-scrim: oklch(0% 0 0deg / 65%);
@@ -631,6 +647,10 @@
     --trinity-surface-app: oklch(96.5% 0.01 300deg);
     --trinity-surface-pane: oklch(99% 0.005 300deg);
     --trinity-surface-raised: oklch(97.5% 0.008 300deg);
+
+    // Recessed 4.5% below the overlay and 2% above the hover row (91%), like Graphite's.
+    --trinity-entry-surface-overlay: oklch(93% 0.012 300deg);
+    --trinity-entry-border: oklch(61.5% 0.025 300deg);
     --trinity-rail: oklch(96.5% 0.01 300deg);
     --trinity-sidebar: oklch(96.5% 0.01 300deg);
     --trinity-sidebar-header: oklch(96.5% 0.01 300deg);
@@ -655,6 +675,8 @@
   }
 
   :root[data-theme='amethyst'].dark {
+    --trinity-entry-border: oklch(54% 0.025 300deg);
+
     // Dark Mode lifts the violet family and pairs its light accent with dark violet ink.
     --trinity-accent: oklch(70% 0.145 300deg);
     --trinity-accent-hover: oklch(64% 0.16 300deg);

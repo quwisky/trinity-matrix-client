@@ -25,6 +25,7 @@ import {
   TrnRadioGroupComponent,
   type TrnRadioOption,
 } from '@trinity/components/controls';
+import { TrnFieldLockComponent } from '@trinity/components/generic-content';
 import {
   TrnDialogActions,
   TrnDialogDismiss,
@@ -46,6 +47,8 @@ import {
 } from '@trinity/data-access/media';
 import type { Subscription } from 'rxjs';
 import { packImagePayload } from '../pack-image-payload';
+
+const BUSY_REASON = 'Wait for the sticker to be added';
 
 export type UseAs = 'emoticon' | 'sticker' | 'both';
 
@@ -156,6 +159,7 @@ export function addFailure(
   selector: 'trn-add-to-pack-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    TrnFieldLockComponent,
     FormField,
     FormRoot,
     TrnButton,
@@ -193,7 +197,7 @@ export class AddToPackDialogComponent {
     pattern(path.shortcode, SHORTCODE_PATTERN, {
       message: SHORTCODE_HINT,
     });
-    disabled(path.shortcode, { when: () => this.busy() });
+    disabled(path.shortcode, { when: () => this.busy() && BUSY_REASON });
   });
   protected readonly failure = signal<
     (Failure & { readonly shortcode: string }) | null

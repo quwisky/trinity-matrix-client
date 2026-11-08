@@ -62,17 +62,19 @@
         <trn-field-label controlId="recovery-key">
           Recovery key
         </trn-field-label>
-        <input
-          id="recovery-key"
-          trnInput
-          autocapitalize="off"
-          autocorrect="off"
-          autocomplete="off"
-          placeholder="EsTx xxxx xxxx …"
-          data-testid="recovery-key-input"
-          [formField]="unlockForm.recoveryKey"
-          (keyup.enter)="unlock()"
-        />
+        <trn-field-lock>
+          <input
+            id="recovery-key"
+            trnInput
+            autocapitalize="off"
+            autocorrect="off"
+            autocomplete="off"
+            placeholder="EsTx xxxx xxxx …"
+            data-testid="recovery-key-input"
+            [formField]="unlockForm.recoveryKey"
+            (keyup.enter)="unlock()"
+          />
+        </trn-field-lock>
         <p class="mt-1 text-xs text-muted-foreground">
           Paste the key you saved during setup. Spaces don’t matter.
         </p>

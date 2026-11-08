@@ -6,9 +6,9 @@ export type TrnCardSize = Extract<TrnSize, 'sm' | 'md'>;
 
 const variantRecipe = {
   neutral:
-    'bg-[var(--trinity-surface-card)] text-[var(--trinity-control-foreground)] ring-[var(--trinity-border-subtle)]',
+    'bg-[var(--trinity-surface-card)] text-[var(--trinity-control-foreground)] ring-[var(--trinity-border-subtle)] [--trinity-entry-surface:var(--trinity-entry-surface-overlay)]',
   muted:
-    'bg-[var(--trinity-surface-raised)] text-[var(--trinity-text-bright)] ring-[var(--trinity-border-subtle)]',
+    'bg-[var(--trinity-surface-raised)] text-[var(--trinity-text-bright)] ring-[var(--trinity-border-subtle)] [--trinity-entry-surface:var(--trinity-entry-surface-overlay)]',
 } as const;
 
 const sizeRecipe = {

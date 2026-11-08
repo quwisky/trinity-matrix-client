@@ -334,11 +334,24 @@ async function pseudoColour(
   );
 }
 
-/** The colours of every opaque box-shadow ring of 2px or more an element paints. */
-async function paintedShadowRings(element: Locator): Promise<Srgb[]> {
-  return (await boxShadowLayers(element))
+/**
+ * The colours of every opaque ring of 2px or more an element paints: its box-shadow rings, and
+ * its outline, which a text field draws inside its border instead.
+ */
+async function paintedRings(element: Locator): Promise<Srgb[]> {
+  const rings = (await boxShadowLayers(element))
     .filter((layer) => layer.alpha === 255 && layer.spread >= 2)
     .map((layer) => layer.colour);
+  const outlined = await element.evaluate((node) => {
+    const style = getComputedStyle(node);
+    return (
+      style.outlineStyle !== 'none' &&
+      Number.parseFloat(style.outlineWidth) >= 2
+    );
+  });
+  return outlined
+    ? [...rings, await computedColour(element, 'outline-color')]
+    : rings;
 }
 
 /**
@@ -357,7 +370,7 @@ async function expectFocusOverInvalid(
   await page.keyboard.press('Tab');
   await focusable.focus();
   await expect(focusable).toBeFocused();
-  const rings = await paintedShadowRings(painted);
+  const rings = await paintedRings(painted);
   expect(rings).toContainEqual(onAttentionRing);
   expect(rings).not.toContainEqual(danger);
   if (keepsDangerBorder) {
@@ -979,36 +992,22 @@ test.describe('semantic design foundations', () => {
 
       await openStory(page, 'components-input--default', theme.id, mode.id);
       const field = page.getByRole('textbox', { name: 'Room name' });
-      await field.evaluate((element) => {
-        element.setAttribute('data-testid', 'focus-field');
-        const probe = document.createElement('span');
-        probe.setAttribute('data-testid', 'focus-halo-probe');
-        // Match Helm's `ring-ring/50` in the browser's own colour space, composited over
-        // the Storybook canvas instead of comparing the opaque source token.
-        probe.style.background =
-          'color-mix(in oklab, var(--ring) 50%, var(--background))';
-        document.body.append(probe);
-      });
       await field.focus();
       await expect(field).toBeFocused();
+      // The composer's ring: a solid outline drawn inside the border, measured against the
+      // field's own fill, which is what sits on both sides of it.
       expect(
-        await field.evaluate(
-          (element) => getComputedStyle(element).outlineStyle,
+        await field.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return [style.outlineStyle, style.outlineOffset, style.boxShadow];
+        }),
+      ).toEqual(['solid', '-2px', 'none']);
+      expect(
+        contrastRatio(
+          await computedColour(field, 'outline-color'),
+          await computedColour(field, 'background-color'),
         ),
-      ).toBe('none');
-      expect(
-        await field.evaluate((element) => getComputedStyle(element).boxShadow),
-      ).not.toBe('none');
-      const halo = await computedColour(
-        page.getByTestId('focus-halo-probe'),
-        'background-color',
-      );
-      const fieldSurface = await resolveTokenSrgb(
-        page,
-        'focus-field',
-        '--background',
-      );
-      expect(contrastRatio(halo, fieldSurface)).toBeGreaterThanOrEqual(3);
+      ).toBeGreaterThanOrEqual(3);
     });
   }
 
