@@ -131,6 +131,19 @@ describe('QrScannerComponent', () => {
     expect(getUserMedia).toHaveBeenCalledOnce();
   });
 
+  it('never opens the camera when created while suspended', async () => {
+    const getUserMedia = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const cancelled = vi.fn();
+    await render(QrScannerComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: signal(true) }],
+      on: { cancelled },
+    });
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
   it('closes a camera that opens after the scan was cancelled and never attaches it', async () => {
     const stream = { getTracks: () => [] } as unknown as MediaStream;
     let resolve!: (stream: MediaStream) => void;

@@ -82,6 +82,10 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
 
   private async start(): Promise<void> {
     this.stop();
+    if (this.suspended?.()) {
+      this.cancelled.emit();
+      return;
+    }
     const token = this.cameraOpen.next();
     this.scanSessionActive = true;
     this.status.set('starting');
