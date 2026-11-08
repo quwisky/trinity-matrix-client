@@ -21,6 +21,7 @@ import {
 } from '@trinity/data-access/media';
 import {
   DraftStoreService,
+  holdsText,
   PrivacySettingsService,
 } from '@trinity/platform-native';
 import {
@@ -519,19 +520,21 @@ export class ConversationRuntime {
           if (!txnId || !held) {
             return of(rejected('cancel', 'message-unavailable'));
           }
+          // The box holds the edit's body, and the edit would take the reply this text was for.
+          if (composeController.compose.intent().kind === 'edit') {
+            return of(rejected('cancel', 'edit-in-progress'));
+          }
           return this.messageAdapter
             .cancel({ key: immutableKey, messageId })
             .pipe(
               tap((outcome) => {
                 if (outcome.kind !== 'applied') return;
                 this.drafts.releaseWaiting(draftKey, txnId);
-                composeController.putBack(held.body);
-                if (
-                  held.replyTo &&
-                  composeController.compose.intent().kind === 'message'
-                ) {
-                  composeController.beginReply(held.replyTo);
+                if (!holdsText(composeController.compose.draft(), held.body)) {
+                  composeController.putBack(held.body);
                 }
+                // The reply the text was written for wins over one begun since.
+                if (held.replyTo) composeController.beginReply(held.replyTo);
               }),
             );
         }),

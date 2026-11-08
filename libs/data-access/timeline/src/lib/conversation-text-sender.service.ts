@@ -56,6 +56,8 @@ class MatrixConversationTextSender implements ConversationTextSender {
   // Its emoticons() map is filled only while the rooms page subscribes run(); else it is empty.
   private readonly packs = inject(ImagePackEditorService);
   private readonly drafts = inject(DraftStoreService);
+  /** Txn ids of sends not settled yet, which may have no echo while a reply target loads. */
+  private readonly inFlight = new Set<string>();
 
   send(request: ConversationTextSendRequest): ConversationTextSendOperation {
     const client = this.matrix.clientFor(request.key.accountId);
@@ -77,6 +79,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
       }),
     };
     if (held) this.drafts.holdWaiting(draftKey, txnId, kept);
+    this.inFlight.add(txnId);
     let fetchingTarget = false;
     let settled = false;
     const outcome = this.replyTarget(client, room, request, (fetching) => {
@@ -122,6 +125,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
         if (held) this.drafts.releaseWaiting(draftKey, txnId);
         return of({ kind: 'rejected', retryable: true } as const);
       }),
+      finalize(() => this.inFlight.delete(txnId)),
       tap({
         next: () => (settled = true),
         error: () => (settled = true),
@@ -170,7 +174,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
         .map((event) => event.getUnsigned().transaction_id),
     );
     for (const [txnId, held] of this.drafts.pendingMessages(draftKey)) {
-      if (room.getEventForTxnId(txnId)) continue;
+      if (this.inFlight.has(txnId) || room.getEventForTxnId(txnId)) continue;
       if (sent.has(txnId)) {
         this.drafts.releaseWaiting(draftKey, txnId);
         continue;

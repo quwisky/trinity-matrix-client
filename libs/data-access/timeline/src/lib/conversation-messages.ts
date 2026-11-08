@@ -14,7 +14,9 @@ export type ConversationMessageFailure =
   | 'invalid-reaction'
   | 'not-allowed'
   | 'event-not-retryable'
-  | 'request-rejected';
+  | 'request-rejected'
+  /** A failed message cannot go back to the composer while another message is edited. */
+  | 'edit-in-progress';
 
 export type ConversationMessageOutcome =
   | {

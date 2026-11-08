@@ -1839,6 +1839,57 @@ describe('ConversationRuntime', () => {
       expect(drafts.pendingMessages(conversationDraftKey(KEY)).size).toBe(1);
     });
 
+    it('switches a reply in progress to the one the failed message was written for', async () => {
+      const { runtime, drafts } = setup(2, undefined, [message('$other')]);
+      const handle = runtime.focus(KEY);
+      drafts.holdWaiting(conversationDraftKey(KEY), 'txn-1', {
+        body: 'refused',
+        replyTo: '$target',
+      });
+      handle.messages.beginReply('$other');
+
+      await firstValueFrom(handle.messages.toComposer(ID));
+
+      expect(handle.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
+    });
+
+    it('refuses while another message is being edited, changing nothing', async () => {
+      const { runtime, drafts, messageAdapter } = setup(2, undefined, [
+        message('$edit'),
+      ]);
+      const handle = runtime.focus(KEY);
+      drafts.holdWaiting(conversationDraftKey(KEY), 'txn-1', {
+        body: 'refused',
+      });
+      handle.messages.beginEdit('$edit', 'edit body');
+
+      await expect(
+        firstValueFrom(handle.messages.toComposer(ID)),
+      ).resolves.toMatchObject({
+        kind: 'rejected',
+        failure: 'edit-in-progress',
+      });
+      expect(messageAdapter.cancel).not.toHaveBeenCalled();
+      expect(handle.compose.draft()).toBe('edit body');
+      expect(drafts.pendingMessages(conversationDraftKey(KEY)).size).toBe(1);
+    });
+
+    it('does not add the text again when the draft already holds it', async () => {
+      const { runtime, drafts } = setup();
+      const handle = runtime.focus(KEY);
+      drafts.holdWaiting(conversationDraftKey(KEY), 'txn-1', {
+        body: 'refused',
+      });
+      handle.compose.setDraft('typed\n\nrefused');
+
+      await firstValueFrom(handle.messages.toComposer(ID));
+
+      expect(handle.compose.draft()).toBe('typed\n\nrefused');
+    });
+
     it('refuses a message it holds no text for', async () => {
       const { runtime, messageAdapter } = setup();
       const handle = runtime.focus(KEY);

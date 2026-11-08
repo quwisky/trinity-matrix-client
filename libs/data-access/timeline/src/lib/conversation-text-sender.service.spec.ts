@@ -573,6 +573,8 @@ describe('a sent message, kept by its txn id until the homeserver has it', () =>
       getUserId: () => accountId,
       getRoom: () => room,
       makeTxnId: () => `txn-${++next}`,
+      // A reply target the room does not hold stays loading.
+      fetchRoomEvent: vi.fn(() => new Promise<never>(() => undefined)),
       sendMessage: vi.fn((roomId: string, content: object, txnId: string) => {
         const echo = new MatrixEvent({
           type: 'm.room.message',
@@ -792,5 +794,23 @@ describe('a sent message, kept by its txn id until the homeserver has it', () =>
     sender.restore?.(KEY);
 
     expect(sdk.room.addPendingEvent).toHaveBeenCalledOnce();
+  });
+
+  it('shows no failed copy of a reply still waiting for its target to load', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender } = await setup({ [KEY.accountId]: sdk });
+    const sending = sender
+      .send({
+        key: KEY,
+        body: 'reply text',
+        mentions: [],
+        intent: { kind: 'reply', eventId: '$not-loaded' },
+      })
+      .outcome.subscribe();
+
+    sender.restore?.(KEY);
+
+    expect(sdk.room.addPendingEvent).not.toHaveBeenCalled();
+    sending.unsubscribe();
   });
 });
