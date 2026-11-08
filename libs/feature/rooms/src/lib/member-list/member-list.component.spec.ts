@@ -8,7 +8,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceState } from '@trinity/util/matrix';
-import { MockComponent } from 'ng-mocks';
+import { MockComponent, ngMocks } from 'ng-mocks';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -306,6 +306,22 @@ describe('MemberListComponent', () => {
     expect(sectionMap(container)).toEqual({
       'Moderators — 2': ['Zoe', 'Anna'],
     });
+  });
+
+  it('drops the dot for a member known to be offline, in a role section too', async () => {
+    const { fixture } = await renderMembers([
+      member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel: 50 }),
+      member({ userId: '@z:hs', roomDisplayName: 'Zoe', powerLevel: 50 }),
+    ]);
+    const presence = Object.fromEntries(
+      ngMocks
+        .findAll(fixture, AvatarComponent)
+        .map((avatar) => [
+          ngMocks.input(avatar, 'name'),
+          ngMocks.input(avatar, 'presence'),
+        ]),
+    );
+    expect(presence).toEqual({ Anna: null, Zoe: 'online' });
   });
 
   it('omits role sections that have no members', async () => {
@@ -964,7 +980,19 @@ describe('MemberListComponent — windowing', () => {
   });
 
   it('groups a 5,000-member room quickly, reading presence once per member', async () => {
-    const peek = vi.spyOn(presenceStub, 'peekDetails');
+    // A server with presence on: everyone reported, a third online, every fifth with a status.
+    const states: PresenceState[] = ['online', 'unavailable', 'offline'];
+    const peek = vi
+      .spyOn(presenceStub, 'peekDetails')
+      .mockImplementation((userId: string) => {
+        const i = Number(userId.slice(2, 6));
+        return {
+          state: states[i % 3],
+          statusMessage: i % 5 ? '' : `Status ${i}`,
+          lastActiveAt: null,
+          currentlyActive: i % 3 === 0,
+        };
+      });
     const tracked = vi.spyOn(presenceStub, 'presenceDetailsFor');
     const big = crowd(5_000);
     const started = performance.now();
@@ -975,6 +1003,7 @@ describe('MemberListComponent — windowing', () => {
     // One read per member, and no per-user signal cached for any of them.
     expect(peek).toHaveBeenCalledTimes(5_000);
     expect(tracked).not.toHaveBeenCalled();
+    expect(sectionLabels(container)[0]).toMatch(/^Online/);
 
     peek.mockClear();
     const again = performance.now();
@@ -982,10 +1011,9 @@ describe('MemberListComponent — windowing', () => {
     fixture.detectChanges();
     const regroup = performance.now() - again;
     expect(peek).toHaveBeenCalledTimes(5_000);
-    console.debug(
-      `[members 5k] first render ${firstRender.toFixed(1)}ms, regroup after a presence change ${regroup.toFixed(1)}ms`,
-    );
-    expect(regroup).toBeLessThan(250);
+    // About 100ms and 5ms locally: room for a loaded CI runner, not for a render per member.
+    expect(firstRender).toBeLessThan(500);
+    expect(regroup).toBeLessThan(50);
     peek.mockRestore();
     tracked.mockRestore();
   });

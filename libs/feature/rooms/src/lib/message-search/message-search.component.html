@@ -47,6 +47,7 @@
       type="button"
       class="ms-chip"
       [class.ms-chip--on]="sender() !== null"
+      #senderChip
       [attr.aria-expanded]="pickingSender()"
       aria-controls="search-sender-picker"
       data-testid="search-sender"
@@ -60,10 +61,20 @@
       sidePanelStrip
       id="search-sender-picker"
       [members]="members()"
+      [selected]="sender()?.id ?? null"
       (picked)="setSender($event)"
-      (dismissed)="pickingSender.set(false)"
+      (dismissed)="closePicker()"
     />
   }
+  <!-- In the strip, which stays while the body swaps for skeleton rows. -->
+  <p
+    sidePanelStrip
+    class="sr-only"
+    role="status"
+    data-testid="search-count-status"
+  >
+    {{ countAnnouncement() }}
+  </p>
 
   @if (scope() === 'room') {
     @if (encrypted()) {
@@ -88,15 +99,17 @@
           </button>
         </span>
       </trn-banner>
-    } @else if (query().trim()) {
-      <trn-banner variant="neutral">
-        @if (serverMode()) {
-          <span data-testid="server-summary">
-            Showing {{ serverCount() }} server
-            {{ serverCount() === 1 ? 'result' : 'results' }} from the full
-            history.
-          </span>
-        } @else {
+    } @else if (query().trim() && !server.error()) {
+      @if (serverMode()) {
+        @if (resultCount(); as count) {
+          <trn-banner variant="neutral">
+            <span data-testid="server-summary">
+              Showing {{ count }} from the full history.
+            </span>
+          </trn-banner>
+        }
+      } @else {
+        <trn-banner variant="neutral">
           <span trnBannerActions>
             <button
               trnBtn
@@ -115,8 +128,8 @@
               Search all messages
             </button>
           </span>
-        }
-      </trn-banner>
+        </trn-banner>
+      }
     }
   }
 
@@ -144,11 +157,6 @@
       Encrypted rooms aren’t included: your homeserver can’t read them.
     </p>
   }
-
-  <!-- Always rendered, so a screen reader is watching it before the count first changes. -->
-  <p class="sr-only" role="status" data-testid="search-count-status">
-    {{ resultCount() }}
-  </p>
 
   @for (group of groups(); track group.label) {
     <h3 class="ms-group">{{ group.label }}</h3>

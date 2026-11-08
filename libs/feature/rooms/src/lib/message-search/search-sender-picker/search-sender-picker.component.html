@@ -8,10 +8,14 @@
   data-autofocus
   [value]="query()"
   (input)="query.set($any($event.target).value)"
-  (keydown.escape)="$event.stopPropagation(); dismissed.emit()"
 />
 <div class="picker__options" role="group" aria-label="From">
-  <button type="button" class="picker__option" (click)="picked.emit(null)">
+  <button
+    type="button"
+    class="picker__option"
+    [attr.aria-pressed]="selected() === null"
+    (click)="picked.emit(null)"
+  >
     Anyone
   </button>
   @for (member of options(); track member.userId) {
@@ -19,14 +23,21 @@
       type="button"
       class="picker__option"
       data-testid="search-sender-option"
+      [attr.aria-pressed]="member.userId === selected()"
       (click)="pick(member)"
     >
       {{ member.roomDisplayName }}
     </button>
   }
 </div>
-@if (more(); as left) {
-  <p class="picker__more" data-testid="search-sender-more">
+<!-- Always present, so the count is announced as typing narrows it. -->
+<p
+  class="picker__more"
+  [class.sr-only]="!more()"
+  role="status"
+  data-testid="search-sender-more"
+>
+  @if (more(); as left) {
     {{ left }} more. Type a name to narrow the list.
-  </p>
-}
+  }
+</p>

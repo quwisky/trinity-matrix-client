@@ -53,6 +53,8 @@ interface HighlightPart {
 
 /** Waits this long after the last keystroke before asking the homeserver across rooms. */
 const ALL_ROOMS_DEBOUNCE_MS = 400;
+/** The count is announced once it holds this long, not once per keystroke. */
+const COUNT_ANNOUNCE_MS = 1_000;
 
 /**
  * In-room message search for the rooms shell's right-hand panel slot, scoped to the
@@ -103,6 +105,8 @@ export class MessageSearchComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly queryField =
     viewChild<ElementRef<HTMLInputElement>>('queryField');
+  private readonly senderChip =
+    viewChild<ElementRef<HTMLButtonElement>>('senderChip');
 
   constructor() {
     // Closed or replaced after a press or key inside it, the panel would otherwise stay in
@@ -138,6 +142,17 @@ export class MessageSearchComponent {
         clearTimeout(timer);
         this.pending.set(false);
       });
+    });
+    effect((onCleanup) => {
+      const count = this.resultCount();
+      if (!count) {
+        return;
+      }
+      const timer = setTimeout(
+        () => this.countAnnouncement.set(count),
+        COUNT_ANNOUNCE_MS,
+      );
+      onCleanup(() => clearTimeout(timer));
     });
     // Day groups move at local midnight: "Today" becomes "Yesterday" while the panel is open.
     let midnight: ReturnType<typeof setTimeout> | undefined;
@@ -248,12 +263,16 @@ export class MessageSearchComponent {
     // The homeserver counts before it filters senders, so with "From:" set its count says
     // nothing: show what has loaded, and a "+" while pages remain.
     if (morePages && this.sender()) {
-      return `${loaded}+ results`;
+      // Nothing kept yet is not "0+": the empty state says to load more instead.
+      return loaded ? `${loaded}+ results` : '';
     }
     // Otherwise its count is approximate; once every page is in, count the hits.
     const count = morePages ? Math.max(this.serverCount(), loaded) : loaded;
     return `${count} ${count === 1 ? 'result' : 'results'}`;
   });
+
+  /** The settled {@link resultCount}, for the live region; equal text announces nothing. */
+  protected readonly countAnnouncement = signal('');
 
   /** The results by when they were sent: today, yesterday, the last week, then by month. */
   protected readonly groups = computed<readonly ResultGroup<MessageHit>[]>(() =>
@@ -281,6 +300,12 @@ export class MessageSearchComponent {
     }
     if (this.scope() === 'all-rooms' && !this.serverMode()) {
       return null;
+    }
+    if (this.serverMode() && this.serverNextBatch()) {
+      return {
+        title: 'No matches yet',
+        body: 'None of the messages searched so far match. Load more to search older ones.',
+      };
     }
     return {
       title: 'No results',
@@ -330,7 +355,13 @@ export class MessageSearchComponent {
 
   setSender(sender: SenderFilter | null): void {
     this.sender.set(sender);
+    this.closePicker();
+  }
+
+  /** Close the From picker and put focus back on the chip that opened it. */
+  closePicker(): void {
     this.pickingSender.set(false);
+    this.senderChip()?.nativeElement.focus();
   }
 
   /** A result's time: the clock for today and yesterday, the weekday within a week. */

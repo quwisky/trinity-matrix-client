@@ -30,6 +30,23 @@ describe('search result days', () => {
     expect(resultDayLabel(at(2026, 10, 1, 1), after, month)).toBe('Yesterday');
   });
 
+  it('gives each label one group, newest first, when hits arrive out of order', () => {
+    // Server search orders by rank, so one day's hits can come apart.
+    const groups = groupResultsByDay(
+      [
+        { id: 'a', ts: at(2026, 10, 8, 7) },
+        { id: 'b', ts: at(2026, 10, 4) },
+        { id: 'c', ts: at(2026, 10, 8, 8) },
+      ],
+      now,
+      month,
+    );
+    expect(groups.map((g) => [g.label, g.hits.map((h) => h.id)])).toEqual([
+      ['Today', ['c', 'a']],
+      ['Last week', ['b']],
+    ]);
+  });
+
   it('groups consecutive hits that share a label', () => {
     const groups = groupResultsByDay(
       [

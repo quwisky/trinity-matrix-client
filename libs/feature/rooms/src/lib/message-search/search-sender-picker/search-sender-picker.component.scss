@@ -21,6 +21,10 @@
 
     min-height: max(32px, var(--trinity-interaction-target-min-size));
     font-size: var(--trinity-panel-row-size);
+
+    &[aria-pressed='true'] {
+      @include panel-row-selected;
+    }
   }
 
   .picker__more {

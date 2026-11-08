@@ -105,7 +105,7 @@
                   [initial]="row.member.roomInitial"
                   [name]="row.member.roomDisplayName"
                   size="lg"
-                  [presence]="section.key === 'offline' ? null : row.presence"
+                  [presence]="row.presence === 'offline' ? null : row.presence"
                 />
                 <span class="member__body">
                   <span

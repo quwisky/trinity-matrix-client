@@ -77,14 +77,6 @@ function usable(
   return accepted.length ? accepted : undefined;
 }
 
-/**
- * Every rendered timestamp goes through here: clock style (12/24-hour) and date order,
- * persisted per device in Capacitor `Preferences` (non-secret).
- *
- * Components call these methods from templates instead of a pipe: a pure pipe caches on its
- * input, never re-reads the preference signal, and can lose its dependency link, leaving the
- * view deaf to the setting. A template method re-registers the dependency every pass.
- */
 const YEAR_SECONDS = 365 * 86_400;
 
 /** Each relative unit, its size in seconds, and where the next, larger unit takes over. */
@@ -100,6 +92,14 @@ const RELATIVE_UNITS: readonly (readonly [
   ['month', 30 * 86_400, YEAR_SECONDS],
 ];
 
+/**
+ * Every rendered timestamp goes through here: clock style (12/24-hour) and date order,
+ * persisted per device in Capacitor `Preferences` (non-secret).
+ *
+ * Components call these methods from templates instead of a pipe: a pure pipe caches on its
+ * input, never re-reads the preference signal, and can lose its dependency link, leaving the
+ * view deaf to the setting. A template method re-registers the dependency every pass.
+ */
 @Injectable({ providedIn: 'root' })
 export class DateTimeFormatService {
   private readonly _timeFormat = signal<TimeFormat>(DEFAULT_TIME_FORMAT);
@@ -198,11 +198,15 @@ export class DateTimeFormatService {
     );
     const seconds = Math.round((ts - now) / 1000);
     const past = Math.abs(seconds);
+    // Rounded as a magnitude: Math.round(-59.5) is -59.
+    const sign = seconds < 0 ? -1 : 1;
     if (past < 45) return format.format(0, 'second');
+    // Round first, then check the unit still fits: 59.5 minutes is "1 hr.", not "60 min.".
     for (const [unit, size, next] of RELATIVE_UNITS) {
-      if (past < next) return format.format(Math.round(seconds / size), unit);
+      const count = Math.round(past / size);
+      if (count * size < next) return format.format(sign * count, unit);
     }
-    return format.format(Math.round(seconds / YEAR_SECONDS), 'year');
+    return format.format(sign * Math.round(past / YEAR_SECONDS), 'year');
   }
 
   /** The short weekday, as "Wed", in the reader's language. */

@@ -1,7 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
+  afterNextRender,
   computed,
+  inject,
   input,
   output,
   signal,
@@ -28,9 +31,16 @@ const MAX_OPTIONS = 20;
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './search-sender-picker.component.html',
   styleUrl: './search-sender-picker.component.scss',
+  host: {
+    '(keydown)': 'onKeyDown($event)',
+  },
 })
 export class SearchSenderPickerComponent {
+  private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
+
   readonly members = input.required<readonly MemberSummary[]>();
+  /** The user id the search is narrowed to now; null for anyone. */
+  readonly selected = input<string | null>(null);
   readonly picked = output<SenderFilter | null>();
   readonly dismissed = output<void>();
 
@@ -57,6 +67,44 @@ export class SearchSenderPickerComponent {
     const left = this.matching().length - MAX_OPTIONS;
     return left > 0 ? left.toLocaleString() : null;
   });
+
+  constructor() {
+    afterNextRender(() =>
+      this.host.nativeElement.querySelector<HTMLElement>('input')?.focus(),
+    );
+  }
+
+  /** The field and the options form one list: arrows, Home and End move along it. */
+  protected onKeyDown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      event.stopPropagation();
+      this.dismissed.emit();
+      return;
+    }
+    const stops = [
+      ...this.host.nativeElement.querySelectorAll<HTMLElement>(
+        'input, .picker__option',
+      ),
+    ];
+    const at = stops.indexOf(event.target as HTMLElement);
+    const last = stops.length - 1;
+    const onField = at === 0;
+    const next =
+      event.key === 'ArrowDown'
+        ? Math.min(at + 1, last)
+        : event.key === 'ArrowUp'
+          ? Math.max(at - 1, 0)
+          : event.key === 'Home' && !onField
+            ? 1
+            : event.key === 'End' && !onField
+              ? last
+              : null;
+    if (at < 0 || next === null) {
+      return;
+    }
+    event.preventDefault();
+    stops[next].focus();
+  }
 
   protected pick(member: MemberSummary): void {
     this.picked.emit({ id: member.userId, name: member.roomDisplayName });

@@ -43,18 +43,17 @@ export class ServerSearch {
     private readonly onEncrypted: () => void,
   ) {}
 
-  /** Search from the first page. */
+  /** Search from the first page. The instant results stay up until the homeserver answers. */
   run(term: string, filter: MessageSearchFilter): void {
     if (!term) return;
     this.cancel();
     this.last = { term, filter, more: false };
-    this.active.set(true);
     this.inFlight = this.request(term, undefined, filter).subscribe((page) => {
       if (page.encrypted) {
         this.onEncrypted();
-        this.active.set(false);
         return;
       }
+      this.active.set(true);
       this.hits.set(page.hits);
       this.count.set(page.count);
       this.nextBatch.set(page.nextBatch);

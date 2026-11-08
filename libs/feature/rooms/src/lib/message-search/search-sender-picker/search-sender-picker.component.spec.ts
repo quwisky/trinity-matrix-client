@@ -1,3 +1,4 @@
+import { TestBed } from '@angular/core/testing';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { describe, expect, it } from 'vitest';
@@ -9,13 +10,20 @@ const person = (i: number): MemberSummary =>
     roomDisplayName: i % 2 ? `Odd ${i}` : `Even ${i}`,
   }) as MemberSummary;
 
-async function build(count: number) {
+async function build(count: number, selected: string | null = null) {
   const picked: ({ id: string; name: string } | null)[] = [];
+  let dismissed = 0;
   const result = await render(SearchSenderPickerComponent, {
-    inputs: { members: Array.from({ length: count }, (_, i) => person(i)) },
-    on: { picked: (v: { id: string; name: string } | null) => picked.push(v) },
+    inputs: {
+      members: Array.from({ length: count }, (_, i) => person(i)),
+      selected,
+    },
+    on: {
+      picked: (v: { id: string; name: string } | null) => picked.push(v),
+      dismissed: () => dismissed++,
+    },
   });
-  return { ...result, picked };
+  return { ...result, picked, dismissed: () => dismissed };
 }
 
 const options = (container: HTMLElement) =>
@@ -54,6 +62,61 @@ describe('SearchSenderPickerComponent', () => {
     fireEvent.input(field, { target: { value: '@p4:hs' } });
     fixture.detectChanges();
     expect(options(container)).toEqual(['Even 4']);
+  });
+
+  it('announces how many more there are as a polite status', async () => {
+    const { container } = await build(10_000);
+    const more = container.querySelector('[data-testid="search-sender-more"]');
+    expect(more?.getAttribute('role')).toBe('status');
+  });
+
+  it('takes focus when it opens', async () => {
+    await build(3);
+    TestBed.tick();
+    expect(document.activeElement).toBe(
+      screen.getByRole('searchbox', { name: 'Find a person' }),
+    );
+  });
+
+  it('moves between the field and the options with the arrow keys', async () => {
+    await build(3);
+    const field = screen.getByRole('searchbox', { name: 'Find a person' });
+    field.focus();
+    fireEvent.keyDown(field, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Anyone' }),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement?.textContent?.trim()).toBe('Even 0');
+    fireEvent.keyDown(document.activeElement!, { key: 'End' });
+    expect(document.activeElement?.textContent?.trim()).toBe('Even 2');
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    expect(document.activeElement?.textContent?.trim()).toBe('Even 2');
+    fireEvent.keyDown(document.activeElement!, { key: 'Home' });
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('closes on Escape from an option too', async () => {
+    const { dismissed } = await build(3);
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Anyone' }), {
+      key: 'Escape',
+    });
+    expect(dismissed()).toBe(1);
+  });
+
+  it('marks the person the search is narrowed to', async () => {
+    await build(3, '@p1:hs');
+    expect(
+      screen
+        .getByRole('button', { name: 'Odd 1' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      screen
+        .getByRole('button', { name: 'Anyone' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
   });
 
   it('picks a person, or anyone', async () => {

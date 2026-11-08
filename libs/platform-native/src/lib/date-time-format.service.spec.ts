@@ -201,6 +201,7 @@ describe('DateTimeFormatService', () => {
       );
       expect(svc.relative(ago(10_000), NOW)).toBe('now');
       expect(svc.relative(ago(2 * MIN), NOW)).toBe('2 min. ago');
+      expect(svc.relative(ago(59.5 * MIN), NOW)).toBe('1 hr. ago');
       expect(svc.relative(ago(3 * 60 * MIN), NOW)).toBe('3 hr. ago');
       expect(svc.relative(ago(1 * DAY), NOW)).toBe('yesterday');
       expect(svc.relative(ago(3 * DAY), NOW)).toBe('3 days ago');

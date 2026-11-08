@@ -34,23 +34,26 @@ export function resultDayLabel(
   return month(ts, new Date(ts).getFullYear() !== new Date(now).getFullYear());
 }
 
-/** Runs of consecutive hits that share a day label; the hits arrive newest first. */
+/**
+ * One group per day label, newest first. Sorted here because server search orders by rank,
+ * which can split one day's hits around another's.
+ */
 export function groupResultsByDay<T extends { readonly ts: number }>(
   hits: readonly T[],
   now: number,
   month: MonthLabel,
 ): ResultGroup<T>[] {
-  const groups: { label: string; hits: T[] }[] = [];
-  for (const hit of hits) {
+  const groups = new Map<string, T[]>();
+  for (const hit of [...hits].sort((a, b) => b.ts - a.ts)) {
     const label = resultDayLabel(hit.ts, now, month);
-    const last = groups.at(-1);
-    if (last?.label === label) {
-      last.hits.push(hit);
+    const group = groups.get(label);
+    if (group) {
+      group.push(hit);
     } else {
-      groups.push({ label, hits: [hit] });
+      groups.set(label, [hit]);
     }
   }
-  return groups;
+  return [...groups].map(([label, hits]) => ({ label, hits }));
 }
 
 /** Whether a result's time reads as a clock (today, yesterday) or a weekday (the week before). */
