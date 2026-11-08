@@ -29,7 +29,10 @@ import {
 } from '@trinity/util/matrix';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ImagePackEditorService } from '@trinity/data-access/media';
-import { DraftStoreService } from '@trinity/platform-native';
+import {
+  DraftStoreService,
+  type PendingMessage,
+} from '@trinity/platform-native';
 import {
   type ConversationTextSendOperation,
   type ConversationTextSendRequest,
@@ -66,7 +69,14 @@ class MatrixConversationTextSender implements ConversationTextSender {
     // A new message is kept by its txn id from the moment it leaves the draft; an edit's text
     // belongs to the message it changes.
     const held = request.intent.kind !== 'edit';
-    if (held) this.drafts.holdWaiting(draftKey, txnId, { body: request.body });
+    const kept: PendingMessage = {
+      body: request.body,
+      mentions: [...request.mentions],
+      ...(request.intent.kind === 'reply' && {
+        replyTo: request.intent.eventId,
+      }),
+    };
+    if (held) this.drafts.holdWaiting(draftKey, txnId, kept);
     let fetchingTarget = false;
     let settled = false;
     const outcome = this.replyTarget(client, room, request, (fetching) => {
@@ -85,7 +95,7 @@ class MatrixConversationTextSender implements ConversationTextSender {
         const echo = room.getEventForTxnId(txnId);
         if (echo) {
           holdUntilSettled(this.drafts, draftKey, echo, {
-            body: request.body,
+            ...kept,
             content: content as Record<string, unknown>,
           });
         }
@@ -165,11 +175,18 @@ class MatrixConversationTextSender implements ConversationTextSender {
         this.drafts.releaseWaiting(draftKey, txnId);
         continue;
       }
-      // shortcut: a message held before its reply target loaded comes back as a plain message.
+      // Held before it was built: rebuilt as sent, a reply without the quote of its target.
       const content =
         held.content ??
         this.content(
-          { key, body: held.body, mentions: [], intent: { kind: 'message' } },
+          {
+            key,
+            body: held.body,
+            mentions: held.mentions ?? [],
+            intent: held.replyTo
+              ? { kind: 'reply', eventId: held.replyTo }
+              : { kind: 'message' },
+          },
           room,
           undefined,
         );

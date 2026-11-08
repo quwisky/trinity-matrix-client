@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { ErrorHandler, signal } from '@angular/core';
+import { ErrorHandler, signal, type WritableSignal } from '@angular/core';
 import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -93,7 +93,7 @@ function timeline(
     rawEvent: () => null,
     roomVia: () => [],
     reactionDetails: () => [],
-    loadState: signal<TimelineLoadState>({ kind: 'ready' }).asReadonly(),
+    loadState: signal<TimelineLoadState>({ kind: 'ready' }),
     retryLoad: vi.fn(),
     setLiveView: vi.fn(),
   };
@@ -1789,18 +1789,115 @@ describe('ConversationRuntime', () => {
     expect(sender.send).toHaveBeenCalledOnce();
   });
 
-  it('asks the sender to show held messages again when it opens a conversation', () => {
-    const sender: ConversationTextSender = {
-      send: vi.fn(),
-      restore: vi.fn(),
-    };
-    const { runtime } = setup(2, sender);
-    const key = { accountId: ALICE, roomId: '!room:example.org' };
+  describe('taking a failed message back to the composer', () => {
+    const KEY = { accountId: ALICE, roomId: '!room:example.org' };
+    const ID = '~!room:example.org:txn-1';
 
-    runtime.focus(key);
-    runtime.focus(key);
+    it('cancels it and puts its text and reply in front of the draft, letting its hold go', async () => {
+      const { runtime, drafts, messageAdapter } = setup();
+      const handle = runtime.focus(KEY);
+      drafts.holdWaiting(conversationDraftKey(KEY), 'txn-1', {
+        body: 'refused',
+        replyTo: '$target',
+      });
+      handle.compose.setDraft('typed since');
 
-    expect(sender.restore).toHaveBeenCalledExactlyOnceWith(key);
+      await expect(
+        firstValueFrom(handle.messages.toComposer(ID)),
+      ).resolves.toEqual({ kind: 'applied', operation: 'cancel' });
+
+      expect(messageAdapter.cancel).toHaveBeenCalledWith({
+        key: KEY,
+        messageId: ID,
+      });
+      expect(handle.compose.draft()).toBe('refused\n\ntyped since');
+      expect(handle.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
+      expect(drafts.pendingMessages(conversationDraftKey(KEY)).size).toBe(0);
+    });
+
+    it('leaves the draft and the hold alone when the cancel is refused', async () => {
+      const { runtime, drafts, messageAdapter } = setup();
+      const handle = runtime.focus(KEY);
+      drafts.holdWaiting(conversationDraftKey(KEY), 'txn-1', {
+        body: 'refused',
+      });
+      vi.mocked(messageAdapter.cancel).mockReturnValueOnce(
+        of({
+          kind: 'rejected',
+          operation: 'cancel',
+          failure: 'event-not-retryable',
+          retryable: false,
+        }),
+      );
+
+      await firstValueFrom(handle.messages.toComposer(ID));
+
+      expect(handle.compose.draft()).toBe('');
+      expect(drafts.pendingMessages(conversationDraftKey(KEY)).size).toBe(1);
+    });
+
+    it('refuses a message it holds no text for', async () => {
+      const { runtime, messageAdapter } = setup();
+      const handle = runtime.focus(KEY);
+
+      await expect(
+        firstValueFrom(handle.messages.toComposer(ID)),
+      ).resolves.toMatchObject({
+        kind: 'rejected',
+        failure: 'message-unavailable',
+      });
+      expect(messageAdapter.cancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('showing held messages again', () => {
+    const KEY = { accountId: ALICE, roomId: '!room:example.org' };
+    function restoring() {
+      const restore = vi.fn();
+      const sender: ConversationTextSender = { send: vi.fn(), restore };
+      return { restore, ...setup(2, sender) };
+    }
+
+    it('asks the sender when it opens a conversation', () => {
+      const { runtime, restore } = restoring();
+
+      runtime.focus(KEY);
+
+      expect(restore).toHaveBeenCalledWith(KEY);
+    });
+
+    it('asks again once a room that was still loading has opened', () => {
+      const { runtime, restore, controller } = restoring();
+      runtime.focus(KEY);
+      const loadState = controller(KEY.roomId).timeline
+        .loadState as WritableSignal<TimelineLoadState>;
+      loadState.set({
+        kind: 'loading',
+        reason: 'room-pending',
+        partial: false,
+      });
+      TestBed.tick();
+      restore.mockClear();
+
+      loadState.set({ kind: 'ready' });
+      TestBed.tick();
+
+      expect(restore).toHaveBeenCalledWith(KEY);
+    });
+
+    it('asks again each time a retained conversation is focused', () => {
+      const { runtime, restore } = restoring();
+      runtime.focus(KEY);
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+      restore.mockClear();
+
+      runtime.focus(KEY);
+
+      expect(restore).toHaveBeenCalledWith(KEY);
+    });
   });
 
   it('leaves a newer edit alone when an older one is refused', () => {

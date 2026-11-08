@@ -38,6 +38,8 @@ export interface ConversationMessages {
   redact(messageId: string): Observable<ConversationMessageOutcome>;
   retry(messageId: string): Observable<ConversationMessageOutcome>;
   cancel(messageId: string): Observable<ConversationMessageOutcome>;
+  /** Cancel a failed message and put its text, and the reply it made, back into the draft. */
+  toComposer(messageId: string): Observable<ConversationMessageOutcome>;
   acknowledge(messageId: string): Observable<ConversationMessageOutcome>;
 }
 

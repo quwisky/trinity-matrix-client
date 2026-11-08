@@ -11,7 +11,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { EMPTY, Observable, defer, of } from 'rxjs';
+import { EMPTY, Observable, defer, of, tap } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   MediaPipeline,
@@ -153,6 +153,15 @@ export class ConversationRuntime {
       this.matrix.accountIds();
       untracked(() => this.retireDetached());
     });
+    // A room can open after its handle: a reload without a sync cache, a link before the first
+    // sync. Held messages show once it is there; restoring twice adds nothing.
+    effect(() => {
+      const handle = this.focusedHandle();
+      const kind = handle?.timeline.loadState().kind;
+      if (handle && (kind === 'ready' || kind === 'empty')) {
+        untracked(() => this.textSender.restore?.(handle.key));
+      }
+    });
   }
 
   readonly focused = this.focusedHandle.asReadonly();
@@ -228,6 +237,7 @@ export class ConversationRuntime {
     // The list reports only changes, and showing the same room again may change nothing.
     entry.handle.timeline.setLiveView(this.listView);
     this.focusedHandle.set(entry.handle);
+    this.textSender.restore?.(entry.handle.key);
     return entry.handle;
   }
 
@@ -495,6 +505,36 @@ export class ConversationRuntime {
             ? this.messageAdapter.cancel({ key: immutableKey, messageId })
             : of(rejected('cancel', 'conversation-unavailable')),
         ),
+      toComposer: (messageId: string) =>
+        defer(() => {
+          if (state() !== 'focused') {
+            return of(rejected('cancel', 'conversation-unavailable'));
+          }
+          const echoPrefix = `~${immutableKey.roomId}:`;
+          const txnId = messageId.startsWith(echoPrefix)
+            ? messageId.slice(echoPrefix.length)
+            : null;
+          const held =
+            txnId && this.drafts.pendingMessages(draftKey).get(txnId);
+          if (!txnId || !held) {
+            return of(rejected('cancel', 'message-unavailable'));
+          }
+          return this.messageAdapter
+            .cancel({ key: immutableKey, messageId })
+            .pipe(
+              tap((outcome) => {
+                if (outcome.kind !== 'applied') return;
+                this.drafts.releaseWaiting(draftKey, txnId);
+                composeController.putBack(held.body);
+                if (
+                  held.replyTo &&
+                  composeController.compose.intent().kind === 'message'
+                ) {
+                  composeController.beginReply(held.replyTo);
+                }
+              }),
+            );
+        }),
       acknowledge: (messageId: string) =>
         defer(() =>
           state() === 'focused'
@@ -575,7 +615,6 @@ export class ConversationRuntime {
     const account = this.entries.get(key.accountId) ?? new Map();
     account.set(key.roomId, entry);
     this.entries.set(key.accountId, account);
-    this.textSender.restore?.(immutableKey);
     return entry;
   }
 
@@ -808,6 +847,12 @@ export class ConversationRuntime {
         defer(
           () =>
             focused()?.messages.cancel(messageId) ?? of(unavailable('cancel')),
+        ),
+      toComposer: (messageId) =>
+        defer(
+          () =>
+            focused()?.messages.toComposer(messageId) ??
+            of(unavailable('cancel')),
         ),
       acknowledge: (messageId) =>
         defer(

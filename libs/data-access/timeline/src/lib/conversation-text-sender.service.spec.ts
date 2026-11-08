@@ -198,7 +198,10 @@ describe('MatrixConversationTextSender', () => {
     expect(drafts.holdWaiting).toHaveBeenLastCalledWith(
       conversationDraftKey(KEY),
       'txn-1',
-      { body: 'hello', content: expect.objectContaining({ body: 'hello' }) },
+      expect.objectContaining({
+        body: 'hello',
+        content: expect.objectContaining({ body: 'hello' }),
+      }),
     );
     expect(drafts.releaseWaiting).not.toHaveBeenCalled();
   });
@@ -736,5 +739,58 @@ describe('a sent message, kept by its txn id until the homeserver has it', () =>
     expect(bob.room.addPendingEvent).not.toHaveBeenCalled();
     expect(held(store, BOB)).toEqual([]);
     expect(held(store)).toEqual(['txn-1']);
+  });
+
+  it('keeps the reply target and mentions from the moment it sends', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    const mentions = [{ userId: '@bob:hs', display: '@Bob' }];
+
+    void firstValueFrom(
+      sender.send({
+        key: KEY,
+        body: 'reply @Bob',
+        mentions,
+        intent: { kind: 'reply', eventId: '$target' },
+      }).outcome,
+    );
+
+    expect(
+      store.pendingMessages(conversationDraftKey(KEY)).get('txn-1'),
+    ).toMatchObject({ body: 'reply @Bob', replyTo: '$target', mentions });
+  });
+
+  it('rebuilds a reply held before it was built as a reply, with its mentions', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    store.holdWaiting(conversationDraftKey(KEY), 'txn-9', {
+      body: 'reply @Bob',
+      replyTo: '$target',
+      mentions: [{ userId: '@bob:hs', display: '@Bob' }],
+    });
+
+    sender.restore?.(KEY);
+
+    const [echo] = sdk.room.addPendingEvent.mock.calls[0];
+    expect(echo.getContent()['m.relates_to']).toEqual({
+      'm.in_reply_to': { event_id: '$target' },
+    });
+    expect(echo.getContent()['m.mentions']).toEqual({
+      user_ids: ['@bob:hs'],
+    });
+  });
+
+  it('shows a held message once its room arrives, after a restore that found no room', async () => {
+    const sdk = sdkRoom(KEY.accountId);
+    const { sender, store } = await setup({ [KEY.accountId]: sdk });
+    store.holdWaiting(conversationDraftKey(KEY), 'txn-9', { body: 'kept' });
+    const getRoom = vi.spyOn(sdk.client, 'getRoom');
+    getRoom.mockReturnValueOnce(null as never);
+
+    sender.restore?.(KEY);
+    expect(sdk.room.addPendingEvent).not.toHaveBeenCalled();
+    sender.restore?.(KEY);
+
+    expect(sdk.room.addPendingEvent).toHaveBeenCalledOnce();
   });
 });
