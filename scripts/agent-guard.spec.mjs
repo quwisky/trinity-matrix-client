@@ -210,6 +210,9 @@ describe('agent-guard PreToolUse hook', () => {
     'timeout 60 gh pr merge 5',
     '\\gh pr merge 5',
     '/usr/bin/gh pr merge 5',
+    '$HOME/bin/gh pr merge 5',
+    '"$HOME"/bin/gh pr merge 5',
+    '${HOME}/bin/gh pr merge 5',
     'sh -c "sh -c \\"gh pr merge 5\\""',
     'gh pr -R o/r merge 5',
   ])('finds gh behind a command prefix: %s', (command) => {
@@ -255,6 +258,17 @@ describe('agent-guard PreToolUse hook', () => {
     const start = performance.now();
     check({ cwd: repo, tool_name: 'Bash', tool_input: { command } });
     expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it('refuses a push of more refs than it can check, without calling gh for each', () => {
+    const start = performance.now();
+    const reason = check({
+      cwd: repo,
+      tool_name: 'Bash',
+      tool_input: { command: `git push origin ${'b '.repeat(10_000)}` },
+    });
+    expect(performance.now() - start).toBeLessThan(100);
+    expect(reason).toMatch(/at most 20 refs/);
   });
 
   it('still sees gh after an escaped quote', () => {

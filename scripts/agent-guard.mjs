@@ -109,7 +109,7 @@ function checkoutBusy(command, dir) {
 const AT_COMMAND = String.raw`(?:^|[;&|(\n\`]\s*)(?:(?:\w+=\S*|[{!]|(?:command|do|elif|else|env|eval|exec|if|nice|nohup|sudo|then|time|timeout|until|while|xargs)\b(?:\s+(?:-|\d)\S*)*)\s+)*`;
 
 /** `gh` itself, also written `\gh` or as a path. */
-const GH_WORD = String.raw`${AT_COMMAND}(?:\\|(?:[\w.~-]*/)+)?gh`;
+const GH_WORD = String.raw`${AT_COMMAND}(?:\\|(?:[\w.~$"{}-]*/)+)?gh`;
 
 /** Repository flags, which gh accepts before and after `pr`. */
 const REPO = String.raw`((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)`;
@@ -212,6 +212,9 @@ function readyPullRequestPush(command, dir) {
   const refs = words(push[1])
     .filter((arg) => !arg.startsWith('-'))
     .slice(1);
+  // Each ref costs a gh call, so a long list is refused rather than half checked.
+  if (refs.length > 20)
+    return 'Push at most 20 refs at a time, so each can be checked for a pull request marked ready (.agents/rules/git/draft-pull-requests.md).';
   const branches = (refs.length ? refs : ['HEAD']).map((ref) => {
     const target = ref
       .replace(/^\+/, '')
