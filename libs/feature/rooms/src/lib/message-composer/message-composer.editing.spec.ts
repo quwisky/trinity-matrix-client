@@ -4,7 +4,7 @@ import {
   stubObjectUrls,
 } from './message-composer.spec-harness';
 import { TestBed } from '@angular/core/testing';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DraftStoreService } from '@trinity/platform-native';
 import { ConversationRuntime } from '@trinity/data-access/timeline';
 import { ConversationComposeStub } from '../testing/conversation-timeline.stub';
@@ -177,6 +177,37 @@ describe('MessageComposerComponent — the field, edit mode and drafts', () => {
 
     expect(cmp.text()).toBe('a😀b');
     expect(cmp.pickerOpen()).toBe(false);
+  });
+
+  it('inserts a picked emoji as an edit the browser can undo', async () => {
+    const { fixture, container } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+    );
+    const execCommand = vi.fn(
+      (_command: string, _ui: boolean, insert: string) => {
+        ta.setRangeText(insert);
+        return true;
+      },
+    );
+    Object.assign(document, { execCommand });
+
+    try {
+      cmp.text.set('ab');
+      fixture.detectChanges();
+      ta.selectionStart = ta.selectionEnd = 1;
+
+      cmp.insertEmoji('😀');
+
+      expect(execCommand).toHaveBeenCalledWith('insertText', false, '😀');
+      expect(ta.value).toBe('a😀b');
+      expect(cmp.text()).toBe('a😀b');
+    } finally {
+      vi.restoreAllMocks();
+      Reflect.deleteProperty(document, 'execCommand');
+    }
   });
 
   it('shows a reply banner and cancels the reply on Escape', async () => {
