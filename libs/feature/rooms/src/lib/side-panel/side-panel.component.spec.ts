@@ -95,6 +95,10 @@ describe('SidePanelComponent', () => {
       '[data-testid="side-panel-loading-status"]',
     )!;
     expect(status.getAttribute('role')).toBe('status');
+    // Present but empty first: a live region inserted with its text is often not announced.
+    expect(status.textContent?.trim()).toBe('');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    panel.fixture.detectChanges();
     expect(status.textContent?.trim()).toBe('Loading pins');
     expect(status.closest('[aria-busy="true"]')).toBeNull();
     expect(loading.querySelectorAll('.side-panel__skeleton')).toHaveLength(3);

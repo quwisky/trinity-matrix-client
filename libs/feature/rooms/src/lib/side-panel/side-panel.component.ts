@@ -1,8 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   input,
   output,
+  signal,
 } from '@angular/core';
 import { type TrnIconName } from '@trinity/components/foundations';
 import { SidePanelHeaderComponent } from './side-panel-header.component';
@@ -47,4 +49,22 @@ export class SidePanelComponent {
     [30, 70],
     [45, 60],
   ] as const;
+
+  /**
+   * Fills the status region a beat after it appears: a live region inserted with its text
+   * already in it is often not announced.
+   */
+  protected readonly loadingAnnouncement = signal('');
+
+  constructor() {
+    effect((onCleanup) => {
+      this.loadingAnnouncement.set('');
+      if (!this.loading()) {
+        return;
+      }
+      const label = this.loadingLabel();
+      const timer = setTimeout(() => this.loadingAnnouncement.set(label), 100);
+      onCleanup(() => clearTimeout(timer));
+    });
+  }
 }

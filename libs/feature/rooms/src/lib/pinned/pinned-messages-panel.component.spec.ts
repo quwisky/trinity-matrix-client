@@ -174,10 +174,14 @@ describe('PinnedMessagesPanelComponent', () => {
     )!;
     expect(loading.getAttribute('aria-busy')).toBe('true');
     expect(loading.getAttribute('aria-label')).toBe('Loading pinned messages');
-    expect(
-      container.querySelector('[data-testid="side-panel-loading-status"]')
-        ?.textContent,
-    ).toContain('Loading pinned messages');
+    // The frame fills its status region a beat after inserting it.
+    await expect
+      .poll(
+        () =>
+          container.querySelector('[data-testid="side-panel-loading-status"]')
+            ?.textContent,
+      )
+      .toContain('Loading pinned messages');
     expect(loading.querySelectorAll('.side-panel__skeleton')).toHaveLength(3);
     expect(container.querySelector('[data-testid="pinned-item"]')).toBeNull();
   });
