@@ -786,6 +786,17 @@ describe('TimelineActionsService voice clips', () => {
     expect(uploadMedia).not.toHaveBeenCalled();
   });
 
+  it('sends nothing when the clip could not be encoded', async () => {
+    const { svc, uploadMedia, client } = setupVoice({
+      isEncryptionEnabledInRoom: () => Promise.resolve(false),
+    });
+
+    await firstValueFrom(svc.sendVoiceMessage(Promise.resolve(null)));
+
+    expect(uploadMedia).not.toHaveBeenCalled();
+    expect(client.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('refuses to upload a clip when the crypto store is unavailable', async () => {
     const { svc, uploadMedia, client } = setupVoice(null);
 
