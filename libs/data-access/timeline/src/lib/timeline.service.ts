@@ -33,6 +33,7 @@ import {
   switchMap,
   take,
   tap,
+  timeout,
   type Subscription,
 } from 'rxjs';
 import {
@@ -119,6 +120,12 @@ export type JumpToDateResult =
  * scroll to by hand, and it bounds the worst case at 20 sequential requests.
  */
 const MAX_JUMP_PAGES = 20;
+
+/**
+ * How long a jump waits for paging already running to end: nothing times out a
+ * `/messages` request, so a hung one would otherwise block every jump in the room.
+ */
+export const JUMP_WAIT_MS = 30_000;
 
 /**
  * Map a rejection onto the outcome the UI should describe.
@@ -814,7 +821,8 @@ export class TimelineService {
   /**
    * Page history back until `eventId` is in the live timeline, so a jump to a pinned or
    * searched message that was never loaded has an element to scroll to. Emits whether it
-   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Cold.
+   * is now loaded; bounded by {@link MAX_JUMP_PAGES}, like a date jump. Starts once any
+   * paging already running ends; unsubscribing stops it after the page in flight. Cold.
    */
   loadEvent(eventId: string): Observable<boolean> {
     return defer(() => {
@@ -823,10 +831,22 @@ export class TimelineService {
       const { client, room } = ctx;
       const loaded = (): boolean => room.findEventById(eventId) !== undefined;
       if (loaded()) return of(true);
+      if (this._loadingOlder()) {
+        return this.afterPaging(room, () => this.loadEvent(eventId), {
+          gone: false,
+          timedOut: false,
+        });
+      }
+      let stopped = false;
       this._loadingOlder.set(true);
-      return from(this.pageBackLoop(client, room, loaded)).pipe(
+      return from(
+        this.pageBackLoop(client, room, () => stopped || loaded()),
+      ).pipe(
         tap(() => this.refresh()),
-        finalize(() => this.pagingDone()),
+        finalize(() => {
+          stopped = true;
+          this.pagingDone();
+        }),
       );
     });
   }
@@ -887,7 +907,8 @@ export class TimelineService {
    * message at or after the requested midnight.
    *
    * Paging stops early when the server runs out of history, or a room whose start has been
-   * reached would burn every remaining page on empty requests.
+   * reached would burn every remaining page on empty requests. Starts once any paging
+   * already running ends; unsubscribing stops it after the page in flight.
    */
   private pageBackTo(
     client: MatrixClient,
@@ -896,19 +917,53 @@ export class TimelineService {
     dayStartMs: number,
   ): Observable<JumpToDateResult> {
     const loaded = (): boolean => room.findEventById(eventId) !== undefined;
-    if (loaded()) {
-      return of(this.renderableFrom(dayStartMs));
-    }
-    return defer(() => {
+    return defer((): Observable<JumpToDateResult> => {
+      if (loaded()) {
+        return of(this.renderableFrom(dayStartMs));
+      }
+      if (this._loadingOlder()) {
+        return this.afterPaging(
+          room,
+          () => this.pageBackTo(client, room, eventId, dayStartMs),
+          { gone: { kind: 'too-far' }, timedOut: { kind: 'failed' } },
+        );
+      }
+      let stopped = false;
       this._loadingOlder.set(true);
-      return from(this.pageBackLoop(client, room, loaded));
-    }).pipe(
-      tap(() => this.refresh()),
-      // Reset on success *or* error, as loadOlder does; a stuck flag disables pagination.
-      finalize(() => this.pagingDone()),
-      map((reached): JumpToDateResult =>
-        reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
-      ),
+      return from(
+        this.pageBackLoop(client, room, () => stopped || loaded()),
+      ).pipe(
+        tap(() => this.refresh()),
+        // Reset on success *or* error, as loadOlder does; a stuck flag disables pagination.
+        finalize(() => {
+          stopped = true;
+          this.pagingDone();
+        }),
+        map((reached): JumpToDateResult =>
+          reached ? this.renderableFrom(dayStartMs) : { kind: 'too-far' },
+        ),
+      );
+    });
+  }
+
+  /**
+   * Run `start` once the paging already running ends: `gone` when `room` is no longer the
+   * open, shown room by then, `timedOut` when paging has not ended within
+   * {@link JUMP_WAIT_MS}.
+   */
+  private afterPaging<T>(
+    room: Room,
+    start: () => Observable<T>,
+    outcome: { readonly gone: T; readonly timedOut: T },
+  ): Observable<T> {
+    return this.pagingIdle.pipe(
+      take(1),
+      map(() => true),
+      timeout({ first: JUMP_WAIT_MS, with: () => of(false) }),
+      switchMap((idle) => {
+        if (!idle) return of(outcome.timedOut);
+        return this.openContext()?.room === room ? start() : of(outcome.gone);
+      }),
     );
   }
 
@@ -929,7 +984,6 @@ export class TimelineService {
     loaded: () => boolean,
   ): Promise<boolean> {
     for (let page = 0; page < MAX_JUMP_PAGES; page++) {
-      const before = room.getLiveTimeline().getEvents().length;
       await scrollbackLive(client, room, SCROLLBACK);
       // The user can leave during up to 20 sequential requests, and nothing unsubscribes this
       // (the subscription is tied to the PAGE, not the open room). Without this check the
@@ -941,7 +995,11 @@ export class TimelineService {
       if (loaded()) {
         return true;
       }
-      if (room.getLiveTimeline().getEvents().length === before) {
+      // Not an unchanged event count: a page of thread replies, or one dropped after a gappy
+      // sync, adds nothing to the live timeline while older history remains.
+      if (
+        room.getLiveTimeline().getPaginationToken(Direction.Backward) === null
+      ) {
         return false; // start of the room: no more history to page in
       }
     }
