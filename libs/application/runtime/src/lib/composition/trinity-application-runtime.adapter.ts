@@ -29,6 +29,7 @@ import {
 import {
   AppConfigService,
   DraftStoreService,
+  RetiredDiagnosticLogCleanup,
   SESSION_LOCK_REQUIRED,
   SessionLockService,
   StoragePersistenceService,
@@ -105,6 +106,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly drafts = inject(DraftStoreService);
   private readonly retiredPushGateway = inject(RetiredPushGatewayCleanup);
+  private readonly retiredDiagnosticLog = inject(RetiredDiagnosticLogCleanup);
   private readonly appConfig = inject(AppConfigService);
   private readonly storagePersistence = inject(StoragePersistenceService);
   private readonly accountHealth = inject(AccountStartupHealthService);
@@ -216,6 +218,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
       ),
       // Keys from the retired push gateway setting; never read, deleted before anything runs.
       retiredPushGateway: this.retiredPushGateway.run(),
+      // The retired diagnostic log's database and setting, which may still be on this device.
+      retiredDiagnosticLog: this.retiredDiagnosticLog.run(),
     }).pipe(map(({ preferences }) => preferences));
   }
 

@@ -15,6 +15,7 @@ import { TrnLabel } from '@trinity/components/controls';
 import { TrnTextarea } from '@trinity/components/controls';
 import {
   AppConfigService,
+  BUG_REPORT_CONFIG,
   CONFIG_EXCLUSION_NOTES,
   describeConfigChange,
   type ConfigApplyPlan,
@@ -35,7 +36,7 @@ import {
 import { AdvancedSettingsResetService } from './advanced-settings-reset.service';
 import { ConfigApplyReviewComponent } from './config-apply-review.component';
 import { ConfigResetGroupComponent } from './config-reset-group.component';
-import { DiagnosticsGroupComponent } from './diagnostics-group/diagnostics-group.component';
+import { ReportBugGroupComponent } from './report-bug-group/report-bug-group.component';
 import { defer, filter, throwError } from 'rxjs';
 import {
   TrnSettingsGroupComponent,
@@ -91,7 +92,7 @@ function exportFileName(now: Date): string {
     ConfigEditorOutletDirective,
     ConfigApplyReviewComponent,
     ConfigResetGroupComponent,
-    DiagnosticsGroupComponent,
+    ReportBugGroupComponent,
     TrnButton,
     TrnLabel,
     TrnTextarea,
@@ -119,6 +120,8 @@ export class AdvancedSettingsComponent {
 
   /** What the export leaves out and why — the section's copy, not a hardcoded list. */
   readonly exclusions = CONFIG_EXCLUSION_NOTES;
+  /** Report a problem, only where the build names a repository to file in. */
+  readonly canReportBug = inject(BUG_REPORT_CONFIG).issueRepositoryUrl !== null;
 
   private readonly fileSupport = toSignal(this.files.support(), {
     initialValue: { kind: 'unavailable', reason: 'not-implemented' } as const,

@@ -66,7 +66,7 @@ function accountTimes(accountId: string): IDBKeyRange {
 /**
  * The mention index in IndexedDB: one database for every account, rows keyed by
  * `[accountId, eventId]`. Each operation opens and closes the database, so a wipe's
- * `deleteDatabase` is never blocked (as the diagnostic log's store does).
+ * `deleteDatabase` is never blocked.
  */
 export class IndexedDbMentionStore implements MentionIndexStore {
   constructor(

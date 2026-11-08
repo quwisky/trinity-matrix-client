@@ -7,12 +7,11 @@ import {
 import { preloadCryptoWasm } from '@trinity/util/matrix';
 import { filter, switchMap, take } from 'rxjs';
 import { ApplicationRuntimeService } from '../application-runtime.service';
-import { DiagnosticMarkersBinding } from './diagnostic-markers.binding';
 import { SessionHandoverWorkflow } from './session-handover.workflow';
 
 /**
  * Own Application Runtime's lifetime subscriptions with the Angular application: the session
- * handover, the runtime itself, the diagnostic log's lifecycle markers and the iOS keyboard inset and status bar tap.
+ * handover, the runtime itself and the iOS keyboard inset and status bar tap.
  */
 export function startApplicationRuntime(applicationRef: ApplicationRef): void {
   // Only for a stored account: a failed load sticks for the page's life, so the sign-in
@@ -35,10 +34,6 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
   const runtimeSubscription = runtime
     .run()
     .subscribe({ error: (error: unknown) => errors.handleError(error) });
-  const diagnosticMarkers = applicationRef.injector
-    .get(DiagnosticMarkersBinding)
-    .run()
-    .subscribe({ error: (error: unknown) => errors.handleError(error) });
   const keyboardInset = applicationRef.injector
     .get(NativeKeyboardInsetAdapter)
     .run()
@@ -51,7 +46,6 @@ export function startApplicationRuntime(applicationRef: ApplicationRef): void {
   applicationRef.onDestroy(() => {
     runtime.stop().pipe(take(1)).subscribe();
     runtimeSubscription.unsubscribe();
-    diagnosticMarkers.unsubscribe();
     handover.unsubscribe();
     keyboardInset.unsubscribe();
     statusBarTap.unsubscribe();

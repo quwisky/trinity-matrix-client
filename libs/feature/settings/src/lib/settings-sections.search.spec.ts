@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { matchingSettingsSections } from './settings-sections';
+import {
+  hiddenSettingsParts,
+  matchingSettingsSections,
+} from './settings-sections';
 
 describe('matchingSettingsSections', () => {
   it('returns one section result per section for an empty query', () => {
@@ -31,6 +34,17 @@ describe('matchingSettingsSections', () => {
     expect(
       results.map(({ section, part }) => [section.path, part?.id]),
     ).toEqual([['notifications', 'keywords']]);
+  });
+
+  it('offers Report a problem only where the build names a repository', () => {
+    const found = (issueRepositoryUrl: string | null) =>
+      matchingSettingsSections(
+        'report a problem',
+        hiddenSettingsParts({ issueRepositoryUrl }),
+      ).map(({ part }) => part?.id);
+
+    expect(found('https://github.com/o/r')).toEqual(['report-a-problem']);
+    expect(found(null)).toEqual([]);
   });
 
   it('does not repeat a section as its own part', () => {

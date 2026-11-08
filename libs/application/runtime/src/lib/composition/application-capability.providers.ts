@@ -27,7 +27,6 @@ import {
   QR_SIGN_IN_COMPLETION,
   type AuthenticationHomeserverDiscovery,
 } from '@trinity/data-access/auth';
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import { HomeserverDiscoveryService } from '@trinity/data-access/discovery';
 import { provideGifConfigEntries } from '@trinity/data-access/gif';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
@@ -216,7 +215,6 @@ export function applicationCapabilityProviders(
         const drafts = inject(DraftStoreService);
         const oidc = inject(OidcClientService);
         const nativeTokens = inject(NativeTokenBridge);
-        const diagnosticLog = inject(DiagnosticLogService);
         const preferences = inject(PreferenceStoreService);
         const mentionIndex = inject(MentionIndexService);
         return {
@@ -252,7 +250,6 @@ export function applicationCapabilityProviders(
                 )
               : of(void 0);
           },
-          stopDiagnosticLog: () => diagnosticLog.discard(),
           forgetMentionHistory: (accountId) =>
             mentionIndex.forgetAccount(accountId),
           hasMentionHistory: (accountId, ifUnknown = false) =>
@@ -262,7 +259,6 @@ export function applicationCapabilityProviders(
               catchError(() => of(ifUnknown)),
             ),
           stopMentionIndex: () => mentionIndex.stop(),
-          resumeDiagnosticLog: () => diagnosticLog.resumeAfterReset(),
           releaseSharedCaches: () => {
             avatars.releaseAll();
             media.releaseAll();

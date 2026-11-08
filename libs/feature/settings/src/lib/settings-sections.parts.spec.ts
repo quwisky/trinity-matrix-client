@@ -1,4 +1,3 @@
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   signal,
   type EnvironmentProviders,
@@ -54,6 +53,7 @@ import { TrustDevicesService, TrustService } from '@trinity/data-access/trust';
 import {
   ACCOUNT_DELETION_LAUNCHER,
   AppConfigService,
+  BUG_REPORT_CONFIG,
   BUILD_INFO,
   ExternalBrowserService,
   FeatureFlagsService,
@@ -157,11 +157,6 @@ const SETUPS: Record<string, () => Setup> = {
       MockProvider(WorkspaceApplicationSurfaceService),
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
-      MockProvider(DiagnosticLogService, {
-        available: signal('persistent' as const).asReadonly(),
-        keepLog: signal(true).asReadonly(),
-        settingKnown: signal(true).asReadonly(),
-      }),
       FILE_EXPORT,
       // The App lock group renders on a host that keeps a PIN (every app but the web).
       MockProvider(AppLockService, {
@@ -328,6 +323,10 @@ const SETUPS: Record<string, () => Setup> = {
   advanced: () => ({
     providers: [
       MockProvider(AppConfigService, { exportJson: () => '{"version":1}' }),
+      {
+        provide: BUG_REPORT_CONFIG,
+        useValue: { issueRepositoryUrl: 'https://github.com/o/r' },
+      },
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
       FILE_EXPORT,

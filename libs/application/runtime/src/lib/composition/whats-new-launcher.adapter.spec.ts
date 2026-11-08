@@ -1,7 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnSurfaceService } from '@trinity/components/overlay';
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import {
   WhatsNewService,
   type ReleaseNote,
@@ -39,7 +38,6 @@ function setup(
   const open = vi.fn(() => ({ closed }));
   const markSeen = vi.fn(() => of(true));
   const queue = [...pending];
-  const record = vi.fn();
   const signedIn = signal(true);
   const unlocked = new Subject<void>();
   const unlockedNow = signal(true);
@@ -47,7 +45,6 @@ function setup(
     providers: [
       { provide: WHATS_NEW_DIALOG_COMPONENT, useValue: vi.fn(load) },
       MockProvider(TrnSurfaceService, { open } as never),
-      MockProvider(DiagnosticLogService, { record }),
       MockProvider(AccountRuntimeService, {
         hasActiveAccount: signedIn.asReadonly() as never,
       }),
@@ -69,7 +66,6 @@ function setup(
     signedIn,
     unlockedNow,
     unlocked,
-    record,
     closed,
   };
 }
@@ -169,7 +165,7 @@ describe('WhatsNewLauncherAdapter', () => {
   });
 
   it('swallows a loader failure', () => {
-    const { launcher, open, record } = setup([of(newer)], () =>
+    const { launcher, open } = setup([of(newer)], () =>
       throwError(() => new Error('chunk failed')),
     );
 
@@ -177,6 +173,5 @@ describe('WhatsNewLauncherAdapter', () => {
     TestBed.tick();
 
     expect(open).not.toHaveBeenCalled();
-    expect(record).toHaveBeenCalledOnce();
   });
 });

@@ -18,18 +18,6 @@ export interface AccountLifecyclePort {
   unregisterNotifications(accountId?: string): Observable<void>;
   /** Errors when a token may stay live at the provider, which a reset records as residue. */
   revokeProviderSession(session: MatrixSession): Observable<void>;
-  /**
-   * Stop the on-device diagnostic log for the rest of the session and delete it, ahead of
-   * the installation reset's database wipe, so no pending write recreates it afterwards.
-   * Settles once no write is under way.
-   */
-  stopDiagnosticLog(): Observable<void>;
-  /**
-   * After the installation reset's wipes: start a fresh diagnostic log for the rest of the
-   * session if its setting is back to its default (on), without saving the setting, so an
-   * app that keeps running after the reset logs again as a fresh installation would.
-   */
-  resumeDiagnosticLog(): Observable<void>;
   /** Delete one account's recorded mention history, after its client has stopped. */
   forgetMentionHistory(accountId: string): Observable<void>;
   /**
@@ -54,8 +42,6 @@ const NOOP_ACCOUNT_LIFECYCLE_PORT: AccountLifecyclePort = {
   registerNotifications: () => of(void 0),
   unregisterNotifications: () => of(void 0),
   revokeProviderSession: () => of(void 0),
-  stopDiagnosticLog: () => of(void 0),
-  resumeDiagnosticLog: () => of(void 0),
   forgetMentionHistory: () => of(void 0),
   hasMentionHistory: () => of(false),
   stopMentionIndex: () => of(void 0),

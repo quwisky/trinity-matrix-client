@@ -25,7 +25,11 @@ import {
   type TrnSettingsLayoutSection,
 } from '@trinity/components/overlay';
 import { WorkspaceBackService } from '@trinity/application/workspace';
-import { BUILD_INFO, HapticsService } from '@trinity/platform-native';
+import {
+  BUG_REPORT_CONFIG,
+  BUILD_INFO,
+  HapticsService,
+} from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
 import {
   WhatsNewService,
@@ -36,6 +40,7 @@ import { filter, of } from 'rxjs';
 import { provideConfigEditor } from '../advanced/config-editor-loader';
 import {
   SETTINGS_SECTIONS,
+  hiddenSettingsParts,
   matchingSettingsSections,
   sectionsOfResults,
   type SettingsSearchResult,
@@ -68,6 +73,7 @@ let sheetsOpened = 0;
   styleUrl: './settings-dialog.component.scss',
 })
 export class SettingsDialogComponent {
+  private readonly hiddenParts = hiddenSettingsParts(inject(BUG_REPORT_CONFIG));
   private readonly ref = inject(TrnDialogRef<void>);
   private readonly build = inject(BUILD_INFO);
   private readonly destroyRef = inject(DestroyRef);
@@ -104,7 +110,9 @@ export class SettingsDialogComponent {
    * picking a part again after scrolling away still scrolls; the dialog writes no URL.
    */
   readonly partTarget = linkedSignal<string | null>(() => this.initialPart());
-  readonly results = computed(() => matchingSettingsSections(this.query()));
+  readonly results = computed(() =>
+    matchingSettingsSections(this.query(), this.hiddenParts),
+  );
   readonly layoutSections = computed<readonly TrnSettingsLayoutSection[]>(() =>
     sectionsOfResults(this.results()).map(({ path, label, icon, group }) => ({
       id: path,

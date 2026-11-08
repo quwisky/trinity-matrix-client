@@ -1,3 +1,4 @@
+import type { BugReportConfig } from '@trinity/platform-native';
 import type { Type } from '@angular/core';
 import type { TrnIconName } from '@trinity/components/foundations';
 import { AccountSectionComponent } from './account/account-section.component';
@@ -188,17 +189,25 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDefinition[] = [
         label: 'What this document leaves out',
       },
       { id: 'reset-to-defaults', label: 'Reset to defaults' },
-      { id: 'diagnostics', label: 'Diagnostics' },
+      { id: 'report-a-problem', label: 'Report a problem' },
     ],
   },
 ];
 
+/** The parts a build leaves out: Report a problem, without a repository to file in. */
+export function hiddenSettingsParts(
+  config: BugReportConfig,
+): readonly string[] {
+  return config.issueRepositoryUrl === null ? ['report-a-problem'] : [];
+}
+
 /**
  * Search only directory metadata. A section matches by its label or group; a part matches
- * by its title and follows its section's own result.
+ * by its title and follows its section's own result. `hiddenParts` are never offered.
  */
 export function matchingSettingsSections(
   query: string,
+  hiddenParts: readonly string[] = [],
 ): readonly SettingsSearchResult[] {
   const term = query.trim().toLowerCase();
   const results: SettingsSearchResult[] = [];
@@ -211,7 +220,7 @@ export function matchingSettingsSections(
     }
     for (const part of section.parts) {
       const label = part.label.toLowerCase();
-      if (term && label.includes(term)) {
+      if (term && label.includes(term) && !hiddenParts.includes(part.id)) {
         results.push({ section, part });
       }
     }

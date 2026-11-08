@@ -100,10 +100,7 @@ export class InstallationResetWorkflow {
               ),
               concatMap((records) => {
                 this.clearDrafts(attempt);
-                return this.stopDiagnosticLog().pipe(
-                  concatMap(() => this.stopMentionIndex()),
-                  map(() => records),
-                );
+                return this.stopMentionIndex().pipe(map(() => records));
               }),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
@@ -130,7 +127,6 @@ export class InstallationResetWorkflow {
                 }),
               ),
               concatMap(() => this.wipeServiceWorker(attempt)),
-              concatMap(() => this.resumeDiagnosticLog()),
             ),
         (attempt) => this.terminal(attempt),
         (attempt) => this.unexpected(attempt),
@@ -182,10 +178,6 @@ export class InstallationResetWorkflow {
           }
           if (scopes.has('service-worker')) {
             operations.push(this.wipeServiceWorker(attempt, true));
-          }
-          if (scopes.has('preferences')) {
-            // The retried wipe may have returned the log's setting to its default.
-            operations.push(this.resumeDiagnosticLog());
           }
           return operations.length === 0
             ? of(void 0)
@@ -295,15 +287,6 @@ export class InstallationResetWorkflow {
     }
   }
 
-  /**
-   * Stop the diagnostic log before its database is wiped, or a pending write would recreate
-   * it. Bounded and never an issue of its own: the wipe that follows deletes that database
-   * and reports any residue.
-   */
-  private stopDiagnosticLog(): Observable<void> {
-    return this.bounded(defer(() => this.lifecycle.stopDiagnosticLog()));
-  }
-
   /** Stop recording before the wipe, or a pending write would recreate the store. */
   private stopMentionIndex(): Observable<void> {
     return this.bounded(defer(() => this.lifecycle.stopMentionIndex()));
@@ -313,25 +296,7 @@ export class InstallationResetWorkflow {
     return source.pipe(
       take(1),
       timeout({
-        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
-        with: () => of(void 0),
-      }),
-      catchError(() => of(void 0)),
-      defaultIfEmpty(void 0),
-      map(() => void 0),
-    );
-  }
-
-  /**
-   * Once the wipes are done, start a fresh diagnostic log if its setting is back to its
-   * default. Bounded and never an issue of its own: the log is not installation data, and an
-   * app that restarts reads the setting afresh anyway.
-   */
-  private resumeDiagnosticLog(): Observable<void> {
-    return defer(() => this.lifecycle.resumeDiagnosticLog()).pipe(
-      take(1),
-      timeout({
-        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.diagnosticLogStop,
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.mentionIndexStop,
         with: () => of(void 0),
       }),
       catchError(() => of(void 0)),

@@ -70,7 +70,7 @@ describe('MathsDirective', () => {
 
   beforeEach(() => {
     console$ = [];
-    // Nothing may reach the console (it feeds the diagnostic log) but Angular's notice.
+    // Nothing may reach the console, which must never hold message content, but Angular's notice.
     for (const method of ['log', 'info', 'debug', 'warn', 'error'] as const) {
       vi.spyOn(console, method).mockImplementation((...args: unknown[]) => {
         if (method === 'warn' && String(args[0]).includes(ANGULAR_STRIPPED)) {

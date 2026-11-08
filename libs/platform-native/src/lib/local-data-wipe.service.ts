@@ -6,7 +6,7 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
-import { DIAGNOSTIC_LOG_DB_NAME } from './diagnostic-log-db-name';
+import { RETIRED_DIAGNOSTIC_LOG_DB_NAME } from './retired-diagnostic-log';
 import { MENTION_INDEX_DB_NAME } from './mention-index-db-name';
 import { firstValueFrom } from 'rxjs';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
@@ -112,8 +112,8 @@ export class LocalDataWipeService {
     // Deleting the web wrapping keys alone already makes any surviving encrypted store
     // unreadable.
     names.add(WRAPPING_KEY_DB_NAME);
-    // The on-device diagnostic log keeps the removed accounts' identifiers until export.
-    names.add(DIAGNOSTIC_LOG_DB_NAME);
+    // The retired diagnostic log's database, if startup could not delete it yet.
+    names.add(RETIRED_DIAGNOSTIC_LOG_DB_NAME);
     // The mention index keeps which messages mentioned each removed account.
     names.add(MENTION_INDEX_DB_NAME);
 

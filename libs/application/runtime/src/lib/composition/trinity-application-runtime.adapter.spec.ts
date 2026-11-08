@@ -78,6 +78,7 @@ import {
   MessageGestureSettingsService,
   NativeNavigationService,
   PrivacySettingsService,
+  RetiredDiagnosticLogCleanup,
   SESSION_LOCK_REQUIRED,
   SessionLockService,
   ShellLayoutService,
@@ -368,6 +369,9 @@ describe('TrinityApplicationRuntimeAdapter', () => {
         MockProvider(RetiredPushGatewayCleanup, {
           run: vi.fn(() => of(void 0)),
         }),
+        MockProvider(RetiredDiagnosticLogCleanup, {
+          run: vi.fn(() => of(void 0)),
+        }),
         MockProvider(SpaceRoomOrderService, {
           hydrateKnownAccounts: hydrateOrder,
           knownAccountIds: () => ['@active:example.org'],
@@ -418,6 +422,14 @@ describe('TrinityApplicationRuntimeAdapter', () => {
 
     expect(
       TestBed.inject(RetiredPushGatewayCleanup).run,
+    ).toHaveBeenCalledOnce();
+  });
+
+  it('deletes the retired diagnostic log while hydrating preferences', async () => {
+    await firstValueFrom(adapter.hydratePreferences());
+
+    expect(
+      TestBed.inject(RetiredDiagnosticLogCleanup).run,
     ).toHaveBeenCalledOnce();
   });
 
@@ -1381,6 +1393,7 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
           TrinityApplicationSessionAdapter,
           DraftStoreService,
           RetiredPushGatewayCleanup,
+          RetiredDiagnosticLogCleanup,
           AppConfigService,
           StoragePersistenceService,
           AccountStartupHealthService,

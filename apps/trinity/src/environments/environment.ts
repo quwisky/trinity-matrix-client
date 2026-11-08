@@ -13,8 +13,8 @@ export const environment = {
     gatewayUrl: 'https://push.trinityproject.dev/_matrix/push/v1/notify',
   } as { gatewayUrl: string; appId?: string } | null,
   // The GitHub repository in which Report a bug opens a pre-filled issue, from Settings ›
-  // Advanced, the sign-in screen and System status. A fork sets its own repository, or null
-  // to leave the GitHub step out.
+  // Advanced, the sign-in screen, System status and the desktop title bar. A fork sets its
+  // own repository, or null to hide Report a bug everywhere.
   issueTracker: {
     repositoryUrl: 'https://github.com/quwisky/trinity-matrix-client',
   } as { repositoryUrl: string } | null,

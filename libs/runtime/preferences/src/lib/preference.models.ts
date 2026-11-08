@@ -14,7 +14,6 @@ export type PreferenceOwner =
   | 'application-runtime'
   | 'conversations'
   | 'design-system'
-  | 'diagnostics'
   | 'discovery'
   | 'host'
   | 'identity'

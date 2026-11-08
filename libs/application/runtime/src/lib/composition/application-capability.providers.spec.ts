@@ -5,7 +5,6 @@ import {
   type AccountLifecyclePort,
 } from '@trinity/data-access/accounts';
 import { OidcClientService } from '@trinity/data-access/auth';
-import { DiagnosticLogService } from '@trinity/data-access/diagnostic-log';
 import { AvatarService, MediaService } from '@trinity/data-access/media';
 import {
   MentionIndexService,
@@ -57,7 +56,6 @@ function lifecyclePort(
       MockProvider(DraftStoreService),
       MockProvider(OidcClientService, { revokeTokens }),
       MockProvider(NativeTokenBridge, { revokeStored }),
-      MockProvider(DiagnosticLogService),
       MockProvider(PreferenceStoreService),
       MockProvider(MentionIndexService, mentionIndex),
     ],
