@@ -51,9 +51,9 @@ import {
   type BatchProgress,
 } from '../shared/send-media-batch';
 import { ComposerTextField } from './composer-text-field';
-import { ComposerBatchSender } from './composer-batch-sender';
+import { type KeepCaption, ComposerBatchSender } from './composer-batch-sender';
 import { ComposerAutocompletes } from './composer-autocompletes';
-import { ComposerDrafts } from './composer-drafts';
+import { ComposerDrafts, conversationOf } from './composer-drafts';
 import { ComposerFormatting } from './composer-formatting';
 import { composerPreview } from './composer-preview';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -72,7 +72,9 @@ import {
 import {
   ComposerExpressionTabPreference,
   ConversationRuntime,
+  appendDraft,
 } from '@trinity/data-access/timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 
 /** A room member offered by the @-mention autocomplete; the shape of the `members` input. */
@@ -362,6 +364,7 @@ export class MessageComposerComponent {
   private readonly emojiIndex = inject(TrnEmojiIndex);
 
   private readonly drafts = inject(DraftStoreService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly runtime = inject(ConversationRuntime, { optional: true });
   private readonly managedDraft = computed(() =>
     this.conversationDraft()
@@ -410,6 +413,35 @@ export class MessageComposerComponent {
     this.justSent.set(true);
     this.justSentTimer = setTimeout(() => this.justSent.set(false), 1000);
   }
+  /**
+   * Where a caption goes if its conversation is left before its upload settles. Resolved when
+   * it settles, by Account and Room: the handle open at Send may since have been retired and
+   * replaced, and the Account signed out, its drafts cleared.
+   */
+  private captionDraft(): KeepCaption | null {
+    const roomId = this.roomId();
+    const accountId = this.accountId();
+    if (roomId == null) return null;
+    // A soft-logged-out Account keeps its drafts for the sign-in that restores it.
+    const signedIn = () =>
+      accountId == null ||
+      this.matrix.accountIds().includes(accountId) ||
+      this.matrix.softLoggedOut().includes(accountId);
+    if (!this.conversationDraft()) {
+      return (caption) => {
+        if (signedIn()) {
+          this.drafts.set(
+            roomId,
+            appendDraft(this.drafts.get(roomId), caption),
+          );
+        }
+      };
+    }
+    if (accountId == null) return null;
+    return (caption) => {
+      if (signedIn()) this.runtime?.keepDraft({ accountId, roomId }, caption);
+    };
+  }
   protected openFormatSheet(): void {
     this.formatMenu()?.openMobileSheet();
   }
@@ -439,13 +471,16 @@ export class MessageComposerComponent {
     this.batches = new ComposerBatchSender({
       uploadProgress: this.uploadProgress,
       blocked: this.cannotSend,
-      roomId: this.roomId,
+      editing: this.editing,
+      conversation: computed(() =>
+        conversationOf(this.accountId(), this.roomId()),
+      ),
       text: this.text,
       send: (event) => this.submitMedia.emit(event),
       sendCaption: (event) => this.submitBatchCaption.emit(event),
       removeStaged: (id) => this.attachments.removeStaged(id),
       markFailed: (ids) => this.attachments.markFailed(ids),
-      drafts: this.drafts,
+      captionDraft: () => this.captionDraft(),
       regrow: () => this.field.regrowAfterRender(),
     });
     this.uploadLabel = this.batches.uploadLabel;
@@ -491,6 +526,7 @@ export class MessageComposerComponent {
     // Unassigned on purpose: its effects are its whole lifetime.
     new ComposerDrafts({
       roomId: this.roomId,
+      accountId: this.accountId,
       editing: this.editing,
       editTargetId: this.editTargetId,
       draft: this.draft,

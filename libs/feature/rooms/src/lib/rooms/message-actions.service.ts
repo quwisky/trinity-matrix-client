@@ -9,6 +9,7 @@ import {
   type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
+  withoutSent,
 } from '@trinity/data-access/timeline';
 import { DraftStoreService } from '@trinity/platform-native';
 import { type Mention } from '@trinity/util/matrix';
@@ -315,22 +316,27 @@ export class MessageActionsService {
     body: string,
     failedBefore: ReadonlySet<string>,
   ): void {
-    // The runtime leaves text typed during the send alone; that is not the restored text.
-    if (!handle || handle.compose.draft() !== body) return;
-    const known = this.restored.get(handle) ?? new Map<string, Restored>();
-    const echo = handle.timeline
+    // A send that settles after its handle retired goes back into the newer one for the room.
+    const live = (handle && this.conversations.held(handle.key)) ?? handle;
+    if (!live) return;
+    const intent = live.compose.intent();
+    // Put back in front of text typed or kept since. During an edit `draft()` is the edit's
+    // body and the runtime put it into the message draft, which shows when the edit ends.
+    const draft = live.compose.draft();
+    if (intent.kind !== 'edit' && withoutSent(draft, body) === draft) return;
+    const known = this.restored.get(live) ?? new Map<string, Restored>();
+    const echo = live.timeline
       .messages()
       .filter(
         (m) => m.isOwn && m.status === 'failed' && !failedBefore.has(m.id),
       )
       .at(-1);
     if (!echo) return;
-    const intent = handle.compose.intent();
     known.set(echo.id, {
       text: body,
       replyTo: intent.kind === 'reply' ? intent.eventId : null,
     });
-    this.restored.set(handle, known);
+    this.restored.set(live, known);
   }
 
   onSendSticker(sticker: ImagePackImage): void {
@@ -464,26 +470,32 @@ export class MessageActionsService {
     // it there lets Send post it twice. Edited text is the person's and stays.
     const draftKey = handle && conversationDraftKey(handle.key);
     let cleared = false;
+    const before = compose?.draft() ?? '';
+    const left = restored ? withoutSent(before, restored.text) : before;
     if (
       handle &&
       compose &&
       restored &&
       draftKey &&
       compose.intent().kind !== 'edit' &&
-      compose.draft() === restored.text
+      left !== before
     ) {
       // A reload drops the failed row, and with it the only other copy of the text, so the saved
       // drafts keep it (as for a message waiting offline) while this retry is in flight.
       this.drafts.holdWaiting(draftKey, messageId, restored.text);
-      compose.setDraft('');
-      if (compose.intent().kind === 'reply') compose.cancelIntent();
+      compose.setDraft(left);
+      // Only the reply the failed message had; one started since is the person's.
+      const intent = compose.intent();
+      if (intent.kind === 'reply' && intent.eventId === restored.replyTo) {
+        compose.cancelIntent();
+      }
       cleared = true;
     }
     const undo = () => {
       if (!cleared || !handle || !compose || !restored) return;
       // Text typed meanwhile is the person's; the reply goes back only with the text it belongs to.
-      if (compose.draft() !== '') return;
-      compose.setDraft(restored.text);
+      if (compose.draft() !== left) return;
+      compose.setDraft(before);
       if (restored.replyTo && compose.intent().kind === 'message') {
         handle.messages.beginReply(restored.replyTo);
       }

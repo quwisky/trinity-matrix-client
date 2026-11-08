@@ -8,7 +8,13 @@ import {
   stagedFiles,
   stubObjectUrls,
 } from './message-composer.spec-harness';
+import { signal } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { ConversationRuntime } from '@trinity/data-access/timeline';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { MockProvider } from 'ng-mocks';
+import { DraftStoreService } from '@trinity/platform-native';
 import { type ComposerSubmit } from './message-composer.component';
 import { type BatchItem, type BatchOutcome } from '../shared/send-media-batch';
 
@@ -167,6 +173,132 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(cmp.text()).toBe('here are the photos');
   });
 
+  it('does not keep a single file’s caption as a draft once its file was sent', async () => {
+    const { fixture } = await renderComposer({ roomId: '!a:hs' });
+    const cmp = fixture.componentInstance;
+    const finish: (() => void)[] = [];
+    cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+      finish.push(() =>
+        onOutcomes(items.map((item) => ({ id: item.id, failed: false }))),
+      );
+    });
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('just this one');
+    cmp.submit();
+
+    fixture.componentRef.setInput('roomId', '!b:hs');
+    fixture.detectChanges();
+    finish[0]?.();
+    fixture.componentRef.setInput('roomId', '!a:hs');
+    fixture.detectChanges();
+
+    // It went out inside the media event; a draft would invite sending it twice.
+    expect(cmp.text()).toBe('');
+  });
+
+  describe('a caption left behind in a Conversation-owned draft', () => {
+    const A = { accountId: '@a:hs', roomId: '!r:hs' };
+
+    /** Account A sends one file that will fail, then account B opens the same room. */
+    async function sendThenSwitch() {
+      const accountIds = signal<readonly string[]>(['@a:hs', '@b:hs']);
+      const softLoggedOut = signal<readonly string[]>([]);
+      const kept: [unknown, string][] = [];
+      const runtime = {
+        compose: { draft: signal('') },
+        keepDraft: (key: unknown, text: string) => kept.push([key, text]),
+      };
+      const { fixture } = await renderComposer(
+        { ...A, conversationDraft: true },
+        [
+          { provide: ConversationRuntime, useValue: runtime },
+          MockProvider(MatrixClientService, { accountIds, softLoggedOut }),
+        ],
+      );
+      const cmp = fixture.componentInstance;
+      const finish: (() => void)[] = [];
+      cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+        finish.push(() =>
+          onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+        );
+      });
+      pickFiles(cmp, [png('one.png')]);
+      cmp.text.set('for the room');
+      cmp.submit();
+
+      fixture.componentRef.setInput('accountId', '@b:hs');
+      fixture.detectChanges();
+      return { settle: () => finish[0]?.(), accountIds, softLoggedOut, kept };
+    }
+
+    it('keeps it as the draft of its own account’s conversation', async () => {
+      const { settle, kept } = await sendThenSwitch();
+
+      settle();
+
+      expect(kept).toEqual([[A, 'for the room']]);
+      // Not under the bare room id, which any account opening the room would claim.
+      expect(TestBed.inject(DraftStoreService).get('!r:hs')).toBe('');
+    });
+
+    it('keeps a lost caption in the message draft when an edit began in the same room', async () => {
+      const kept: [unknown, string][] = [];
+      const runtime = {
+        compose: { draft: signal('') },
+        keepDraft: (key: unknown, text: string) => kept.push([key, text]),
+      };
+      const { fixture } = await renderComposer(
+        { ...A, conversationDraft: true },
+        [
+          { provide: ConversationRuntime, useValue: runtime },
+          MockProvider(MatrixClientService, {
+            accountIds: signal(['@a:hs']),
+            softLoggedOut: signal([]),
+          }),
+        ],
+      );
+      const cmp = fixture.componentInstance;
+      const finish: (() => void)[] = [];
+      cmp.submitMedia.subscribe(({ items, onOutcomes }) => {
+        finish.push(() =>
+          onOutcomes(items.map((item) => ({ id: item.id, failed: true }))),
+        );
+      });
+      pickFiles(cmp, [png('one.png')]);
+      cmp.text.set('for the room');
+      cmp.submit();
+
+      fixture.componentRef.setInput('editing', true);
+      fixture.componentRef.setInput('editTargetId', '$m');
+      fixture.componentRef.setInput('draft', 'the edited body');
+      fixture.detectChanges();
+      finish[0]?.();
+
+      expect(kept).toEqual([[A, 'for the room']]);
+      expect(cmp.text()).toBe('the edited body');
+    });
+
+    it('writes nothing back for an account signed out before the upload settled', async () => {
+      const { settle, accountIds, kept } = await sendThenSwitch();
+      accountIds.set(['@b:hs']); // sign-out cleared every draft
+
+      settle();
+
+      expect(kept).toEqual([]);
+    });
+
+    it('keeps it for an account whose session expired, which keeps its drafts', async () => {
+      const { settle, accountIds, softLoggedOut, kept } =
+        await sendThenSwitch();
+      accountIds.set(['@b:hs']);
+      softLoggedOut.set(['@a:hs']);
+
+      settle();
+
+      expect(kept).toEqual([[A, 'for the room']]);
+    });
+  });
+
   it('does not let Escape clear rows the batch is still reporting on', async () => {
     // The rows stay staged until outcomes land, by design. Clearing them mid-flight leaves a
     // failure with nowhere to go, and the host then promises files are "still in the
@@ -286,9 +418,9 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
     expect(cmp.text()).toBe('the only one');
   });
 
-  it('does not clobber something typed while the batch was going out', async () => {
-    // Restoring is for the caption the user lost, not for overwriting the one they are in the
-    // middle of writing — outcomes land long after the box was cleared.
+  it('puts a lost caption back after something typed while the batch was going out', async () => {
+    // Outcomes land long after the box was cleared: neither the lost caption nor what is being
+    // written now may be dropped.
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;
     const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
@@ -302,7 +434,34 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
       { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
     ]);
 
-    expect(cmp.text()).toBe('second thoughts');
+    expect(cmp.text()).toBe('second thoughts\n\nfirst caption');
+  });
+
+  it('keeps a lost caption out of an edit begun while the batch was going out', async () => {
+    const kept: string[] = [];
+    const { fixture } = await renderComposer({ roomId: '!r:hs' });
+    const cmp = fixture.componentInstance;
+    const finish: ((outcomes: readonly BatchOutcome[]) => void)[] = [];
+    cmp.submitMedia.subscribe(({ onOutcomes }) => finish.push(onOutcomes));
+    pickFiles(cmp, [png('one.png')]);
+    cmp.text.set('first caption');
+    cmp.submit();
+
+    fixture.componentRef.setInput('editing', true);
+    fixture.componentRef.setInput('editTargetId', '$m');
+    fixture.componentRef.setInput('draft', 'the edited body');
+    fixture.detectChanges();
+    finish[0]?.([
+      { id: cmp['attachments'].staged()[0]?.id ?? '', failed: true },
+    ]);
+    kept.push(TestBed.inject(DraftStoreService).get('!r:hs'));
+
+    expect(cmp.text()).toBe('the edited body');
+    expect(kept).toEqual(['first caption']); // where the edit's end restores from
+    fixture.componentRef.setInput('editing', false);
+    fixture.componentRef.setInput('editTargetId', null);
+    fixture.detectChanges();
+    expect(cmp.text()).toBe('first caption');
   });
 
   it('carries the caption on a per-row retry', async () => {

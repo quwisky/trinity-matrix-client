@@ -49,6 +49,7 @@ import {
   type ConversationTimelineController,
 } from './conversation-timeline-factory';
 import { conversationDraftKey } from './conversation-draft-key';
+import { appendDraft, putBackDraft, withoutSent } from './draft-text';
 
 export { CONVERSATION_TEXT_SENDER } from './conversation-text-sender.service';
 export type {
@@ -242,6 +243,25 @@ export class ConversationRuntime {
     }
   }
 
+  /**
+   * Add `text` to the Account-and-Room message draft: in the handle holding the room, if one
+   * does, else in the stored draft its next handle reads.
+   */
+  keepDraft(key: ConversationKey, text: string): void {
+    const entry = this.entry(key);
+    if (entry) {
+      entry.composeController.keepMessageDraft(text);
+      return;
+    }
+    const draftKey = conversationDraftKey(key);
+    this.drafts.set(draftKey, appendDraft(this.drafts.get(draftKey), text));
+  }
+
+  /** The focused or retained handle for the room, if one holds it. */
+  held(key: ConversationKey): ConversationHandle | null {
+    return this.entry(key)?.handle ?? null;
+  }
+
   /** Whether the Account has a focused or retained handle for the room. */
   holds(accountId: string, roomId: string): boolean {
     return this.entries.get(accountId)?.has(roomId) ?? false;
@@ -344,6 +364,27 @@ export class ConversationRuntime {
       initialDraft: this.initialDraft(immutableKey, draftKey),
       initialSnapshot: this.composeSnapshots.get(draftKey),
       persistDraft: (draft) => this.drafts.set(draftKey, draft),
+      readDraft: () => this.drafts.get(draftKey),
+      putBackRetired: (failed) => {
+        const live = this.entry(immutableKey);
+        if (live) live.composeController.putBack(failed);
+        else {
+          this.drafts.set(
+            draftKey,
+            putBackDraft(this.drafts.get(draftKey), failed),
+          );
+        }
+      },
+      dropSentRetired: (sent) => {
+        const live = this.entry(immutableKey);
+        if (live) live.composeController.dropSent(sent);
+        else {
+          this.drafts.set(
+            draftKey,
+            withoutSent(this.drafts.get(draftKey), sent),
+          );
+        }
+      },
       persistSnapshot: (snapshot) =>
         this.persistComposeSnapshot(draftKey, snapshot),
       setTyping: (typing) => controller.timeline.setTyping(typing, 'room'),

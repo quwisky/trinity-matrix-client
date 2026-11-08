@@ -45,6 +45,7 @@ import {
 } from '@trinity/data-access/gif';
 import { MediaPipeline, type MediaHints } from '@trinity/data-access/media';
 import { ComposerVoiceRecording } from './composer-voice-recording';
+import { conversationOf } from './composer-drafts';
 import { CreatePollService } from '../poll/create-poll.service';
 import { LocationShareService } from '../location-share/location-share.service';
 import {
@@ -277,7 +278,7 @@ export class ComposerAttachmentsService {
     if (this.captureMode !== 'native' || this.capturing) return;
     this.capturing = true;
     this.captureNotice.set(null);
-    const roomAtStart = this.host.roomId();
+    const conversationAtStart = this.conversation();
     const saveToGallery = this.privacy.saveCapturesToGallery();
     // The camera opens at once; the picker awaits the limit only once a capture comes back, so a
     // slow media-config request never delays the viewfinder. The lookup always settles to a
@@ -298,7 +299,7 @@ export class ComposerAttachmentsService {
       .subscribe({
         next: (captured) => {
           // A capture belongs to the room it was started in, as a recording does.
-          if (!captured || this.host.roomId() !== roomAtStart) return;
+          if (!captured || this.conversation() !== conversationAtStart) return;
           this.stageCapture(captured.file, captured.hints);
         },
         error: (err: unknown) => this.showCaptureError(kind, err, limit),
@@ -311,11 +312,11 @@ export class ComposerAttachmentsService {
     const file = input.files?.[0] ?? null;
     input.value = ''; // the same capture can be retaken
     if (!file) return;
-    const roomAtStart = this.host.roomId();
+    const conversationAtStart = this.conversation();
     this.uploadLimit()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((limit) => {
-        if (this.host.roomId() !== roomAtStart) return;
+        if (this.conversation() !== conversationAtStart) return;
         if (file.size > limit.bytes) {
           this.showTooLarge(tooLargeMessage(kind, limit));
           return;
@@ -424,12 +425,15 @@ export class ComposerAttachmentsService {
       return;
     }
     this.gifDownloading.set(true);
+    const conversationAtStart = this.conversation();
     this.gifs
       .download(gif)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (file) => {
           this.gifDownloading.set(false);
+          // Picked for the conversation it was chosen in; another one never gets it.
+          if (this.conversation() !== conversationAtStart) return;
           this.host.closePicker();
           // A media send carries no reply relation; end any active reply so its banner doesn't
           // linger over the next message.
@@ -445,6 +449,11 @@ export class ComposerAttachmentsService {
           });
         },
       });
+  }
+
+  /** The account and room/thread files are chosen for: a file belongs to both. */
+  private conversation(): string {
+    return conversationOf(this.host.accountId(), this.host.roomId());
   }
 
   /** Open the create-poll dialog (starts a poll in the active room on confirm). */
@@ -483,12 +492,13 @@ export class ComposerAttachmentsService {
     if (!files.length) {
       return;
     }
-    const roomAtStart = this.host.roomId();
+    const conversationAtStart = this.conversation();
     this.uploadLimit()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((limit) => {
         // Re-checked once the limit is in: the room may have changed, or an edit begun.
-        if (this.host.roomId() !== roomAtStart || this.host.editing()) return;
+        const moved = this.conversation() !== conversationAtStart;
+        if (moved || this.host.editing()) return;
         const fitting = files.filter((file) => file.size <= limit.bytes);
         const refused = files.length - fitting.length;
         if (refused > 0) {

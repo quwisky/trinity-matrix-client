@@ -24,7 +24,10 @@ import {
   type ConversationTimelineController,
   type ConversationTimelineFactory,
 } from './conversation-timeline-factory';
-import type { ConversationTextSendOutcome } from './conversation-compose';
+import type {
+  ConversationTextDelivery,
+  ConversationTextSendOutcome,
+} from './conversation-compose';
 import { CONVERSATION_MESSAGE_ADAPTER } from './conversation-message-adapter.service';
 import { conversationDraftKey } from './conversation-draft-key';
 import type {
@@ -958,6 +961,339 @@ describe('ConversationRuntime', () => {
     expect(bob.compose.draft()).toBe('');
     bob.compose.setDraft('bob draft');
     expect(alice.compose.draft()).toBe('alice draft');
+  });
+
+  describe('keeping a draft for a conversation that is not on screen', () => {
+    const KEY = { accountId: ALICE, roomId: '!room:example.org' };
+
+    it('gives it to the handle that holds the conversation now', () => {
+      const { runtime } = setup(2, undefined, [message('$edit')]);
+      const held = runtime.focus(KEY);
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('keeps it in the message draft while an edit is in progress, shown once the edit ends', () => {
+      const { runtime } = setup(2, undefined, [message('$edit')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginEdit('$edit', 'original message');
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('original message');
+      held.compose.cancelIntent();
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('adds it after text already in the draft', () => {
+      const { runtime } = setup();
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('typed since');
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(held.compose.draft()).toBe('typed since\n\ncaption');
+    });
+
+    it('keeps a caption that reads like the message still sending', async () => {
+      const { runtime, sends, drafts } = setup();
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('ok');
+      const outcome = firstValueFrom(held.compose.submit());
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+      runtime.retireRetained();
+
+      runtime.keepDraft(KEY, 'ok');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(drafts.get(conversationDraftKey(KEY))).toBe('ok');
+    });
+
+    it('drops sent text from storage even when a reply began while it was sending', async () => {
+      const { runtime, sends, drafts } = setup(2, undefined, [
+        message('$target'),
+      ]);
+      const held = runtime.focus(KEY);
+      held.compose.setDraft('hi');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      held.messages.beginReply('$target');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+      expect(held.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
+    });
+
+    describe('while a text send is in flight', () => {
+      function sending(retire = false) {
+        const fixture = setup(2, undefined, [message('$target')]);
+        const held = fixture.runtime.focus(KEY);
+        held.compose.setDraft('text');
+        const outcome = firstValueFrom(held.compose.submit());
+        if (retire) {
+          fixture.runtime.focus({
+            accountId: ALICE,
+            roomId: '!other:example.org',
+          });
+          fixture.runtime.retireRetained();
+        }
+        fixture.runtime.keepDraft(KEY, 'caption');
+        return {
+          ...fixture,
+          held,
+          outcome,
+          stored: () => fixture.drafts.get(conversationDraftKey(KEY)),
+        };
+      }
+
+      it('keeps the failed text beside the caption, in the box and in storage', async () => {
+        const { held, sends, outcome, stored } = sending();
+        sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(held.compose.draft()).toBe('text\n\ncaption');
+        expect(stored()).toBe('text\n\ncaption');
+      });
+
+      it('keeps only the caption once the text is sent', async () => {
+        const { held, sends, outcome, stored } = sending();
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(held.compose.draft()).toBe('caption');
+        expect(stored()).toBe('caption');
+      });
+
+      it('merges into the stored draft of a retired handle, and removes only the sent text', async () => {
+        const { sends, outcome, stored } = sending(true);
+        expect(stored()).toBe('text\n\ncaption');
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(stored()).toBe('caption');
+      });
+
+      it('lets a retired handle restore the failed text beside the caption', async () => {
+        const { sends, outcome, stored } = sending(true);
+        sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(stored()).toBe('text\n\ncaption');
+      });
+    });
+
+    it('puts a failed send back in front of a newer handle’s text after its own handle retired', async () => {
+      const { runtime, sends, drafts } = setup();
+      const old = runtime.focus(KEY);
+      old.compose.setDraft('failed text');
+      const outcome = firstValueFrom(old.compose.submit());
+      old.compose.setDraft(''); // the box clears on send
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+      runtime.retireRetained();
+      const fresh = runtime.focus(KEY);
+      fresh.compose.setDraft('new text');
+
+      sends.next({ kind: 'rejected', retryable: true });
+      await outcome;
+
+      expect(fresh.compose.draft()).toBe('failed text\n\nnew text');
+      expect(drafts.get(conversationDraftKey(KEY))).toBe(
+        'failed text\n\nnew text',
+      );
+      fresh.compose.setDraft('failed text\n\nnew text!');
+      expect(drafts.get(conversationDraftKey(KEY))).toBe(
+        'failed text\n\nnew text!',
+      );
+    });
+
+    describe('a send that succeeds after its handle retired', () => {
+      async function reopenWhileSending() {
+        const fixture = setup();
+        const old = fixture.runtime.focus(KEY);
+        old.compose.setDraft('hi');
+        const outcome = firstValueFrom(old.compose.submit());
+        fixture.runtime.focus({
+          accountId: ALICE,
+          roomId: '!other:example.org',
+        });
+        fixture.runtime.retireRetained();
+        const fresh = fixture.runtime.focus(KEY);
+        return { ...fixture, fresh, outcome };
+      }
+
+      it('leaves the reopened box and storage without the sent text', async () => {
+        const { fresh, sends, drafts, outcome } = await reopenWhileSending();
+        expect(fresh.compose.draft()).toBe('hi'); // read from storage while it was sending
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(fresh.compose.draft()).toBe('');
+        expect(drafts.get(conversationDraftKey(KEY))).toBe('');
+      });
+
+      it('keeps what the person changed in the reopened box', async () => {
+        const { fresh, sends, drafts, outcome } = await reopenWhileSending();
+        fresh.compose.setDraft('hi there');
+
+        sends.next({ kind: 'accepted', eventId: '$sent' });
+        await outcome;
+
+        expect(fresh.compose.draft()).toBe('hi there');
+        expect(drafts.get(conversationDraftKey(KEY))).toBe('hi there');
+      });
+    });
+
+    describe('sends that settle after their handle retired', () => {
+      /** Send `text` from a fresh handle for the room, then retire it. */
+      function sendAndRetire(
+        fixture: ReturnType<typeof setup>,
+        text: string,
+      ): Promise<unknown> {
+        const handle = fixture.runtime.focus(KEY);
+        handle.compose.setDraft(text);
+        const outcome = firstValueFrom(handle.compose.submit());
+        fixture.runtime.focus({
+          accountId: ALICE,
+          roomId: '!other:example.org',
+        });
+        fixture.runtime.retireRetained();
+        return outcome;
+      }
+
+      /** One sender per send, so each can settle on its own. */
+      function twoSends() {
+        const first = new Subject<ConversationTextDelivery>();
+        const second = new Subject<ConversationTextDelivery>();
+        const outcomes = [first, second];
+        const sender: ConversationTextSender = {
+          send: vi.fn(() => ({
+            outcome:
+              outcomes.shift() ?? new Subject<ConversationTextDelivery>(),
+            cancel: () => false,
+          })),
+        };
+        return { fixture: setup(2, sender), first, second };
+      }
+
+      const stored = (fixture: ReturnType<typeof setup>) =>
+        fixture.drafts.get(conversationDraftKey(KEY));
+
+      it('puts back and drops from storage alone when no handle holds the room', async () => {
+        const failing = setup();
+        const failed = sendAndRetire(failing, 'x');
+        failing.sends.next({ kind: 'rejected', retryable: true });
+        await failed;
+        expect(stored(failing)).toBe('x');
+
+        TestBed.resetTestingModule();
+        const sending = setup();
+        const sent = sendAndRetire(sending, 'y');
+        sending.sends.next({ kind: 'accepted', eventId: '$y' });
+        await sent;
+        expect(stored(sending)).toBe('');
+      });
+
+      it('puts a failed send into the message draft of a handle that is editing', async () => {
+        const fixture = setup(2, undefined, [message('$edit')]);
+        const outcome = sendAndRetire(fixture, 'x');
+        const live = fixture.runtime.focus(KEY);
+        live.compose.setDraft('mine');
+        live.messages.beginEdit('$edit', 'edit body');
+
+        fixture.sends.next({ kind: 'rejected', retryable: true });
+        await outcome;
+
+        expect(live.compose.draft()).toBe('edit body');
+        expect(stored(fixture)).toBe('x\n\nmine');
+        live.compose.cancelIntent();
+        expect(live.compose.draft()).toBe('x\n\nmine');
+      });
+
+      it('keeps the message of a handle that is itself sending when another fails', async () => {
+        const { fixture, first, second } = twoSends();
+        const failed = sendAndRetire(fixture, 'x');
+        const live = fixture.runtime.focus(KEY);
+        live.compose.setDraft('y');
+        const sent = firstValueFrom(live.compose.submit());
+
+        first.next({ kind: 'rejected', retryable: true });
+        await failed;
+        expect(stored(fixture)).toBe('x\n\ny'); // y is still sending; a reload keeps it
+
+        second.next({ kind: 'accepted', eventId: '$y' });
+        await sent;
+        expect(live.compose.draft()).toBe('x');
+        expect(stored(fixture)).toBe('x');
+      });
+
+      for (const failFirst of [true, false]) {
+        it(`leaves only the failed text when two retired sends settle, ${failFirst ? 'failure' : 'success'} first`, async () => {
+          const { fixture, first, second } = twoSends();
+          const failed = sendAndRetire(fixture, 'x');
+          const sent = sendAndRetire(fixture, 'y');
+          const live = fixture.runtime.focus(KEY);
+
+          const settle = [
+            () => first.next({ kind: 'rejected', retryable: true }),
+            () => second.next({ kind: 'accepted', eventId: '$y' }),
+          ];
+          if (!failFirst) settle.reverse();
+          settle.forEach((step) => step());
+          await Promise.all([failed, sent]);
+
+          expect(live.compose.draft()).toBe('x');
+          expect(stored(fixture)).toBe('x');
+        });
+      }
+    });
+
+    it('does not keep a reply open after its send succeeds', async () => {
+      const { runtime, sends } = setup(2, undefined, [message('$target')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginReply('$target');
+      held.compose.setDraft('reply');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      runtime.keepDraft(KEY, 'caption');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(held.compose.intent()).toEqual({ kind: 'message' });
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('does not keep an edit open after it is saved', async () => {
+      const { runtime, sends } = setup(2, undefined, [message('$target')]);
+      const held = runtime.focus(KEY);
+      held.messages.beginEdit('$target', 'original');
+      held.compose.setDraft('edited');
+      const outcome = firstValueFrom(held.compose.submit());
+
+      runtime.keepDraft(KEY, 'caption');
+      sends.next({ kind: 'accepted', eventId: '$sent' });
+      await outcome;
+
+      expect(held.compose.intent()).toEqual({ kind: 'message' });
+      expect(held.compose.draft()).toBe('caption');
+    });
+
+    it('stores it for the next handle when none holds the conversation', () => {
+      const { runtime } = setup();
+
+      runtime.keepDraft(KEY, 'caption');
+
+      expect(runtime.focus(KEY).compose.draft()).toBe('caption');
+    });
   });
 
   it('starts reply and edit intent only for eligible presented messages', () => {

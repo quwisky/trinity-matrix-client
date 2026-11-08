@@ -12,6 +12,7 @@ function setup(
 ) {
   const inputs = {
     roomId: signal<string | null>(initial.roomId ?? null),
+    accountId: signal<string | null>(null),
     editing: signal(false),
     editTargetId: signal<string | null>(null),
     draft: signal(''),
@@ -60,6 +61,16 @@ describe('ComposerDrafts', () => {
     expect(s.saved.get('!a')).toBe('typed in A');
     expect(s.text()).toBe('draft B');
     expect(s.calls).toContain('leave:!a');
+  });
+
+  it('treats the same room under another account as a room change', () => {
+    const s = setup({ roomId: '!a' });
+    s.calls.length = 0;
+
+    s.accountId.set('@b:hs');
+    TestBed.tick();
+
+    expect(s.calls).toEqual(['leave:!a']);
   });
 
   it('leaves the text alone on a room switch while editing', () => {
