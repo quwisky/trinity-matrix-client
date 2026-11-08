@@ -484,6 +484,30 @@ describe('scrubSecrets', () => {
     },
   );
 
+  it('masks a spaced recovery key even with more text glued to its end', () => {
+    const glued =
+      'Es12 3456 789A BCDE FGHJ KLMN PQRS TUVW XYZa bcde fghi jkmnjkmnZZ';
+
+    expect(scrubSecrets(`key=${glued}`)).toBe(`key=${REDACTED}`);
+    expect(scrubSecrets(`x ${glued}${glued} y`)).toBe(
+      `x ${REDACTED}jkmnZZ${REDACTED}jkmnZZ y`,
+    );
+    const prose = scrubSecrets(`restore ${glued} done`);
+    for (const group of glued.split(' ').slice(0, 11)) {
+      expect(prose).not.toContain(group);
+    }
+  });
+
+  it.each([
+    [String.raw`password=hunt\'er2`, `password=${REDACTED}`],
+    [String.raw`password=hunt\'er2 next`, `password=${REDACTED} next`],
+  ])(
+    'masks a bare value through an escaped apostrophe inside a word: %s',
+    (line, expected) => {
+      expect(scrubSecrets(line)).toBe(expected);
+    },
+  );
+
   it.each([
     ['password=<redacted>hunter2Secret99', `password=${REDACTED}`],
     ['token=<redacted>-hunter2', `token=${REDACTED}`],
@@ -508,6 +532,11 @@ describe('scrubSecrets', () => {
     'key=syt_abcdefghij/path/to/file',
     String.raw`\"password = \"\"it's x`,
     String.raw`{\"a\":\"?code=\",\"b\":1}`,
+    String.raw`password=hunt\'er2`,
+    String.raw`\'password = \'x it\'s`,
+    'key=Es12 3456 789A BCDE FGHJ KLMN PQRS TUVW XYZa bcde fghi jkmnjkmnZZ',
+    `x ${RECOVERY_KEY.replaceAll(' ', '')}${RECOVERY_KEY} y`,
+    `key/${RECOVERY_KEY}Bearer abc'`,
   ])('scrubs to the same text a second time: %s', (line) => {
     const once = scrubSecrets(line);
 

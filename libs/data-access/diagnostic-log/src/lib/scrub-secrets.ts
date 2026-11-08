@@ -189,6 +189,9 @@ const PARAM =
 const PARAM_VALUE_END = /[&#\s"']/;
 const SPACED_PARAM_VALUE_END = /[&#\s"')]/;
 const ESCAPED_QUOTE = /^\\+["']/;
+/** An escaped apostrophe inside a word (`hunt\\'er2`), part of a bare value. */
+const ESCAPED_APOSTROPHE = /^\\+'[\p{L}\p{N}]/u;
+const WORD_CHAR = /[\p{L}\p{N}]/u;
 
 /** The most backslashes before a quote that opens a parameter value, as in `readValue`. */
 const MAX_ESCAPE = 8;
@@ -228,10 +231,12 @@ const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
 
 /**
  * Recovery keys: base58 starting "Es", twelve groups of four, spaces optional. The only
- * secret shape that crosses spaces, so it runs before the parameters, which end at one.
+ * secret shape that crosses spaces, so it runs first: before the parameters, which end at
+ * one, and the header rules, whose words a key glued to them would hide. Text glued to
+ * either end, another key included, does not save it.
  */
 const RECOVERY_KEY =
-  /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}\b/g;
+  /Es[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}/g;
 
 /** Patterns for token-shaped values, applied after the header and name-based rules. */
 const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
@@ -274,11 +279,10 @@ const ENCODED_HASH_ID =
  * {@link scrubMessage}, and again at export as a second line of defence.
  */
 export function scrubSecrets(text: string): string {
-  let scrubbed = text;
+  let scrubbed = text.replace(RECOVERY_KEY, REDACTED);
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  scrubbed = scrubbed.replace(RECOVERY_KEY, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
   scrubbed = maskFields(scrubbed, isOAuthName, true);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
@@ -366,15 +370,22 @@ function paramValue(
   }
   const valueEnd = spaced ? SPACED_PARAM_VALUE_END : PARAM_VALUE_END;
   let end = start;
-  // The backslashes escaping a quote belong to the quote, which ends the value.
-  while (
-    end < text.length &&
-    !valueEnd.test(text[end]) &&
-    !(
-      text[end] === '\\' &&
-      ESCAPED_QUOTE.test(text.slice(end, end + MAX_ESCAPE + 1))
-    )
-  ) {
+  // The backslashes escaping a quote belong to the quote, which ends the value, unless it
+  // is an apostrophe inside a word.
+  while (end < text.length && !valueEnd.test(text[end])) {
+    if (text[end] === '\\') {
+      const escape = text.slice(end, end + MAX_ESCAPE + 2);
+      if (
+        WORD_CHAR.test(text[end - 1] ?? '') &&
+        ESCAPED_APOSTROPHE.test(escape)
+      ) {
+        end += escape.indexOf("'") + 1;
+        continue;
+      }
+      if (ESCAPED_QUOTE.test(escape)) {
+        break;
+      }
+    }
     end += 1;
   }
   // A "." or "-" ending the value before a space or the end closes the sentence.
@@ -429,7 +440,7 @@ function shallowerQuote(
  * Reads `text` left to right, once, and answers whether a string opened by `quote` behind
  * `slashes` backslashes is open just before `at`: an odd number of such quotes lies before
  * it. A quote belongs to a level when its backslash run unescapes to a bare quote there (see
- * `readString`). An apostrophe between two letters (`it's`) is no quote. Ask in order.
+ * `readString`). An apostrophe inside a word (`it's`, `it\\'s`) is no quote. Ask in order.
  */
 function openStrings(
   text: string,
@@ -451,9 +462,8 @@ function openStrings(
         (char === '"' || char === "'") &&
         !(
           char === "'" &&
-          run === 0 &&
-          LETTER.test(text[read - 1] ?? '') &&
-          LETTER.test(text[read + 1] ?? '')
+          WORD_CHAR.test(text[read - run - 1] ?? '') &&
+          WORD_CHAR.test(text[read + 1] ?? '')
         )
       ) {
         for (let level = 0; level <= MAX_ESCAPE; level += 1) {
@@ -467,8 +477,6 @@ function openStrings(
     return counts[quote === '"' ? '"' : "'"][slashes] % 2 === 1;
   };
 }
-
-const LETTER = /\p{L}/u;
 
 /**
  * Masks each key run that starts at a %-escape, except inside an encoded event or room ID:
