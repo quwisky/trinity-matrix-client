@@ -34,11 +34,12 @@ export class SessionLockService {
   private queued = false;
   private readonly teardown = new AbortController();
   private handoverTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingRequest = false;
 
   readonly state = this.lockState.asReadonly();
   /**
    * Another tab's "Use here". Emits only in the holding tab, which is then `releasing` until
-   * its restart unloads the page and so frees the lock.
+   * its restart unloads the page and so frees the lock, or until it calls `declineHandover()`.
    */
   readonly handoverRequests: Observable<void> = this.requests.asObservable();
 
@@ -118,6 +119,21 @@ export class SessionLockService {
         this.lockState.set('handover-timed-out');
       }
     }, SESSION_HANDOVER_TIMEOUT_MS);
+  }
+
+  /**
+   * The holder will not hand over after all: it keeps the session and hears the next request,
+   * or answers at once one that arrived meanwhile.
+   */
+  declineHandover(): void {
+    if (this.lockState() !== 'releasing') return;
+    if (!this.pendingRequest) {
+      this.lockState.set('held');
+      return;
+    }
+    this.pendingRequest = false;
+    // After the declining handler returns, so a consumer still inside it hears this one.
+    queueMicrotask(() => this.requests.next());
   }
 
   private async tryAcquire(): Promise<SessionLockAcquisition> {
@@ -215,15 +231,18 @@ export class SessionLockService {
     return this.channel;
   }
 
-  /** Only the holder acts, once, and only while someone will carry the handover out. */
+  /**
+   * Only the holder acts, once, and only while someone will carry the handover out. A request
+   * while releasing waits for a decline.
+   */
   private onMessage(data: unknown): void {
-    if (
-      !isHandoverRequest(data) ||
-      this.lockState() !== 'held' ||
-      !this.requests.observed
-    ) {
+    if (!isHandoverRequest(data) || !this.requests.observed) return;
+    const state = this.lockState();
+    if (state === 'releasing') {
+      this.pendingRequest = true;
       return;
     }
+    if (state !== 'held') return;
     this.lockState.set('releasing');
     this.requests.next();
   }
