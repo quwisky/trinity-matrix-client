@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { check } from './agent-guard.mjs';
 
 const guard = join(import.meta.dirname, 'agent-guard.mjs');
 const repo = mkdtempSync(join(tmpdir(), 'agent-guard-'));
@@ -98,6 +99,14 @@ describe('agent-guard PreToolUse hook', () => {
         'gh pr create --body "$(cat <<\'EOF\'\nQ & A\nEOF\n)" --draft --base main',
       ).status,
     ).toBe(0);
+    expect(
+      hook('gh pr create --title t --body "use --draft later"').status,
+    ).toBe(2);
+    expect(hook("gh pr create --body 'try -d first' --base main").status).toBe(
+      2,
+    );
+    expect(hook('time gh pr create --base main').status).toBe(2);
+    expect(hook('bash -c "gh pr create --base main"').status).toBe(2);
   });
 
   it('ignores gh pr commands that only appear as text', () => {
@@ -126,6 +135,12 @@ describe('agent-guard PreToolUse hook', () => {
     expect(
       hook('gh pr ready 1 2>&1 && gh pr ready 2', repo, fakeGh(1)).status,
     ).toBe(2);
+    expect(hook('gh pr -R owner/repo ready 12', repo, fakeGh(0)).status).toBe(
+      0,
+    );
+    expect(readFileSync(join(repo, 'gh-args'), 'utf8').trim()).toBe(
+      'pr checks 12 -R owner/repo',
+    );
   });
 
   it.each([
@@ -173,6 +188,91 @@ describe('agent-guard PreToolUse hook', () => {
     expect(hook('gh api repos/o/r/rulesets -f name=x').status).toBe(2);
     expect(hook('gh api -X DELETE repos/o/r/rulesets/1').status).toBe(2);
     expect(hook('gh api -X GET repos/o/r/rulesets').status).toBe(0);
+  });
+
+  it.each([
+    'time gh pr merge 5',
+    'command gh pr merge 5',
+    'env GH_REPO=o/r gh pr merge 5',
+    'exec gh pr merge 5',
+    'nice -n 10 gh pr merge 5',
+    'sudo gh pr merge 5',
+    'echo 5 | xargs gh pr merge',
+    'bash -c "gh pr merge 5"',
+    "sh -c 'gh pr review 5 --approve'",
+    'zsh -lc "cd x && gh pr merge 5"',
+    'echo `gh pr merge 5`',
+    'if true; then gh pr merge 5; fi',
+    '{ gh pr merge 5; }',
+    '! gh pr merge 5',
+    'eval gh pr merge 5',
+    'eval "gh pr merge 5"',
+    'timeout 60 gh pr merge 5',
+    '\\gh pr merge 5',
+    '/usr/bin/gh pr merge 5',
+    '$HOME/bin/gh pr merge 5',
+    '"$HOME"/bin/gh pr merge 5',
+    '${HOME}/bin/gh pr merge 5',
+    'sh -c "sh -c \\"gh pr merge 5\\""',
+    'gh pr -R o/r merge 5',
+  ])('finds gh behind a command prefix: %s', (command) => {
+    expect(hook(command).status).toBe(2);
+  });
+
+  it.each([
+    `gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: "x"}) { clientMutationId } }'`,
+    `gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: "x"}) { clientMutationId } }'`,
+    `gh api graphql -f query="mutation { addPullRequestReview(input: {pullRequestId: \\"x\\", event: APPROVE}) { clientMutationId } }"`,
+    `gh api graphql -F event=APPROVE -f query='mutation($event: PullRequestReviewEvent!) { submitPullRequestReview(input: {pullRequestReviewId: "x", event: $event}) { clientMutationId } }'`,
+  ])('blocks merging or approving through GraphQL: %s', (command) => {
+    expect(hook(command).status).toBe(2);
+  });
+
+  it('allows GraphQL queries and reviews that do not approve', () => {
+    expect(hook(`gh api graphql -f query='{ viewer { login } }'`).status).toBe(
+      0,
+    );
+    expect(
+      hook(
+        `gh api graphql -f query='mutation { addPullRequestReview(input: {pullRequestId: "x", event: COMMENT}) { clientMutationId } }'`,
+      ).status,
+    ).toBe(0);
+    expect(hook('grep -rn mergePullRequest scripts').status).toBe(0);
+    expect(
+      hook(
+        `rg -n "mergePullRequest" scripts && gh api graphql -f query='query{viewer{login}}'`,
+      ).status,
+    ).toBe(0);
+    expect(hook(`grep -rn 'bash -c "gh pr merge 5"' docs`).status).toBe(0);
+  });
+
+  it.each([
+    ['a chain of shell keywords', `${'then '.repeat(30)}x gh`],
+    ['a run of backticks', `echo ${'`'.repeat(20_000)} gh`],
+    ['escaped quotes', `echo ${'\\"'.repeat(10_000)} gh`],
+    [
+      'a long pull request body',
+      `gh pr create --draft --body-file - <<'EOF'\n${'then do if else while until the change explains why\n'.repeat(2_000)}EOF`,
+    ],
+  ])('reads %s in linear time', (_, command) => {
+    const start = performance.now();
+    check({ cwd: repo, tool_name: 'Bash', tool_input: { command } });
+    expect(performance.now() - start).toBeLessThan(100);
+  });
+
+  it('refuses a push of more refs than it can check, without calling gh for each', () => {
+    const start = performance.now();
+    const reason = check({
+      cwd: repo,
+      tool_name: 'Bash',
+      tool_input: { command: `git push origin ${'b '.repeat(10_000)}` },
+    });
+    expect(performance.now() - start).toBeLessThan(100);
+    expect(reason).toMatch(/at most 20 refs/);
+  });
+
+  it('still sees gh after an escaped quote', () => {
+    expect(hook('echo \\" ; gh pr merge 5').status).toBe(2);
   });
 
   it('blocks Release-As footers and tool attribution in commit messages', () => {

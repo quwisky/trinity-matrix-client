@@ -69,7 +69,9 @@ const gitCommand = (names) =>
 
 /** The command with quoted text blanked, so a PR body or grep pattern is not a command. */
 const unquoted = (command) =>
-  command.replace(/"(?:\\.|[^"\\])*"|'[^']*'/g, '""');
+  command.replace(/\\.|"(?:\\.|[^"\\])*"|'[^']*'/g, (text) =>
+    text[0] === '\\' ? text : '""',
+  );
 
 export function liveOwner(file) {
   try {
@@ -99,11 +101,57 @@ function checkoutBusy(command, dir) {
   return null;
 }
 
-/** `gh` in command position, after any `VAR=value` prefixes. */
-const GH = String.raw`(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh\b[^\n;&|]*`;
+/**
+ * Command position: the start, a separator or backtick, then any `VAR=value`, `{`, `!` or
+ * wrapper (`time`, `env`, `xargs`, `then`, …) with its flags and numbers. Wrapper arguments
+ * stay that narrow so the pattern runs in linear time; `sudo -u bob gh` is missed.
+ */
+const AT_COMMAND = String.raw`(?:^|[;&|(\n\`]\s*)(?:(?:\w+=\S*|[{!]|(?:command|do|elif|else|env|eval|exec|if|nice|nohup|sudo|then|time|timeout|until|while|xargs)\b(?:\s+(?:-|\d)\S*)*)\s+)*`;
+
+/** `gh` itself, also written `\gh` or as a path. */
+const GH_WORD = String.raw`${AT_COMMAND}(?:\\|(?:[\w.~$"{}-]*/)+)?gh`;
+
+/** Repository flags, which gh accepts before and after `pr`. */
+const REPO = String.raw`((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)`;
+
+const SHELL_C = new RegExp(
+  String.raw`${AT_COMMAND}(?:(?:ba|da|z)?sh\s+(?:-\w+\s+)*-\w*c|eval)\s+("(?:\\.|[^"\\])*"|'[^']*')`,
+  'g',
+);
+
+/** The command and, recursively, every script it hands to `sh -c` or `eval`. */
+const scripts = (command) => [
+  command,
+  ...[...command.matchAll(SHELL_C)].flatMap(([, quoted]) =>
+    scripts(
+      quoted.startsWith('"')
+        ? quoted.slice(1, -1).replace(/\\(["\\$`])/g, '$1')
+        : quoted.slice(1, -1),
+    ),
+  ),
+];
+
+const GH = String.raw`${GH_WORD}\b[^\n;&|]*`;
+const GRAPHQL = new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*\bgraphql\b`);
+const GRAPHQL_WRITE =
+  /\b(?:mergePullRequest|enablePullRequestAutoMerge|enqueuePullRequest|(?:create|update|delete)RepositoryRuleset)\b/;
+
+/** A GraphQL merge, approval or ruleset write; the query sits in quotes, so read it raw. */
+function graphqlWrite(script) {
+  if (!GRAPHQL.test(unquoted(script))) return false;
+  const call = script.slice(GRAPHQL.exec(script)?.index ?? 0);
+  return (
+    GRAPHQL_WRITE.test(call) ||
+    (/\b(?:add|submit)PullRequestReview\b/.test(call) &&
+      /\bAPPROVE\b/.test(call))
+  );
+}
+
 const MAINTAINER_ONLY = [
-  new RegExp(String.raw`${GH}\bpr\s+merge\b`),
-  new RegExp(String.raw`${GH}\bpr\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`),
+  new RegExp(String.raw`${GH}\bpr${REPO}\s+merge\b`),
+  new RegExp(
+    String.raw`${GH}\bpr${REPO}\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`,
+  ),
   new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*/pulls/\d+/merge\b`),
   new RegExp(
     String.raw`${GH}\bapi\b[^\n;&|]*/reviews\b[^\n;&|]*\bevent=APPROVE\b`,
@@ -119,8 +167,10 @@ const MAINTAINER_ONLY = [
 
 /** Merging, approving and rulesets stay with the maintainer (.agents/rules/git/pull-request-handling.md). */
 function maintainerOnly(command) {
-  const bare = unquoted(command);
-  return MAINTAINER_ONLY.some((pattern) => pattern.test(bare))
+  const blocked = (script) =>
+    graphqlWrite(script) ||
+    MAINTAINER_ONLY.some((pattern) => pattern.test(unquoted(script)));
+  return scripts(command).some(blocked)
     ? 'The maintainer merges, approves and changes rulesets (.agents/rules/git/pull-request-handling.md). If they asked for this, they can run it themselves with `! <command>`.'
     : null;
 }
@@ -162,6 +212,9 @@ function readyPullRequestPush(command, dir) {
   const refs = words(push[1])
     .filter((arg) => !arg.startsWith('-'))
     .slice(1);
+  // Each ref costs a gh call, so a long list is refused rather than half checked.
+  if (refs.length > 20)
+    return 'Push at most 20 refs at a time, so each can be checked for a pull request marked ready (.agents/rules/git/draft-pull-requests.md).';
   const branches = (refs.length ? refs : ['HEAD']).map((ref) => {
     const target = ref
       .replace(/^\+/, '')
@@ -256,12 +309,14 @@ function pushTypecheck(command, dir) {
 }
 
 /**
- * `gh pr create|ready` in command position (not quoted text), with any global `-R/--repo`
- * given before `pr`. Group 1: the global repo flag, 2: the subcommand, 3: its arguments,
+ * `gh pr create|ready` in command position (not quoted text), with any `-R/--repo` given
+ * before or after `pr`. Groups 1 and 2: the repo flags, 3: the subcommand, 4: its arguments,
  * which run on through a `>&` redirection such as `2>&1` so that `words` drops it whole.
  */
-const GH_PR =
-  /(?:^|[;&|(\n]\s*)(?:\w+=\S*\s+)*gh((?:\s+(?:-R|--repo)(?:=|\s+)\S+)*)\s+pr\s+(create|ready)\b((?:>&|[^\n;&|])*)/g;
+const GH_PR = new RegExp(
+  String.raw`${GH_WORD}${REPO}\s+pr${REPO}\s+(create|ready)\b((?:>&|[^\n;&|])*)`,
+  'g',
+);
 
 /** Words of a simple argument list, without quotes, redirections or a trailing comment. */
 const words = (text) =>
@@ -275,15 +330,18 @@ const words = (text) =>
 
 /** Pull requests open as drafts and are marked ready only once every check passes. */
 function draftPullRequest(command, dir) {
-  for (const pr of command.matchAll(GH_PR)) {
-    const repo = words(pr[1]);
-    if (pr[2] === 'create') {
+  const matches = scripts(command).flatMap((script) =>
+    [...script.matchAll(GH_PR)].map((pr) => [pr, script]),
+  );
+  for (const [pr, script] of matches) {
+    const repo = words(`${pr[1]} ${pr[2]}`);
+    if (pr[3] === 'create') {
       // Look past the first `&`, `;` or newline: a multi-line --body may come before --draft.
-      if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(command.slice(pr.index)))
-        continue;
+      const rest = unquoted(script.slice(pr.index));
+      if (/\s(?:-d|--draft(?:=true)?)(?=\s|$)/.test(rest)) continue;
       return 'Open pull requests as drafts: add --draft. Mark one ready with `gh pr ready <number>` only when its checks are green and its review is done (.agents/rules/git/draft-pull-requests.md).';
     }
-    const args = [...words(pr[3]), ...repo];
+    const args = [...words(pr[4]), ...repo];
     if (args.includes('--undo')) continue;
     const checks = run('gh', ['pr', 'checks', ...args], dir, 30_000);
     if (checks.status === 0) continue;

@@ -73,6 +73,45 @@ describe('attachment-crypto', () => {
     expect(new TextDecoder().decode(recovered)).toBe(plaintext);
   });
 
+  it('decrypts unversioned attachments with a 128-bit counter and v2 with a 64-bit one', async () => {
+    // The low 64 counter bits start at their maximum, so the second block is where the
+    // two counter lengths diverge: 128 bits carries into the nonce, 64 bits wraps.
+    const iv = new Uint8Array(16).fill(0xff, 8);
+    iv.set([1, 2, 3, 4, 5, 6, 7, 8]);
+    const plaintext = new Uint8Array(48).map((_, i) => i);
+    const key = await crypto.subtle.generateKey(
+      { name: 'AES-CTR', length: 256 },
+      true,
+      ['encrypt', 'decrypt'],
+    );
+    const b64 = (b: ArrayBuffer | Uint8Array) =>
+      Buffer.from(new Uint8Array(b)).toString('base64').replace(/=+$/, '');
+    const encryptAs = async (length: number, v?: string) => {
+      const data = await crypto.subtle.encrypt(
+        { name: 'AES-CTR', counter: iv, length },
+        key,
+        plaintext,
+      );
+      const info = {
+        url: '',
+        ...(v && { v }),
+        key: await crypto.subtle.exportKey('jwk', key),
+        iv: b64(iv),
+        hashes: { sha256: b64(await crypto.subtle.digest('SHA-256', data)) },
+      } as EncryptedFileInfo;
+      return { data, info };
+    };
+
+    const legacy = await encryptAs(128);
+    const v2 = await encryptAs(64, 'v2');
+    expect(new Uint8Array(legacy.data)).not.toEqual(new Uint8Array(v2.data));
+
+    for (const { data, info } of [legacy, v2]) {
+      const recovered = await decryptAttachment(data, info);
+      expect(new Uint8Array(recovered)).toEqual(plaintext);
+    }
+  });
+
   it('rejects tampered ciphertext (SHA-256 mismatch) before decrypting', async () => {
     const { data, info } = await encryptAttachment(bytes('top secret'));
     const tampered = new Uint8Array(data.slice(0));

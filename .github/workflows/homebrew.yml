@@ -141,6 +141,13 @@ jobs:
           VERSION: ${{ steps.release.outputs.version }}
           ASSET: ${{ steps.release.outputs.asset }}
         run: |
+          # A re-run or late dispatch of an older release must not roll the cask back. Each
+          # cask holds one line (X.Y.Z or X.Y.Z-next.N), so a version sort orders it.
+          current=$(sed -n 's/^  version "\(.*\)"$/\1/p' "tap/Casks/$CASK.rb" 2>/dev/null || true)
+          if [ -n "$current" ] && [ "$(printf '%s\n' "$current" "$VERSION" | sort -V | tail -n 1)" != "$VERSION" ]; then
+            echo "::notice::Casks/$CASK.rb already holds $current, newer than $VERSION; leaving it alone."
+            exit 0
+          fi
           sha=$(shasum -a 256 "$RUNNER_TEMP/release/$ASSET" | cut -d ' ' -f 1)
           mkdir -p tap/Casks tap/audit_exceptions
           node scripts/homebrew-cask.mjs --cask "$CASK" --version "$VERSION" --sha256 "$sha" > "tap/Casks/$CASK.rb"
