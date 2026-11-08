@@ -48,10 +48,13 @@ export function requestQuit(): void {
   app.quit();
 }
 
+// The link schemes the message sanitizer keeps that leave the app; matrix: and mxc: stay in-app.
+const EXTERNAL_LINK = /^(?:(?:https?|ftp):\/\/|mailto:|magnet:)/i;
+
 /** Block in-app navigation and popups to anything that isn't our app origin. */
 export function hardenContents(contents: Electron.WebContents): void {
   contents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
+    if (EXTERNAL_LINK.test(url)) {
       void shell.openExternal(url);
     }
     return { action: 'deny' };
@@ -60,7 +63,7 @@ export function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-navigate', (event, url) => {
     if (!isAppUrl(url)) {
       event.preventDefault();
-      if (/^https?:\/\//i.test(url)) {
+      if (EXTERNAL_LINK.test(url)) {
         void shell.openExternal(url);
       }
     }
