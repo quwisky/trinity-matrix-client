@@ -162,16 +162,35 @@ describe('PinnedMessagesPanelComponent', () => {
     ).toBe('Jump to pinned message from Alice, not encrypted');
   });
 
-  it('renders a loading row that cannot be jumped to', async () => {
+  it('shows skeleton rows, named for assistive technology, while every pin loads', async () => {
     const { container } = await renderPanel({
       pinned: [
         pin({ id: '$old', status: 'loading', senderName: '', body: '' }),
       ],
     });
 
+    const loading = container.querySelector(
+      '[data-testid="side-panel-loading"]',
+    )!;
+    expect(loading.getAttribute('aria-busy')).toBe('true');
+    expect(loading.getAttribute('aria-label')).toBe('Loading pinned messages');
+    expect(loading.querySelectorAll('.side-panel__skeleton')).toHaveLength(3);
+    expect(container.querySelector('[data-testid="pinned-item"]')).toBeNull();
+  });
+
+  it('renders a loading row that cannot be jumped to beside loaded pins', async () => {
+    const { container } = await renderPanel({
+      pinned: [
+        pin({ id: '$new' }),
+        pin({ id: '$old', status: 'loading', senderName: '', body: '' }),
+      ],
+    });
+
     const row = container.querySelector('[data-testid="pinned-loading"]');
     expect(row?.textContent).toContain('Loading pinned message');
-    expect(container.querySelector('[data-testid="pinned-item"]')).toBeNull();
+    expect(
+      container.querySelectorAll('[data-testid="pinned-item"]'),
+    ).toHaveLength(1);
   });
 
   it('renders an unavailable row that can still be unpinned', async () => {

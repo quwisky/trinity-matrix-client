@@ -234,7 +234,7 @@ test.describe('Member role sections', () => {
       .evaluateAll((elements) =>
         elements.map((element) => element.getBoundingClientRect().height),
       );
-    expect(headerHeights).toEqual([34, 34, 34]);
+    expect(headerHeights).toEqual([28, 36, 36]);
     const rowHeights = await page
       .locator('.members .member')
       .evaluateAll((elements) =>

@@ -109,7 +109,8 @@ test.describe('Member info', () => {
       .locator('.members__section-label')
       .first()
       .boundingBox();
-    expect(headerBox?.height).toBe(34);
+    // The first group's label sits 8px from the top rather than 16px, so it is 28px.
+    expect(headerBox?.height).toBe(28);
 
     // The button recipe sets its own height (32px on a coarse pointer), and the windowing
     // needs 44px at every breakpoint — so measure again on a phone-sized viewport.

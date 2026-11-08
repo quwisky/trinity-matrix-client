@@ -20,7 +20,8 @@ import { SidePanelHeaderComponent } from './side-panel-header.component';
   styleUrl: './side-panel.component.scss',
 })
 export class SidePanelComponent {
-  readonly title = input.required<string>();
+  /** The panel's name. Not `title`: a static `title` attribute is also a native tooltip. */
+  readonly heading = input.required<string>();
   readonly subtitle = input('');
   readonly icon = input<TrnIconName | null>(null);
   readonly closeLabel = input('Close');
@@ -34,5 +35,16 @@ export class SidePanelComponent {
    * scroller, such as the windowed member list or the thread's timeline.
    */
   readonly scroll = input(true);
+  /** Shows three skeleton rows in place of the body while the panel's rows load. */
+  readonly loading = input(false);
+  /** Names the loading state for assistive technology, such as "Loading pinned messages". */
+  readonly loadingLabel = input('Loading');
   readonly closed = output<void>();
+
+  /** Name and line widths of the three skeleton rows, in percent. */
+  protected readonly skeleton = [
+    [40, 85],
+    [30, 70],
+    [45, 60],
+  ] as const;
 }

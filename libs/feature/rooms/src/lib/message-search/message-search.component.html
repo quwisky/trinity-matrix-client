@@ -1,7 +1,9 @@
 <trn-side-panel
-  title="Search"
+  heading="Search"
   icon="search"
   closeLabel="Close search"
+  [loading]="searching() && !results().length"
+  loadingLabel="Searching messages"
   (closed)="dismiss()"
 >
   <div sidePanelStrip>
@@ -73,45 +75,49 @@
     </trn-banner>
   }
 
-  <div>
-    @for (hit of results(); track hit.eventId) {
-      <button
-        type="button"
-        class="ms-row flex w-full items-start gap-3 p-3 text-left hover:bg-accent"
-        (click)="select(hit)"
-        data-testid="result"
-      >
-        <trn-avatar
-          [mxc]="hit.senderAvatarMxc"
-          [initial]="initialOf(hit.senderName)"
-          [name]="hit.senderName"
-          [exactSize]="36"
-        />
-        <span class="min-w-0 flex-1">
-          <span class="flex items-baseline gap-2">
-            <span class="truncate text-sm font-medium">{{
-              hit.senderName
-            }}</span>
-            <span class="ms-time shrink-0">{{ fmt.dateTime(hit.ts) }}</span>
-            @if (hit.shield; as shield) {
-              <trn-unencrypted-mark [shield]="shield" />
-            }
-          </span>
-          <p class="ms-snippet text-sm">
-            @for (part of highlight(hit.snippet); track $index) {
-              @if (part.match) {
-                <mark>{{ part.text }}</mark>
-              } @else {
-                <span>{{ part.text }}</span>
-              }
-            }
-          </p>
+  @for (hit of results(); track hit.eventId) {
+    <button
+      type="button"
+      class="ms-row"
+      [class.ms-row--selected]="hit.eventId === selectedId()"
+      [attr.aria-current]="hit.eventId === selectedId() ? 'true' : null"
+      (click)="select(hit)"
+      data-testid="result"
+    >
+      <trn-avatar
+        [mxc]="hit.senderAvatarMxc"
+        [initial]="initialOf(hit.senderName)"
+        [name]="hit.senderName"
+        size="lg"
+      />
+      <span class="ms-body">
+        <span class="ms-head">
+          <span class="ms-name">{{ hit.senderName }}</span>
+          <span class="ms-time">{{ fmt.dateTime(hit.ts) }}</span>
+          @if (hit.shield; as shield) {
+            <trn-unencrypted-mark [shield]="shield" />
+          }
         </span>
-      </button>
-    } @empty {
-      <trn-empty-state [body]="emptyHint()" aria-live="polite" />
+        <p class="ms-snippet">
+          @for (part of highlight(hit.snippet); track $index) {
+            @if (part.match) {
+              <mark>{{ part.text }}</mark>
+            } @else {
+              <span>{{ part.text }}</span>
+            }
+          }
+        </p>
+      </span>
+    </button>
+  } @empty {
+    @if (emptyState(); as empty) {
+      <trn-side-panel-empty
+        icon="search"
+        [heading]="empty.title"
+        [body]="empty.body"
+      />
     }
-  </div>
+  }
 
   @if (serverMode() && serverNextBatch()) {
     <div class="ms-more">

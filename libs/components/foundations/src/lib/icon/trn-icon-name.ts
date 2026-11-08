@@ -33,7 +33,6 @@ export const TRN_ICON_NAMES = [
   'code',
   'command',
   'copy',
-  'crown',
   'door-open',
   'download',
   'ellipsis',

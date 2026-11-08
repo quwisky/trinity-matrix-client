@@ -1,16 +1,16 @@
 <trn-side-panel
   data-testid="thread-view"
-  title="Thread"
+  heading="Thread"
   [subtitle]="roomName()"
   icon="message-square"
   closeLabel="Close thread"
   [focusClose]="true"
   [scroll]="false"
+  [loading]="loading()"
+  loadingLabel="Loading thread"
   (closed)="close()"
 >
-  @if (loading()) {
-    <div class="thread__loading flex-1" role="status">Loading thread…</div>
-  } @else {
+  @if (!loading()) {
     <trn-message-list
       [messages]="messages()"
       [loadingOlder]="loadingOlder()"
@@ -43,12 +43,23 @@
       (matrixLink)="matrixLink.emit($event)"
     >
       @if (!messages().length) {
-        <trn-empty-state
+        <trn-side-panel-empty
           trnMessageListIntro
-          body="No replies in this thread yet."
+          icon="message-square"
+          heading="No replies yet"
+          body="Write the first reply below. Everyone in the room can follow this thread."
         />
       }
     </trn-message-list>
+    @if (messages().length === 1) {
+      <!-- Only the root has loaded: the space under it says no one has replied. -->
+      <trn-side-panel-empty
+        icon="message-square"
+        heading="No replies yet"
+        body="Write the first reply below. Everyone in the room can follow this thread."
+        data-testid="thread-no-replies"
+      />
+    }
   }
 
   <div class="thread__footer" sidePanelFooter>

@@ -13,6 +13,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { SidePanelComponent } from '../side-panel/side-panel.component';
+import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
   MEMBER_ROLE_ORDER,
@@ -23,12 +24,7 @@ import {
 } from '@trinity/data-access/room-administration';
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
-import {
-  TrnIconComponent,
-  type TrnIconName,
-} from '@trinity/components/foundations';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
-import { TrnButton, TrnInput } from '@trinity/components/controls';
+import { TrnInput } from '@trinity/components/controls';
 import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
@@ -49,11 +45,13 @@ interface MemberRow {
  *
  * Both are fixed by `member-list.component.scss` rather than measured (unlike the
  * timeline's use of this windowing math). `ROW_PX` is 32px of avatar plus 6px of padding
- * either side; the stylesheet fixes that border box at 44px for every pointer and density.
- * If either measurement changes, the spacers drift and the scrollbar lies; source and
- * rendered-layout specs pin them together.
+ * either side; the template fixes that border box at 44px for every pointer and density.
+ * The first group label sits closer to the top than the others. If any measurement
+ * changes, the spacers drift and the scrollbar lies; source and rendered-layout specs pin
+ * them together.
  */
-const HEADER_PX = 34;
+const HEADER_PX = 36;
+const FIRST_HEADER_PX = 28;
 const ROW_PX = 44; // member-list.component.scss pins the same 44px for the layout specs
 
 /** Group headers name the whole group, so they are plural; the singular names one person. */
@@ -78,10 +76,10 @@ interface MemberSection {
   readonly role: MemberRole;
   /** Visible header, e.g. "Admins". */
   readonly label: string;
-  /** Icon shown beside the header, from Trinity's vocabulary, e.g. "crown". */
-  readonly icon: TrnIconName;
   /** Accessible name for the group landmark, e.g. "Admins, 2 members". */
   readonly ariaLabel: string;
+  /** The first group: its header sits closer to the top. */
+  readonly first: boolean;
   readonly rows: MemberRow[];
 }
 
@@ -103,29 +101,16 @@ const PRESENCE_RANK: Record<PresenceState, number> = {
   offline: 2,
 };
 
-/**
- * Icon per role header. The owner gets the key rather than a second crown, so the two
- * sections stay distinguishable.
- */
-const ROLE_ICON: Record<MemberRole, TrnIconName> = {
-  owner: 'key-round',
-  admin: 'crown',
-  moderator: 'shield',
-  member: 'user',
-};
-
 /** Discord member list (right column): joined members grouped into role sections. */
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     SidePanelComponent,
+    SidePanelEmptyComponent,
     AvatarComponent,
-    TrnIconComponent,
-    TrnButton,
     TrnInput,
     TrnTooltip,
-    EmptyStateComponent,
   ],
   templateUrl: './member-list.component.html',
   styleUrl: './member-list.component.scss',
@@ -196,6 +181,14 @@ export class MemberListComponent {
   /** Whether a filter is narrowing the list, for the empty state. */
   protected readonly filtering = computed(() => this.query().trim().length > 0);
 
+  /** Only the reader is here: the panel says so below their own row. */
+  protected readonly alone = computed(
+    () =>
+      this.availability() === 'coherent' &&
+      !this.filtering() &&
+      this.members().length <= 1,
+  );
+
   /**
    * What the live region says while filtering. Windowing makes it necessary: rows outside
    * the window are not in the DOM, so a screen reader cannot count what is left. Empty
@@ -230,11 +223,13 @@ export class MemberListComponent {
       return {
         role,
         label,
-        icon: ROLE_ICON[role],
         ariaLabel: `${label}, ${sectionRows.length} ${noun}`,
+        first: false,
         rows: sectionRows,
       };
-    }).filter((section) => section.rows.length > 0);
+    })
+      .filter((section) => section.rows.length > 0)
+      .map((section, index) => ({ ...section, first: index === 0 }));
   });
 
   /**
@@ -259,7 +254,10 @@ export class MemberListComponent {
    */
   private readonly heights = computed(() => ({
     measured: new Map(
-      this.sections().map((section) => [`header:${section.role}`, HEADER_PX]),
+      this.sections().map((section) => [
+        `header:${section.role}`,
+        section.first ? FIRST_HEADER_PX : HEADER_PX,
+      ]),
     ),
     estimate: ROW_PX,
   }));

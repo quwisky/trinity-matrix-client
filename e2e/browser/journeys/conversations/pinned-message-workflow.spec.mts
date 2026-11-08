@@ -243,9 +243,9 @@ test.describe('Pin messages', () => {
 
     // The panel empties and/or the pin button's name drops its count — again waiting on
     // the state round trip rather than a fixed sleep.
-    await expect(
-      page.getByText('No pinned messages in this room yet.'),
-    ).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText('No pinned messages yet')).toBeVisible({
+      timeout: 30_000,
+    });
 
     await page.getByRole('button', { name: 'Close pinned messages' }).click();
     await expect(pinButton).toHaveAttribute('aria-label', 'Pinned messages', {

@@ -172,8 +172,11 @@ describe('ThreadsListComponent', () => {
   it('shows an empty state when there are no threads', async () => {
     const { container } = await build([]);
 
-    // The text, not the class: the panel is a `trn-empty-state` now, and what this test
-    // has always been about is that the reader is told there is nothing here.
-    expect(container.textContent).toContain('No threads in this room yet.');
+    // The text, not the class: what this test has always been about is that the reader is
+    // told there is nothing here, and how to change that.
+    const empty = container.querySelector('trn-side-panel-empty')!;
+    expect(empty.getAttribute('role')).toBe('status');
+    expect(empty.querySelector('h3')?.textContent).toBe('No threads yet');
+    expect(empty.textContent).toContain('Reply to a message in a thread');
   });
 });

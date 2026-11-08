@@ -1,6 +1,6 @@
 @if (showHeader()) {
   <trn-side-panel-header
-    [title]="title()"
+    [title]="heading()"
     [subtitle]="subtitle()"
     [icon]="icon()"
     [closeLabel]="closeLabel()"
@@ -12,7 +12,34 @@
 <div class="side-panel__strip">
   <ng-content select="[sidePanelStrip]" />
 </div>
-<div class="side-panel__body" [class.side-panel__body--scroll]="scroll()">
-  <ng-content />
-</div>
+@if (loading()) {
+  <div
+    class="side-panel__body side-panel__body--scroll"
+    role="status"
+    aria-busy="true"
+    [attr.aria-label]="loadingLabel()"
+    data-testid="side-panel-loading"
+  >
+    <span class="sr-only">{{ loadingLabel() }}</span>
+    @for (widths of skeleton; track $index) {
+      <div class="side-panel__skeleton" aria-hidden="true">
+        <span class="side-panel__skeleton-avatar"></span>
+        <span class="side-panel__skeleton-lines">
+          <span
+            class="side-panel__skeleton-bar"
+            [style.width.%]="widths[0]"
+          ></span>
+          <span
+            class="side-panel__skeleton-bar"
+            [style.width.%]="widths[1]"
+          ></span>
+        </span>
+      </div>
+    }
+  </div>
+} @else {
+  <div class="side-panel__body" [class.side-panel__body--scroll]="scroll()">
+    <ng-content />
+  </div>
+}
 <ng-content select="[sidePanelFooter]" />

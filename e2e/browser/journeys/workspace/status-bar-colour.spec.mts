@@ -247,12 +247,14 @@ for (const colorScheme of ['light', 'dark'] as const) {
       // The threads page reaches the top over the room.
       await page.getByTestId('open-threads').click();
       await expect(
-        page.getByRole('heading', { name: 'Threads' }),
+        page.getByRole('heading', { name: 'Threads', exact: true }),
       ).toBeVisible();
       await expectStatusBarMatchesTopBar(page, 'threads panel');
       // At this width the threads are a page, closed by its Back button.
       await page.getByRole('button', { name: 'Back', exact: true }).click();
-      await expect(page.getByRole('heading', { name: 'Threads' })).toBeHidden();
+      await expect(
+        page.getByRole('heading', { name: 'Threads', exact: true }),
+      ).toBeHidden();
 
       // The image viewer's black matte: the one top surface darker than a light theme.
       await page.getByRole('button', { name: `Open image ${IMAGE}` }).click();

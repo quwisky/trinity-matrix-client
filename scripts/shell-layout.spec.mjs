@@ -58,10 +58,14 @@ const userPanelCss = read(
 
 describe('modern room shell layout contracts', () => {
   it('pins member virtualization constants to fixed CSS boxes', () => {
-    expect(memberTs).toMatch(/const HEADER_PX = 34;/);
+    expect(memberTs).toMatch(/const HEADER_PX = 36;/);
+    expect(memberTs).toMatch(/const FIRST_HEADER_PX = 28;/);
     expect(memberTs).toMatch(/const ROW_PX = 44;/);
     expect(memberCss).toMatch(
-      /\.members__section-label\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*34px;/s,
+      /\.members__section-label\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*36px;/s,
+    );
+    expect(memberCss).toMatch(
+      /\.members__section-label--first\s*\{[^}]*height:\s*28px;/s,
     );
     expect(memberCss).toMatch(
       /\.member\s*\{[^}]*box-sizing:\s*border-box;[^}]*height:\s*44px;/s,

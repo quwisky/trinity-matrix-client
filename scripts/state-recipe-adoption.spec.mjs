@@ -218,18 +218,32 @@ describe('empty-state recipe adoption: lists', () => {
     expect(tag).toMatch(/\btitleAs="h2"/u);
   });
 
-  it('marks the pinned and threads panels with an icon', () => {
-    expect(
-      openingTag(
+  it('gives every room side panel the shared empty state, with its panel icon', () => {
+    for (const [file, marker, icon] of [
+      [
         'libs/feature/rooms/src/lib/pinned/pinned-messages-panel.component.html',
         'data-testid="pinned-empty"',
-      ),
-    ).toMatch(/\bicon="pin"/u);
-    expect(
-      openingTag(
+        'pin',
+      ],
+      [
         'libs/feature/rooms/src/lib/thread/threads-list.component.html',
-        'body="No threads in this room yet."',
-      ),
-    ).toMatch(/\bicon="messages-square"/u);
+        'heading="No threads yet"',
+        'message-square',
+      ],
+      [
+        'libs/feature/rooms/src/lib/member-list/member-list.component.html',
+        'data-testid="member-filter-empty"',
+        'users',
+      ],
+      [
+        'libs/feature/rooms/src/lib/message-search/message-search.component.html',
+        '[heading]="empty.title"',
+        'search',
+      ],
+    ]) {
+      const tag = openingTag(file, marker);
+      expect(tag, file).toMatch(/^<trn-side-panel-empty\b/u);
+      expect(tag, file).toMatch(new RegExp(`\\bicon="${icon}"`, 'u'));
+    }
   });
 });

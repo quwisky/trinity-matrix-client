@@ -6,8 +6,8 @@ import {
   output,
 } from '@angular/core';
 import { SidePanelComponent } from '../side-panel/side-panel.component';
+import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
@@ -35,7 +35,7 @@ const MAX_AVATARS = 4;
   imports: [
     UnencryptedMarkComponent,
     SidePanelComponent,
-    EmptyStateComponent,
+    SidePanelEmptyComponent,
     AvatarComponent,
     TrnBadge,
   ],

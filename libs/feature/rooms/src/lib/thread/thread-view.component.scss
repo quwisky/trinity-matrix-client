@@ -5,12 +5,4 @@
     --room-pane-surface: var(--trinity-surface-sidebar);
     --composer-safe-bottom: 0px;
   }
-
-  .thread__loading {
-    padding: var(--trinity-space-3) 0 var(--trinity-space-4);
-    color: var(--trinity-text-muted);
-    font-size: var(--trinity-type-control-size);
-    line-height: var(--trinity-type-control-line-height);
-    text-align: center;
-  }
 }

@@ -1,7 +1,7 @@
 <!-- The filter strip sits outside the scroll host: the windowing math measures from the
      host's own top. -->
 <trn-side-panel
-  title="Members"
+  heading="Members"
   icon="users"
   closeLabel="Close members"
   closeTestId="close-members"
@@ -70,14 +70,14 @@
         role="group"
         [attr.aria-label]="section.ariaLabel"
       >
-        <!-- The group's aria-label already names the role and count, so hide the
-           visual header (icon included) from assistive tech to avoid a double read. -->
+        <!-- The group's aria-label already names it and its count, so the visual header is
+             hidden from assistive tech to avoid a double read. -->
         @if (section.showHeader) {
           <span
-            class="category members__section-label member-group__label"
+            class="members__section-label member-group__label"
+            [class.members__section-label--first]="section.first"
             aria-hidden="true"
           >
-            <trn-icon class="members__section-icon" [name]="section.icon" />
             {{ section.label }} — {{ section.totalRows }}
           </span>
         }
@@ -85,13 +85,9 @@
           @for (row of section.rows; track row.member.userId) {
             <li class="members__item">
               <button
-                trnBtn
-                variant="secondary"
-                presentation="ghost"
+                type="button"
                 class="member"
                 [style.height.px]="rowPx"
-                [style.padding-inline]="'var(--trinity-density-shell-padding-inline)'"
-                type="button"
                 [class.member--offline]="row.presence === 'offline'"
                 [trnTooltip]="row.member.userId"
                 position="left"
@@ -106,14 +102,16 @@
                   size="lg"
                   [presence]="row.presence"
                 />
-                <span
-                  class="member__name"
-                  [class.member__name--admin]="
-                    row.role === 'owner' || row.role === 'admin'
-                  "
-                  [class.member__name--moderator]="row.role === 'moderator'"
-                  >{{ row.member.roomDisplayName }}</span
-                >
+                <span class="member__body">
+                  <span
+                    class="member__name"
+                    [class.member__name--admin]="
+                      row.role === 'owner' || row.role === 'admin'
+                    "
+                    [class.member__name--moderator]="row.role === 'moderator'"
+                    >{{ row.member.roomDisplayName }}</span
+                  >
+                </span>
               </button>
             </li>
           }
@@ -121,12 +119,22 @@
       </div>
     } @empty {
       @if (availability() === 'coherent' && filtering()) {
-        <trn-empty-state
-          layout="line"
-          body="No members match that."
+        <trn-side-panel-empty
+          icon="users"
+          heading="No members match"
+          [body]="'No one in this room matches “' + query().trim() + '”.'"
           data-testid="member-filter-empty"
         />
       }
+    }
+
+    @if (alone()) {
+      <trn-side-panel-empty
+        icon="users"
+        heading="No one else is here yet"
+        body="Invite people to this room to start the conversation."
+        data-testid="member-list-alone"
+      />
     }
 
     <div

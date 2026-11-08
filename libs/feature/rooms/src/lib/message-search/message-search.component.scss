@@ -1,24 +1,56 @@
+@use '../styles/mixins' as *;
+
 @layer components {
+  .ms-row {
+    @include panel-row;
+
+    align-items: flex-start;
+  }
+
+  .ms-row--selected {
+    @include panel-row-selected;
+  }
+
+  .ms-body {
+    @include panel-row-body;
+  }
+
+  .ms-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--trinity-space-3);
+    min-width: 0;
+  }
+
+  .ms-name {
+    @include panel-row-name;
+
+    min-width: 0;
+  }
+
   .ms-time {
-    margin-inline-start: 8px;
-    font-size: 0.75rem;
-    color: var(--trinity-text-muted);
+    @include panel-row-meta;
+
+    flex: none;
   }
 
   .ms-snippet {
-    white-space: normal;
+    @include panel-row-snippet;
+
+    margin: 0;
 
     mark {
-      background: var(--trinity-active);
-      color: inherit;
-      border-radius: 3px;
-      padding: 0 2px;
+      padding: 0 var(--trinity-space-1);
+      border-radius: var(--trinity-radius-sm);
+      background: var(--trinity-accent-tint-30);
+      color: var(--trinity-text-bright);
     }
   }
 
   .ms-more {
     display: flex;
     justify-content: center;
-    padding: 8px 16px 16px;
+    padding: var(--trinity-space-3) var(--trinity-space-5)
+      var(--trinity-space-5);
   }
 }
