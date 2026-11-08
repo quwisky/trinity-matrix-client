@@ -918,16 +918,16 @@ describe('ThreadViewComponent', () => {
     fixture.componentRef.setInput('loading', true);
     fixture.detectChanges();
 
-    expect(container.textContent).toContain('Loading thread…');
-    expect(container.textContent).not.toContain(
-      'No replies in this thread yet.',
-    );
+    const loadingState = () =>
+      container.querySelector('[data-testid="side-panel-loading"]');
+    expect(loadingState()?.getAttribute('aria-label')).toBe('Loading thread');
+    expect(container.textContent).not.toContain('No replies yet');
     expect(openThread).not.toHaveBeenCalled();
     expect(releasedRoots).toHaveBeenCalledWith('$root');
 
     fixture.componentRef.setInput('loading', false);
     fixture.detectChanges();
-    expect(container.textContent).not.toContain('Loading thread…');
+    expect(loadingState()).toBeNull();
     expect(openThread).toHaveBeenCalledWith('!r:hs', '$cold');
   });
 
@@ -1002,7 +1002,9 @@ describe('ThreadViewComponent', () => {
   it('shows an empty state when the thread has no messages', async () => {
     const { container } = await build([]);
 
-    expect(container.textContent).toContain('No replies in this thread yet.');
+    expect(
+      container.querySelector('trn-side-panel-empty h3')?.textContent,
+    ).toBe('No replies yet');
   });
 
   it('announces a dismissal on close', async () => {

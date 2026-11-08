@@ -68,33 +68,28 @@
     display: block;
   }
 
-  .category {
-    @include category-label;
-  }
-
-  // A role group ("Admin — 2"). The space between groups lives in the HEADER's own padding
+  // A group ("ADMINS — 1"). The space between groups lives in the HEADER's own padding
   // (every header, including the first), not in a sibling margin: a
   // `.members__section + .members__section` margin exists only between two RENDERED
   // siblings and would come and go as sections enter the window, which no per-row height
-  // model can account for. See HEADER_PX.
+  // model can account for. The heights are fixed for the same reason; see HEADER_PX.
   .members__section-label {
-    box-sizing: border-box;
-    height: 34px;
+    @include panel-section-label;
+
     display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 12px var(--trinity-density-shell-padding-inline) 4px;
+    align-items: flex-end;
+    box-sizing: border-box;
+    height: 36px;
+  }
+
+  .members__section-label--first {
+    height: 28px;
+    padding-top: var(--trinity-space-3);
   }
 
   // Reads "ADMINS — 1": the casing is presentation, so the text stays sentence case.
   .member-group__label {
     text-transform: uppercase;
-  }
-
-  // The role icon inherits the label's colour and sits larger than the 11px text.
-  .members__section-icon {
-    flex: 0 0 auto;
-    font-size: 13px;
   }
 
   .members__list {
@@ -103,15 +98,21 @@
     padding: 0;
   }
 
-  // The `trnBtn` recipe's own height (32px, or a 44px minimum on touch) and centring
-  // out-rank a component-layer rule, so the template binds the height (from ROW_PX) and the
-  // density-driven inline padding on the element; the 44px here is what the layout specs
-  // pin. The name takes the free width so it reads from the start despite the centring.
+  // The template binds the height (ROW_PX, or STATUS_ROW_PX with a status line), which the
+  // windowing math reads; the layout specs pin the 44px.
   .member {
+    @include panel-row;
+
     box-sizing: border-box;
     height: 44px;
-    width: 100%;
-    text-align: left;
+  }
+
+  .member__body {
+    @include panel-row-body;
+  }
+
+  .member__name {
+    @include panel-row-name;
   }
 
   /* Offline members: fade the avatar and mute the name to a token (a row opacity would drop
@@ -132,20 +133,10 @@
         }
 
         .member__name {
-          color: var(--trinity-text);
+          color: var(--trinity-text-bright);
         }
       }
     }
-  }
-
-  .member__name {
-    @include ellipsis;
-
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 14px;
-    font-weight: 400;
-    color: var(--trinity-text);
   }
 
   // Two classes so the tint out-ranks `.member--offline .member__name`; the faded avatar

@@ -1,34 +1,30 @@
 @use '../styles/mixins' as *;
 
 @layer components {
+  // The row is the jump button; the unpin button sits beside it inside the same hover box.
   .pin-item {
     display: flex;
-    align-items: center;
-    gap: 4px;
-    border-radius: var(--trinity-radius);
+    align-items: flex-start;
+    border-radius: var(--trinity-radius-md);
 
     @media (hover: hover) {
       &:hover {
-        background: var(--trinity-hover);
+        background: var(--trinity-state-hover-surface);
       }
     }
   }
 
   .pin-item__main {
+    @include panel-row;
+
+    align-items: flex-start;
     flex: 1;
     min-width: 0;
-    display: block;
-    padding: 10px 12px;
-    border: none;
-    border-radius: var(--trinity-radius);
-    background: none;
-    color: var(--trinity-text);
-    text-align: left;
-    cursor: pointer;
 
-    &:focus-visible {
-      outline: 2px solid var(--trinity-accent);
-      outline-offset: -2px;
+    @media (hover: hover) {
+      &:hover {
+        background: none;
+      }
     }
   }
 
@@ -39,34 +35,33 @@
   .pin-item__head {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: var(--trinity-space-3);
+    min-width: 0;
   }
 
   .pin-item__author {
-    @include ellipsis;
+    @include panel-row-name;
 
-    flex: 1;
     min-width: 0;
-    font-weight: 600;
-    color: var(--trinity-text-bright);
   }
 
   .pin-item__time {
-    flex: 0 0 auto;
-    color: var(--trinity-text-muted);
-    font-size: 12px;
+    @include panel-row-meta;
+
+    flex: none;
+  }
+
+  .pin-item__content {
+    @include panel-row-body;
   }
 
   .pin-item__body {
-    @include ellipsis;
-
-    margin-top: 2px;
-    font-size: 13px;
-    color: var(--trinity-text-muted);
+    @include panel-row-snippet;
   }
 
   .pin-item__unpin {
-    flex: 0 0 auto;
-    margin-right: 4px;
+    flex: none;
+    margin-block-start: var(--trinity-space-2);
+    margin-inline-end: var(--trinity-space-2);
   }
 }

@@ -2,14 +2,15 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  computed,
   inject,
   output,
 } from '@angular/core';
 import { SidePanelComponent } from '../side-panel/side-panel.component';
+import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import { TrnButton } from '@trinity/components/controls';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
   TrnToastService,
@@ -35,7 +36,7 @@ import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted
   imports: [
     UnencryptedMarkComponent,
     SidePanelComponent,
-    EmptyStateComponent,
+    SidePanelEmptyComponent,
     TrnIconComponent,
     TrnButton,
     TrnTooltip,
@@ -52,6 +53,11 @@ export class PinnedMessagesPanelComponent {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly pinned = this.pins.messages;
+  /** Every pin is still being fetched, so there is nothing yet to show in its place. */
+  protected readonly loading = computed(() => {
+    const pins = this.pinned();
+    return pins.length > 0 && pins.every((pin) => pin.status === 'loading');
+  });
   readonly canPin = this.pins.canMutate;
 
   /** The user picked a pinned message: its event id, for the host to jump to. */

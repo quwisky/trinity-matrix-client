@@ -16,6 +16,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { SidePanelComponent } from '../side-panel/side-panel.component';
+import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { DateTimeFormatService } from '@trinity/platform-native';
 import {
   type LoadedMessageSearch,
@@ -24,10 +25,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { initialOf } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
-import {
-  BannerComponent,
-  EmptyStateComponent,
-} from '@trinity/components/generic-content';
+import { BannerComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
@@ -70,7 +68,7 @@ interface HighlightPart {
     UnencryptedMarkComponent,
     SidePanelComponent,
     BannerComponent,
-    EmptyStateComponent,
+    SidePanelEmptyComponent,
     TrnIconComponent,
     AvatarComponent,
     TrnSpinnerComponent,
@@ -101,6 +99,7 @@ export class MessageSearchComponent {
       untracked(() => {
         this.cancelServer();
         this.resetServer();
+        this.selectedId.set(null);
       });
     });
     afterNextRender(() => {
@@ -153,14 +152,24 @@ export class MessageSearchComponent {
     this.serverMode() ? this.serverHits() : this.loaded().hits,
   );
 
-  readonly emptyHint = computed(() => {
-    if (!this.query().trim()) {
-      return 'Type to search messages in this conversation.';
+  /** The result picked last, still marked after the jump. */
+  protected readonly selectedId = signal<string | null>(null);
+
+  readonly emptyState = computed<{ title: string; body: string } | null>(() => {
+    const term = this.query().trim();
+    if (!term) {
+      return {
+        title: 'Search this room',
+        body: 'Type a word or phrase to find the messages that contain it.',
+      };
     }
     if (this.searching()) {
-      return 'Searching…';
+      return null;
     }
-    return 'No matching messages.';
+    return {
+      title: 'No results',
+      body: `Nothing here matches “${term}”. Try other words.`,
+    };
   });
 
   onInput(event: Event): void {
@@ -216,6 +225,7 @@ export class MessageSearchComponent {
   }
 
   select(hit: MessageHit): void {
+    this.selectedId.set(hit.eventId);
     this.selected.emit(hit.eventId);
   }
 

@@ -1,8 +1,10 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  effect,
   input,
   output,
+  signal,
 } from '@angular/core';
 import { type TrnIconName } from '@trinity/components/foundations';
 import { SidePanelHeaderComponent } from './side-panel-header.component';
@@ -20,7 +22,8 @@ import { SidePanelHeaderComponent } from './side-panel-header.component';
   styleUrl: './side-panel.component.scss',
 })
 export class SidePanelComponent {
-  readonly title = input.required<string>();
+  /** The panel's name. Not `title`: a static `title` attribute is also a native tooltip. */
+  readonly heading = input.required<string>();
   readonly subtitle = input('');
   readonly icon = input<TrnIconName | null>(null);
   readonly closeLabel = input('Close');
@@ -34,5 +37,34 @@ export class SidePanelComponent {
    * scroller, such as the windowed member list or the thread's timeline.
    */
   readonly scroll = input(true);
+  /** Shows three skeleton rows in place of the body while the panel's rows load. */
+  readonly loading = input(false);
+  /** Names the loading state for assistive technology, such as "Loading pinned messages". */
+  readonly loadingLabel = input('Loading');
   readonly closed = output<void>();
+
+  /** Name and line widths of the three skeleton rows, in percent. */
+  protected readonly skeleton = [
+    [40, 85],
+    [30, 70],
+    [45, 60],
+  ] as const;
+
+  /**
+   * Fills the status region a beat after it appears: a live region inserted with its text
+   * already in it is often not announced.
+   */
+  protected readonly loadingAnnouncement = signal('');
+
+  constructor() {
+    effect((onCleanup) => {
+      this.loadingAnnouncement.set('');
+      if (!this.loading()) {
+        return;
+      }
+      const label = this.loadingLabel();
+      const timer = setTimeout(() => this.loadingAnnouncement.set(label), 100);
+      onCleanup(() => clearTimeout(timer));
+    });
+  }
 }

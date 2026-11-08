@@ -48,4 +48,48 @@
       var(--trinity-space-3) + env(safe-area-inset-right)
     );
   }
+
+  // Shaped like the real rows: a 32px avatar beside a name and a line.
+  .side-panel__skeleton {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-4);
+    min-height: var(--trinity-panel-row-min-height);
+    padding: var(--trinity-panel-row-padding-block) var(--trinity-space-3);
+  }
+
+  // The selected-row fill: it reads on the sidebar surface in every theme and mode, where
+  // the raised surface is nearly the sidebar's own colour in light mode.
+  .side-panel__skeleton-avatar,
+  .side-panel__skeleton-bar {
+    background: var(--trinity-state-selected-surface);
+    animation: side-panel-skeleton-pulse var(--trinity-duration-pulse)
+      ease-in-out infinite alternate;
+  }
+
+  .side-panel__skeleton-avatar {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--trinity-shape-person-radius);
+  }
+
+  .side-panel__skeleton-lines {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--trinity-panel-row-padding-block);
+  }
+
+  .side-panel__skeleton-bar {
+    display: block;
+    height: 10px;
+    border-radius: var(--trinity-radius-pill);
+  }
+
+  @keyframes side-panel-skeleton-pulse {
+    to {
+      opacity: 0.55;
+    }
+  }
 }

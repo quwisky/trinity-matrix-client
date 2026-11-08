@@ -1,5 +1,5 @@
 <trn-side-panel
-  title="Threads"
+  heading="Threads"
   icon="message-square"
   closeLabel="Close threads"
   (closed)="close()"
@@ -8,7 +8,6 @@
     <button
       type="button"
       class="thread-item"
-      [class.thread-item--unread]="t.unreadCount > 0"
       (click)="openThread(t.rootEventId)"
     >
       <div class="thread-item__avatars" aria-hidden="true">
@@ -73,9 +72,10 @@
       }
     </button>
   } @empty {
-    <trn-empty-state
-      icon="messages-square"
-      body="No threads in this room yet."
+    <trn-side-panel-empty
+      icon="message-square"
+      heading="No threads yet"
+      body="Reply to a message in a thread to start one. Every thread in this room shows up here."
     />
   }
 </trn-side-panel>

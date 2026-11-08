@@ -733,7 +733,11 @@ test.describe('Modern room shell layout', () => {
       );
       await expect(page.locator('.members__section-label').first()).toHaveCSS(
         'height',
-        '34px',
+        '28px',
+      );
+      await expect(page.locator('.members__section-label').nth(1)).toHaveCSS(
+        'height',
+        '36px',
       );
       await expectEllipsis(
         page.locator('.member__name', { hasText: 'Morgan With A Member Name' }),

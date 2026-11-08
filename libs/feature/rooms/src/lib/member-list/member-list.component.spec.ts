@@ -352,30 +352,24 @@ describe('MemberListComponent', () => {
     ).toBe('true');
   });
 
-  it('renders a role icon in every section header', async () => {
+  it('labels each section in text alone, the first one closer to the top', async () => {
     const members = [
       member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
       member({ userId: '@bo:hs', roomDisplayName: 'Bo', powerLevel: 50 }),
       member({ userId: '@cy:hs', roomDisplayName: 'Cy', powerLevel: 0 }),
     ];
-    const { container, fixture } = await renderMembers(members);
+    const { container } = await renderMembers(members);
 
-    // Each of the three section headers renders exactly one icon that resolves to
-    // a real SVG (i.e. the icon name is registered, not just the host element).
-    const sections = container.querySelectorAll('.members__section');
-    expect(sections.length).toBe(3);
-    for (const section of sections) {
-      const icons = section.querySelectorAll('.members__section-icon');
-      expect(icons.length).toBe(1);
-      expect(icons[0].querySelector('svg')).not.toBeNull();
-    }
-
-    // Crown for admins, shield for moderators, user for members — highest role first.
-    expect(fixture.componentInstance.sections().map((s) => s.icon)).toEqual([
-      'crown',
-      'shield',
-      'user',
+    const labels = [...container.querySelectorAll('.members__section-label')];
+    expect(labels).toHaveLength(3);
+    expect(labels.map((l) => l.querySelector('trn-icon'))).toEqual([
+      null,
+      null,
+      null,
     ]);
+    expect(
+      labels.map((l) => l.classList.contains('members__section-label--first')),
+    ).toEqual([true, false, false]);
   });
 });
 
@@ -422,11 +416,13 @@ describe('MemberListComponent — restyle', () => {
     expect(name?.classList).toContain('member__name--admin');
   });
 
-  it('renders rows with the shared button recipe', async () => {
+  it('renders rows as the shared panel row, a plain button', async () => {
     const { container } = await renderMembers(MEMBERS);
 
     const row = container.querySelector('[data-testid=member-row]')!;
-    expect(row.getAttribute('data-slot')).toBe('button');
+    expect(row.tagName).toBe('BUTTON');
+    expect(row.getAttribute('type')).toBe('button');
+    expect(row.classList).toContain('member');
   });
 
   it('maps the name tints and label casing in the stylesheet', () => {

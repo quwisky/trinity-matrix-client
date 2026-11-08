@@ -14,13 +14,13 @@ import {
 import { POST_UNAVAILABLE_COPY } from '../message-composer/post-unavailable-copy';
 import { ThreadCommands } from './thread-commands';
 import { SidePanelComponent } from '../side-panel/side-panel.component';
+import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   MessageGestureSettingsService,
   isMobileOs,
 } from '@trinity/platform-native';
 import { type SwipeDirection } from '../message-row/message-row.component';
-import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { TypingIndicatorComponent } from '../message-list/typing-indicator/typing-indicator.component';
 import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import {
@@ -52,7 +52,7 @@ import { BELOW_MEMBERS_QUERY, mediaQuerySignal } from '@trinity/util/ui';
   imports: [
     SidePanelComponent,
     TypingIndicatorComponent,
-    EmptyStateComponent,
+    SidePanelEmptyComponent,
     MessageListComponent,
     MessageComposerComponent,
   ],

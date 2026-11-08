@@ -1,9 +1,11 @@
 <trn-side-panel
   data-testid="pinned-panel"
-  title="Pinned messages"
+  heading="Pinned messages"
   icon="pin"
   closeLabel="Close pinned messages"
   closeTestId="pinned-close"
+  [loading]="loading()"
+  loadingLabel="Loading pinned messages"
   (closed)="close()"
 >
   @for (p of pinned(); track p.id) {
@@ -72,16 +74,18 @@
               (p.shield ? ', ' + p.shield.reason.toLowerCase() : '')
             "
           >
-            <div class="pin-item__head">
-              <span class="pin-item__author">{{ p.senderName }}</span>
-              <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
-            </div>
-            <div class="pin-item__body">
-              @if (p.shield; as shield) {
-                <trn-unencrypted-mark [shield]="shield" />
-              }
-              {{ p.body }}
-            </div>
+            <span class="pin-item__content">
+              <span class="pin-item__head">
+                <span class="pin-item__author">{{ p.senderName }}</span>
+                <span class="pin-item__time">{{ fmt.dateTime(p.ts) }}</span>
+              </span>
+              <span class="pin-item__body">
+                @if (p.shield; as shield) {
+                  <trn-unencrypted-mark [shield]="shield" />
+                }
+                {{ p.body }}
+              </span>
+            </span>
           </button>
 
           @if (canPin()) {
@@ -104,9 +108,10 @@
       }
     }
   } @empty {
-    <trn-empty-state
+    <trn-side-panel-empty
       icon="pin"
-      body="No pinned messages in this room yet."
+      heading="No pinned messages yet"
+      body="Pin a message from its menu to keep it here for everyone in the room."
       data-testid="pinned-empty"
     />
   }

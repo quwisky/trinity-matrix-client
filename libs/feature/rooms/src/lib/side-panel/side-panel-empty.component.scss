@@ -1,0 +1,40 @@
+@layer components {
+  :host {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--trinity-space-3);
+    padding: var(--trinity-space-7) var(--trinity-space-6);
+    text-align: center;
+  }
+
+  .side-panel-empty__ring {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+    margin-bottom: var(--trinity-space-3);
+    border-radius: var(--trinity-shape-person-radius);
+    background: var(--trinity-state-selected-surface);
+    color: var(--trinity-text-muted);
+  }
+
+  .side-panel-empty__title {
+    margin: 0;
+    font-size: var(--trinity-panel-title-size);
+    font-weight: 600;
+    color: var(--trinity-text-bright);
+  }
+
+  .side-panel-empty__body {
+    max-width: 280px;
+    margin: 0;
+    font-size: var(--trinity-panel-row-size);
+    line-height: 1.45;
+    color: var(--trinity-text-muted);
+    text-wrap: balance;
+  }
+}

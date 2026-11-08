@@ -314,12 +314,16 @@ test.describe('Mobile room navigation', () => {
     await expect(toggle).toBeFocused();
 
     await page.getByTestId('open-threads').click();
-    await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Threads', exact: true }),
+    ).toBeVisible();
     await expect(members).toBeHidden();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
     await page.setViewportSize(devices['Pixel 5'].viewport);
-    await expect(page.getByRole('heading', { name: 'Threads' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Threads', exact: true }),
+    ).toBeVisible();
     // At phone width the threads are a page, closed by its Back button.
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     // The roster the threads opened over is still the URL's, so it returns as the drawer.
