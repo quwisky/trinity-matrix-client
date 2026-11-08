@@ -6,6 +6,7 @@ import {
   type EnvironmentProviders,
 } from '@angular/core';
 import { AppearanceEffects } from '@trinity/application/appearance';
+import { QR_SCANNER_SUSPENDED } from '@trinity/components/controls';
 import {
   AppLockService,
   type AppLockStatus,
@@ -82,6 +83,11 @@ export function appLockProviders(): EnvironmentProviders {
           attentive: computed(() => !appLockCovers(appLock.status())),
         };
       },
+    },
+    {
+      // A lock only covers the screen: the camera must not keep running beneath it.
+      provide: QR_SCANNER_SUSPENDED,
+      useFactory: () => inject(AppLockService).locked,
     },
     {
       // Always hide until App lock's settings are known (see effectiveNotificationText).

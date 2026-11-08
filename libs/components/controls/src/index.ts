@@ -32,6 +32,7 @@ export { TrnInput, type TrnTextControlSize } from './lib/input/trn-input';
 export { TrnLabel } from './lib/label/trn-label';
 export { TrnPasswordInputComponent } from './lib/password-input/trn-password-input.component';
 export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.component';
+export { QR_SCANNER_SUSPENDED } from './lib/qr-scanner/qr-scanner/qr-scanner-suspended';
 export {
   TrnRadioComponent,
   TrnRadioGroupComponent,

@@ -3,16 +3,19 @@ import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
+  effect,
   OnDestroy,
   AfterViewInit,
   inject,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { QrCodeService } from '@trinity/platform-native';
 import { latestGuard } from '@trinity/util/ui';
 import { TrnButton } from '../../button/trn-button';
+import { QR_SCANNER_SUSPENDED } from './qr-scanner-suspended';
 
 type ScannerStatus = 'starting' | 'scanning' | 'error';
 
@@ -37,11 +40,20 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
   private scanSessionActive = false;
   private readonly cameraOpen = latestGuard();
   private lastScanAt = 0;
+  private readonly suspended = inject(QR_SCANNER_SUSPENDED, { optional: true });
 
   readonly scanned = output<Uint8ClampedArray>();
   readonly cancelled = output<void>();
   readonly status = signal<ScannerStatus>('starting');
   readonly error = signal<string | null>(null);
+
+  constructor() {
+    effect(() => {
+      if (this.suspended?.()) {
+        untracked(() => this.cancelForLifecycle());
+      }
+    });
+  }
 
   ngAfterViewInit(): void {
     this.document.addEventListener('visibilitychange', this.onVisibilityChange);
@@ -70,6 +82,10 @@ export class QrScannerComponent implements AfterViewInit, OnDestroy {
 
   private async start(): Promise<void> {
     this.stop();
+    if (this.suspended?.()) {
+      this.cancelled.emit();
+      return;
+    }
     const token = this.cameraOpen.next();
     this.scanSessionActive = true;
     this.status.set('starting');

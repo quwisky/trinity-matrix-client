@@ -1,15 +1,30 @@
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnButton } from '../../button/trn-button';
 import { QrScannerComponent } from './qr-scanner.component';
+import { QR_SCANNER_SUSPENDED } from './qr-scanner-suspended';
+
+/** Removes the scanner on `cancelled`, as Link device and device verification do. */
+@Component({
+  imports: [QrScannerComponent],
+  template: `@if (open()) {
+    <trn-qr-scanner (cancelled)="open.set(false)" />
+  }`,
+})
+class SuspendedScannerHostComponent {
+  readonly open = signal(true);
+}
 
 describe('QrScannerComponent', () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('surfaces a denied camera permission and allows retrying', async () => {
     const { container, fixture } = await render(QrScannerComponent, {
@@ -95,6 +110,65 @@ describe('QrScannerComponent', () => {
     expect(closeCamera).toHaveBeenCalledWith(stream);
     expect(cancelled).toHaveBeenCalledOnce();
     expect(TestBed.inject(QrCodeService).openCamera).toHaveBeenCalledOnce();
+  });
+
+  it('stops every camera track when suspended, and stays closed when resumed', async () => {
+    const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }];
+    const getUserMedia = vi.fn(() =>
+      Promise.resolve({ getTracks: () => tracks }),
+    );
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const suspended = signal(false);
+    const { container, fixture } = await render(QrScannerComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: suspended }],
+    });
+    const cancelled = vi.fn();
+    fixture.componentInstance.cancelled.subscribe(cancelled);
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('scanning'),
+    );
+
+    suspended.set(true);
+    fixture.detectChanges();
+
+    for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce();
+    expect(container.querySelector('video')!.srcObject).toBeNull();
+    expect(cancelled).toHaveBeenCalledOnce();
+
+    suspended.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it('never opens the camera when created while suspended', async () => {
+    const getUserMedia = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const cancelled = vi.fn();
+    await render(QrScannerComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: signal(true) }],
+      on: { cancelled },
+    });
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(cancelled).toHaveBeenCalledOnce();
+  });
+
+  it('lets a host remove a scanner created while suspended without a change-detection error', async () => {
+    const getUserMedia = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const errors = vi.spyOn(console, 'error');
+
+    const { container, fixture } = await render(SuspendedScannerHostComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: signal(true) }],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.open()).toBe(false);
+    expect(container.querySelector('trn-qr-scanner')).toBeNull();
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
   });
 
   it('closes a camera that opens after the scan was cancelled and never attaches it', async () => {
