@@ -353,11 +353,11 @@ importers:
         version: 1.4.0
     devDependencies:
       '@analogjs/vite-plugin-angular':
-        specifier: 2.9.5
-        version: 2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2)
+        specifier: 2.9.6
+        version: 2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2)
       '@analogjs/vitest-angular':
-        specifier: 2.9.5
-        version: 2.9.5(@analogjs/vite-plugin-angular@2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2))(@angular-devkit/architect@0.2202.5(chokidar@5.0.0))(@angular-devkit/schematics@22.2.5(chokidar@5.0.0))(vitest@5.0.5)
+        specifier: 2.9.6
+        version: 2.9.6(@analogjs/vite-plugin-angular@2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2))(@angular-devkit/architect@0.2202.5(chokidar@5.0.0))(@angular-devkit/schematics@22.2.5(chokidar@5.0.0))(vitest@5.0.5)
       '@angular/build':
         specifier: 22.2.5
         version: 22.2.5(@angular/compiler-cli@22.2.4(@angular/compiler@22.2.4)(typescript@6.0.3))(@angular/compiler@22.2.4)(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(@angular/platform-browser@22.2.4(@angular/animations@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/common@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2)))(@angular/service-worker@22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))(rxjs@7.8.2))(@types/node@26.6.6)(jiti@2.7.0)(less@4.9.1(supports-color@8.1.1))(ng-packagr@22.2.5(@angular/compiler-cli@22.2.4(@angular/compiler@22.2.4)(typescript@6.0.3))(@volar/typescript@2.4.30(typescript@6.0.3))(oxc-resolver@11.21.2)(supports-color@8.1.1)(tailwindcss@4.3.4)(tslib@2.8.1)(typescript@6.0.3))(postcss@8.5.32)(supports-color@8.1.1)(tailwindcss@4.3.4)(tslib@2.8.1)(tsx@4.23.15)(typescript@6.0.3)(vitest@5.0.5)(yaml@2.9.1)
@@ -423,7 +423,7 @@ importers:
         version: 10.6.5(storybook@10.6.5(prettier@3.9.10)(react@19.3.1))
       '@storybook/angular-vite':
         specifier: 10.6.5
-        version: 10.6.5(fc44299e39d797ce5d50c294523d60be)
+        version: 10.6.5(f9fb35cf5a1c0beaafab385a7977fdf4)
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.4
@@ -567,8 +567,8 @@ packages:
     resolution: {integrity: sha512-30iZtAPgz+LTIYoeivqYo853f02jBYSd5uGnGpkFV0M3xOt9aN73erkgYAmZU43x4VfqcnLxW9Kpg3R5LC4YYw==}
     engines: {node: '>=6.0.0'}
 
-  '@analogjs/vite-plugin-angular@2.9.5':
-    resolution: {integrity: sha512-iGhtiViuLMhQleH/MMeG1LXXmeWcDggf6OB6F17X8SbPsGKbjZPC8DrdJMAQ7lg1DaxqYsN0spu0oY6akZFJiQ==}
+  '@analogjs/vite-plugin-angular@2.9.6':
+    resolution: {integrity: sha512-mgFc3GdHWH1D4xpFn1N5R352Q/vwALkSt02s95pGRJw9lrt7MSH3w15+TDJjDxmsLCbe+/51usU6MMTVJz+79A==}
     peerDependencies:
       '@angular-devkit/build-angular': ^17.0.0 || ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0 || ^22.0.0
       '@angular/build': ^18.0.0 || ^19.0.0 || ^20.0.0 || ^21.0.0 || ^22.0.0
@@ -581,8 +581,8 @@ packages:
       vite:
         optional: true
 
-  '@analogjs/vitest-angular@2.9.5':
-    resolution: {integrity: sha512-B8NAQBGogC5q6hvoLP8AmmYvJqIRwqmmKU1mst/qmPHwRkY9CXH7w97/GblGjmj2pCRhe8mPp1vPjz//7tzQGQ==}
+  '@analogjs/vitest-angular@2.9.6':
+    resolution: {integrity: sha512-IDpMDxBnJS2vsvoCyQHXH6iVv12YOhMVmSGRF0HgHkXiI39DYsq2TPW39UgIkS5i6yqSX44bmxIUVUJijIxoWQ==}
     peerDependencies:
       '@analogjs/vite-plugin-angular': '*'
       '@angular-devkit/architect': '>=0.1700.0 < 0.2300.0 || >=0.2200.0 < 0.2300.0'
@@ -9947,7 +9947,7 @@ snapshots:
       '@jridgewell/gen-mapping': 0.3.13
       '@jridgewell/trace-mapping': 0.3.31
 
-  '@analogjs/vite-plugin-angular@2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2)':
+  '@analogjs/vite-plugin-angular@2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2)':
     dependencies:
       magic-string: 0.30.21
       obug: 2.2.1
@@ -9960,9 +9960,9 @@ snapshots:
       - '@emnapi/core'
       - '@emnapi/runtime'
 
-  '@analogjs/vitest-angular@2.9.5(@analogjs/vite-plugin-angular@2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2))(@angular-devkit/architect@0.2202.5(chokidar@5.0.0))(@angular-devkit/schematics@22.2.5(chokidar@5.0.0))(vitest@5.0.5)':
+  '@analogjs/vitest-angular@2.9.6(@analogjs/vite-plugin-angular@2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2))(@angular-devkit/architect@0.2202.5(chokidar@5.0.0))(@angular-devkit/schematics@22.2.5(chokidar@5.0.0))(vitest@5.0.5)':
     dependencies:
-      '@analogjs/vite-plugin-angular': 2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2)
+      '@analogjs/vite-plugin-angular': 2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2)
       '@angular-devkit/architect': 0.2202.5(chokidar@5.0.0)
       '@angular-devkit/schematics': 22.2.5(chokidar@5.0.0)
       vitest: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(jsdom@30.1.3)(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1(supports-color@8.1.1))(sass-embedded@1.104.1)(sass@1.104.1)(tsx@4.23.15)(yaml@2.9.1))
@@ -13724,9 +13724,9 @@ snapshots:
       axe-core: 4.14.0
       storybook: 10.6.5(prettier@3.9.10)(react@19.3.1)
 
-  '@storybook/angular-vite@10.6.5(fc44299e39d797ce5d50c294523d60be)':
+  '@storybook/angular-vite@10.6.5(f9fb35cf5a1c0beaafab385a7977fdf4)':
     dependencies:
-      '@analogjs/vite-plugin-angular': 2.9.5(a403cb49e91c00ae8ba51fd7fde96ec2)
+      '@analogjs/vite-plugin-angular': 2.9.6(a403cb49e91c00ae8ba51fd7fde96ec2)
       '@angular-devkit/architect': 0.2202.5(chokidar@5.0.0)
       '@angular-devkit/core': 22.2.5(chokidar@5.0.0)
       '@angular/animations': 22.2.4(@angular/core@22.2.4(@angular/compiler@22.2.4)(rxjs@7.8.2))
