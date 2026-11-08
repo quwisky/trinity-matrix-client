@@ -75,7 +75,7 @@ describe('MessageComposerComponent — voice recording', () => {
     expect(track.stop).toHaveBeenCalled();
   });
 
-  describe('when the conversation changes while the clip is finished', () => {
+  describe('when the conversation changes while the clip is encoded', () => {
     const recording: VoiceRecording = {
       blob: new Blob(['clip'], { type: 'audio/webm' }),
       durationMs: 1000,
@@ -83,7 +83,9 @@ describe('MessageComposerComponent — voice recording', () => {
       mimeType: 'audio/webm',
     };
     let finish: (clip: VoiceRecording) => void;
-    const sendVoiceMessage = vi.fn(() => of(undefined));
+    const sendVoiceMessage = vi.fn(
+      (_clip: PromiseLike<VoiceRecording | null>) => of(undefined),
+    );
     const providers = () => [
       MockProvider(VoiceRecorderService, {
         supported: true,
@@ -103,22 +105,24 @@ describe('MessageComposerComponent — voice recording', () => {
       await cmp.startVoiceRecording();
       cmp.stopVoiceRecording();
       finish(recording);
-      await Promise.resolve();
 
-      expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
+      await expect(sendVoiceMessage.mock.calls[0][0]).resolves.toBe(recording);
     });
 
-    it('does not send the clip as the account switched to', async () => {
+    it('still sends the clip to the conversation it was recorded in after an account switch', async () => {
       const { fixture } = await renderComposer(conversation, providers());
       const cmp = fixture.componentInstance;
       await cmp.startVoiceRecording();
       cmp.stopVoiceRecording();
+      // The send resolves its conversation on subscribe, so it must be under way before the switch.
+      expect(sendVoiceMessage).toHaveBeenCalledTimes(1);
+
       fixture.componentRef.setInput('accountId', '@b:hs');
       fixture.detectChanges();
       finish(recording);
-      await Promise.resolve();
 
-      expect(sendVoiceMessage).not.toHaveBeenCalled();
+      expect(sendVoiceMessage).toHaveBeenCalledTimes(1);
+      await expect(sendVoiceMessage.mock.calls[0][0]).resolves.toBe(recording);
     });
   });
 });

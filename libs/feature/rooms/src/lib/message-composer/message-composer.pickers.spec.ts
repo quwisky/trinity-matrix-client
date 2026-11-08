@@ -1032,7 +1032,7 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       await Promise.resolve();
       await Promise.resolve();
 
-      expect(sendVoiceMessage).toHaveBeenCalledWith(recording);
+      await expect(sendVoiceMessage.mock.calls[0][0]).resolves.toBe(recording);
       expect(cmp['attachments'].recordingVoice()).toBe(false);
     });
 
@@ -1114,10 +1114,8 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
       await cmp.startVoiceRecording();
 
       cmp.stopVoiceRecording();
-      await Promise.resolve();
-      await Promise.resolve();
 
-      expect(sendVoiceMessage).not.toHaveBeenCalled();
+      await expect(sendVoiceMessage.mock.calls[0][0]).resolves.toBeNull();
     });
   });
 });

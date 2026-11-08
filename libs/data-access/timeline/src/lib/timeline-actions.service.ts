@@ -231,46 +231,62 @@ export class TimelineActionsService {
   /**
    * Upload a recorded clip and send it as an MSC3245 voice message (an `m.audio`
    * with the voice marker + waveform), encrypting the bytes first in an E2EE room.
-   * Cold — runs on subscribe.
+   * Cold — runs on subscribe. The conversation is resolved on subscribe, so a clip still being
+   * encoded goes to the conversation it was recorded in even if the user switches meanwhile.
    */
-  sendVoiceMessage(recording: VoiceRecording): Observable<void> {
+  sendVoiceMessage(
+    recording: VoiceRecording | PromiseLike<VoiceRecording | null>,
+  ): Observable<void> {
     return defer(() => {
       const ctx = this.actionContext.resolve();
-      if (!ctx || recording.blob.size === 0) {
+      if (!ctx) {
         return of(void 0);
       }
       const { client, room } = ctx;
       const crypto = client.getCrypto?.();
-      const file = new File(
-        [recording.blob],
-        `voice-message.${voiceExtension(recording.mimeType)}`,
-        { type: recording.mimeType },
-      );
-      return from(isRoomEncrypted(room, crypto)).pipe(
-        switchMap((encrypt) => {
-          // Without a crypto store the SDK would send the event, and the clip's key, in the clear.
-          if (encrypt && !crypto) {
-            throw new Error('Encryption is unavailable.');
+      return from(Promise.resolve(recording)).pipe(
+        switchMap((clip) => {
+          if (!clip || clip.blob.size === 0) {
+            return of(void 0);
           }
-          return this.mediaSvc.uploadMedia(file, encrypt);
-        }),
-        switchMap((media) =>
-          from(
-            client.sendMessage(
-              room.roomId,
-              voiceMessageContent(
-                {
-                  mxc: media.mxc,
-                  file: media.file,
-                  mimeType: media.info.mimetype,
-                  size: media.info.size,
-                },
-                recording.durationMs,
-                recording.waveform,
-              ) as never,
+          const file = new File(
+            [clip.blob],
+            `voice-message.${voiceExtension(clip.mimeType)}`,
+            { type: clip.mimeType },
+          );
+          return from(isRoomEncrypted(room, crypto)).pipe(
+            switchMap((encrypt) => {
+              // Without a crypto store the SDK would send the event, and the clip's key, in the clear.
+              if (encrypt && !crypto) {
+                throw new Error('Encryption is unavailable.');
+              }
+              return this.mediaSvc.uploadMedia(
+                file,
+                encrypt,
+                undefined,
+                undefined,
+                client,
+              );
+            }),
+            switchMap((media) =>
+              from(
+                client.sendMessage(
+                  room.roomId,
+                  voiceMessageContent(
+                    {
+                      mxc: media.mxc,
+                      file: media.file,
+                      mimeType: media.info.mimetype,
+                      size: media.info.size,
+                    },
+                    clip.durationMs,
+                    clip.waveform,
+                  ) as never,
+                ),
+              ),
             ),
-          ),
-        ),
+          );
+        }),
       );
     }).pipe(map(() => void 0));
   }

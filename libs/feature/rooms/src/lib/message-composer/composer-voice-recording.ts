@@ -118,37 +118,37 @@ export class ComposerVoiceRecording {
     this.clearVoiceTimer();
     this.recordingVoice.set(false);
     const conversationAtStop = this.conversation();
-    void this.voiceRecorder
+    const clip = this.voiceRecorder
       .stop()
       .then((recording) => {
-        // The send resolves the active conversation, so a switch mid-stop would post as the other account.
-        if (
-          !recording ||
-          recording.blob.size === 0 ||
-          this.conversation() !== conversationAtStop
-        ) {
-          return;
+        if (!recording || recording.blob.size === 0) {
+          return null;
         }
-        // A voice message is standalone: drop any active reply, as media does.
-        this.host().endReply();
-        this.timelineActions
-          .sendVoiceMessage(recording)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe({
-            error: () =>
-              this.toast.show('Could not send that voice message.', {
-                duration: 4000,
-                variant: 'danger',
-              }),
-          });
+        // A voice message is standalone: drop any active reply, as media does. After a
+        // switch the reply on screen belongs to the other conversation, so it stays.
+        if (this.conversation() === conversationAtStop) {
+          this.host().endReply();
+        }
+        return recording;
       })
-      // Zoneless: an unhandled rejection here would go nowhere at all.
-      .catch(() =>
+      .catch(() => {
         this.toast.show('Could not finish that voice recording.', {
           duration: 4000,
           variant: 'danger',
-        }),
-      );
+        });
+        return null;
+      });
+    // Subscribed now, while this is still the clip's conversation: the send resolves it on subscribe.
+    this.timelineActions
+      .sendVoiceMessage(clip)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: () =>
+          this.toast.show('Could not send that voice message.', {
+            duration: 4000,
+            variant: 'danger',
+          }),
+      });
   }
 
   /** Abort the recording, discarding the clip. */
