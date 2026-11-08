@@ -12,18 +12,31 @@ const DRAFTS_FILE = {
 const PERSIST_DEBOUNCE_MS = 400;
 /** Bound the stored set so stale drafts can't grow without limit. */
 const MAX_DRAFTS = 200;
-/** Prefixes the draft key of a conversation's record of messages not on the server yet. */
+/** Prefixes the draft key of a record of bare bodies waiting to send: a thread's, or an older build's. */
 const WAITING = 'waiting:';
+/**
+ * Prefixes the draft key of a conversation's {@link PendingMessage} record. Not {@link WAITING}:
+ * an older build reads that record as bodies only and deletes it, but leaves this one alone.
+ */
+const PENDING = 'pending:';
 /** `conversationDraftKey`'s prefix; a legacy thread composer's key is a bare event id. */
 const CONVERSATION = 'conversation:';
+/** A key that is a message id (`~` local echo, `$` event), not the txn id a resend can reuse. */
+const MESSAGE_ID = /^[~$]/;
 
 /**
  * A message the main composer sent and the homeserver does not have yet, kept by its txn id
- * apart from the draft. `content` is the event as built, absent while its reply target loads.
+ * apart from the draft. `content` is the event as built, absent while its reply target loads;
+ * `replyTo` and `mentions` rebuild it then.
  */
 export interface PendingMessage {
   readonly body: string;
   readonly content?: Record<string, unknown>;
+  readonly replyTo?: string;
+  readonly mentions?: readonly {
+    readonly userId: string;
+    readonly display: string;
+  }[];
 }
 
 /** Where the drafts map is persisted, as one JSON string. */
@@ -129,6 +142,8 @@ export class DraftStoreService implements OnDestroy {
     : preferencesPersistence;
   /** Drafts still in Preferences that the iOS file has not taken over yet. */
   private legacyCopy = false;
+  /** The last write queued, while one is; the next one waits for it. */
+  private writing: Promise<boolean> | null = null;
 
   /**
    * Drop a pending write when the injector goes away: under test a late write lands after
@@ -191,9 +206,10 @@ export class DraftStoreService implements OnDestroy {
    * body (the legacy thread composer) goes back into its draft at the next {@link init}.
    */
   holdWaiting(key: string, txnId: string, body: string | PendingMessage): void {
-    const record = this.waitingRecord(key);
+    const prefix = typeof body === 'string' ? WAITING : PENDING;
+    const record = this.record(prefix, key);
     record.set(txnId, body);
-    this.writeRecord(key, record);
+    this.writeRecord(prefix, key, record);
     // Written now, with the draft it just left: a reload inside the debounce would otherwise lose
     // the message, or bring its text back in the box.
     void this.flush();
@@ -201,15 +217,21 @@ export class DraftStoreService implements OnDestroy {
 
   /** The message went out, was cancelled or was deleted: forget it. */
   releaseWaiting(key: string, txnId: string): void {
-    const record = this.waitingRecord(key);
-    if (!record.delete(txnId)) return;
-    this.writeRecord(key, record);
+    let released = false;
+    for (const prefix of [WAITING, PENDING]) {
+      const record = this.record(prefix, key);
+      if (!record.delete(txnId)) continue;
+      this.writeRecord(prefix, key, record);
+      released = true;
+    }
+    // Now too: a reload inside the debounce would show a message that went out as failed.
+    if (released) void this.flush();
   }
 
   /** The messages held for a conversation by txn id, oldest first. */
   pendingMessages(key: string): ReadonlyMap<string, PendingMessage> {
     const pending = new Map<string, PendingMessage>();
-    for (const [txnId, held] of this.waitingRecord(key)) {
+    for (const [txnId, held] of this.record(PENDING, key)) {
       if (typeof held !== 'string') pending.set(txnId, held);
     }
     return pending;
@@ -248,57 +270,55 @@ export class DraftStoreService implements OnDestroy {
     return this.persist().then(() => undefined);
   }
 
-  private waitingRecord(key: string): Map<string, string | PendingMessage> {
-    return new Map(parseRecord(this.drafts.get(WAITING + key) ?? null));
+  private record(
+    prefix: string,
+    key: string,
+  ): Map<string, string | PendingMessage> {
+    return new Map(parseRecord(this.drafts.get(prefix + key) ?? null));
   }
 
   private writeRecord(
+    prefix: string,
     key: string,
     record: ReadonlyMap<string, string | PendingMessage>,
   ): void {
     if (record.size) {
-      this.drafts.set(
-        WAITING + key,
-        JSON.stringify(Object.fromEntries(record)),
-      );
+      this.drafts.set(prefix + key, JSON.stringify(Object.fromEntries(record)));
     } else {
-      this.drafts.delete(WAITING + key);
+      this.drafts.delete(prefix + key);
     }
     this.schedulePersist();
   }
 
   /**
    * At load nothing is on its way yet, so every record was left by a page that has gone, and
-   * its echoes with it. A conversation's messages stay held for its timeline to show again, a
-   * bare body an older build kept there included. A thread's bodies are appended to its draft
-   * once, and that record dropped.
+   * its echoes with it. {@link PENDING} records stay for the timeline to show again. A bare body
+   * an older build kept for a conversation joins them, unless it is keyed by a message id rather
+   * than a txn id: resent under that id it could go out twice, so it goes back into the draft,
+   * as a thread's bodies do.
    */
   private recoverWaiting(): boolean {
     let recovered = false;
     for (const [recordKey, value] of [...this.drafts]) {
       if (!recordKey.startsWith(WAITING)) continue;
       const key = recordKey.slice(WAITING.length);
-      const record = parseRecord(value);
-      if (key.startsWith(CONVERSATION)) {
-        if (record.every(([, held]) => typeof held !== 'string')) continue;
-        const upgraded = record.map(([txnId, held]) => [
-          txnId,
-          typeof held === 'string' ? { body: held } : held,
-        ]);
-        this.drafts.set(
-          recordKey,
-          JSON.stringify(Object.fromEntries(upgraded)),
-        );
-        recovered = true;
-        continue;
-      }
+      const pending = this.record(PENDING, key);
       let draft = this.get(key).trimEnd();
-      for (const [, held] of record) {
+      for (const [txnId, held] of parseRecord(value)) {
         const body = typeof held === 'string' ? held : held.body;
-        if (!holdsText(draft, body))
+        if (key.startsWith(CONVERSATION) && !MESSAGE_ID.test(txnId)) {
+          if (!pending.has(txnId)) pending.set(txnId, { body });
+        } else if (!holdsText(draft, body)) {
           draft = draft ? `${draft}\n\n${body}` : body;
+        }
       }
       this.drafts.delete(recordKey);
+      if (pending.size) {
+        this.drafts.set(
+          PENDING + key,
+          JSON.stringify(Object.fromEntries(pending)),
+        );
+      }
       // Newest last, so the cap in persist() trims older drafts before this one.
       this.drafts.delete(key);
       if (draft) this.drafts.set(key, draft);
@@ -324,8 +344,23 @@ export class DraftStoreService implements OnDestroy {
     }
   }
 
-  /** Resolves whether the write succeeded; never rejects. */
+  /**
+   * Resolves whether the write succeeded; never rejects. Writes run one after another, each
+   * taking the map as it is when it starts: two in flight at once may land out of order (iOS
+   * Filesystem), leaving the older map on disk.
+   */
   private persist(): Promise<boolean> {
+    const next = this.writing
+      ? this.writing.then(() => this.write())
+      : this.write();
+    this.writing = next;
+    void next.then(() => {
+      if (this.writing === next) this.writing = null;
+    });
+    return next;
+  }
+
+  private write(): Promise<boolean> {
     const record: Record<string, string> = {};
     for (const [key, text] of [...this.drafts.entries()].slice(-MAX_DRAFTS)) {
       record[key] = text;

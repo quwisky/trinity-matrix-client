@@ -228,6 +228,10 @@ describe('DraftStoreService', () => {
       ]);
     });
 
+    /** The map the store wrote last. */
+    const lastWrite = () =>
+      JSON.parse(set.mock.lastCall?.[0].value) as Record<string, string>;
+
     it('writes a held message and its cleared draft at once, not after the debounce', async () => {
       const svc = service();
       await svc.init();
@@ -236,16 +240,59 @@ describe('DraftStoreService', () => {
       set.mockClear();
 
       svc.holdWaiting(ROOM, 'txn-1', { body: 'sent at once' });
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
 
-      const written = JSON.parse(set.mock.lastCall?.[0].value) as Record<
-        string,
-        string
-      >;
-      expect(written[ROOM]).toBeUndefined();
-      expect(JSON.parse(written[`waiting:${ROOM}`])).toEqual({
+      expect(lastWrite()[ROOM]).toBeUndefined();
+      expect(JSON.parse(lastWrite()[`pending:${ROOM}`])).toEqual({
         'txn-1': { body: 'sent at once' },
       });
+    });
+
+    it('writes a release at once, so a reload right after the send shows nothing failed', async () => {
+      const svc = service();
+      await svc.init();
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'went out' });
+      await vi.advanceTimersByTimeAsync(0);
+      set.mockClear();
+
+      svc.releaseWaiting(ROOM, 'txn-1');
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(set).toHaveBeenCalled();
+      expect(lastWrite()[`pending:${ROOM}`]).toBeUndefined();
+    });
+
+    it('stores held messages under a key an older build leaves alone', async () => {
+      const svc = service();
+      await svc.init();
+
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'kept' });
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(lastWrite()[`waiting:${ROOM}`]).toBeUndefined();
+      expect(typeof lastWrite()[`pending:${ROOM}`]).toBe('string');
+    });
+
+    it('writes one map at a time, each after the one before has landed', async () => {
+      const svc = service();
+      await svc.init();
+      let land!: () => void;
+      set.mockImplementationOnce(
+        () => new Promise<void>((resolve) => (land = resolve)),
+      );
+
+      svc.holdWaiting(ROOM, 'txn-1', { body: 'first' });
+      svc.holdWaiting(ROOM, 'txn-2', { body: 'second' });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(set).toHaveBeenCalledOnce();
+
+      land();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(set).toHaveBeenCalledTimes(2);
+      expect(Object.keys(JSON.parse(lastWrite()[`pending:${ROOM}`]))).toEqual([
+        'txn-1',
+        'txn-2',
+      ]);
     });
 
     it('keeps messages apart per conversation', async () => {
@@ -271,13 +318,30 @@ describe('DraftStoreService', () => {
       expect([...svc.pendingMessages(ROOM)]).toEqual([
         ['txn-1', { body: 'sent offline' }],
       ]);
-      const written = JSON.parse(set.mock.lastCall?.[0].value) as Record<
-        string,
-        string
-      >;
-      expect(JSON.parse(written[`waiting:${ROOM}`])).toEqual({
+      expect(lastWrite()[`waiting:${ROOM}`]).toBeUndefined();
+      expect(JSON.parse(lastWrite()[`pending:${ROOM}`])).toEqual({
         'txn-1': { body: 'sent offline' },
       });
+    });
+
+    it('puts a body an older build kept by message id back into the draft, never as a held message', async () => {
+      get.mockResolvedValue({
+        value: JSON.stringify({
+          [ROOM]: 'typed',
+          [`waiting:${ROOM}`]: JSON.stringify({
+            '~!room:hs:m1.0': 'retried by echo id',
+            $event: 'retried by event id',
+          }),
+        }),
+      });
+      const svc = service();
+
+      await svc.init();
+
+      expect(svc.pendingMessages(ROOM).size).toBe(0);
+      expect(svc.get(ROOM)).toBe(
+        'typed\n\nretried by echo id\n\nretried by event id',
+      );
     });
 
     it('keeps a thread text out of the draft while the page lives', async () => {
