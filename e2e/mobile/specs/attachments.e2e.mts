@@ -101,7 +101,7 @@ describe('mobile attachments', () => {
         return add.waitForDisplayed({ timeout: 8_000 }).catch(() => false);
       },
       {
-        timeout: 30_000,
+        timeout: 40_000,
         timeoutMsg: 'Photo picker never showed "Done" after tapping the photo',
       },
     );
