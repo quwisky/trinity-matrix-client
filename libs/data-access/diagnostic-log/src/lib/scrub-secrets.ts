@@ -188,6 +188,7 @@ const PARAM =
 /** Where a bare parameter value ends; a spaced one (`if (token = x)`) also ends at ")". */
 const PARAM_VALUE_END = /[&#\s"']/;
 const SPACED_PARAM_VALUE_END = /[&#\s"')]/;
+const ESCAPED_QUOTE = /^\\+["']/;
 
 /** The most backslashes before a quote that opens a parameter value, as in `readValue`. */
 const MAX_ESCAPE = 8;
@@ -225,6 +226,13 @@ const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
   [/("?\b(?:set-)?cookie"?\s*[:=]\s*"?)[^"\r\n}]+/gi, `$1${REDACTED}`],
 ];
 
+/**
+ * Recovery keys: base58 starting "Es", twelve groups of four, spaces optional. The only
+ * secret shape that crosses spaces, so it runs before the parameters, which end at one.
+ */
+const RECOVERY_KEY =
+  /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}\b/g;
+
 /** Patterns for token-shaped values, applied after the header and name-based rules. */
 const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   // Synapse (syt_/syr_) and MAS (mat_/mar_/mct_) tokens, and JWTs.
@@ -232,11 +240,6 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, REDACTED],
   // FCM registration tokens, prefix included.
   [/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,64}:APA91[A-Za-z0-9_-]{16,}/g, REDACTED],
-  // Recovery keys: base58 starting "Es", twelve groups of four, spaces optional.
-  [
-    /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}\b/g,
-    REDACTED,
-  ],
   // Precise locations (m.location geo: URIs).
   [/\bgeo:[-+]?\d[^\s"']*/gi, `geo:${REDACTED}`],
   // APNs device tokens and other long hex secrets (not after "@", "!" or "$": Matrix IDs).
@@ -275,6 +278,7 @@ export function scrubSecrets(text: string): string {
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
+  scrubbed = scrubbed.replace(RECOVERY_KEY, REDACTED);
   scrubbed = maskFields(scrubbed, isSecretName, false);
   scrubbed = maskFields(scrubbed, isOAuthName, true);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
@@ -308,27 +312,31 @@ function maskParams(text: string): string {
       continue;
     }
     const start = match.index + match[0].length;
-    // Masked by a header rule or an earlier pass: what follows it is not part of the value.
-    if (text.startsWith(REDACTED, start)) {
+    const value = paramValue(text, start, spaced, isOpen);
+    // A value masked already, by an earlier rule or pass, stays as it is.
+    if (
+      value.content === REDACTED ||
+      (value.bare && isReadableFlag(match[1], value.content ?? ''))
+    ) {
       continue;
     }
-    const end = paramValueEnd(text, start, spaced, isOpen);
-    if (isReadableFlag(match[1], text.slice(start, end))) {
-      continue;
-    }
-    out += text.slice(position, start) + REDACTED;
-    position = end;
-    pattern.lastIndex = end;
+    out += text.slice(position, start) + value.masked;
+    position = value.end;
+    pattern.lastIndex = value.end;
   }
   return out + text.slice(position);
 }
 
-function paramValueEnd(
+/**
+ * The parameter value at `start`. A quoted one is masked inside its quotes, as fields are, so
+ * the text after it still reads as text after a value when the export scrubs it again.
+ */
+function paramValue(
   text: string,
   start: number,
   spaced: boolean,
   isOpen: (at: number, quote: string, slashes: number) => boolean,
-): number {
+): FieldValue {
   let run = 0;
   while (text[start + run] === '\\' && run < MAX_ESCAPE) {
     run += 1;
@@ -342,26 +350,50 @@ function paramValueEnd(
     // A quote that closes the string the parameter sits in (`{"u":"?code=","next":…}`)
     // leaves its value empty: read as an opener, it would run over the text after it.
     if (isOpen(start + run, quote, level)) {
-      return opener;
+      return bareValue(text, start, opener);
     }
-    const { end } = readString(text, opener, `${'\\'.repeat(level)}${quote}`);
+    const string = readString(text, opener, `${'\\'.repeat(level)}${quote}`);
     // An escaped string ends with the string around it, closed or not.
-    return level === 0
-      ? end
-      : shallowerQuote(text, start + run + 1, end, quote, level);
+    const end =
+      level === 0
+        ? string.end
+        : shallowerQuote(text, start + run + 1, string.end, quote, level);
+    return {
+      ...string,
+      end,
+      masked: text.slice(start, opener) + string.masked,
+    };
   }
   const valueEnd = spaced ? SPACED_PARAM_VALUE_END : PARAM_VALUE_END;
   let end = start;
-  while (end < text.length && !valueEnd.test(text[end])) {
+  // The backslashes escaping a quote belong to the quote, which ends the value.
+  while (
+    end < text.length &&
+    !valueEnd.test(text[end]) &&
+    !(
+      text[end] === '\\' &&
+      ESCAPED_QUOTE.test(text.slice(end, end + MAX_ESCAPE + 1))
+    )
+  ) {
     end += 1;
   }
   // A "." or "-" ending the value before a space or the end closes the sentence.
-  return end > start + 1 && (text[end - 1] === '.' || text[end - 1] === '-')
-    ? end - 1
-    : end;
+  const closesSentence =
+    end > start + 1 &&
+    (text[end - 1] === '.' || text[end - 1] === '-') &&
+    (end === text.length || /\s/.test(text[end]));
+  return bareValue(text, start, closesSentence ? end - 1 : end);
 }
 
-/** Characters a token value goes on with, escapes included. */
+function bareValue(text: string, start: number, end: number): FieldValue {
+  return {
+    end,
+    masked: REDACTED,
+    content: text.slice(start, end),
+    bare: true,
+  };
+}
+
 /** The level of a quote after `run` backslashes: the lowest one whose escape it can be. */
 function quoteLevel(run: number): number {
   let level = 0;

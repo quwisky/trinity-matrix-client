@@ -353,33 +353,33 @@ describe('scrubSecrets', () => {
   });
 
   it('masks a whole quoted parameter value, and still reads parameters inside other ones', () => {
-    expect(scrubSecrets('password="hunter2"')).toBe(`password=${REDACTED}`);
+    expect(scrubSecrets('password="hunter2"')).toBe(`password="${REDACTED}"`);
     expect(scrubSecrets('send body="meet me at 5 behind the bank"')).toBe(
-      `send body=${REDACTED}`,
+      `send body="${REDACTED}"`,
     );
     expect(
       scrubSecrets(String.raw`{"msg":"login password=\"hunter2 x\""}`),
-    ).toBe(String.raw`{"msg":"login password=${REDACTED}"}`);
+    ).toBe(String.raw`{"msg":"login password=\"${REDACTED}\""}`);
     expect(scrubSecrets(`open url='https://x.example/?access_token=abc'`)).toBe(
       `open url='https://x.example/?access_token=${REDACTED}'`,
     );
   });
 
   it.each([
-    [String.raw`password="a\"b c"`, `password=${REDACTED}`],
-    [String.raw`password='it\'s secret'`, `password=${REDACTED}`],
-    ['password="unterminated value', `password=${REDACTED}`],
-    ['secret="line1\nline2" done', `secret=${REDACTED} done`],
-    ['password = "hunter2"', `password = ${REDACTED}`],
+    [String.raw`password="a\"b c"`, `password="${REDACTED}"`],
+    [String.raw`password='it\'s secret'`, `password='${REDACTED}'`],
+    ['password="unterminated value', `password="${REDACTED}"`],
+    ['secret="line1\nline2" done', `secret="${REDACTED}" done`],
+    ['password = "hunter2"', `password = "${REDACTED}"`],
     ['access_token = hunter2&x=1', `access_token = ${REDACTED}&x=1`],
     ['if token == null', 'if token == null'],
     ['password==hunter2', `password=${REDACTED}`],
     ['?access_token=abc)def x', `?access_token=${REDACTED} x`],
     ['?token==abcdef', `?token=${REDACTED}`],
-    ['password=",hunter2"', `password=${REDACTED}`],
-    ['password=":hunter2"', `password=${REDACTED}`],
-    ['token=",abcdefsecret",x', `token=${REDACTED},x`],
-    ["it's x?password='secret' ok", `it's x?password=${REDACTED} ok`],
+    ['password=",hunter2"', `password="${REDACTED}"`],
+    ['password=":hunter2"', `password="${REDACTED}"`],
+    ['token=",abcdefsecret",x', `token="${REDACTED}",x`],
+    ["it's x?password='secret' ok", `it's x?password='${REDACTED}' ok`],
     ['username = alice', 'username = alice'],
     ['sync state = SYNCING', 'sync state = SYNCING'],
     ['code = 429 too many', 'code = 429 too many'],
@@ -430,7 +430,7 @@ describe('scrubSecrets', () => {
     ],
     [
       String.raw`{"url":"https://x/?access_token=\"","access_token":"s"}`,
-      String.raw`{"url":"https://x/?access_token=${REDACTED}","access_token":"${REDACTED}"}`,
+      String.raw`{"url":"https://x/?access_token=\"${REDACTED}\"","access_token":"${REDACTED}"}`,
     ],
     [
       String.raw`{"url":"https://x/?code=\\","password":"hunter2"}`,
@@ -472,6 +472,27 @@ describe('scrubSecrets', () => {
     },
   );
 
+  it.each(['recovery_key', 'key', 'secret', 'password'])(
+    'masks a spaced recovery key under %s whole, and keeps the words after it',
+    (name) => {
+      expect(scrubSecrets(`${name}=${RECOVERY_KEY}`)).toBe(
+        `${name}=${REDACTED}`,
+      );
+      expect(scrubSecrets(`${name}=${RECOVERY_KEY} and more`)).toBe(
+        `${name}=${REDACTED} and more`,
+      );
+    },
+  );
+
+  it.each([
+    ['password=<redacted>hunter2Secret99', `password=${REDACTED}`],
+    ['token=<redacted>-hunter2', `token=${REDACTED}`],
+    ['password=abc-&x=1', `password=${REDACTED}&x=1`],
+    ['password=abc.#frag', `password=${REDACTED}#frag`],
+  ])('masks the whole value, whatever is glued to it: %s', (line, expected) => {
+    expect(scrubSecrets(line)).toBe(expected);
+  });
+
   it.each([
     'password="hunter2". Retrying',
     "token='abc123'.",
@@ -485,6 +506,8 @@ describe('scrubSecrets', () => {
     'state=0123456789abcdef0123456789abcdef.tail',
     'token=syt_abcdefghij. Retrying in 5s',
     'key=syt_abcdefghij/path/to/file',
+    String.raw`\"password = \"\"it's x`,
+    String.raw`{\"a\":\"?code=\",\"b\":1}`,
   ])('scrubs to the same text a second time: %s', (line) => {
     const once = scrubSecrets(line);
 
@@ -492,10 +515,10 @@ describe('scrubSecrets', () => {
   });
 
   it.each([
-    ['password="hunter2". Retrying', `password=${REDACTED}. Retrying`],
-    ["token='abc123'.", `token=${REDACTED}.`],
-    ['client_secret="s3cr3t"--verbose', `client_secret=${REDACTED}--verbose`],
-    ['access_token="abc"/x', `access_token=${REDACTED}/x`],
+    ['password="hunter2". Retrying', `password="${REDACTED}". Retrying`],
+    ["token='abc123'.", `token='${REDACTED}'.`],
+    ['client_secret="s3cr3t"--verbose', `client_secret="${REDACTED}"--verbose`],
+    ['access_token="abc"/x', `access_token="${REDACTED}"/x`],
     [
       'token=syt_abcdefghij. Retrying in 5s',
       `token=${REDACTED}. Retrying in 5s`,
@@ -508,7 +531,7 @@ describe('scrubSecrets', () => {
   it('leaves an already masked parameter as it is when scrubbed again', () => {
     const once = scrubSecrets('password="hunter2","x" y');
 
-    expect(once).toBe(`password=${REDACTED},"x" y`);
+    expect(once).toBe(`password="${REDACTED}","x" y`);
     expect(scrubSecrets(once)).toBe(once);
   });
 
