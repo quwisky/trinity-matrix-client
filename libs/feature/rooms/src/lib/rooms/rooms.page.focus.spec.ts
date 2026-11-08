@@ -245,6 +245,7 @@ function buildPage({
       MockProvider(TrustService),
       MockProvider(IdentityPresenceService, {
         presenceFor: () => signal('offline'),
+        presenceDetailsFor: () => signal(null),
       }),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomMembersService),

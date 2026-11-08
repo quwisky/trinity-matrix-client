@@ -9,6 +9,7 @@ import {
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { MockComponent, MockProvider } from 'ng-mocks';
 import { of, Subject } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
@@ -19,6 +20,7 @@ function hit(over: Partial<MessageHit> = {}): MessageHit {
   return {
     eventId: '$e:hs',
     roomId: '!r:hs',
+    roomName: 'General',
     sender: '@alice:hs',
     senderName: 'Alice',
     senderAvatarMxc: null,
@@ -43,6 +45,7 @@ function loaded(over: Partial<LoadedMessageSearch> = {}): LoadedMessageSearch {
 describe('MessageSearchComponent', () => {
   /** What the panel announced: it is presentational, so these ARE its contract. */
   let selected: string[];
+  let elsewhere: { roomId: string; eventId: string }[];
   let dismissals: number;
   let searchLoadedMessages: Mock;
   let searchServerMessages: Mock;
@@ -61,6 +64,8 @@ describe('MessageSearchComponent', () => {
       inputs: { roomId: '!r:hs', ...extraInputs },
       on: {
         selected: (eventId: string) => selected.push(eventId),
+        selectedElsewhere: (hit: { roomId: string; eventId: string }) =>
+          elsewhere.push(hit),
         dismissed: () => {
           dismissals += 1;
         },
@@ -68,6 +73,15 @@ describe('MessageSearchComponent', () => {
       imports: [MockComponent(AvatarComponent)],
       providers: [
         MockProvider(ConversationTimelineStub, { messages: signal([]) }),
+        MockProvider(RoomMembersService, {
+          membersFor: () =>
+            signal([
+              {
+                userId: '@bo:hs',
+                roomDisplayName: 'Bo',
+              } as never,
+            ]),
+        }),
         {
           provide: ConversationRuntime,
           useFactory: () => ({
@@ -90,6 +104,7 @@ describe('MessageSearchComponent', () => {
 
   beforeEach(() => {
     selected = [];
+    elsewhere = [];
     dismissals = 0;
     searchLoadedMessages = vi.fn(() => loaded());
     searchServerMessages = vi.fn(() =>
@@ -310,7 +325,10 @@ describe('MessageSearchComponent', () => {
     c.searchServer();
     fixture.detectChanges();
 
-    expect(searchServerMessages).toHaveBeenCalledWith('hello');
+    expect(searchServerMessages).toHaveBeenCalledWith('hello', undefined, {
+      scope: 'room',
+      sender: null,
+    });
     expect(c.serverMode()).toBe(true);
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1']);
     expect(c.serverCount()).toBe(3);
@@ -362,7 +380,10 @@ describe('MessageSearchComponent', () => {
     );
     c.loadMoreServer();
 
-    expect(searchServerMessages).toHaveBeenLastCalledWith('hello', 'b2');
+    expect(searchServerMessages).toHaveBeenLastCalledWith('hello', 'b2', {
+      scope: 'room',
+      sender: null,
+    });
     expect(c.results().map((h) => h.eventId)).toEqual(['$s1', '$s2']);
     expect(c.serverNextBatch()).toBeNull();
   });
@@ -451,6 +472,109 @@ describe('MessageSearchComponent', () => {
 
       expect(c.results().map((h) => h.eventId)).toEqual(['$new']);
       expect(c.serverNextBatch()).toBeNull();
+    });
+  });
+
+  describe('filters, day groups and the count', () => {
+    it('counts the results in the header once there is a query', async () => {
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('.side-panel-header__subtitle')?.textContent,
+      ).toBe('2 results');
+    });
+
+    it('groups results by day, newest first', async () => {
+      const now = Date.now();
+      const { fixture, container, c } = await build(
+        loaded({
+          hits: [
+            hit({ eventId: '$today', ts: now }),
+            hit({ eventId: '$week', ts: now - 3 * 86_400_000 }),
+          ],
+        }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+
+      const groups = [...container.querySelectorAll('.ms-group')].map((g) =>
+        g.textContent?.trim(),
+      );
+      expect(groups).toEqual(['Today', 'Last week']);
+    });
+
+    it('narrows the loaded search to one author', async () => {
+      const { fixture, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@bo:hs', name: 'Bo' });
+      fixture.detectChanges();
+
+      expect(searchLoadedMessages).toHaveBeenLastCalledWith('hello', '@bo:hs');
+    });
+
+    it('asks the homeserver across every room once typing pauses', async () => {
+      vi.useFakeTimers();
+      try {
+        const { fixture, c } = await build(loaded());
+        c.setScope('all-rooms');
+        setQuery('hello', c);
+        fixture.detectChanges();
+        expect(searchServerMessages).not.toHaveBeenCalled();
+
+        vi.advanceTimersByTime(400);
+
+        expect(searchServerMessages).toHaveBeenCalledWith('hello', undefined, {
+          scope: 'all-rooms',
+          sender: null,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('opens a result from another room through the host', async () => {
+      const { fixture, container, c } = await build(loaded());
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({
+          hits: [
+            hit({ eventId: '$far', roomId: '!other:hs', roomName: 'Far' }),
+          ],
+          count: 1,
+          nextBatch: null,
+        }),
+      );
+      setQuery('hello', c);
+      c.setScope('all-rooms');
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="result-room"]')?.textContent,
+      ).toBe('Far');
+      fireEvent.click(container.querySelector('[data-testid="result"]')!);
+      expect(elsewhere).toEqual([{ roomId: '!other:hs', eventId: '$far' }]);
+      expect(selected).toEqual([]);
+    });
+
+    it('marks the last opened result as current', async () => {
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$1' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+      fireEvent.click(container.querySelector('[data-testid="result"]')!);
+      fixture.detectChanges();
+
+      expect(
+        container
+          .querySelector('[data-testid="result"]')
+          ?.getAttribute('aria-current'),
+      ).toBe('true');
     });
   });
 });

@@ -43,6 +43,7 @@ import {
   threadDraftKey,
   type ConversationThread,
   type MessageView,
+  type ThreadSummary,
 } from '@trinity/data-access/timeline';
 import {
   type MemberSummary,
@@ -133,6 +134,7 @@ async function build(
   extraProviders: Provider[] = [],
 ) {
   const threadMessages = signal<MessageView[]>(messages);
+  const threadSummaries = signal<Readonly<Record<string, ThreadSummary>>>({});
   const canPaginateThread = signal(state.canPaginate ?? false);
   const loadingOlderThread = signal(state.loadingOlder ?? false);
   /** The thread's oldest raw event, hidden ones included; null before any has loaded. */
@@ -208,6 +210,7 @@ async function build(
             compose: roomCompose,
             messages: roomMessages,
             threads: {
+              summaries: threadSummaries.asReadonly(),
               forRoot: vi.fn((rootEventId: string) => {
                 openThread('!r:hs', rootEventId);
                 let released = false;
@@ -1919,5 +1922,38 @@ describe('ThreadViewComponent members', () => {
         container.querySelector('trn-message-list trn-typing-indicator'),
       ).toBeNull();
     });
+  });
+});
+
+describe('ThreadViewComponent heading and replies line', () => {
+  it('names the thread by its root and counts the replies under it', async () => {
+    const { container } = await build([
+      messageView({ id: '$root', body: 'Onboarding copy changes' }),
+      messageView({ id: '$r1', body: 'one' }),
+      messageView({ id: '$r2', body: 'two' }),
+    ]);
+
+    expect(
+      container.querySelector('.side-panel-header__title')?.textContent,
+    ).toContain('Onboarding copy changes');
+    expect(
+      container
+        .querySelector('[data-testid="thread-replies-divider"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('2 replies');
+  });
+
+  it('says so under a root with no replies yet', async () => {
+    const { container } = await build([
+      messageView({ id: '$root', body: 'Lonely root' }),
+    ]);
+
+    expect(
+      container.querySelector('[data-testid="thread-replies-divider"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="thread-no-replies"] h3')
+        ?.textContent,
+    ).toBe('No replies yet');
   });
 });

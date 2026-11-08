@@ -32,6 +32,10 @@
     cursor: default;
   }
 
+  .pin-item__content {
+    @include panel-row-body;
+  }
+
   .pin-item__head {
     display: flex;
     align-items: baseline;
@@ -45,23 +49,47 @@
     min-width: 0;
   }
 
-  .pin-item__time {
+  .pin-item__time,
+  .pin-item__meta {
     @include panel-row-meta;
-
-    flex: none;
   }
 
-  .pin-item__content {
-    @include panel-row-body;
+  .pin-item__time {
+    flex: none;
   }
 
   .pin-item__body {
     @include panel-row-snippet;
   }
 
+  // Unpin shows on a row's hover or focus. A touch screen has no hover, so it stays.
   .pin-item__unpin {
     flex: none;
     margin-block-start: var(--trinity-space-2);
     margin-inline-end: var(--trinity-space-2);
+  }
+
+  @media (hover: hover) {
+    .pin-item:not(:hover, :focus-within) .pin-item__unpin {
+      opacity: 0;
+    }
+  }
+
+  // A pin that has not loaded, or cannot: its name and avatar fade like an offline member.
+  .pin-item--muted .pin-item__author {
+    color: var(--trinity-text-muted);
+  }
+
+  .pin-item__placeholder {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--trinity-shape-person-radius);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text-muted);
+    opacity: 0.55;
   }
 }

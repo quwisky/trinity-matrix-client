@@ -16,7 +16,6 @@ import { SidePanelComponent } from '../side-panel/side-panel.component';
 import { SidePanelEmptyComponent } from '../side-panel/side-panel-empty.component';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import {
-  MEMBER_ROLE_ORDER,
   type MemberRole,
   type RoomAdministrationAvailability,
   type MemberSummary,
@@ -25,6 +24,7 @@ import {
 import { IdentityPresenceService } from '@trinity/data-access/identity';
 import { type PresenceState } from '@trinity/util/matrix';
 import { TrnInput } from '@trinity/components/controls';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import {
@@ -33,33 +33,55 @@ import {
   type WindowResult,
 } from '../message-list/virtual-window';
 
-/** A member decorated with their live presence and role, for the section list. */
+/** A member decorated with their live presence, status message and role, for the list. */
 interface MemberRow {
   readonly member: MemberSummary;
   readonly presence: PresenceState | null;
+  /** The member's status message, or '' for none: a second line under the name. */
+  readonly status: string;
   readonly role: MemberRole;
 }
 
 /**
+ * The list's groups: staff by role, then everyone else by presence. `members` holds the rest
+ * while presence is unknown, so nobody is called offline without evidence.
+ */
+type SectionKey =
+  Exclude<MemberRole, 'member'> | 'online' | 'offline' | 'members';
+
+const SECTION_ORDER: readonly SectionKey[] = [
+  'owner',
+  'admin',
+  'moderator',
+  'online',
+  'offline',
+  'members',
+];
+
+/**
  * Row geometry, in pixels.
  *
- * Both are fixed by `member-list.component.scss` rather than measured (unlike the
+ * All are fixed by `member-list.component.scss` rather than measured (unlike the
  * timeline's use of this windowing math). `ROW_PX` is 32px of avatar plus 6px of padding
- * either side; the template fixes that border box at 44px for every pointer and density.
- * The first group label sits closer to the top than the others. If any measurement
+ * either side; the template fixes that border box at 44px for every pointer and density,
+ * and at `STATUS_ROW_PX` for a row with a status line. The first group label sits closer
+ * to the top than the others. If any measurement
  * changes, the spacers drift and the scrollbar lies; source and rendered-layout specs pin
  * them together.
  */
 const HEADER_PX = 36;
 const FIRST_HEADER_PX = 28;
 const ROW_PX = 44; // member-list.component.scss pins the same 44px for the layout specs
+const STATUS_ROW_PX = 52;
 
 /** Group headers name the whole group, so they are plural; the singular names one person. */
-const GROUP_LABEL: Record<MemberRole, string> = {
+const GROUP_LABEL: Record<SectionKey, string> = {
   owner: 'Owners',
   admin: 'Admins',
   moderator: 'Moderators',
-  member: 'Members',
+  online: 'Online',
+  offline: 'Offline',
+  members: 'Members',
 };
 
 /** Rendered beyond the viewport on each side, so a fast scroll does not show blanks. */
@@ -71,9 +93,9 @@ const OVERSCAN_PX = 320;
  */
 const SMALL_LIST_ROWS = 80;
 
-/** A role section: a labelled group of members shown under its own header. */
+/** A labelled group of members shown under its own header. */
 interface MemberSection {
-  readonly role: MemberRole;
+  readonly key: SectionKey;
   /** Visible header, e.g. "Admins". */
   readonly label: string;
   /** Accessible name for the group landmark, e.g. "Admins, 2 members". */
@@ -101,7 +123,18 @@ const PRESENCE_RANK: Record<PresenceState, number> = {
   offline: 2,
 };
 
-/** Discord member list (right column): joined members grouped into role sections. */
+/** Which group a member is listed under. */
+function sectionOf(row: MemberRow): SectionKey {
+  if (row.role !== 'member') {
+    return row.role;
+  }
+  if (row.presence === null) {
+    return 'members';
+  }
+  return row.presence === 'offline' ? 'offline' : 'online';
+}
+
+/** The member list panel: staff by role, then everyone else as online and offline. */
 @Component({
   selector: 'trn-member-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -109,6 +142,7 @@ const PRESENCE_RANK: Record<PresenceState, number> = {
     SidePanelComponent,
     SidePanelEmptyComponent,
     AvatarComponent,
+    TrnIconComponent,
     TrnInput,
     TrnTooltip,
   ],
@@ -140,6 +174,7 @@ export class MemberListComponent {
   /** What the reader typed into the filter, matched against name and user id. */
   protected readonly query = signal('');
   protected readonly rowPx = ROW_PX;
+  protected readonly statusRowPx = STATUS_ROW_PX;
 
   private readonly scrollHost =
     viewChild.required<ElementRef<HTMLElement>>('scrollHost');
@@ -156,6 +191,10 @@ export class MemberListComponent {
       presence: this.showPresence()
         ? this.presence.presenceFor(member.userId)()
         : null,
+      status: this.showPresence()
+        ? (this.presence.presenceDetailsFor(member.userId)()?.statusMessage ??
+          '')
+        : '',
       role: memberRole(member, { direct: this.direct() }),
     })),
   );
@@ -203,25 +242,25 @@ export class MemberListComponent {
   });
 
   /**
-   * Members grouped into role sections (admins, then moderators, then members), each
-   * ordered online-first. The incoming list is already name-sorted and both the
-   * partition and the presence sort are stable, so members keep alphabetical order
-   * within each presence group. Empty sections are dropped.
+   * Members grouped into sections: owners, admins and moderators by role, each ordered
+   * online-first, then everyone else as online and offline. The incoming list is already
+   * name-sorted and both the partition and the presence sort are stable, so members keep
+   * alphabetical order within each presence group. Empty sections are dropped.
    */
   readonly sections = computed<MemberSection[]>(() => {
     const rows = this.matchingRows();
-    return MEMBER_ROLE_ORDER.map((role) => {
+    return SECTION_ORDER.map((key) => {
       const sectionRows = rows
-        .filter((row) => row.role === role)
+        .filter((row) => sectionOf(row) === key)
         .sort(
           (a, b) =>
             (a.presence === null ? 3 : PRESENCE_RANK[a.presence]) -
             (b.presence === null ? 3 : PRESENCE_RANK[b.presence]),
         );
-      const label = GROUP_LABEL[role];
+      const label = GROUP_LABEL[key];
       const noun = sectionRows.length === 1 ? 'member' : 'members';
       return {
-        role,
+        key,
         label,
         ariaLabel: `${label}, ${sectionRows.length} ${noun}`,
         first: false,
@@ -240,7 +279,7 @@ export class MemberListComponent {
   private readonly flatIds = computed<string[]>(() => {
     const ids: string[] = [];
     for (const section of this.sections()) {
-      ids.push(`header:${section.role}`);
+      ids.push(`header:${section.key}`);
       for (const row of section.rows) {
         ids.push(`member:${row.member.userId}`);
       }
@@ -250,17 +289,23 @@ export class MemberListComponent {
 
   /**
    * Heights by id: fixed from CSS rather than measured, so no `ResizeObserver` per row.
-   * `estimate` covers member rows; only the headers need naming.
+   * `estimate` covers one-line member rows; headers and rows with a status line are named.
    */
-  private readonly heights = computed(() => ({
-    measured: new Map(
-      this.sections().map((section) => [
-        `header:${section.role}`,
+  private readonly heights = computed(() => {
+    const measured = new Map<string, number>();
+    for (const section of this.sections()) {
+      measured.set(
+        `header:${section.key}`,
         section.first ? FIRST_HEADER_PX : HEADER_PX,
-      ]),
-    ),
-    estimate: ROW_PX,
-  }));
+      );
+      for (const row of section.rows) {
+        if (row.status) {
+          measured.set(`member:${row.member.userId}`, STATUS_ROW_PX);
+        }
+      }
+    }
+    return { measured, estimate: ROW_PX };
+  });
 
   private readonly prefix = computed(() =>
     buildPrefixSums(this.flatIds(), this.heights()),

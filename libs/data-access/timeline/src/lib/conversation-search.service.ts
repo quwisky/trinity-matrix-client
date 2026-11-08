@@ -22,6 +22,8 @@ import { scrollbackLive } from './live-scrollback';
 export interface MessageHit {
   readonly eventId: string;
   readonly roomId: string;
+  /** The room's name, for a hit from another room. */
+  readonly roomName: string;
   readonly sender: string;
   readonly senderName: string;
   readonly senderAvatarMxc: string | null;
@@ -38,6 +40,15 @@ export interface LoadedMessageSearch {
   readonly scanned: number;
   readonly encrypted: boolean;
   readonly serverAvailable: boolean;
+}
+
+/**
+ * Narrows a search. `all-rooms` asks the homeserver across every joined room it can index,
+ * which leaves out encrypted rooms; `sender` keeps one author's messages.
+ */
+export interface MessageSearchFilter {
+  readonly scope?: 'room' | 'all-rooms';
+  readonly sender?: string | null;
 }
 
 /** One server-side full-history page for an unencrypted conversation. */
@@ -82,7 +93,10 @@ export class ConversationSearchController {
     this.client = null;
   }
 
-  searchLoaded(query: string): LoadedMessageSearch {
+  searchLoaded(
+    query: string,
+    sender: string | null = null,
+  ): LoadedMessageSearch {
     this.encryptionAnswered();
     const empty: LoadedMessageSearch = {
       hits: [],
@@ -117,13 +131,17 @@ export class ConversationSearchController {
       if (!qLower || !body.toLowerCase().includes(qLower)) {
         continue;
       }
-      const sender = event.getSender() ?? '';
-      const member = room.getMember(sender);
+      const from = event.getSender() ?? '';
+      if (sender && from !== sender) {
+        continue;
+      }
+      const member = room.getMember(from);
       hits.push({
         eventId: event.getId() ?? '',
         roomId: key.roomId,
-        sender,
-        senderName: member?.name ?? sender,
+        roomName: room.name,
+        sender: from,
+        senderName: member?.name ?? from,
         senderAvatarMxc: member?.getMxcAvatarUrl() ?? null,
         body,
         ts: event.getTs(),
@@ -138,6 +156,7 @@ export class ConversationSearchController {
   searchServer(
     term: string,
     nextBatch?: string,
+    filter: MessageSearchFilter = {},
   ): Observable<ServerMessageSearch> {
     const empty: ServerMessageSearch = { hits: [], count: 0, nextBatch: null };
     const trimmed = term.trim();
@@ -151,7 +170,11 @@ export class ConversationSearchController {
       if (!room) {
         return empty;
       }
-      if (await isRoomEncrypted(room, client.getCrypto?.(), this.encryption)) {
+      const allRooms = filter.scope === 'all-rooms';
+      if (
+        !allRooms &&
+        (await isRoomEncrypted(room, client.getCrypto?.(), this.encryption))
+      ) {
         return { ...empty, encrypted: true };
       }
       const body: ISearchRequestBody = {
@@ -159,7 +182,10 @@ export class ConversationSearchController {
           room_events: {
             search_term: trimmed,
             keys: ['content.body'],
-            filter: { rooms: [key.roomId] },
+            filter: {
+              ...(allRooms ? {} : { rooms: [key.roomId] }),
+              ...(filter.sender ? { senders: [filter.sender] } : {}),
+            },
             order_by: SearchOrderBy.Recent,
             event_context: {
               before_limit: 0,
@@ -172,7 +198,11 @@ export class ConversationSearchController {
       const response = await client.search(
         nextBatch ? { body, next_batch: nextBatch } : { body },
       );
-      return mapServerResponse(key.roomId, trimmed, response);
+      return mapServerResponse(
+        (roomId) => client.getRoom(roomId)?.name ?? roomId,
+        trimmed,
+        response,
+      );
     }).pipe(catchError(() => of(empty)));
   }
 
@@ -209,7 +239,7 @@ function readBody(event: MatrixEvent): string {
 }
 
 function mapServerResponse(
-  roomId: string,
+  roomName: (roomId: string) => string,
   term: string,
   response: ISearchResponse,
 ): ServerMessageSearch {
@@ -223,14 +253,15 @@ function mapServerResponse(
     const body = typeof raw === 'string' ? raw : '';
     return {
       eventId: event.event_id,
-      roomId,
+      roomId: event.room_id,
+      roomName: roomName(event.room_id),
       sender,
       senderName: profile?.displayname ?? sender,
       senderAvatarMxc: profile?.avatar_url ?? null,
       body,
       ts: event.origin_server_ts,
       snippet: buildSnippet(body, qLower),
-      // Server search runs only for a room that is not encrypted.
+      // The homeserver indexes only unencrypted rooms.
       shield: null,
     };
   });

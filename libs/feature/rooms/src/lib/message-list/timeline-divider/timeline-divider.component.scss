@@ -77,4 +77,28 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
   }
+
+  // Closes a thread's root and counts the replies below it.
+  .replies-divider {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-3);
+    margin-block-end: var(--trinity-space-2);
+    padding: var(--trinity-space-3) var(--trinity-space-3) 0;
+    border-block-start: 1px solid var(--trinity-border-subtle);
+    font-size: var(--trinity-panel-meta-size);
+    color: var(--trinity-text-muted);
+
+    &::before,
+    &::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--trinity-border-subtle);
+    }
+  }
+
+  .replies-divider__label {
+    flex: 0 0 auto;
+  }
 }

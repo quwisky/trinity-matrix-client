@@ -16,14 +16,27 @@ import { MemberListComponent } from './member-list.component';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
-// Stub presence per user id (defaults to offline).
+// Stub presence per user id; anyone else's is unknown, which keeps them under "Members".
 const presenceMap: Record<string, PresenceState> = {
   '@z:hs': 'online',
   '@a:hs': 'offline',
 };
+// Status messages per user id, as presence details carry them.
+const statusMap: Record<string, string> = {};
 const presenceStub = {
   presenceFor: (userId: string) =>
-    signal<PresenceState>(presenceMap[userId] ?? 'offline'),
+    signal<PresenceState | null>(presenceMap[userId] ?? null),
+  presenceDetailsFor: (userId: string) =>
+    signal(
+      statusMap[userId]
+        ? {
+            state: presenceMap[userId] ?? 'offline',
+            statusMessage: statusMap[userId],
+            lastActiveAt: null,
+            currentlyActive: false,
+          }
+        : null,
+    ),
 };
 const providers = [
   { provide: IdentityPresenceService, useValue: presenceStub },
@@ -300,7 +313,8 @@ describe('MemberListComponent', () => {
   });
 
   it.each([
-    [49, 'Members — 1'],
+    // Anna is offline: below moderator she is listed by presence.
+    [49, 'Offline — 1'],
     [50, 'Moderators — 1'],
     [99, 'Moderators — 1'],
     [100, 'Admins — 1'],
@@ -321,7 +335,7 @@ describe('MemberListComponent', () => {
       member({ userId: '@a:hs', roomDisplayName: 'Anna', powerLevel }),
     ];
     const { container, fixture } = await renderMembers(at(0));
-    expect(sectionLabels(container)).toEqual(['Members — 1']);
+    expect(sectionLabels(container)).toEqual(['Offline — 1']);
 
     fixture.componentRef.setInput('members', at(100)); // promote to admin
     fixture.detectChanges();
@@ -329,7 +343,48 @@ describe('MemberListComponent', () => {
 
     fixture.componentRef.setInput('members', at(0)); // demote back
     fixture.detectChanges();
-    expect(sectionLabels(container)).toEqual(['Members — 1']);
+    expect(sectionLabels(container)).toEqual(['Offline — 1']);
+  });
+
+  it('lists everyone below moderator as online or offline once presence is known', async () => {
+    const { container } = await renderMembers([
+      member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@z:hs', roomDisplayName: 'Zoe' }),
+      member({ userId: '@a:hs', roomDisplayName: 'Anna' }),
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy' }),
+    ]);
+
+    expect(sectionMap(container)).toEqual({
+      'Admins — 1': ['Ada'],
+      'Online — 1': ['Zoe'],
+      'Offline — 1': ['Anna'],
+      'Members — 1': ['Cy'],
+    });
+  });
+
+  it('shows a status message under the name, in a taller fixed row', async () => {
+    statusMap['@z:hs'] = 'On call this week';
+    try {
+      const { container } = await renderMembers([
+        member({ userId: '@z:hs', roomDisplayName: 'Zoe' }),
+        member({ userId: '@cy:hs', roomDisplayName: 'Cy' }),
+      ]);
+
+      const rows = [
+        ...container.querySelectorAll<HTMLElement>('[data-testid=member-row]'),
+      ];
+      expect(
+        rows[0].querySelector('[data-testid=member-status]')?.textContent,
+      ).toBe('On call this week');
+      expect(rows[0].style.height).toBe('52px');
+      expect(rows[0].getAttribute('aria-label')).toBe(
+        'View Zoe, On call this week',
+      );
+      expect(rows[1].querySelector('[data-testid=member-status]')).toBeNull();
+      expect(rows[1].style.height).toBe('44px');
+    } finally {
+      delete statusMap['@z:hs'];
+    }
   });
 
   it('exposes each role section as a named group for assistive tech', async () => {

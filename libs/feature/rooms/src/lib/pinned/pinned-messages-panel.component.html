@@ -10,58 +10,7 @@
 >
   @for (p of pinned(); track p.id) {
     @switch (p.status) {
-      @case ('loading') {
-        <div class="pin-item">
-          <div
-            class="pin-item__main pin-item__main--static"
-            data-testid="pinned-loading"
-            role="status"
-          >
-            <div class="pin-item__body">Loading pinned message…</div>
-          </div>
-        </div>
-      }
-      @case ('unavailable') {
-        <div class="pin-item">
-          <div
-            class="pin-item__main pin-item__main--static"
-            data-testid="pinned-unavailable"
-          >
-            <div class="pin-item__body">
-              Message unavailable. It may have been deleted or you may not have
-              access to it.
-            </div>
-          </div>
-          @if (canPin()) {
-            <button
-              trnBtn
-              variant="secondary"
-              presentation="ghost"
-              shape="icon"
-              size="md"
-              class="pin-item__unpin"
-              data-testid="pinned-unpin"
-              (click)="unpin(p.id)"
-              trnTooltip="Unpin message"
-              aria-label="Unpin unavailable message"
-            >
-              <trn-icon name="pin-off" motion="nudge-down" />
-            </button>
-          }
-        </div>
-      }
-      @case ('failed') {
-        <div class="pin-item">
-          <div
-            class="pin-item__main pin-item__main--static"
-            data-testid="pinned-failed"
-            role="status"
-          >
-            <div class="pin-item__body">Couldn’t load this pinned message.</div>
-          </div>
-        </div>
-      }
-      @default {
+      @case ('loaded') {
         <div class="pin-item">
           <button
             type="button"
@@ -74,6 +23,12 @@
               (p.shield ? ', ' + p.shield.reason.toLowerCase() : '')
             "
           >
+            <trn-avatar
+              [mxc]="p.senderAvatarMxc"
+              [initial]="initialOf(p.senderName)"
+              [name]="p.senderName"
+              size="lg"
+            />
             <span class="pin-item__content">
               <span class="pin-item__head">
                 <span class="pin-item__author">{{ p.senderName }}</span>
@@ -101,7 +56,51 @@
               trnTooltip="Unpin message"
               [attr.aria-label]="'Unpin message from ' + p.senderName"
             >
-              <trn-icon name="pin-off" motion="nudge-down" />
+              <trn-icon name="x" motion="rotate" />
+            </button>
+          }
+        </div>
+      }
+      @default {
+        <!-- A pin that is still loading, or can't be: a muted row in the same place. -->
+        <div
+          class="pin-item pin-item--muted"
+          [attr.data-testid]="'pinned-' + p.status"
+          [attr.role]="p.status === 'unavailable' ? null : 'status'"
+        >
+          <div class="pin-item__main pin-item__main--static">
+            <span class="pin-item__placeholder" aria-hidden="true">
+              <trn-icon name="pin" size="sm" />
+            </span>
+            <span class="pin-item__content">
+              <span class="pin-item__author">{{
+                p.status === 'loading'
+                  ? 'Loading pinned message…'
+                  : 'Unavailable message'
+              }}</span>
+              @if (p.status !== 'loading') {
+                <span class="pin-item__meta">{{
+                  p.status === 'failed'
+                    ? 'This pinned message couldn’t load. Open the panel again to retry.'
+                    : 'This pinned message can’t be loaded.'
+                }}</span>
+              }
+            </span>
+          </div>
+          @if (p.status === 'unavailable' && canPin()) {
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="ghost"
+              shape="icon"
+              size="md"
+              class="pin-item__unpin"
+              data-testid="pinned-unpin"
+              (click)="unpin(p.id)"
+              trnTooltip="Unpin message"
+              aria-label="Unpin unavailable message"
+            >
+              <trn-icon name="x" motion="rotate" />
             </button>
           }
         </div>

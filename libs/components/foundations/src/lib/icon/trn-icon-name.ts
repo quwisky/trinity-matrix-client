@@ -72,7 +72,6 @@ export const TRN_ICON_NAMES = [
   'pause',
   'pencil',
   'pin',
-  'pin-off',
   'play',
   'plus',
   'quote',

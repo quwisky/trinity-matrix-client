@@ -215,6 +215,11 @@ export class MessageActionsService {
       });
   }
 
+  /** Open the room an all-rooms search result came from, at that message. */
+  onSearchHitElsewhere(hit: { roomId: string; eventId: string }): void {
+    this.routing.openLinkedRoom(hit.roomId, hit.eventId, 'global-search');
+  }
+
   /** Pin or unpin a message from its overflow menu, resolving which by current state. */
   onTogglePin(eventId: string): void {
     const pinning = !this.conversations.pins.isPinned(eventId);

@@ -9,6 +9,15 @@
          reads a date as a stutter. -->
     <span class="day-divider__label" aria-hidden="true">{{ label() }}</span>
   </div>
+} @else if (kind() === 'replies') {
+  <div
+    class="replies-divider"
+    role="separator"
+    [attr.aria-label]="label()"
+    data-testid="thread-replies-divider"
+  >
+    <span class="replies-divider__label" aria-hidden="true">{{ label() }}</span>
+  </div>
 } @else {
   <div class="new-divider" data-testid="new-messages-divider">
     @if (threadConnected()) {

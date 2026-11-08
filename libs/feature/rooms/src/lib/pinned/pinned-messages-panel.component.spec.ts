@@ -16,6 +16,7 @@ function pin(over: Partial<PinnedMessageView> = {}): PinnedMessageView {
     status: 'loaded',
     sender: '@a:hs',
     senderName: 'Alice',
+    senderAvatarMxc: null,
     body: 'hello world',
     ts: 0,
     shield: null,
@@ -119,7 +120,18 @@ describe('PinnedMessagesPanelComponent', () => {
 
     expect(
       container.querySelector('[data-testid="pinned-failed"]')?.textContent,
-    ).toContain('Couldn’t load this pinned message.');
+    ).toContain('This pinned message couldn’t load.');
+  });
+
+  it("leads a pin with its author's avatar, and keeps Unpin in its row", async () => {
+    const { container } = await renderPanel({
+      pinned: [pin({ senderAvatarMxc: 'mxc://hs/alice' })],
+    });
+
+    const row = container.querySelector('.pin-item')!;
+    const avatar = row.querySelector('[data-testid="pinned-item"] trn-avatar');
+    expect(avatar).not.toBeNull();
+    expect(row.querySelector('[data-testid="pinned-unpin"]')).not.toBeNull();
   });
 
   it('renders a row per pinned message, in pin order', async () => {
@@ -209,7 +221,9 @@ describe('PinnedMessagesPanelComponent', () => {
     });
 
     const row = container.querySelector('[data-testid="pinned-unavailable"]');
-    expect(row?.textContent).toContain('Message unavailable');
+    expect(row?.textContent).toContain('Unavailable message');
+    expect(row?.textContent).toContain('This pinned message can’t be loaded.');
+    expect(row?.classList).toContain('pin-item--muted');
     expect(selected).toEqual([]);
     fireEvent.click(
       container.querySelector<HTMLButtonElement>(

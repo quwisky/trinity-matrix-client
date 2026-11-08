@@ -303,6 +303,8 @@ export class MessageListComponent extends MessageListBase {
    * It never anchors a history page: holding it would push the rows being read down by the page.
    */
   readonly leadingRowId = input<string | null>(null);
+  /** A rule under the leading row, such as a thread root's reply count. */
+  readonly leadingDividerLabel = input<string | null>(null);
 
   /**
    * {@link liveViewFrom} as it changes. The host passes it to the conversation, which while the

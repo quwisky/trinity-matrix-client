@@ -236,6 +236,7 @@ function renderHeader(
       MockProvider(IdentityPresenceService, {
         presenceFor: (userId: string) =>
           presenceByUser[userId] ?? signal('offline'),
+        presenceDetailsFor: () => signal(null),
       }),
       MockProvider(SpaceChildrenService),
       MockProvider(RoomMembersService),

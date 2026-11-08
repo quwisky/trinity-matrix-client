@@ -65,7 +65,7 @@
   }
 
   .members__filter {
-    display: block;
+    @include panel-search-field;
   }
 
   // A group ("ADMINS — 1"). The space between groups lives in the HEADER's own padding
@@ -113,6 +113,10 @@
 
   .member__name {
     @include panel-row-name;
+  }
+
+  .member__status {
+    @include panel-row-meta;
   }
 
   /* Offline members: fade the avatar and mute the name to a token (a row opacity would drop

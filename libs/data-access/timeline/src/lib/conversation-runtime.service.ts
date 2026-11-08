@@ -728,12 +728,13 @@ export class ConversationRuntime {
     } as const;
     const emptyServer = { hits: [], count: 0, nextBatch: null } as const;
     return {
-      searchLoaded: (query) =>
-        focused()?.search.searchLoaded(query) ?? emptyLoaded,
-      searchServer: (term, nextBatch) =>
+      searchLoaded: (query, sender) =>
+        focused()?.search.searchLoaded(query, sender) ?? emptyLoaded,
+      searchServer: (term, nextBatch, filter) =>
         defer(
           () =>
-            focused()?.search.searchServer(term, nextBatch) ?? of(emptyServer),
+            focused()?.search.searchServer(term, nextBatch, filter) ??
+            of(emptyServer),
         ),
       loadOlder: (count) =>
         defer(() => focused()?.search.loadOlder(count) ?? of(0)),

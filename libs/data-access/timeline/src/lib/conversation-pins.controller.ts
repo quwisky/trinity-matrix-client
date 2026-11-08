@@ -318,6 +318,7 @@ export class ConversationPinsController implements ConversationPins {
           status: 'loaded' as const,
           sender,
           senderName: room.getMember(sender)?.name ?? sender,
+          senderAvatarMxc: room.getMember(sender)?.getMxcAvatarUrl() ?? null,
           // The pin's shield marks unencrypted text, so the text itself stays readable.
           body: messagePreview(event),
           ts: event.getTs(),
@@ -337,6 +338,7 @@ export class ConversationPinsController implements ConversationPins {
       status,
       sender: '',
       senderName: '',
+      senderAvatarMxc: null,
       body: '',
       ts: 0,
       shield: null,

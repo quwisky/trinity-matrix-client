@@ -1,6 +1,57 @@
 @use '../styles/mixins' as *;
 
 @layer components {
+  .ms-field {
+    @include panel-search-field;
+  }
+
+  .ms-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--trinity-panel-subtitle-gap);
+  }
+
+  // Pill filters. Pressed reads as selected, in the shared selected roles.
+  .ms-chip {
+    min-height: var(--trinity-interaction-target-min-size);
+    padding: var(--trinity-space-1) var(--trinity-space-4);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-surface-raised);
+    color: var(--trinity-text);
+    font: inherit;
+    font-size: var(--trinity-panel-meta-size);
+    line-height: 1.5;
+    cursor: pointer;
+
+    @media (hover: hover) {
+      &:hover {
+        background: var(--trinity-state-hover-surface);
+      }
+    }
+
+    &[aria-pressed='true'],
+    &.ms-chip--on {
+      background: var(--trinity-state-selected-surface);
+      color: var(--trinity-text-bright);
+    }
+
+    &:focus-visible {
+      outline: var(--trinity-focus-ring-width) solid var(--trinity-focus-ring);
+      outline-offset: calc(-1 * var(--trinity-focus-ring-width));
+    }
+  }
+
+  // A day heading: quieter than a section label, in sentence case.
+  .ms-group {
+    margin: 0;
+    padding: var(--trinity-space-4) var(--trinity-space-3)
+      var(--trinity-space-2);
+    font-size: var(--trinity-panel-meta-size);
+    font-weight: 600;
+    color: var(--trinity-text-muted);
+  }
+
   .ms-row {
     @include panel-row;
 
@@ -28,10 +79,16 @@
     min-width: 0;
   }
 
-  .ms-time {
+  .ms-time,
+  .ms-room {
     @include panel-row-meta;
 
     flex: none;
+  }
+
+  .ms-room {
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   .ms-snippet {

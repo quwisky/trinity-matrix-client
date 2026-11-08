@@ -1,6 +1,6 @@
 <trn-side-panel
   data-testid="thread-view"
-  heading="Thread"
+  [heading]="title()"
   [subtitle]="roomName()"
   icon="message-square"
   closeLabel="Close thread"
@@ -19,6 +19,7 @@
       [roomId]="roomId()"
       [resetKey]="rootEventId()"
       [leadingRowId]="rootEventId()"
+      [leadingDividerLabel]="repliesLabel()"
       [accountId]="accountId()"
       [canRedactOthers]="canRedactOthers()"
       [swipeDirection]="swipeDirection()"

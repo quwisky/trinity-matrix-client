@@ -388,6 +388,9 @@
                     [roomId]="room.id"
                     [(query)]="searchQuery"
                     (selected)="messageActions.onPanelJump($event)"
+                    (selectedElsewhere)="
+                      messageActions.onSearchHitElsewhere($event)
+                    "
                     (dismissed)="closeRightPanel()"
                   />
                 }

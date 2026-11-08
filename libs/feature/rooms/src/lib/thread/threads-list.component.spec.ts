@@ -67,44 +67,99 @@ describe('ThreadsListComponent', () => {
     expect(last()).toBeNull();
   });
 
-  it('marks a root and a latest reply that arrived unencrypted', async () => {
+  it('marks a root that arrived unencrypted', async () => {
     const shield = {
       level: 'unencrypted' as const,
       reason: 'Not encrypted',
       explanation: 'This message was sent without end-to-end encryption.',
     };
-    const { container } = await build([
-      summary({ rootShield: shield, latestReplyShield: shield }),
-    ]);
+    const { container } = await build([summary({ rootShield: shield })]);
 
     const marks = container.querySelectorAll(
       '[data-testid="unencrypted-mark-unencrypted"]',
     );
-    expect(marks).toHaveLength(2);
+    expect(marks).toHaveLength(1);
     expect(marks[0].getAttribute('aria-label')).toBe('Not encrypted');
   });
 
-  it('renders a row per thread with root preview, reply count, and last reply', async () => {
+  it('renders a row per thread with its text and "Author · N replies · when"', async () => {
+    const now = Date.now();
     const { container } = await build([
       summary({
         rootEventId: '$a',
         rootPreview: 'first thread',
         replyCount: 2,
+        latestActivityTs: now - 2 * 60_000,
       }),
       summary({
         rootEventId: '$b',
         rootPreview: 'second thread',
         replyCount: 1,
+        latestActivityTs: now,
       }),
     ]);
 
     const items = container.querySelectorAll('.thread-item');
     expect(items.length).toBe(2);
-    expect(container.textContent).toContain('first thread');
-    expect(container.textContent).toContain('2 replies');
-    expect(container.textContent).toContain('1 reply');
-    expect(container.textContent).toContain('Bob:');
-    expect(container.textContent).toContain('a reply');
+    const meta = [
+      ...container.querySelectorAll<HTMLElement>('.thread-item__meta'),
+    ].map((el) => el.textContent?.trim());
+    expect(meta).toEqual([
+      'Alice · 2 replies · 2 min. ago',
+      'Alice · 1 reply · just now',
+    ]);
+  });
+
+  it('lists unread threads first under "Unread", then the rest under "All threads"', async () => {
+    const { container } = await build([
+      summary({ rootEventId: '$read', rootPreview: 'read one' }),
+      summary({ rootEventId: '$new', rootPreview: 'new one', unreadCount: 3 }),
+    ]);
+
+    const labels = [
+      ...container.querySelectorAll<HTMLElement>(
+        '[data-testid="threads-section"]',
+      ),
+    ].map((el) => el.textContent?.trim());
+    expect(labels).toEqual(['Unread', 'All threads']);
+    const roots = [
+      ...container.querySelectorAll<HTMLElement>('.thread-item__root'),
+    ].map((el) => el.textContent?.trim());
+    expect(roots).toEqual(['new one', 'read one']);
+  });
+
+  it('leaves out a group with no threads', async () => {
+    const { container } = await build([summary()]);
+
+    const labels = [
+      ...container.querySelectorAll<HTMLElement>(
+        '[data-testid="threads-section"]',
+      ),
+    ].map((el) => el.textContent?.trim());
+    expect(labels).toEqual(['All threads']);
+  });
+
+  it("leads with the root's author and stacks up to three others", async () => {
+    const person = (id: string) => ({
+      id,
+      name: id,
+      initial: id[1].toUpperCase(),
+      avatarMxc: null,
+    });
+    const { container } = await build([
+      summary({
+        participants: ['@alice', '@bo', '@cy', '@di', '@ed'].map(person),
+      }),
+    ]);
+
+    const row = container.querySelector('.thread-item')!;
+    expect(row.children[0].tagName).toBe('TRN-AVATAR');
+    expect(row.querySelectorAll('.thread-item__stack trn-avatar')).toHaveLength(
+      3,
+    );
+    expect(
+      row.querySelector('.thread-item__stack')?.getAttribute('aria-hidden'),
+    ).toBe('true');
   });
 
   it('renders threads in the order the service provides (already sorted)', async () => {
@@ -119,7 +174,7 @@ describe('ThreadsListComponent', () => {
     expect(roots).toEqual(['newer', 'older']);
   });
 
-  it('shows an unread badge (highlight variant) when the thread is unread', async () => {
+  it('shows an unread badge when the thread is unread', async () => {
     const { container } = await build([
       summary({ unreadCount: 4, highlight: true }),
     ]);
@@ -128,18 +183,17 @@ describe('ThreadsListComponent', () => {
     expect(badge).toBeTruthy();
     expect(badge?.textContent).toContain('4');
     expect(badge).toHaveAttribute('data-variant', 'danger');
-    expect(badge?.className).not.toMatch(/thread-item__badge/);
+    expect(badge?.getAttribute('aria-label')).toBe('4 unread mentions');
   });
 
-  it('uses the neutral badge for an unread thread without a mention', async () => {
+  it('uses the same badge for an unread thread without a mention, named apart', async () => {
     const { container } = await build([
       summary({ unreadCount: 2, highlight: false }),
     ]);
 
-    expect(container.querySelector('[trnBadge]')).toHaveAttribute(
-      'data-variant',
-      'neutral',
-    );
+    const badge = container.querySelector('[trnBadge]');
+    expect(badge).toHaveAttribute('data-variant', 'danger');
+    expect(badge?.getAttribute('aria-label')).toBe('2 unread');
   });
 
   it('omits the unread badge for a read thread', async () => {

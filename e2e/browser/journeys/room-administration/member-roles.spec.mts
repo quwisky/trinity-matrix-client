@@ -224,7 +224,8 @@ test.describe('Member role sections', () => {
     await expect(page.locator('.members__section-label')).toHaveText([
       'Owners — 1',
       'Moderators — 1',
-      'Members — 1',
+      // A plain member with no live presence is listed as offline.
+      'Offline — 1',
     ]);
 
     // These are inputs to the virtual window, not merely visual preferences. Assert the
@@ -249,7 +250,7 @@ test.describe('Member role sections', () => {
     expect(groupLabels).toEqual([
       'Owners, 1 member',
       'Moderators, 1 member',
-      'Members, 1 member',
+      'Offline, 1 member',
     ]);
 
     // The right member sits under the right header. User IDs now live in the design
@@ -265,7 +266,7 @@ test.describe('Member role sections', () => {
         .filter({ hasText: moderator.name }),
     ).toHaveCount(1);
     await expect(
-      sectionFor(page, 'Member')
+      sectionFor(page, 'Offline')
         .getByTestId('member-row')
         .filter({ hasText: plain.name }),
     ).toHaveCount(1);
@@ -448,7 +449,8 @@ test.describe('Member role sections', () => {
     });
     await expect(page.locator('.members__section-label')).toHaveText([
       'Owners — 1',
-      'Members — 1',
+      // A plain member with no live presence is listed as offline.
+      'Offline — 1',
     ]);
 
     // Promote the plain member to moderator server-side; the open client should

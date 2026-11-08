@@ -66,6 +66,7 @@ function setup({ roomEncrypted = false } = {}) {
     findEventById: (eventId: string) => events.get(eventId),
     getMember: (userId: string) => ({
       name: userId === '@bob:example.org' ? 'Bob' : 'Carol',
+      getMxcAvatarUrl: () => null,
     }),
     ...roomEmitter,
   };
@@ -165,6 +166,7 @@ describe('ConversationPinsController', () => {
         id: '$one',
         sender: '@bob:example.org',
         senderName: 'Bob',
+        senderAvatarMxc: null,
         body: 'First pinned message',
         ts: 10,
         status: 'loaded',
