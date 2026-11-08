@@ -43,8 +43,9 @@ interface MemberRow {
 }
 
 /**
- * The list's groups: staff by role, then everyone else by presence. `members` holds the rest
- * while presence is unknown, so nobody is called offline without evidence.
+ * The list's groups: staff by role, then everyone else by reported presence. `members` holds
+ * anyone whose presence the server has not reported, so nobody is called offline, or faded,
+ * without evidence.
  */
 type SectionKey =
   Exclude<MemberRole, 'member'> | 'online' | 'offline' | 'members';
@@ -185,19 +186,23 @@ export class MemberListComponent {
    * Every member decorated with live presence and role. Recomputes when membership,
    * any listed member's presence, or a member's power level changes.
    */
-  private readonly rows = computed<MemberRow[]>(() =>
-    this.members().map((member) => ({
-      member,
-      presence: this.showPresence()
-        ? this.presence.presenceFor(member.userId)()
-        : null,
-      status: this.showPresence()
-        ? (this.presence.presenceDetailsFor(member.userId)()?.statusMessage ??
-          '')
-        : '',
-      role: memberRole(member, { direct: this.direct() }),
-    })),
-  );
+  private readonly rows = computed<MemberRow[]>(() => {
+    const show = this.showPresence();
+    // One untracked read per member, recomputed when any presence changes: a signal per
+    // member would leave a cache entry behind for everyone in every roster opened.
+    if (show) this.presence.revision();
+    return this.members().map((member) => {
+      // Only reported presence counts. The SDK seeds every member as 'offline', so its
+      // bare state would file a whole room under "Offline" on a server with presence off.
+      const details = show ? this.presence.peekDetails(member.userId) : null;
+      return {
+        member,
+        presence: details?.state ?? null,
+        status: details?.statusMessage ?? '',
+        role: memberRole(member, { direct: this.direct() }),
+      };
+    });
+  });
 
   /**
    * The rows the filter admits: name AND user id (the id disambiguates equal display

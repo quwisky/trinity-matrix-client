@@ -18,7 +18,7 @@ import {
   type ThreadParticipant,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
-import { relativeTimeLabel } from '../shared/relative-time';
+import { DateTimeFormatService } from '@trinity/platform-native';
 import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
 
 /** Participant avatars stacked under a row, after the root's author. */
@@ -30,7 +30,7 @@ const clock = timer(60_000, 60_000).pipe(
   shareReplay({ bufferSize: 1, refCount: true }),
 );
 
-/** A labelled run of rows: the unread threads, then all the others. */
+/** A labelled run of rows: the unread threads, then the others. */
 interface ThreadGroup {
   readonly key: 'unread' | 'all';
   readonly label: string;
@@ -61,6 +61,8 @@ interface ThreadGroup {
 })
 export class ThreadsListComponent {
   private readonly threadProjection = inject(ConversationRuntime).threads;
+  /** Relative times follow the reader's language through the app's format preference. */
+  private readonly fmt = inject(DateTimeFormatService);
   private readonly now = toSignal(clock, { initialValue: Date.now() });
 
   /** The room whose threads are listed (used by the page to open a thread). */
@@ -84,7 +86,9 @@ export class ThreadsListComponent {
       groups.push({ key: 'unread', label: 'Unread', threads: unread });
     }
     if (read.length) {
-      groups.push({ key: 'all', label: 'All threads', threads: read });
+      // "All" only while it really holds every thread.
+      const label = unread.length ? 'Other threads' : 'All threads';
+      groups.push({ key: 'all', label, threads: read });
     }
     return groups;
   });
@@ -118,10 +122,10 @@ export class ThreadsListComponent {
       .slice(0, MAX_PARTICIPANTS);
   }
 
-  /** "Ada · 12 replies · 2 min. ago". */
+  /** "Ada · 12 replies · 2 min. ago", in the reader's language for the time. */
   protected metaLine(summary: ThreadSummary): string {
     const replies = `${summary.replyCount} ${summary.replyCount === 1 ? 'reply' : 'replies'}`;
-    const when = relativeTimeLabel(summary.latestActivityTs, this.now());
+    const when = this.fmt.relative(summary.latestActivityTs, this.now());
     return [summary.rootSenderName, replies, when]
       .filter((part) => !!part)
       .join(' · ');
@@ -129,8 +133,9 @@ export class ThreadsListComponent {
 
   /** Accessible label for a row's unread badge. */
   unreadLabel(summary: ThreadSummary): string {
+    const n = summary.unreadCount;
     return summary.highlight
-      ? `${summary.unreadCount} unread mentions`
-      : `${summary.unreadCount} unread`;
+      ? `${n} unread ${n === 1 ? 'mention' : 'mentions'}`
+      : `${n} unread`;
   }
 }

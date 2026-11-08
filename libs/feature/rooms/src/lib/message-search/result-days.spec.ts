@@ -7,26 +7,27 @@ import {
 
 const at = (y: number, m: number, d: number, h = 12) =>
   new Date(y, m, d, h).getTime();
+const month = (ts: number, withYear: boolean) =>
+  new Intl.DateTimeFormat('en', {
+    month: 'long',
+    ...(withYear ? { year: 'numeric' } : {}),
+  }).format(ts);
 
 describe('search result days', () => {
   const now = at(2026, 10, 8, 9);
 
   it('names today, yesterday, the week before and then the month', () => {
-    expect(resultDayLabel(at(2026, 10, 8, 1), now)).toBe('Today');
-    expect(resultDayLabel(at(2026, 10, 7, 23), now)).toBe('Yesterday');
-    expect(resultDayLabel(at(2026, 10, 2), now)).toBe('Last week');
-    expect(resultDayLabel(at(2026, 10, 1), now)).toBe(
-      new Date(at(2026, 10, 1)).toLocaleDateString(undefined, {
-        month: 'long',
-      }),
-    );
-    expect(resultDayLabel(at(2025, 3, 1), now)).toContain('2025');
+    expect(resultDayLabel(at(2026, 10, 8, 1), now, month)).toBe('Today');
+    expect(resultDayLabel(at(2026, 10, 7, 23), now, month)).toBe('Yesterday');
+    expect(resultDayLabel(at(2026, 10, 2), now, month)).toBe('Last week');
+    expect(resultDayLabel(at(2026, 10, 1), now, month)).toBe('November');
+    expect(resultDayLabel(at(2025, 3, 1), now, month)).toBe('April 2025');
   });
 
   it('counts calendar days across a daylight-saving change, not 24-hour steps', () => {
     // 1 November 2026 is the US fall-back day; locally it may be 25 hours long.
     const after = at(2026, 10, 2, 0);
-    expect(resultDayLabel(at(2026, 10, 1, 1), after)).toBe('Yesterday');
+    expect(resultDayLabel(at(2026, 10, 1, 1), after, month)).toBe('Yesterday');
   });
 
   it('groups consecutive hits that share a label', () => {
@@ -37,6 +38,7 @@ describe('search result days', () => {
         { id: 'c', ts: at(2026, 10, 4) },
       ],
       now,
+      month,
     );
     expect(groups.map((g) => [g.label, g.hits.map((h) => h.id)])).toEqual([
       ['Today', ['a', 'b']],

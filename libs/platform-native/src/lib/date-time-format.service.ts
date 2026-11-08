@@ -85,6 +85,21 @@ function usable(
  * input, never re-reads the preference signal, and can lose its dependency link, leaving the
  * view deaf to the setting. A template method re-registers the dependency every pass.
  */
+const YEAR_SECONDS = 365 * 86_400;
+
+/** Each relative unit, its size in seconds, and where the next, larger unit takes over. */
+const RELATIVE_UNITS: readonly (readonly [
+  Intl.RelativeTimeFormatUnit,
+  number,
+  number,
+])[] = [
+  ['minute', 60, 3_600],
+  ['hour', 3_600, 86_400],
+  ['day', 86_400, 7 * 86_400],
+  ['week', 7 * 86_400, 30 * 86_400],
+  ['month', 30 * 86_400, YEAR_SECONDS],
+];
+
 @Injectable({ providedIn: 'root' })
 export class DateTimeFormatService {
   private readonly _timeFormat = signal<TimeFormat>(DEFAULT_TIME_FORMAT);
@@ -166,6 +181,43 @@ export class DateTimeFormatService {
   /** A numeric date alone. */
   dateOnly(ts: number): string {
     return formatDateOnly(ts, this.prefs());
+  }
+
+  /**
+   * How long ago `ts` was, from `now`, in the reader's language: "now", "2 min. ago",
+   * "yesterday", "3 wk. ago", "2 yr. ago". The largest unit that fits, so old activity never
+   * reads as hundreds of days.
+   */
+  relative(ts: number, now: number): string {
+    const format = new Intl.RelativeTimeFormat(
+      this.prefs().locales as string[],
+      {
+        numeric: 'auto',
+        style: 'short',
+      },
+    );
+    const seconds = Math.round((ts - now) / 1000);
+    const past = Math.abs(seconds);
+    if (past < 45) return format.format(0, 'second');
+    for (const [unit, size, next] of RELATIVE_UNITS) {
+      if (past < next) return format.format(Math.round(seconds / size), unit);
+    }
+    return format.format(Math.round(seconds / YEAR_SECONDS), 'year');
+  }
+
+  /** The short weekday, as "Wed", in the reader's language. */
+  weekday(ts: number): string {
+    return new Intl.DateTimeFormat(this.prefs().locales as string[], {
+      weekday: 'short',
+    }).format(ts);
+  }
+
+  /** The month, with the year when asked, as "October" or "October 2025". */
+  month(ts: number, withYear: boolean): string {
+    return new Intl.DateTimeFormat(this.prefs().locales as string[], {
+      month: 'long',
+      ...(withYear ? { year: 'numeric' } : {}),
+    }).format(ts);
   }
 
   /** How `ts` would read under `time`, for previewing an option the user has not picked. */

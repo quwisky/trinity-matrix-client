@@ -123,6 +123,28 @@ describe('PinnedMessagesPanelComponent', () => {
     ).toContain('This pinned message couldn’t load.');
   });
 
+  it('retries a failed pin from its own Try again button', async () => {
+    const { container, retryFailed } = await renderPanel({
+      pinned: [
+        pin({
+          id: '$p',
+          status: 'failed',
+          sender: '',
+          senderName: '',
+          body: '',
+        }),
+      ],
+    });
+    retryFailed.mockClear();
+
+    const retry = container.querySelector<HTMLButtonElement>(
+      '[data-testid="pinned-retry"]',
+    )!;
+    expect(retry.textContent?.trim()).toBe('Try again');
+    fireEvent.click(retry);
+    expect(retryFailed).toHaveBeenCalledTimes(1);
+  });
+
   it("leads a pin with its author's avatar, and keeps Unpin in its row", async () => {
     const { container } = await renderPanel({
       pinned: [pin({ senderAvatarMxc: 'mxc://hs/alice' })],

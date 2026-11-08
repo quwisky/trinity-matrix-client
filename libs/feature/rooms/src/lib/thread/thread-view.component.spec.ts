@@ -306,6 +306,7 @@ async function build(
   let dismissals = 0;
   fixture.componentInstance.dismissed.subscribe(() => (dismissals += 1));
   return {
+    threadSummaries,
     fixture,
     container,
     queryByRole: rendered.queryByRole,
@@ -1941,6 +1942,23 @@ describe('ThreadViewComponent heading and replies line', () => {
         .querySelector('[data-testid="thread-replies-divider"]')
         ?.getAttribute('aria-label'),
     ).toBe('2 replies');
+  });
+
+  it('shows no empty state while replies the summary counts are still paging in', async () => {
+    const { container, fixture, threadSummaries } = await build([
+      messageView({ id: '$root', body: 'Busy root' }),
+    ]);
+    threadSummaries.set({ $root: { replyCount: 3 } as ThreadSummary });
+    fixture.detectChanges();
+
+    expect(
+      container
+        .querySelector('[data-testid="thread-replies-divider"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('3 replies');
+    expect(
+      container.querySelector('[data-testid="thread-no-replies"]'),
+    ).toBeNull();
   });
 
   it('says so under a root with no replies yet', async () => {

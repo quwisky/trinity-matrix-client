@@ -1,0 +1,32 @@
+<input
+  trnInput
+  type="search"
+  class="w-full"
+  placeholder="Find a person"
+  aria-label="Find a person"
+  autocomplete="off"
+  data-autofocus
+  [value]="query()"
+  (input)="query.set($any($event.target).value)"
+  (keydown.escape)="$event.stopPropagation(); dismissed.emit()"
+/>
+<div class="picker__options" role="group" aria-label="From">
+  <button type="button" class="picker__option" (click)="picked.emit(null)">
+    Anyone
+  </button>
+  @for (member of options(); track member.userId) {
+    <button
+      type="button"
+      class="picker__option"
+      data-testid="search-sender-option"
+      (click)="pick(member)"
+    >
+      {{ member.roomDisplayName }}
+    </button>
+  }
+</div>
+@if (more(); as left) {
+  <p class="picker__more" data-testid="search-sender-more">
+    {{ left }} more. Type a name to narrow the list.
+  </p>
+}

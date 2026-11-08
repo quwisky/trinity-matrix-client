@@ -77,6 +77,11 @@ export class PinnedMessagesPanelComponent {
     releaseInputTargetOnDestroy();
   }
 
+  /** Fetch the pins that failed to load again. */
+  retry(): void {
+    this.pins.retryFailed();
+  }
+
   jumpTo(eventId: string): void {
     this.selected.emit(eventId);
   }

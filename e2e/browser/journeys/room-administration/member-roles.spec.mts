@@ -196,7 +196,7 @@ function sectionFor(page: Page, roleWord: string): Locator {
 test.describe('Member role sections', () => {
   test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
 
-  test('groups members under Owner / Moderator / Member headers', async ({
+  test('groups members under Owners, Moderators and, with no reported presence, Members', async ({
     page,
     request,
   }) => {
@@ -224,8 +224,9 @@ test.describe('Member role sections', () => {
     await expect(page.locator('.members__section-label')).toHaveText([
       'Owners — 1',
       'Moderators — 1',
-      // A plain member with no live presence is listed as offline.
-      'Offline — 1',
+      // The homeserver has reported no presence for the plain member, so they are listed
+      // under "Members", not called offline.
+      'Members — 1',
     ]);
 
     // These are inputs to the virtual window, not merely visual preferences. Assert the
@@ -250,7 +251,7 @@ test.describe('Member role sections', () => {
     expect(groupLabels).toEqual([
       'Owners, 1 member',
       'Moderators, 1 member',
-      'Offline, 1 member',
+      'Members, 1 member',
     ]);
 
     // The right member sits under the right header. User IDs now live in the design
@@ -266,7 +267,7 @@ test.describe('Member role sections', () => {
         .filter({ hasText: moderator.name }),
     ).toHaveCount(1);
     await expect(
-      sectionFor(page, 'Offline')
+      sectionFor(page, 'Members')
         .getByTestId('member-row')
         .filter({ hasText: plain.name }),
     ).toHaveCount(1);
@@ -449,8 +450,9 @@ test.describe('Member role sections', () => {
     });
     await expect(page.locator('.members__section-label')).toHaveText([
       'Owners — 1',
-      // A plain member with no live presence is listed as offline.
-      'Offline — 1',
+      // The homeserver has reported no presence for the plain member, so they are listed
+      // under "Members", not called offline.
+      'Members — 1',
     ]);
 
     // Promote the plain member to moderator server-side; the open client should

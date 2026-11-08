@@ -11,7 +11,7 @@ import {
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
 import { MockComponent, MockProvider } from 'ng-mocks';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { MessageSearchComponent } from './message-search.component';
 import { ConversationTimelineStub } from '../testing/conversation-timeline.stub';
@@ -575,6 +575,131 @@ describe('MessageSearchComponent', () => {
           .querySelector('[data-testid="result"]')
           ?.getAttribute('aria-current'),
       ).toBe('true');
+    });
+  });
+
+  describe('review fixes', () => {
+    it('says a failed server search failed, and retries it', async () => {
+      searchServerMessages.mockReturnValueOnce(
+        throwError(() => new Error('M_UNKNOWN: boom')),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      const alert = container.querySelector('[data-testid="search-error"]');
+      expect(alert?.textContent).toContain('Try again');
+      expect(alert?.textContent).not.toContain('M_UNKNOWN');
+      expect(container.textContent).not.toContain('No results');
+
+      searchServerMessages.mockReturnValueOnce(
+        of<ServerMessageSearch>({ hits: [hit()], count: 1, nextBatch: null }),
+      );
+      fireEvent.click(
+        container.querySelector<HTMLButtonElement>(
+          '[data-testid="search-retry"]',
+        )!,
+      );
+      fixture.detectChanges();
+      expect(searchServerMessages).toHaveBeenCalledTimes(2);
+      expect(
+        container.querySelector('[data-testid="search-error"]'),
+      ).toBeNull();
+      expect(container.querySelectorAll('[data-testid="result"]')).toHaveLength(
+        1,
+      );
+    });
+
+    it('counts loaded hits with a "+" while a sender filter has more pages', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({
+          hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })],
+          // Synapse counts before it filters senders.
+          count: 40,
+          nextBatch: 'b2',
+        }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setSender({ id: '@alice:hs', name: 'Alice' });
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('.side-panel-header__subtitle')?.textContent,
+      ).toBe('2+ results');
+    });
+
+    it('notes that encrypted rooms are left out of an all-rooms search with results', async () => {
+      searchServerMessages.mockReturnValue(
+        of<ServerMessageSearch>({ hits: [hit()], count: 1, nextBatch: null }),
+      );
+      const { fixture, container, c } = await build(loaded());
+      setQuery('hello', c);
+      c.setScope('all-rooms');
+      fixture.detectChanges();
+      c.searchServer();
+      fixture.detectChanges();
+
+      expect(
+        container.querySelector('[data-testid="all-rooms-note"]')?.textContent,
+      ).toContain('Encrypted rooms aren’t included');
+    });
+
+    it('announces the result count politely', async () => {
+      const { fixture, container, c } = await build(
+        loaded({ hits: [hit({ eventId: '$1' })] }),
+      );
+      setQuery('hello', c);
+      fixture.detectChanges();
+
+      const live = container.querySelector(
+        '[data-testid="search-count-status"]',
+      );
+      expect(live?.getAttribute('role')).toBe('status');
+      expect(live?.textContent?.trim()).toBe('1 result');
+    });
+
+    it('opens a person picker from the From chip instead of a menu of everyone', async () => {
+      const { fixture, container } = await build(loaded());
+      const chip = container.querySelector<HTMLButtonElement>(
+        '[data-testid="search-sender"]',
+      )!;
+      expect(chip.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(chip);
+      fixture.detectChanges();
+      expect(chip.getAttribute('aria-expanded')).toBe('true');
+      expect(
+        container.querySelector('trn-search-sender-picker'),
+      ).not.toBeNull();
+    });
+
+    it('moves "Today" to "Yesterday" at local midnight while the panel is open', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      try {
+        vi.setSystemTime(new Date(2026, 10, 8, 23, 50));
+        const { fixture, container, c } = await build(
+          loaded({
+            hits: [hit({ ts: new Date(2026, 10, 8, 23, 0).getTime() })],
+          }),
+        );
+        setQuery('hello', c);
+        fixture.detectChanges();
+        const groups = () =>
+          [...container.querySelectorAll('.ms-group')].map((g) =>
+            g.textContent?.trim(),
+          );
+        expect(groups()).toEqual(['Today']);
+
+        vi.advanceTimersByTime(15 * 60_000);
+        fixture.detectChanges();
+        expect(groups()).toEqual(['Yesterday']);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

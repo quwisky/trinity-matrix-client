@@ -8,7 +8,7 @@
   .ms-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--trinity-panel-subtitle-gap);
+    gap: var(--trinity-panel-chip-gap);
   }
 
   // Pill filters. Pressed reads as selected, in the shared selected roles.
@@ -30,9 +30,12 @@
       }
     }
 
+    // The accent edge carries "on" against the panel; the fill alone is too close to it in
+    // dark mode.
     &[aria-pressed='true'],
     &.ms-chip--on {
-      background: var(--trinity-state-selected-surface);
+      border-color: var(--trinity-accent);
+      background: var(--trinity-accent-tint-20);
       color: var(--trinity-text-bright);
     }
 
@@ -102,6 +105,14 @@
       background: var(--trinity-accent-tint-30);
       color: var(--trinity-text-bright);
     }
+  }
+
+  .ms-note {
+    @include panel-row-meta;
+
+    margin: 0;
+    padding: var(--trinity-space-2) var(--trinity-space-3);
+    white-space: normal;
   }
 
   .ms-more {

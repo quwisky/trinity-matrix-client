@@ -53,7 +53,7 @@
       var(--side-panel-surface, var(--trinity-surface-sidebar));
 
     &:not(:first-child) {
-      margin-inline-start: calc(-1 * var(--trinity-panel-subtitle-gap));
+      margin-inline-start: calc(-1 * var(--trinity-panel-avatar-overlap));
     }
   }
 }

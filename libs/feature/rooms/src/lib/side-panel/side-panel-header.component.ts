@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   InjectionToken,
+  computed,
   inject,
   input,
   output,
@@ -14,6 +15,9 @@ import {
   type TrnIconName,
 } from '@trinity/components/foundations';
 import { TrnTooltip } from '@trinity/components/generic-content';
+
+/** How much of a long panel title its heading's accessible name keeps. */
+const HEADING_NAME_LIMIT = 80;
 
 /** Whether the room's right-hand slot presents its panel as a page, provided by the slot. */
 export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
@@ -50,7 +54,7 @@ export const RIGHT_PANEL_PAGE = new InjectionToken<Signal<boolean>>(
     @if (icon(); as name) {
       <trn-icon class="side-panel-header__icon" [name]="name" size="lg" />
     }
-    <h2 class="side-panel-header__title">
+    <h2 class="side-panel-header__title" [attr.aria-label]="shortName()">
       {{ title() }}
       @if (subtitle()) {
         <span class="side-panel-header__subtitle">{{ subtitle() }}</span>
@@ -85,6 +89,18 @@ export class SidePanelHeaderComponent {
   /** Marks the button as the element the panel focuses when it opens. */
   readonly focusClose = input(false);
   readonly closed = output<void>();
+
+  /**
+   * A long title, such as a thread named by its whole root message, is shown in full (and cut
+   * short by the layout) but named by its first 80 characters, so a screen reader does not
+   * read the message twice. Null leaves a short heading to its own text.
+   */
+  protected readonly shortName = computed(() => {
+    const title = this.title();
+    if (title.length <= HEADING_NAME_LIMIT) return null;
+    const short = `${title.slice(0, HEADING_NAME_LIMIT).trimEnd()}…`;
+    return this.subtitle() ? `${short} ${this.subtitle()}` : short;
+  });
   protected readonly page =
     inject(RIGHT_PANEL_PAGE, { optional: true }) ?? signal(false);
 }

@@ -106,11 +106,11 @@ describe('ThreadsListComponent', () => {
     ].map((el) => el.textContent?.trim());
     expect(meta).toEqual([
       'Alice · 2 replies · 2 min. ago',
-      'Alice · 1 reply · just now',
+      'Alice · 1 reply · now',
     ]);
   });
 
-  it('lists unread threads first under "Unread", then the rest under "All threads"', async () => {
+  it('lists unread threads first under "Unread", then the rest under "Other threads"', async () => {
     const { container } = await build([
       summary({ rootEventId: '$read', rootPreview: 'read one' }),
       summary({ rootEventId: '$new', rootPreview: 'new one', unreadCount: 3 }),
@@ -121,7 +121,7 @@ describe('ThreadsListComponent', () => {
         '[data-testid="threads-section"]',
       ),
     ].map((el) => el.textContent?.trim());
-    expect(labels).toEqual(['Unread', 'All threads']);
+    expect(labels).toEqual(['Unread', 'Other threads']);
     const roots = [
       ...container.querySelectorAll<HTMLElement>('.thread-item__root'),
     ].map((el) => el.textContent?.trim());
@@ -184,6 +184,32 @@ describe('ThreadsListComponent', () => {
     expect(badge?.textContent).toContain('4');
     expect(badge).toHaveAttribute('data-variant', 'danger');
     expect(badge?.getAttribute('aria-label')).toBe('4 unread mentions');
+  });
+
+  it('names a single unread mention in the singular', async () => {
+    const { container } = await build([
+      summary({ unreadCount: 1, highlight: true }),
+    ]);
+
+    expect(
+      container.querySelector('[trnBadge]')?.getAttribute('aria-label'),
+    ).toBe('1 unread mention');
+  });
+
+  it('reads old activity in weeks, months and years, not hundreds of days', async () => {
+    const day = 86_400_000;
+    const { container } = await build([
+      summary({ rootEventId: '$w', latestActivityTs: Date.now() - 14 * day }),
+      summary({ rootEventId: '$y', latestActivityTs: Date.now() - 800 * day }),
+    ]);
+
+    const meta = [
+      ...container.querySelectorAll<HTMLElement>('.thread-item__meta'),
+    ].map((el) => el.textContent?.trim());
+    expect(meta).toEqual([
+      'Alice · 2 replies · 2 wk. ago',
+      'Alice · 2 replies · 2 yr. ago',
+    ]);
   });
 
   it('uses the same badge for an unread thread without a mention, named apart', async () => {

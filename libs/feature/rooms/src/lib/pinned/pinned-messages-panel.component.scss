@@ -62,6 +62,12 @@
     @include panel-row-snippet;
   }
 
+  .pin-item__retry {
+    flex: none;
+    margin-block-start: var(--trinity-space-2);
+    margin-inline-end: var(--trinity-space-2);
+  }
+
   // Unpin shows on a row's hover or focus. A touch screen has no hover, so it stays.
   .pin-item__unpin {
     flex: none;

@@ -1,4 +1,3 @@
-import { type Subscription } from 'rxjs';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -25,18 +24,13 @@ import {
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
 import { RoomMembersService } from '@trinity/data-access/room-administration';
-import { initialOf } from '@trinity/util/matrix';
+import { initialOf, startOfNextLocalDay } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import { BannerComponent } from '@trinity/components/generic-content';
 import { AvatarComponent } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnInput } from '@trinity/components/controls';
-import {
-  TrnDropdownMenu,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuTrigger,
-  releaseInputTargetOnDestroy,
-} from '@trinity/components/overlay';
+import { releaseInputTargetOnDestroy } from '@trinity/components/overlay';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { UnencryptedMarkComponent } from '../shared/unencrypted-mark/unencrypted-mark.component';
@@ -45,17 +39,16 @@ import {
   resultTimeStyle,
   type ResultGroup,
 } from './result-days';
+import { ServerSearch } from './server-search';
+import {
+  SearchSenderPickerComponent,
+  type SenderFilter,
+} from './search-sender-picker/search-sender-picker.component';
 
 /** One run of highlighting: a snippet slice and whether it is the matched term. */
 interface HighlightPart {
   text: string;
   match: boolean;
-}
-
-/** The author a search is narrowed to. */
-interface SenderFilter {
-  readonly id: string;
-  readonly name: string;
 }
 
 /** Waits this long after the last keystroke before asking the homeserver across rooms. */
@@ -95,9 +88,7 @@ const ALL_ROOMS_DEBOUNCE_MS = 400;
     TrnSpinnerComponent,
     TrnButton,
     TrnInput,
-    TrnDropdownMenu,
-    TrnDropdownMenuItem,
-    TrnDropdownMenuTrigger,
+    SearchSenderPickerComponent,
   ],
   templateUrl: './message-search.component.html',
   styleUrl: './message-search.component.scss',
@@ -123,8 +114,7 @@ export class MessageSearchComponent {
       this.query();
       this.sender();
       untracked(() => {
-        this.cancelServer();
-        this.resetServer();
+        this.server.reset();
         this.selectedId.set(null);
       });
     });
@@ -149,6 +139,19 @@ export class MessageSearchComponent {
         this.pending.set(false);
       });
     });
+    // Day groups move at local midnight: "Today" becomes "Yesterday" while the panel is open.
+    let midnight: ReturnType<typeof setTimeout> | undefined;
+    const atMidnight = () => {
+      midnight = setTimeout(
+        () => {
+          this.now.set(Date.now());
+          atMidnight();
+        },
+        startOfNextLocalDay(Date.now()) - Date.now() + 1_000,
+      );
+    };
+    atMidnight();
+    this.destroyRef.onDestroy(() => clearTimeout(midnight));
     afterNextRender(() => {
       // Skip when opened by typing in the header search field, so typing isn't interrupted.
       const active = document.activeElement;
@@ -185,13 +188,25 @@ export class MessageSearchComponent {
     this.scope() === 'room' ? 'Search this conversation' : 'Search all rooms',
   );
 
-  readonly serverMode = signal(false);
-  private readonly serverHits = signal<readonly MessageHit[]>([]);
-  readonly serverNextBatch = signal<string | null>(null);
-  readonly serverCount = signal(0);
-  readonly searching = signal(false);
+  /** The homeserver's search: its pages, count, and whether it is running or failed. */
+  protected readonly server = new ServerSearch(
+    (term, nextBatch, filter) =>
+      this.search.searchServer(term, nextBatch, filter),
+    this.destroyRef,
+    () => this.serverRefusedRoom.set(this.roomId()),
+  );
+  readonly serverMode = this.server.active;
+  readonly serverNextBatch = this.server.nextBatch;
+  readonly serverCount = this.server.count;
+  readonly searching = this.server.searching;
   readonly loadingHistory = signal(false);
-  private readonly error = signal<string | null>(null);
+  private readonly historyError = signal<string | null>(null);
+
+  /** The From picker is open under the chips. */
+  protected readonly pickingSender = signal(false);
+
+  /** When "today" is, for the day groups; moved on at local midnight. */
+  private readonly now = signal(Date.now());
 
   /**
    * Instant client-side results over the loaded, decrypted timeline. Reading
@@ -213,7 +228,7 @@ export class MessageSearchComponent {
 
   readonly results = computed<readonly MessageHit[]>(() => {
     if (this.serverMode()) {
-      return this.serverHits();
+      return this.server.hits();
     }
     return this.scope() === 'room' ? this.loaded().hits : [];
   });
@@ -228,17 +243,23 @@ export class MessageSearchComponent {
     if (!this.query().trim() || this.loading()) {
       return '';
     }
-    // The homeserver's count is approximate, so once every page is in, count the hits.
-    const count =
-      this.serverMode() && this.serverNextBatch()
-        ? Math.max(this.serverCount(), this.results().length)
-        : this.results().length;
+    const loaded = this.results().length;
+    const morePages = this.serverMode() && !!this.serverNextBatch();
+    // The homeserver counts before it filters senders, so with "From:" set its count says
+    // nothing: show what has loaded, and a "+" while pages remain.
+    if (morePages && this.sender()) {
+      return `${loaded}+ results`;
+    }
+    // Otherwise its count is approximate; once every page is in, count the hits.
+    const count = morePages ? Math.max(this.serverCount(), loaded) : loaded;
     return `${count} ${count === 1 ? 'result' : 'results'}`;
   });
 
   /** The results by when they were sent: today, yesterday, the last week, then by month. */
   protected readonly groups = computed<readonly ResultGroup<MessageHit>[]>(() =>
-    groupResultsByDay(this.results(), Date.now()),
+    groupResultsByDay(this.results(), this.now(), (ts, withYear) =>
+      this.fmt.month(ts, withYear),
+    ),
   );
 
   /** An all-rooms search is waiting for typing to pause; the panel shows it loading. */
@@ -255,7 +276,7 @@ export class MessageSearchComponent {
         body: 'Type a word or phrase to find the messages that contain it.',
       };
     }
-    if (this.searching() || this.pending()) {
+    if (this.searching() || this.pending() || this.server.error()) {
       return null;
     }
     if (this.scope() === 'all-rooms' && !this.serverMode()) {
@@ -275,55 +296,17 @@ export class MessageSearchComponent {
   }
 
   searchServer(): void {
-    const term = this.query().trim();
-    if (!term) {
-      return;
-    }
-    this.cancelServer();
-    this.serverMode.set(true);
-    this.inFlight = runWithBusy(
-      this.search.searchServer(term, undefined, this.filter()),
-      {
-        busy: this.searching,
-        error: this.error,
-        destroyRef: this.destroyRef,
-      },
-    ).subscribe((page) => {
-      if (page.encrypted) {
-        this.serverRefusedRoom.set(this.roomId());
-        this.serverMode.set(false);
-        return;
-      }
-      this.serverHits.set(page.hits);
-      this.serverCount.set(page.count);
-      this.serverNextBatch.set(page.nextBatch);
-    });
+    this.server.run(this.query().trim(), this.filter());
   }
 
   loadMoreServer(): void {
-    const term = this.query().trim();
-    const next = this.serverNextBatch();
-    if (!term || !next) {
-      return;
-    }
-    this.cancelServer();
-    this.inFlight = runWithBusy(
-      this.search.searchServer(term, next, this.filter()),
-      {
-        busy: this.searching,
-        error: this.error,
-        destroyRef: this.destroyRef,
-      },
-    ).subscribe((page) => {
-      this.serverHits.update((hits) => [...hits, ...page.hits]);
-      this.serverNextBatch.set(page.nextBatch);
-    });
+    this.server.more();
   }
 
   loadOlderHistory(): void {
     runWithBusy(this.search.loadOlder(), {
       busy: this.loadingHistory,
-      error: this.error,
+      error: this.historyError,
       destroyRef: this.destroyRef,
     }).subscribe();
   }
@@ -342,21 +325,21 @@ export class MessageSearchComponent {
       return;
     }
     this.scope.set(scope);
-    this.cancelServer();
-    this.resetServer();
+    this.server.reset();
   }
 
   setSender(sender: SenderFilter | null): void {
     this.sender.set(sender);
+    this.pickingSender.set(false);
   }
 
   /** A result's time: the clock for today and yesterday, the weekday within a week. */
   protected timeOf(ts: number): string {
-    switch (resultTimeStyle(ts, Date.now())) {
+    switch (resultTimeStyle(ts, this.now())) {
       case 'time':
         return this.fmt.time(ts);
       case 'weekday':
-        return new Date(ts).toLocaleDateString(undefined, { weekday: 'short' });
+        return this.fmt.weekday(ts);
       default:
         return this.fmt.dateOnly(ts);
     }
@@ -396,19 +379,4 @@ export class MessageSearchComponent {
   }
 
   readonly initialOf = initialOf;
-
-  /** Only the latest server request may write results; `runWithBusy` also bounds it to the component. */
-  private inFlight: Subscription | null = null;
-
-  private cancelServer(): void {
-    this.inFlight?.unsubscribe();
-    this.inFlight = null;
-  }
-
-  private resetServer(): void {
-    this.serverMode.set(false);
-    this.serverHits.set([]);
-    this.serverNextBatch.set(null);
-    this.serverCount.set(0);
-  }
 }

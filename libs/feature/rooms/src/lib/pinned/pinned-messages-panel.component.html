@@ -81,12 +81,25 @@
               @if (p.status !== 'loading') {
                 <span class="pin-item__meta">{{
                   p.status === 'failed'
-                    ? 'This pinned message couldn’t load. Open the panel again to retry.'
+                    ? 'This pinned message couldn’t load.'
                     : 'This pinned message can’t be loaded.'
                 }}</span>
               }
             </span>
           </div>
+          @if (p.status === 'failed') {
+            <button
+              trnBtn
+              variant="secondary"
+              presentation="ghost"
+              size="sm"
+              class="pin-item__retry"
+              data-testid="pinned-retry"
+              (click)="retry()"
+            >
+              Try again
+            </button>
+          }
           @if (p.status === 'unavailable' && canPin()) {
             <button
               trnBtn

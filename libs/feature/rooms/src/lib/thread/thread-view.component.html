@@ -52,7 +52,7 @@
         />
       }
     </trn-message-list>
-    @if (messages().length === 1) {
+    @if (messages().length === 1 && !repliesLabel()) {
       <!-- Only the root has loaded: the space under it says no one has replied. -->
       <trn-side-panel-empty
         icon="message-square"

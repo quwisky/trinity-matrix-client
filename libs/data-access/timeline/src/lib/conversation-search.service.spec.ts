@@ -292,6 +292,15 @@ describe('ConversationSearchController', () => {
     ).toEqual(['$m']);
   });
 
+  it('lets a failed server search fail, rather than report no results', async () => {
+    getRoom.mockReturnValue(room({}));
+    search.mockRejectedValue(new Error('M_LIMIT_EXCEEDED'));
+
+    await expect(firstValueFrom(service.searchServer('hello'))).rejects.toThrow(
+      'M_LIMIT_EXCEEDED',
+    );
+  });
+
   it('never asks the server to search an encrypted conversation', async () => {
     getRoom.mockReturnValue(room({ encrypted: true }));
 

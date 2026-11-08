@@ -17,30 +17,32 @@ function daysBefore(ts: number, today: number): number {
   return count;
 }
 
+/** Formats a month, with its year when asked, in the reader's language. */
+export type MonthLabel = (ts: number, withYear: boolean) => string;
+
 /** "Today", "Yesterday", "Last week" for the six days before, then the month. */
-export function resultDayLabel(ts: number, now: number): string {
+export function resultDayLabel(
+  ts: number,
+  now: number,
+  month: MonthLabel,
+): string {
   const today = startOfLocalDay(now);
   const days = daysBefore(ts, today);
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days < 7) return 'Last week';
-  const date = new Date(ts);
-  return date.toLocaleDateString(undefined, {
-    month: 'long',
-    ...(date.getFullYear() === new Date(now).getFullYear()
-      ? {}
-      : { year: 'numeric' }),
-  });
+  return month(ts, new Date(ts).getFullYear() !== new Date(now).getFullYear());
 }
 
 /** Runs of consecutive hits that share a day label; the hits arrive newest first. */
 export function groupResultsByDay<T extends { readonly ts: number }>(
   hits: readonly T[],
   now: number,
+  month: MonthLabel,
 ): ResultGroup<T>[] {
   const groups: { label: string; hits: T[] }[] = [];
   for (const hit of hits) {
-    const label = resultDayLabel(hit.ts, now);
+    const label = resultDayLabel(hit.ts, now, month);
     const last = groups.at(-1);
     if (last?.label === label) {
       last.hits.push(hit);

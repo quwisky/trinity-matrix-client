@@ -47,13 +47,23 @@
       type="button"
       class="ms-chip"
       [class.ms-chip--on]="sender() !== null"
-      [trnDropdownMenuTrigger]="senderMenu"
-      align="start"
+      [attr.aria-expanded]="pickingSender()"
+      aria-controls="search-sender-picker"
       data-testid="search-sender"
+      (click)="pickingSender.set(!pickingSender())"
     >
       From: {{ sender()?.name ?? 'anyone' }}
     </button>
   </div>
+  @if (pickingSender()) {
+    <trn-search-sender-picker
+      sidePanelStrip
+      id="search-sender-picker"
+      [members]="members()"
+      (picked)="setSender($event)"
+      (dismissed)="pickingSender.set(false)"
+    />
+  }
 
   @if (scope() === 'room') {
     @if (encrypted()) {
@@ -109,6 +119,36 @@
       </trn-banner>
     }
   }
+
+  @if (server.error(); as failure) {
+    <trn-banner variant="neutral" role="alert" data-testid="search-error">
+      <trn-icon trnBannerIcon name="cloud-off" />
+      {{ failure }}
+      <span trnBannerActions>
+        <button
+          trnBtn
+          variant="secondary"
+          presentation="outline"
+          size="sm"
+          data-testid="search-retry"
+          (click)="server.retry()"
+        >
+          Try again
+        </button>
+      </span>
+    </trn-banner>
+  }
+
+  @if (scope() === 'all-rooms' && results().length) {
+    <p class="ms-note" data-testid="all-rooms-note">
+      Encrypted rooms aren’t included: your homeserver can’t read them.
+    </p>
+  }
+
+  <!-- Always rendered, so a screen reader is watching it before the count first changes. -->
+  <p class="sr-only" role="status" data-testid="search-count-status">
+    {{ resultCount() }}
+  </p>
 
   @for (group of groups(); track group.label) {
     <h3 class="ms-group">{{ group.label }}</h3>
@@ -181,26 +221,3 @@
     </div>
   }
 </trn-side-panel>
-
-<ng-template #senderMenu>
-  <div trnDropdownMenu aria-label="From">
-    <button
-      trnDropdownMenuItem
-      (triggered)="setSender(null)"
-      data-testid="search-sender-anyone"
-    >
-      Anyone
-    </button>
-    @for (member of members(); track member.userId) {
-      <button
-        trnDropdownMenuItem
-        (triggered)="
-          setSender({ id: member.userId, name: member.roomDisplayName })
-        "
-        data-testid="search-sender-option"
-      >
-        {{ member.roomDisplayName }}
-      </button>
-    }
-  </div>
-</ng-template>

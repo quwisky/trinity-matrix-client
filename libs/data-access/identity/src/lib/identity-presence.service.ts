@@ -60,6 +60,13 @@ export class IdentityPresenceService {
     ReturnType<typeof signal<PresenceDetails | null>>
   >();
 
+  /**
+   * Bumps whenever any user's presence may have changed. Read it beside
+   * {@link peekDetails} to follow a whole roster without a signal per user.
+   */
+  private readonly _revision = signal(0);
+  readonly revision = this._revision.asReadonly();
+
   // The signed-in user's own presence and status message, seeded by loadOwnPresence().
   private readonly _myPresence = signal<PresenceState>('online');
   readonly myPresence = this._myPresence.asReadonly();
@@ -96,6 +103,16 @@ export class IdentityPresenceService {
     return view;
   }
 
+  /**
+   * A user's presence right now, or null while it is unknown (presence off, or nothing
+   * reported for them yet). Caches nothing, so a 5,000-member roster leaves no per-user
+   * state behind; read {@link revision} in the same reactive context to recompute it.
+   */
+  peekDetails(userId: string): PresenceDetails | null {
+    if (!this.available() || !this.matrix.isAvailable()) return null;
+    return this.currentDetails(userId, this.matrix.active().client);
+  }
+
   /** Coalesce SDK invalidations so read failures are observed by Projection Runtime. */
   private readonly projection = this.matrix.project({
     id: 'identity.presence',
@@ -110,6 +127,7 @@ export class IdentityPresenceService {
         // Keep the existing object when nothing changed so unrelated events don't re-render consumers.
         if (!samePresenceDetails(details(), next)) details.set(next);
       }
+      this._revision.update((n) => n + 1);
     },
     reset: () => {
       for (const state of this.states.values()) {
@@ -120,6 +138,7 @@ export class IdentityPresenceService {
       }
       this._myPresence.set('online');
       this._myStatusMessage.set('');
+      this._revision.update((n) => n + 1);
     },
   });
 

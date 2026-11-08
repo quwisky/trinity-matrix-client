@@ -11,32 +11,36 @@ import { type PresenceState } from '@trinity/util/matrix';
 import { MockComponent } from 'ng-mocks';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemberListComponent } from './member-list.component';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { setScrollGeometry } from '../testing/scroll-geometry.stub';
 
-// Stub presence per user id; anyone else's is unknown, which keeps them under "Members".
+// Presence the server has actually reported, per user id. Like the SDK, `presenceFor`
+// answers 'offline' for everyone else: it seeds every loaded member that way, so only the
+// reported details say whether presence is known.
 const presenceMap: Record<string, PresenceState> = {
   '@z:hs': 'online',
   '@a:hs': 'offline',
 };
 // Status messages per user id, as presence details carry them.
 const statusMap: Record<string, string> = {};
+const presenceRevision = signal(0);
+const detailsOf = (userId: string) =>
+  presenceMap[userId]
+    ? {
+        state: presenceMap[userId],
+        statusMessage: statusMap[userId] ?? '',
+        lastActiveAt: null,
+        currentlyActive: false,
+      }
+    : null;
 const presenceStub = {
   presenceFor: (userId: string) =>
-    signal<PresenceState | null>(presenceMap[userId] ?? null),
-  presenceDetailsFor: (userId: string) =>
-    signal(
-      statusMap[userId]
-        ? {
-            state: presenceMap[userId] ?? 'offline',
-            statusMessage: statusMap[userId],
-            lastActiveAt: null,
-            currentlyActive: false,
-          }
-        : null,
-    ),
+    signal<PresenceState>(presenceMap[userId] ?? 'offline'),
+  presenceDetailsFor: (userId: string) => signal(detailsOf(userId)),
+  revision: presenceRevision.asReadonly(),
+  peekDetails: (userId: string) => detailsOf(userId),
 };
 const providers = [
   { provide: IdentityPresenceService, useValue: presenceStub },
@@ -362,6 +366,37 @@ describe('MemberListComponent', () => {
     });
   });
 
+  it('lists everyone below moderator under "Members", unfaded, when no presence is known', async () => {
+    // A server with presence off: the SDK still seeds 'offline' for every member.
+    const { container } = await renderMembers([
+      member({ userId: '@ada:hs', roomDisplayName: 'Ada', powerLevel: 100 }),
+      member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
+      member({ userId: '@cy:hs', roomDisplayName: 'Cy' }),
+    ]);
+
+    expect(sectionMap(container)).toEqual({
+      'Admins — 1': ['Ada'],
+      'Members — 2': ['Bo', 'Cy'],
+    });
+    expect(container.querySelectorAll('.member--offline')).toHaveLength(0);
+  });
+
+  it('regroups when presence arrives', async () => {
+    const { container, fixture } = await renderMembers([
+      member({ userId: '@bo:hs', roomDisplayName: 'Bo' }),
+    ]);
+    expect(sectionLabels(container)).toEqual(['Members — 1']);
+
+    presenceMap['@bo:hs'] = 'online';
+    try {
+      presenceRevision.update((n) => n + 1);
+      fixture.detectChanges();
+      expect(sectionLabels(container)).toEqual(['Online — 1']);
+    } finally {
+      delete presenceMap['@bo:hs'];
+    }
+  });
+
   it('shows a status message under the name, in a taller fixed row', async () => {
     statusMap['@z:hs'] = 'On call this week';
     try {
@@ -606,8 +641,10 @@ describe('MemberListComponent — windowing', () => {
   // deliberately, because these numbers are the contract between the spacer arithmetic and
   // the stylesheet. That they match the RENDERED height is not checkable here (jsdom does
   // no layout); `member-info.spec.mts` measures both in Chromium.
-  const HEADER_PX = 34;
+  // Only one section here, so its header is the first one, which sits closer to the top.
+  const HEADER_PX = 28;
   const ROW_PX = 44;
+  const STATUS_ROW_PX = 52;
 
   /** Past SMALL_LIST_ROWS (80), so `computeWindow`'s render-everything path is off. */
   function crowd(n: number): MemberSummary[] {
@@ -860,5 +897,96 @@ describe('MemberListComponent — windowing', () => {
     const renderedPx = rowCount(container) * ROW_PX + HEADER_PX;
     expect(top + renderedPx + bottom).toBe(HEADER_PX + 111 * ROW_PX);
     expect(top + bottom).toBeGreaterThan(0);
+  });
+
+  describe('rows with a status line', () => {
+    // Every third member has a status line, so rows alternate 44, 44, 52px. Known presence
+    // puts them all under "Online".
+    const ids = Array.from(
+      { length: 600 },
+      (_, i) => `@m${String(i).padStart(4, '0')}:hs`,
+    );
+    const heightOf = (i: number) => (i % 3 === 2 ? STATUS_ROW_PX : ROW_PX);
+
+    beforeEach(() => {
+      ids.forEach((id, i) => {
+        presenceMap[id] = 'online';
+        if (i % 3 === 2) statusMap[id] = `status ${i}`;
+      });
+    });
+    afterEach(() => {
+      for (const id of ids) {
+        delete presenceMap[id];
+        delete statusMap[id];
+      }
+    });
+
+    const people = () =>
+      ids.map((userId, i) => member({ userId, roomDisplayName: `M ${i}` }));
+
+    it('keeps the scroll height honest with mixed row heights', async () => {
+      const { container } = await renderMembers(people());
+      setViewport(container, 400);
+      const host = container.querySelector('aside')!;
+      setScrollGeometry(host, { scrollTop: 9_000 });
+      host.dispatchEvent(new Event('scroll'));
+      TestBed.tick();
+
+      const rows = [
+        ...container.querySelectorAll<HTMLElement>('[data-testid=member-row]'),
+      ];
+      const renderedPx = rows.reduce(
+        (sum, row) => sum + Number.parseFloat(row.style.height),
+        0,
+      );
+      const header = container.querySelectorAll('.members__section-label')
+        .length
+        ? HEADER_PX
+        : 0;
+      const [top, bottom] = spacers(container);
+      const total = ids.reduce((sum, _, i) => sum + heightOf(i), HEADER_PX);
+      expect(top + renderedPx + header + bottom).toBe(total);
+      expect(top).toBeGreaterThan(0);
+
+      // The top spacer stands for exactly the rows above the first rendered one.
+      const first = Number(
+        rows[0].querySelector('.member__name')?.textContent?.replace('M ', ''),
+      );
+      const above = Array.from({ length: first }, (_, i) => heightOf(i)).reduce(
+        (sum, h) => sum + h,
+        HEADER_PX,
+      );
+      expect(top).toBe(above);
+      // And the window holds the row at the scroll offset.
+      expect(top).toBeLessThanOrEqual(9_000);
+      expect(top + renderedPx + header).toBeGreaterThan(9_000);
+    });
+  });
+
+  it('groups a 5,000-member room quickly, reading presence once per member', async () => {
+    const peek = vi.spyOn(presenceStub, 'peekDetails');
+    const tracked = vi.spyOn(presenceStub, 'presenceDetailsFor');
+    const big = crowd(5_000);
+    const started = performance.now();
+    const { container, fixture } = await renderMembers(big);
+    setViewport(container, 600);
+    const firstRender = performance.now() - started;
+
+    // One read per member, and no per-user signal cached for any of them.
+    expect(peek).toHaveBeenCalledTimes(5_000);
+    expect(tracked).not.toHaveBeenCalled();
+
+    peek.mockClear();
+    const again = performance.now();
+    presenceRevision.update((n) => n + 1);
+    fixture.detectChanges();
+    const regroup = performance.now() - again;
+    expect(peek).toHaveBeenCalledTimes(5_000);
+    console.debug(
+      `[members 5k] first render ${firstRender.toFixed(1)}ms, regroup after a presence change ${regroup.toFixed(1)}ms`,
+    );
+    expect(regroup).toBeLessThan(250);
+    peek.mockRestore();
+    tracked.mockRestore();
   });
 });

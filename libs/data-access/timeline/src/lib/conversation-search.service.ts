@@ -6,7 +6,7 @@ import {
   type MatrixClient,
   type MatrixEvent,
 } from 'matrix-js-sdk';
-import { Observable, catchError, defer, from, map, of } from 'rxjs';
+import { Observable, defer, from, map, of } from 'rxjs';
 import {
   RoomEncryptionFlags,
   displayContent,
@@ -203,7 +203,7 @@ export class ConversationSearchController {
         trimmed,
         response,
       );
-    }).pipe(catchError(() => of(empty)));
+    });
   }
 
   loadOlder(count = 50): Observable<number> {

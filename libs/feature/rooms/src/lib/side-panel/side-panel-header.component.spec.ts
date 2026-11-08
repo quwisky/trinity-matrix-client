@@ -40,6 +40,29 @@ describe('SidePanelHeaderComponent', () => {
     ).toBeTruthy();
   });
 
+  it('names a long heading by its first 80 characters, and still shows all of it', async () => {
+    const long = 'word '.repeat(40).trim();
+    await render(SidePanelHeaderComponent, {
+      inputs: { title: long, subtitle: 'general' },
+      providers: [provideTrnIcons()],
+    });
+    const heading = screen.getByRole('heading', { level: 2 });
+    expect(heading.getAttribute('aria-label')).toBe(
+      `${long.slice(0, 80).trimEnd()}… general`,
+    );
+    expect(heading.textContent).toContain(long);
+  });
+
+  it('leaves a short heading to its own text', async () => {
+    await render(SidePanelHeaderComponent, {
+      inputs: { title: 'Threads' },
+      providers: [provideTrnIcons()],
+    });
+    expect(
+      screen.getByRole('heading', { level: 2 }).getAttribute('aria-label'),
+    ).toBeNull();
+  });
+
   it('leads the title with the panel icon', async () => {
     const { container } = await render(SidePanelHeaderComponent, {
       inputs: { title: 'Members', icon: 'users' },

@@ -1,0 +1,32 @@
+@use '../../styles/mixins' as *;
+
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-2);
+  }
+
+  // Short enough that the results below stay in view; the field narrows the rest.
+  .picker__options {
+    @include scrollable;
+
+    display: flex;
+    flex-direction: column;
+    max-height: 220px;
+  }
+
+  .picker__option {
+    @include panel-row;
+
+    min-height: max(32px, var(--trinity-interaction-target-min-size));
+    font-size: var(--trinity-panel-row-size);
+  }
+
+  .picker__more {
+    @include panel-row-meta;
+
+    margin: 0;
+    padding-inline: var(--trinity-density-shell-padding-inline);
+  }
+}
