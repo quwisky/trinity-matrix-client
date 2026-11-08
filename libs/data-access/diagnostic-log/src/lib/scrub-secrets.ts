@@ -192,6 +192,27 @@ const ESCAPED_QUOTE = /^\\+["']/;
 /** An escaped apostrophe inside a word (`hunt\\'er2`), part of a bare value. */
 const ESCAPED_APOSTROPHE = /^\\+'[\p{L}\p{N}]/u;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
+/** Characters of a token run (`KEY_RUN`'s, without the padding). */
+const TOKEN_CHAR = /[A-Za-z0-9+/_-]/;
+
+/**
+ * Whether the quote at `at`, after `run` backslashes, is an apostrophe inside a word
+ * (`it's`, `hunt\\'er2`). With `masks`, the edge of a masked value counts as a letter, as
+ * the value it replaced did, so quotes count the same on a second pass.
+ */
+function isApostrophe(
+  text: string,
+  at: number,
+  run: number,
+  masks = false,
+): boolean {
+  const isWord = (index: number): boolean =>
+    WORD_CHAR.test(text[index] ?? '') ||
+    (masks &&
+      ((text[index] === '>' && text.endsWith(REDACTED, index + 1)) ||
+        (text[index] === '<' && text.startsWith(REDACTED, index))));
+  return text[at] === "'" && isWord(at - run - 1) && isWord(at + 1);
+}
 
 /** The most backslashes before a quote that opens a parameter value, as in `readValue`. */
 const MAX_ESCAPE = 8;
@@ -279,21 +300,58 @@ const ENCODED_HASH_ID =
  * {@link scrubMessage}, and again at export as a second line of defence.
  */
 export function scrubSecrets(text: string): string {
-  let scrubbed = text.replace(RECOVERY_KEY, REDACTED);
+  let scrubbed = maskRecoveryKeys(text);
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  scrubbed = maskFields(scrubbed, isSecretName, false);
-  scrubbed = maskFields(scrubbed, isOAuthName, true);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
-  // After the fields, so a parameter value can never run over a field and hide it from them;
-  // before the token rules, so each value is read whole, as written.
+  // Before the token rules, so each value is read whole, as written.
   scrubbed = maskParams(scrubbed);
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
-  return maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
+  scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
+  // Last, so a field name glued to a token (`…abcdef"passwd":`) reads as one once it is masked.
+  scrubbed = maskFields(scrubbed, isSecretName, false);
+  return maskFields(scrubbed, isOAuthName, true);
+}
+
+/**
+ * Masks each recovery key with the token run it sits in: a key inside a longer token is
+ * that token's middle, and the rest of the token is as secret as the key.
+ */
+function maskRecoveryKeys(text: string): string {
+  const pattern = new RegExp(RECOVERY_KEY);
+  let out = '';
+  let position = 0;
+  let tokenEnd = 0;
+  for (
+    let match = pattern.exec(text);
+    match !== null;
+    match = pattern.exec(text)
+  ) {
+    const matchEnd = match.index + match[0].length;
+    // Keys glued together share one token run: it is read once.
+    let end = Math.max(matchEnd, tokenEnd);
+    while (end < text.length && TOKEN_CHAR.test(text[end])) {
+      end += 1;
+    }
+    tokenEnd = end;
+    if (match.index < position) {
+      // A key starting inside the text just masked (`…KEYEsTc LW2K …`) widens it.
+      position = Math.max(position, end);
+    } else {
+      let start = match.index;
+      while (start > position && TOKEN_CHAR.test(text[start - 1])) {
+        start -= 1;
+      }
+      out += text.slice(position, start) + REDACTED;
+      position = end;
+    }
+    pattern.lastIndex = matchEnd;
+  }
+  return out + text.slice(position);
 }
 
 /**
@@ -375,11 +433,12 @@ function paramValue(
   while (end < text.length && !valueEnd.test(text[end])) {
     if (text[end] === '\\') {
       const escape = text.slice(end, end + MAX_ESCAPE + 2);
+      const quoteAt = end + escape.search(/[^\\]/);
       if (
-        WORD_CHAR.test(text[end - 1] ?? '') &&
-        ESCAPED_APOSTROPHE.test(escape)
+        ESCAPED_APOSTROPHE.test(escape) &&
+        isApostrophe(text, quoteAt, quoteAt - end)
       ) {
-        end += escape.indexOf("'") + 1;
+        end = quoteAt + 1;
         continue;
       }
       if (ESCAPED_QUOTE.test(escape)) {
@@ -460,11 +519,7 @@ function openStrings(
       }
       if (
         (char === '"' || char === "'") &&
-        !(
-          char === "'" &&
-          WORD_CHAR.test(text[read - run - 1] ?? '') &&
-          WORD_CHAR.test(text[read + 1] ?? '')
-        )
+        !isApostrophe(text, read, run, true)
       ) {
         for (let level = 0; level <= MAX_ESCAPE; level += 1) {
           if (run % (2 * level + 2) === level) {
@@ -679,14 +734,17 @@ function readString(text: string, start: number, opener: string): FieldValue {
       // The quote closes this string only when its backslash run, unescaped level by level,
       // leaves it bare: a run of `slashes` modulo 2(slashes + 1). Inside `\"`, `\\\"` is a
       // deeper quote and `\\\\\"` a backslash followed by the close.
-      if (run % (2 * slashes + 2) === slashes) {
+      if (
+        run % (2 * slashes + 2) === slashes &&
+        !isApostrophe(text, at + slashes, run)
+      ) {
         close = at;
         break;
       }
     }
   } else {
     for (let i = from; i < text.length; i += text[i] === '\\' ? 2 : 1) {
-      if (text[i] === opener) {
+      if (text[i] === opener && !isApostrophe(text, i, 0)) {
         close = i;
         break;
       }

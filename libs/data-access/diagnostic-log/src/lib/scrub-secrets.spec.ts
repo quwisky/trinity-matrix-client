@@ -489,13 +489,34 @@ describe('scrubSecrets', () => {
       'Es12 3456 789A BCDE FGHJ KLMN PQRS TUVW XYZa bcde fghi jkmnjkmnZZ';
 
     expect(scrubSecrets(`key=${glued}`)).toBe(`key=${REDACTED}`);
-    expect(scrubSecrets(`x ${glued}${glued} y`)).toBe(
-      `x ${REDACTED}jkmnZZ${REDACTED}jkmnZZ y`,
-    );
+    expect(scrubSecrets(`x ${glued}${glued} y`)).toBe(`x ${REDACTED} y`);
     const prose = scrubSecrets(`restore ${glued} done`);
     for (const group of glued.split(' ').slice(0, 11)) {
       expect(prose).not.toContain(group);
     }
+  });
+
+  it.each([
+    ['token AbCd9z{KC}Qr7sTuVwXy1', `token ${REDACTED}`],
+    ['blob ab12CD{KC}9xYz3', `blob ${REDACTED}`],
+    ['{KC}0123456789abcdef0123456789abcdefm', REDACTED],
+    ['ssyt_abcdefghij{KC}', REDACTED],
+  ])('masks the whole token a recovery key sits in: %s', (shape, expected) => {
+    const key = 'Es123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmn';
+
+    expect(scrubSecrets(shape.replace('{KC}', key))).toBe(expected);
+  });
+
+  it('reads a field glued to a token once the token is masked, in one pass', () => {
+    expect(scrubSecrets('0123456789abcdef0123456789abcdef"passwd":/')).toBe(
+      `${REDACTED}"passwd":"${REDACTED}"`,
+    );
+  });
+
+  it('masks a field value through an escaped apostrophe inside a word', () => {
+    expect(scrubSecrets(String.raw`{\'password\':\'hunt\'er2\'}`)).toBe(
+      String.raw`{\'password\':\'${REDACTED}\'}`,
+    );
   });
 
   it.each([
@@ -537,6 +558,8 @@ describe('scrubSecrets', () => {
     'key=Es12 3456 789A BCDE FGHJ KLMN PQRS TUVW XYZa bcde fghi jkmnjkmnZZ',
     `x ${RECOVERY_KEY.replaceAll(' ', '')}${RECOVERY_KEY} y`,
     `key/${RECOVERY_KEY}Bearer abc'`,
+    "token=r'token='",
+    '0123456789abcdef0123456789abcdef"passwd":/',
   ])('scrubs to the same text a second time: %s', (line) => {
     const once = scrubSecrets(line);
 
