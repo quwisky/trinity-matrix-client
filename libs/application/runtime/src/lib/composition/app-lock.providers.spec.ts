@@ -1,6 +1,7 @@
 import { ApplicationInitStatus, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { AppearanceEffects } from '@trinity/application/appearance';
+import { QR_SCANNER_SUSPENDED } from '@trinity/components/controls';
 import {
   AppLockService,
   type AppLockStatus,
@@ -192,6 +193,28 @@ describe('conversation attention', () => {
     expect(attention.attentive()).toBe(false);
     state.set('off');
     expect(attention.attentive()).toBe(true);
+  });
+});
+
+describe('QR scanner suspension', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('suspends every QR scanner while the app is locked', () => {
+    const locked = signal(true);
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        MockProvider(AppLockService, {
+          hydrate: () => of(undefined),
+          locked: locked.asReadonly() as never,
+        }),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+      ],
+    });
+    const suspended = TestBed.inject(QR_SCANNER_SUSPENDED);
+    expect(suspended()).toBe(true);
+    locked.set(false);
+    expect(suspended()).toBe(false);
   });
 });
 

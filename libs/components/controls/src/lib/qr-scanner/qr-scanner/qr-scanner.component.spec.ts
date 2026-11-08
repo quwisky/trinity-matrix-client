@@ -1,15 +1,19 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { QrCodeService } from '@trinity/platform-native';
 import { fireEvent, render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TrnButton } from '../../button/trn-button';
 import { QrScannerComponent } from './qr-scanner.component';
+import { QR_SCANNER_SUSPENDED } from './qr-scanner-suspended';
 
 describe('QrScannerComponent', () => {
   beforeEach(() => {
     vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   });
+
+  afterEach(() => vi.unstubAllGlobals());
 
   it('surfaces a denied camera permission and allows retrying', async () => {
     const { container, fixture } = await render(QrScannerComponent, {
@@ -95,6 +99,36 @@ describe('QrScannerComponent', () => {
     expect(closeCamera).toHaveBeenCalledWith(stream);
     expect(cancelled).toHaveBeenCalledOnce();
     expect(TestBed.inject(QrCodeService).openCamera).toHaveBeenCalledOnce();
+  });
+
+  it('stops every camera track when suspended, and stays closed when resumed', async () => {
+    const tracks = [{ stop: vi.fn() }, { stop: vi.fn() }];
+    const getUserMedia = vi.fn(() =>
+      Promise.resolve({ getTracks: () => tracks }),
+    );
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    const suspended = signal(false);
+    const { container, fixture } = await render(QrScannerComponent, {
+      providers: [{ provide: QR_SCANNER_SUSPENDED, useValue: suspended }],
+    });
+    const cancelled = vi.fn();
+    fixture.componentInstance.cancelled.subscribe(cancelled);
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.status()).toBe('scanning'),
+    );
+
+    suspended.set(true);
+    fixture.detectChanges();
+
+    for (const track of tracks) expect(track.stop).toHaveBeenCalledOnce();
+    expect(container.querySelector('video')!.srcObject).toBeNull();
+    expect(cancelled).toHaveBeenCalledOnce();
+
+    suspended.set(false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(getUserMedia).toHaveBeenCalledOnce();
   });
 
   it('closes a camera that opens after the scan was cancelled and never attaches it', async () => {
