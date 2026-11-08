@@ -30,10 +30,11 @@ import {
   WhatsNewService,
   WHATS_NEW_LAUNCHER,
 } from '@trinity/data-access/whats-new';
-import { BUILD_INFO } from '@trinity/platform-native';
+import { BUG_REPORT_CONFIG, BUILD_INFO } from '@trinity/platform-native';
 import { markRoutedPage, textScaledViewportSignal } from '@trinity/util/ui';
 import {
   SETTINGS_SECTIONS,
+  hiddenSettingsParts,
   matchingSettingsSections,
   sectionsOfResults,
   type SettingsSearchResult,
@@ -65,6 +66,7 @@ import { SettingsDirectorySearchComponent } from '../shared/settings-directory-s
   ],
 })
 export class SettingsPage {
+  private readonly hiddenParts = hiddenSettingsParts(inject(BUG_REPORT_CONFIG));
   private readonly location = inject(Location);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -80,7 +82,9 @@ export class SettingsPage {
   private afterSlide: (() => void) | null = null;
 
   readonly query = signal('');
-  readonly results = computed(() => matchingSettingsSections(this.query()));
+  readonly results = computed(() =>
+    matchingSettingsSections(this.query(), this.hiddenParts),
+  );
   readonly menu = computed(() => sectionsOfResults(this.results()));
   protected readonly layoutSections = computed<
     readonly TrnSettingsLayoutSection[]

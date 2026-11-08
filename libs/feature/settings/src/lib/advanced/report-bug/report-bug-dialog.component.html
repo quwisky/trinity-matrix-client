@@ -36,16 +36,14 @@
         }
       </div>
 
-      @if (showGitHub) {
-        <p
-          class="m-0 text-13 text-muted-foreground"
-          id="report-bug-public-note"
-          data-testid="report-bug-public-note"
-        >
-          GitHub issues are public. Don’t put Matrix IDs, room names or other
-          private details in your description.
-        </p>
-      }
+      <p
+        class="m-0 text-13 text-muted-foreground"
+        id="report-bug-public-note"
+        data-testid="report-bug-public-note"
+      >
+        GitHub issues are public. Don’t put Matrix IDs, room names or other
+        private details in your description.
+      </p>
       @if (openFailed()) {
         <p
           class="m-0 text-13 text-danger"
@@ -58,16 +56,14 @@
     </div>
 
     <div trnDialogActions>
-      @if (showGitHub) {
-        <button
-          trnBtn
-          type="submit"
-          [disabled]="!canOpenGitHub()"
-          data-testid="report-bug-github"
-        >
-          Open bug report on GitHub
-        </button>
-      }
+      <button
+        trnBtn
+        type="submit"
+        [disabled]="!canOpenGitHub()"
+        data-testid="report-bug-github"
+      >
+        Open bug report on GitHub
+      </button>
     </div>
   </trn-dialog-shell>
 </form>

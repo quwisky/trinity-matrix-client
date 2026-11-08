@@ -71,7 +71,6 @@ export class ReportBugDialogComponent {
   private readonly facts = toSignal(inject(BugReportFactsService).facts());
 
   readonly reportForm = form(this.model, reportSchema);
-  readonly showGitHub = this.config.issueRepositoryUrl !== null;
   readonly canOpenGitHub = computed(
     () => this.facts() !== undefined && !this.reportForm().invalid(),
   );
@@ -82,7 +81,7 @@ export class ReportBugDialogComponent {
   readonly descriptionDescribedBy = computed(() =>
     [
       'report-bug-description-hint',
-      this.showGitHub ? 'report-bug-public-note' : null,
+      'report-bug-public-note',
       this.descriptionError() ? 'report-bug-description-error' : null,
     ]
       .filter((id) => id !== null)
