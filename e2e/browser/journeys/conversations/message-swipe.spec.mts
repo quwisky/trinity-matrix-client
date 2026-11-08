@@ -227,8 +227,8 @@ test.describe('Swipe a message', () => {
     const halfway = async (selector: string) => {
       const box = (await page.locator(selector).boundingBox())!;
       const y = box.y + box.height / 2;
-      // Short of the 25% commit threshold: the drag is still abandonable, which is the
-      // criterion — "early enough in the drag to abandon it".
+      // Short of the 64px commit distance, and too slow to be a flick: the drag is still
+      // abandonable, which is the criterion — "early enough in the drag to abandon it".
       await swipe(
         page,
         { x: box.x + box.width * 0.4, y },
@@ -310,9 +310,9 @@ test.describe('Swipe a message', () => {
 
       // Polled, not read straight after the send: `Input.dispatchTouchEvent` resolves when the
       // event is dispatched, and the handler's style write lands a tick later.
-      // Twenty percent of the row is still short of the 25% commit threshold, while being
-      // far enough past Chromium's gesture-axis arbitration to guarantee pointer moves.
-      await at(box.x + box.width * 0.55);
+      // 40px is still short of the 64px commit distance, while being far enough past
+      // Chromium's gesture-axis arbitration to guarantee pointer moves.
+      await at(currentX + 40);
       await expect.poll(async () => (await shown()).opacity).toBeGreaterThan(0);
       const partly = await shown();
       expect(partly.opacity).toBeLessThan(1);
@@ -426,30 +426,25 @@ test.describe('Swipe a message', () => {
     }
   });
 
-  test('a drag that turns vertical abandons the action', async ({
-    page,
-    request,
-  }) => {
+  test("a thumb's arc still replies", async ({ page, request }) => {
     const { other } = await openRoom(page, request, 'v', 'right', 30);
     await page.locator(other).scrollIntoViewIfNeeded();
     const box = (await page.locator(other).boundingBox())!;
+    const y = box.y + box.height / 2;
 
-    // Starts horizontal, then turns. Note this cannot ALSO scroll, and that is the browser's
-    // doing rather than ours: `touch-action: pan-y` hands the horizontal axis to the page, so
-    // once a drag opens horizontally the browser has already declined to pan it. What the
-    // gesture owes here is to abandon — not to act, and not to leave the row parked.
+    // Opens sideways and drifts 40px up on the way, as a thumb pivoting on its joint does.
+    // `touch-action: pan-y` lets the browser decline to pan a drag that opened sideways, so
+    // the drift neither scrolls the timeline nor cancels the pointer; the gesture ignores it too.
     await swipe(
       page,
-      { x: box.x + box.width * 0.35, y: box.y + box.height / 2 },
-      { x: box.x + box.width * 0.95, y: box.y + box.height / 2 - 150 },
+      { x: box.x + box.width * 0.3, y },
+      { x: box.x + box.width * 0.75, y: y - 40 },
     );
 
-    await expect(page.locator('.composer__banner')).toHaveCount(0);
-    expect(
-      await page
-        .locator(other)
-        .evaluate((el) => el.style.getPropertyValue('--swipe-drag')),
-    ).toBe('');
+    await expect(page.locator('.composer__banner')).toContainText(
+      'Replying to',
+      { timeout: 10_000 },
+    );
   });
 
   test('a vertical drag still scrolls the timeline', async ({
@@ -513,9 +508,9 @@ test.describe('Swipe a message', () => {
     // The positive control, in the same test. Without it every assertion here would pass
     // just as happily against a gesture that was broken outright, a seed that never applied,
     // or a room that never opened.
-    // Leave meaningful margin beyond the 56px dead zone. Starting only 8px
-    // beyond it made the positive control vulnerable to device-coordinate rounding.
-    await swipe(page, { x: 80, y }, { x: size.width * 0.85, y });
+    // Inside the old 56px zone, past the 32px back-gesture strip a rightward drag avoids, with
+    // margin for device-coordinate rounding.
+    await swipe(page, { x: 44, y }, { x: size.width * 0.85, y });
     await expect(page.locator('.composer__banner')).toContainText(
       'Replying to',
       { timeout: 10_000 },

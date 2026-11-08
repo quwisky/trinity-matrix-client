@@ -725,6 +725,7 @@ jobs:
               ./specs/capture.e2e.mts,
               ./specs/location.e2e.mts,
               ./specs/long-press-sheet.e2e.mts,
+              ./specs/message-swipe.e2e.mts,
               ./specs/navigation.e2e.mts,
               ./specs/notifications.e2e.mts,
               ./specs/push-render-android.e2e.mts,

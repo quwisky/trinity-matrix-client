@@ -6,11 +6,15 @@ import { of } from 'rxjs';
 import { MediaService } from '@trinity/data-access/media';
 import { UrlPreviewService } from '@trinity/data-access/timeline';
 import { PrivacySettingsService } from '@trinity/platform-native';
-import { DRAWER_OUTER_EDGE_PX } from '../rooms/drawer-swipe.directive';
+import {
+  DRAWER_OUTER_EDGE_PX,
+  NATIVE_HISTORY_EDGE_PX,
+} from '../rooms/drawer-swipe.directive';
 import { messageRow as row } from '../testing/message-view.fixture';
 import { HostFileExportService } from '@trinity/runtime/host';
 import {
   MessageRowComponent,
+  SWIPE_BACK_EDGE_PX,
   SWIPE_DEAD_ZONE_PX,
   type MessageRow,
   type MessageRowCaps,
@@ -73,7 +77,7 @@ async function renderRow(
   const capture = vi.fn();
   msg.setPointerCapture = capture;
   msg.releasePointerCapture = vi.fn();
-  // Every row is 400px wide here, so the 25% commit threshold is a round 100px.
+  // Every row is 400px wide here: wider than the commit distance, as on a phone.
   vi.spyOn(msg, 'getBoundingClientRect').mockReturnValue({
     width: 400,
     height: 40,
@@ -96,9 +100,17 @@ async function renderRow(
   return { ...result, msg, capture, swiped, pressed };
 }
 
-/** A touch pointer at (x, y). Explicitly `touch`: jsdom's shim defaults to `mouse`. */
-function touch(type: string, x: number, y = 100, over = {}): PointerEvent {
-  return new PointerEvent(type, {
+/**
+ * A touch pointer at (x, y), at time `t` ms. Explicitly `touch`: jsdom's shim defaults to
+ * `mouse`. `timeStamp` is set by hand because a quick flick commits on speed.
+ */
+function touch(
+  type: string,
+  x: number,
+  y = 100,
+  { t = 0, ...over }: { t?: number } & PointerEventInit = {},
+): PointerEvent {
+  const event = new PointerEvent(type, {
     clientX: x,
     clientY: y,
     pointerType: 'touch',
@@ -107,13 +119,21 @@ function touch(type: string, x: number, y = 100, over = {}): PointerEvent {
     bubbles: true,
     ...over,
   });
+  Object.defineProperty(event, 'timeStamp', { value: t });
+  return event;
 }
 
-/** Press, drag, lift — the whole gesture, the way a finger does it. */
-function drag(msg: HTMLElement, from: number, to: number, y = 100): void {
+/** Press, drag, lift — the whole gesture, at an unhurried pace unless `ms` says otherwise. */
+function drag(
+  msg: HTMLElement,
+  from: number,
+  to: number,
+  y = 100,
+  ms = 1000,
+): void {
   msg.dispatchEvent(touch('pointerdown', from, y));
-  msg.dispatchEvent(touch('pointermove', to, y));
-  msg.dispatchEvent(touch('pointerup', to, y));
+  msg.dispatchEvent(touch('pointermove', to, y, { t: ms }));
+  msg.dispatchEvent(touch('pointerup', to, y, { t: ms }));
 }
 
 const dragged = (msg: HTMLElement) =>
@@ -160,7 +180,7 @@ describe('MessageRowComponent — the sideways swipe', () => {
   it('puts the row back when the drag is too short to mean it', async () => {
     const { msg, swiped } = await renderRow('right');
 
-    // 40px on a 400px row — past the slop, so it moves, but under the quarter it commits at.
+    // Past the slop, so it moves, but short of the distance and too slow to be a flick.
     drag(msg, 300, 340);
 
     expect(swiped.length).toBe(0);
@@ -206,12 +226,38 @@ describe('MessageRowComponent — the sideways swipe', () => {
   });
 
   describe('the dead zones', () => {
-    it('refuses to start within the zone at the left edge', async () => {
+    it('refuses a rightward drag from the back-gesture strip at the left edge', async () => {
       const { msg, swiped, capture } = await renderRow('right');
 
-      drag(msg, SWIPE_DEAD_ZONE_PX - 1, SWIPE_DEAD_ZONE_PX - 1 + FAR);
+      drag(msg, SWIPE_BACK_EDGE_PX - 1, SWIPE_BACK_EDGE_PX - 1 + FAR);
 
       expect(swiped.length).toBe(0);
+      expect(capture).not.toHaveBeenCalled();
+    });
+
+    it('arms a rightward drag that starts just past the back-gesture strip', async () => {
+      // Where a thumb lands for a right swipe. The old symmetric 56px zone refused it.
+      const { msg, swiped } = await renderRow('right');
+
+      drag(msg, 40, 40 + FAR);
+
+      expect(swiped).toEqual(['reply']);
+    });
+
+    it('arms a leftward drag at the left edge, which no back gesture competes for', async () => {
+      const { msg, capture } = await renderRow('left');
+
+      msg.dispatchEvent(touch('pointerdown', 10));
+
+      expect(capture).toHaveBeenCalledWith(1);
+    });
+
+    it('refuses a rightward drag from the drawer band at the right edge too', async () => {
+      // The drawer arms on this same `pointerdown`, whichever way the finger then goes.
+      const { msg, capture } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 1000 - SWIPE_DEAD_ZONE_PX + 1));
+
       expect(capture).not.toHaveBeenCalled();
     });
 
@@ -238,6 +284,7 @@ describe('MessageRowComponent — the sideways swipe', () => {
       // A message swipe must refuse the whole combined region or all three recognisers can
       // arm from one pointerdown.
       expect(SWIPE_DEAD_ZONE_PX).toBeGreaterThanOrEqual(DRAWER_OUTER_EDGE_PX);
+      expect(SWIPE_BACK_EDGE_PX).toBeGreaterThanOrEqual(NATIVE_HISTORY_EDGE_PX);
     });
   });
 
@@ -255,7 +302,7 @@ describe('MessageRowComponent — the sideways swipe', () => {
       msg.dispatchEvent(touch('pointermove', 350));
       const half = progress(msg);
 
-      // 400px row, 25% threshold → 100px. 25px in is a quarter of the way, 50px is half.
+      // 64px threshold: 25px in is under halfway, 50px is most of the way.
       expect(quarter).toBeGreaterThan(0);
       expect(quarter).toBeLessThan(1);
       expect(half).toBeGreaterThan(quarter);
@@ -266,10 +313,10 @@ describe('MessageRowComponent — the sideways swipe', () => {
       const { msg } = await renderRow('right');
 
       msg.dispatchEvent(touch('pointerdown', 300));
-      msg.dispatchEvent(touch('pointermove', 399));
+      msg.dispatchEvent(touch('pointermove', 363));
       expect(armed(msg)).toBe(false);
 
-      msg.dispatchEvent(touch('pointermove', 400));
+      msg.dispatchEvent(touch('pointermove', 364));
       expect(progress(msg)).toBe(1);
       expect(armed(msg)).toBe(true);
     });
@@ -346,7 +393,7 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(swiped.length).toBe(0);
     });
 
-    it('abandons a drag that turns vertical', async () => {
+    it('abandons a drag that opens diagonally', async () => {
       const { msg, swiped } = await renderRow('right');
 
       msg.dispatchEvent(touch('pointerdown', 300, 100));
@@ -433,6 +480,23 @@ describe('MessageRowComponent — the sideways swipe', () => {
       expect(swiped.length).toBe(1);
     });
 
+    it('does not let the press beat a slow sideways drag', async () => {
+      // A deliberate drag can take longer than the press timer. Once the finger has moved
+      // sideways past the slop, the timer must already be gone.
+      vi.useFakeTimers();
+      const { msg, swiped, pressed } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300));
+      vi.advanceTimersByTime(200);
+      msg.dispatchEvent(touch('pointermove', 312, 100, { t: 200 }));
+      vi.advanceTimersByTime(LONG_PRESS_MS);
+      msg.dispatchEvent(touch('pointermove', 300 + FAR, 100, { t: 1500 }));
+      msg.dispatchEvent(touch('pointerup', 300 + FAR, 100, { t: 1500 }));
+
+      expect(pressed.length).toBe(0);
+      expect(swiped).toEqual(['reply']);
+    });
+
     it('disarms the drag once the press has fired', async () => {
       // Press, PAUSE past the threshold, then drag. The press cancels on travel only while
       // its timer is live, so without the disarm the sheet opens and the swipe then commits
@@ -469,13 +533,13 @@ describe('MessageRowComponent — the sideways swipe', () => {
   });
 
   describe('the commit threshold', () => {
-    // `FAR` alone does not pin it: at 2x the threshold, raising the fraction from a quarter
-    // to a HALF left every test green — so the effort the gesture demands could have been
-    // doubled silently. These two straddle it against the stubbed 400px row.
+    // `FAR` alone does not pin it: at 2x the threshold, doubling the distance left every
+    // test green — so the effort the gesture demands could have grown silently. These two
+    // straddle it; the row is 400px, so a width-relative threshold would fail them.
     it('commits at exactly the threshold', async () => {
       const { msg, swiped } = await renderRow('right');
 
-      drag(msg, 100, 200);
+      drag(msg, 300, 364);
 
       expect(swiped.length).toBe(1);
     });
@@ -483,8 +547,56 @@ describe('MessageRowComponent — the sideways swipe', () => {
     it('does not commit one pixel short of it', async () => {
       const { msg, swiped } = await renderRow('right');
 
-      drag(msg, 100, 199);
+      drag(msg, 300, 363);
 
+      expect(swiped.length).toBe(0);
+    });
+
+    it('commits a quick flick short of the distance', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      // 40px in 60ms: well short of the distance, but a decision all the same.
+      msg.dispatchEvent(touch('pointerdown', 300));
+      msg.dispatchEvent(touch('pointermove', 320, 100, { t: 30 }));
+      msg.dispatchEvent(touch('pointerup', 340, 100, { t: 60 }));
+
+      expect(swiped).toEqual(['reply']);
+    });
+
+    it('does not take a twitch for a flick', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      // Fast, but under the flick's minimum travel.
+      drag(msg, 300, 325, 100, 10);
+
+      expect(swiped.length).toBe(0);
+    });
+  });
+
+  describe('a thumb’s arc', () => {
+    it('commits a drag that drifts 30px vertically once it is clearly sideways', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300, 100));
+      msg.dispatchEvent(touch('pointermove', 320, 103, { t: 100 }));
+      msg.dispatchEvent(touch('pointermove', 350, 115, { t: 300 }));
+      msg.dispatchEvent(touch('pointermove', 380, 130, { t: 600 }));
+      expect(dragged(msg)).toBe('80px');
+      msg.dispatchEvent(touch('pointerup', 380, 130, { t: 1000 }));
+
+      expect(swiped).toEqual(['reply']);
+    });
+
+    it('leaves a drag that opens vertically to the scroller', async () => {
+      const { msg, swiped } = await renderRow('right');
+
+      msg.dispatchEvent(touch('pointerdown', 300, 100));
+      msg.dispatchEvent(touch('pointermove', 304, 115, { t: 100 }));
+      // Turning sideways later does not bring the swipe back.
+      msg.dispatchEvent(touch('pointermove', 300 + FAR, 115, { t: 600 }));
+      msg.dispatchEvent(touch('pointerup', 300 + FAR, 115, { t: 1000 }));
+
+      expect(dragged(msg)).toBe('');
       expect(swiped.length).toBe(0);
     });
   });

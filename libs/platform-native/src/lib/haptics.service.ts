@@ -24,16 +24,28 @@ export class HapticsService {
    * because `Light` is for small controls and `Heavy` is jarring on every swipe.
    */
   gestureCommitted(): void {
-    if (!Capacitor.isNativePlatform()) {
-      return;
-    }
-    try {
-      void Haptics.impact({ style: ImpactStyle.Medium }).catch(ignore);
-    } catch (error) {
-      // A plugin not registered on this platform can fail at the bridge synchronously rather
-      // than by rejecting, and the caller is a pointer handler mid-gesture.
-      ignore(error);
-    }
+    impact(ImpactStyle.Medium);
+  }
+
+  /**
+   * A drag just crossed the point where letting go will act, such as a message swipe. `Light`:
+   * it is a notice under the finger, and the commit itself may tick again.
+   */
+  thresholdReached(): void {
+    impact(ImpactStyle.Light);
+  }
+}
+
+function impact(style: ImpactStyle): void {
+  if (!Capacitor.isNativePlatform()) {
+    return;
+  }
+  try {
+    void Haptics.impact({ style }).catch(ignore);
+  } catch (error) {
+    // A plugin not registered on this platform can fail at the bridge synchronously rather
+    // than by rejecting, and the caller is a pointer handler mid-gesture.
+    ignore(error);
   }
 }
 

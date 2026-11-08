@@ -70,6 +70,13 @@ describe('HapticsService', () => {
     expect(impactSpy).toHaveBeenCalledWith({ style: 'MEDIUM' });
   });
 
+  it('taps lighter when a gesture reaches its commit point', async () => {
+    makeService().thresholdReached();
+    await flush();
+
+    expect(impactSpy).toHaveBeenCalledWith({ style: 'LIGHT' });
+  });
+
   it('does nothing at all when isNativePlatform() is false', async () => {
     // Web and the Electron shell both land here — `isNativePlatform()` is false in Electron,
     // and that is the behaviour we want, since a desktop has nothing to vibrate.
