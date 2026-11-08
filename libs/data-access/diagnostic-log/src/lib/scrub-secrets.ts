@@ -189,11 +189,14 @@ const PARAM =
 const PARAM_VALUE_END = /[&#\s"']/;
 const SPACED_PARAM_VALUE_END = /[&#\s"')]/;
 const ESCAPED_QUOTE = /^\\+["']/;
+/** What follows a quoted field name. */
+const FIELD_COLON = /^[ \t]{0,8}:/;
 /** An escaped apostrophe inside a word (`hunt\\'er2`), part of a bare value. */
 const ESCAPED_APOSTROPHE = /^\\+'[\p{L}\p{N}]/u;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
-/** Characters of a token run (`KEY_RUN`'s, without the padding). */
-const TOKEN_CHAR = /[A-Za-z0-9+/_-]/;
+
+/** The most passes {@link scrubSecrets} makes; each one only masks more. */
+const MAX_PASSES = 4;
 
 /**
  * Whether the quote at `at`, after `run` backslashes, is an apostrophe inside a word
@@ -252,12 +255,13 @@ const HEADER_RULES: readonly (readonly [RegExp, string])[] = [
 
 /**
  * Recovery keys: base58 starting "Es", twelve groups of four, spaces optional. The only
- * secret shape that crosses spaces, so it runs first: before the parameters, which end at
- * one, and the header rules, whose words a key glued to them would hide. Text glued to
- * either end, another key included, does not save it.
+ * secret shape that crosses spaces. Wherever it stands: see `scrubOnce` for the order.
  */
 const RECOVERY_KEY =
   /Es[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}/g;
+/** A recovery key that starts a word. */
+const SPACED_KEY =
+  /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:\s?[1-9A-HJ-NP-Za-km-z]{4}){11}/g;
 
 /** Patterns for token-shaped values, applied after the header and name-based rules. */
 const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
@@ -266,6 +270,13 @@ const SECRET_RULES: readonly (readonly [RegExp, string])[] = [
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*/g, REDACTED],
   // FCM registration tokens, prefix included.
   [/(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{8,64}:APA91[A-Za-z0-9_-]{16,}/g, REDACTED],
+  // A recovery key standing as a whole token, its spaces marked or not (\uE000 is
+  // `KEY_SPACE`). One glued into a longer token is that token's middle: the long-run rule
+  // masks the whole token, and `/path/to/KEY/file` keeps its path.
+  [
+    /\bEs[1-9A-HJ-NP-Za-km-z]{2}(?:[\s\uE000]?[1-9A-HJ-NP-Za-km-z]{4}){11}\b/g,
+    REDACTED,
+  ],
   // Precise locations (m.location geo: URIs).
   [/\bgeo:[-+]?\d[^\s"']*/gi, `geo:${REDACTED}`],
   // APNs device tokens and other long hex secrets (not after "@", "!" or "$": Matrix IDs).
@@ -300,70 +311,94 @@ const ENCODED_HASH_ID =
  * {@link scrubMessage}, and again at export as a second line of defence.
  */
 export function scrubSecrets(text: string): string {
-  let scrubbed = maskRecoveryKeys(text);
+  // A pass can uncover more: a field or parameter name glued to a token (`…abcdef"passwd":`)
+  // reads as one once the token is masked. Passes repeat until nothing changes, so scrubbed
+  // text scrubs to itself; a line without secrets takes one pass.
+  let scrubbed = text;
+  for (let pass = 0; pass < MAX_PASSES; pass += 1) {
+    const next = scrubOnce(scrubbed);
+    if (next === scrubbed) {
+      break;
+    }
+    scrubbed = next;
+  }
+  return scrubbed;
+}
+
+/** One pass of every rule; see {@link scrubSecrets}. */
+function scrubOnce(text: string): string {
+  let scrubbed = text;
   for (const [pattern, replacement] of HEADER_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
+  // The spaces inside a recovery key are marked, so every rule reads the key's groups as the
+  // tokens they are while a parameter value runs through all of them; the marked key and
+  // whatever rule took a part of it are masked whole at the end. A key glued to the text
+  // before it is marked only after every key that stands free.
+  scrubbed = scrubbed
+    .replace(SPACED_KEY, markKey)
+    .replace(RECOVERY_KEY, markKey);
   // Credential query, fragment and form parameters. matrix-js-sdk masks its own request URLs
   // (`sanitizeUrlForLogs`); URLs in errors, callbacks, widgets and form bodies are not masked.
   // Before the token rules, so each value is read whole, as written.
-  scrubbed = maskParams(scrubbed);
+  scrubbed = applyEdits(scrubbed, paramEdits(scrubbed));
   for (const [pattern, replacement] of SECRET_RULES) {
     scrubbed = scrubbed.replace(pattern, replacement);
   }
   scrubbed = maskRunsAfterEscapes(scrubbed).replace(KEY_RUN, REDACTED);
+  // A key the long-run rule could not take (no digit or no capital) is masked alone.
+  scrubbed = scrubbed.replace(RECOVERY_KEY, REDACTED);
   // Last, so a field name glued to a token (`…abcdef"passwd":`) reads as one once it is masked.
   scrubbed = maskFields(scrubbed, isSecretName, false);
-  return maskFields(scrubbed, isOAuthName, true);
+  scrubbed = maskFields(scrubbed, isOAuthName, true);
+  return scrubbed.replace(MARKED_KEY, REDACTED);
 }
 
-/**
- * Masks each recovery key with the token run it sits in: a key inside a longer token is
- * that token's middle, and the rest of the token is as secret as the key.
- */
-function maskRecoveryKeys(text: string): string {
-  const pattern = new RegExp(RECOVERY_KEY);
+/** `key` with its spaces marked, when it has any. */
+function markKey(key: string): string {
+  return key.replace(/\s/g, KEY_SPACE);
+}
+
+/** A masked span of the text: `masked` replaces `text.slice(start, end)`. */
+interface Edit {
+  readonly start: number;
+  readonly end: number;
+  readonly masked: string;
+}
+
+/** `text` with every edit applied; one that overlaps an earlier one widens it. */
+function applyEdits(text: string, edits: Edit[]): string {
+  edits.sort((a, b) => a.start - b.start || b.end - a.end);
   let out = '';
   let position = 0;
-  let tokenEnd = 0;
-  for (
-    let match = pattern.exec(text);
-    match !== null;
-    match = pattern.exec(text)
-  ) {
-    const matchEnd = match.index + match[0].length;
-    // Keys glued together share one token run: it is read once.
-    let end = Math.max(matchEnd, tokenEnd);
-    while (end < text.length && TOKEN_CHAR.test(text[end])) {
-      end += 1;
+  for (const edit of edits) {
+    if (edit.start < position) {
+      position = Math.max(position, edit.end);
+      continue;
     }
-    tokenEnd = end;
-    if (match.index < position) {
-      // A key starting inside the text just masked (`…KEYEsTc LW2K …`) widens it.
-      position = Math.max(position, end);
-    } else {
-      let start = match.index;
-      while (start > position && TOKEN_CHAR.test(text[start - 1])) {
-        start -= 1;
-      }
-      out += text.slice(position, start) + REDACTED;
-      position = end;
-    }
-    pattern.lastIndex = matchEnd;
+    out += text.slice(position, edit.start) + edit.masked;
+    position = edit.end;
   }
   return out + text.slice(position);
 }
+
+/** Stands for a space inside a recovery key while the rules run; never in the output. */
+const KEY_SPACE = '\uE000';
+/** A marked key, or what is left of one: its groups and masks, joined by marked spaces. */
+const MARKED_KEY = new RegExp(
+  `(?:${REDACTED}|[1-9A-HJ-NP-Za-km-z]+)?(?:${KEY_SPACE}(?:${REDACTED}|[1-9A-HJ-NP-Za-km-z]+)?)+`,
+  'g',
+);
 
 /**
  * Masks the value of every secret parameter: a quoted one, its quotes escaped or not, through
  * its closing quote (a cut-off one to the end), a bare one up to a separator. The value of
  * any other parameter is read on, so `url="https://…?access_token=…"` is masked too.
  */
-function maskParams(text: string): string {
+function paramEdits(text: string): Edit[] {
   const pattern = new RegExp(PARAM);
   const isOpen = openStrings(text);
-  let out = '';
-  let position = 0;
+  const edits: Edit[] = [];
   for (
     let match = pattern.exec(text);
     match !== null;
@@ -374,7 +409,13 @@ function maskParams(text: string): string {
       continue;
     }
     const start = match.index + match[0].length;
-    const value = paramValue(text, start, spaced, isOpen);
+    let value = paramValue(text, start, spaced, isOpen);
+    // `token= passwd:= …`, `token='key:'…`: a secret field named in the value, whose own
+    // value runs on past it, is masked with it.
+    const fieldEnd = secretFieldEnd(text, start, value.end, start);
+    if (fieldEnd !== -1) {
+      value = bareValue(text, start, fieldEnd);
+    }
     // A value masked already, by an earlier rule or pass, stays as it is.
     if (
       value.content === REDACTED ||
@@ -382,11 +423,74 @@ function maskParams(text: string): string {
     ) {
       continue;
     }
-    out += text.slice(position, start) + value.masked;
-    position = value.end;
+    edits.push({ start, end: value.end, masked: value.masked });
     pattern.lastIndex = value.end;
   }
-  return out + text.slice(position);
+  return edits;
+}
+
+/**
+ * A field name inside a value: as {@link FIELD_NAME}, or quoted and glued to the text before
+ * it (`…Wx"passwd":`), since its quotes set it apart.
+ */
+/** How far past a value a field name starting inside it may run. */
+const NAME_MARGIN = 80;
+const INNER_FIELD_NAME = String.raw`(?:(?<![\w$-])(\\{0,8}["']?)([A-Za-z_][\w.-]{0,63})\1|(\\{0,8}["'])([A-Za-z_][\w.-]{0,63})\3)\s*:\s*`;
+
+/**
+ * Where a value from `start` to `end` must end so that every secret field named in it is
+ * masked with its own value, which may run on past `end` (`token= passwd:= x`,
+ * `token='key:'x`), and so on along a chain of them; -1 when `end` already does. A bare
+ * value read from inside another ends where it does, so `bareEnd` (the end of the value
+ * being read, when bare) saves reading it again and keeps the scan linear.
+ */
+function secretFieldEnd(
+  text: string,
+  start: number,
+  end: number,
+  bareEnd: number,
+): number {
+  let reach = end;
+  let readTo = bareEnd;
+  // Each search runs over the value and a margin for a name that runs past it, so a value
+  // with no field in it costs its own length, not the rest of the text's.
+  for (let from = start; from < reach;) {
+    const window = text.slice(from, reach + NAME_MARGIN);
+    const pattern = new RegExp(INNER_FIELD_NAME, 'g');
+    let grownFrom = -1;
+    for (
+      let match = pattern.exec(window);
+      match !== null && from + match.index < reach;
+      match = pattern.exec(window)
+    ) {
+      const name = match[2] ?? match[4] ?? '';
+      const valueStart = from + match.index + match[0].length;
+      const quoted = /^\\*["'{[]/.test(text.slice(valueStart, valueStart + 10));
+      if (
+        !(isSecretName(name) || isOAuthName(name)) ||
+        (!quoted && valueStart < readTo)
+      ) {
+        continue;
+      }
+      const value = readValue(text, valueStart, false);
+      if (value === null) {
+        continue;
+      }
+      if (value.bare) {
+        readTo = value.end;
+      }
+      if (value.end > reach) {
+        reach = value.end;
+        grownFrom = valueStart;
+        break;
+      }
+    }
+    if (grownFrom === -1) {
+      break;
+    }
+    from = grownFrom;
+  }
+  return reach > end ? reach : -1;
 }
 
 /**
@@ -420,6 +524,11 @@ function paramValue(
       level === 0
         ? string.end
         : shallowerQuote(text, start + run + 1, string.end, quote, level);
+    // `token="password":"…"`: the quoted text is the next field's name, which `maskFields`
+    // reads; the parameter's own value is empty.
+    if (FIELD_COLON.test(text.slice(end, end + 9))) {
+      return bareValue(text, start, opener);
+    }
     return {
       ...string,
       end,
@@ -624,16 +733,23 @@ interface FieldValue {
  * Mask the value after every field the pattern finds. A value is a quoted string (a cut-off
  * one runs to the end), a bare scalar (up to a comma, bracket or line end), or an object or
  * array, masked through its balanced end. `oauth` keeps the short diagnostic shapes of
- * `code` and `state`. Fields inside a masked value are skipped.
+ * `code` and `state`. A secret field named inside a value is masked with it.
  */
 function maskFields(
   text: string,
   isTarget: (name: string) => boolean,
   oauth: boolean,
 ): string {
+  return applyEdits(text, fieldEdits(text, isTarget, oauth));
+}
+
+function fieldEdits(
+  text: string,
+  isTarget: (name: string) => boolean,
+  oauth: boolean,
+): Edit[] {
   const pattern = new RegExp(FIELD_NAME, 'g');
-  let out = '';
-  let position = 0;
+  const edits: Edit[] = [];
   for (
     let match = pattern.exec(text);
     match !== null;
@@ -657,10 +773,21 @@ function maskFields(
     if (alreadyMasked || flag || kept) {
       continue;
     }
-    out += text.slice(position, start) + value.masked;
-    position = value.end;
+    // A secret field named inside this value (`x:"token":…`) is masked with its value.
+    const reach =
+      value.content === undefined
+        ? -1
+        : secretFieldEnd(
+            text,
+            start,
+            value.end,
+            value.bare ? value.end : start,
+          );
+    const end = reach === -1 ? value.end : reach;
+    edits.push({ start, end, masked: value.masked });
+    pattern.lastIndex = end;
   }
-  return out + text.slice(position);
+  return edits;
 }
 
 function isOAuthName(name: string): boolean {

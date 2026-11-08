@@ -507,6 +507,40 @@ describe('scrubSecrets', () => {
     expect(scrubSecrets(shape.replace('{KC}', key))).toBe(expected);
   });
 
+  it.each([
+    ['token="password":"hunter2"', 'hunter2'],
+    ['secret = "password":Pw9secret', 'Pw9secret'],
+    ["state='password':'hunter2'", 'hunter2'],
+    ['key="passwd": "hunter2"', 'hunter2'],
+    ["secret= secret:'hunter2", 'hunter2'],
+    ['{K}/access_token=hunter2', 'hunter2'],
+    ['{K}-access_token=hunter2', 'hunter2'],
+    ['{K}password=hunter2', 'hunter2'],
+    ['{K} Authorization:QwErTy', 'QwErTy'],
+    ['Authorization: {K} Pw9secret', 'Pw9secret'],
+  ])('never shows the secret in %s', (shape, secret) => {
+    const line = shape.replace(
+      '{K}',
+      'Es123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmn',
+    );
+    const once = scrubSecrets(line);
+
+    expect(once).not.toContain(secret);
+    expect(scrubSecrets(once)).toBe(once);
+  });
+
+  it.each([
+    'https://example.org/path/to/{K}/file.txt',
+    '/Users/me/Documents/backup/{K}.txt',
+    'word-{K}-word',
+  ])('masks only the recovery key in %s', (shape) => {
+    const key = 'Es123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmn';
+
+    expect(scrubSecrets(shape.replace('{K}', key))).toBe(
+      shape.replace('{K}', REDACTED),
+    );
+  });
+
   it('reads a field glued to a token once the token is masked, in one pass', () => {
     expect(scrubSecrets('0123456789abcdef0123456789abcdef"passwd":/')).toBe(
       `${REDACTED}"passwd":"${REDACTED}"`,
@@ -559,6 +593,8 @@ describe('scrubSecrets', () => {
     `x ${RECOVERY_KEY.replaceAll(' ', '')}${RECOVERY_KEY} y`,
     `key/${RECOVERY_KEY}Bearer abc'`,
     "token=r'token='",
+    'syt_cdefghij.key=',
+    'state:"o"token":B',
     '0123456789abcdef0123456789abcdef"passwd":/',
   ])('scrubs to the same text a second time: %s', (line) => {
     const once = scrubSecrets(line);
@@ -741,6 +777,11 @@ describe('scrubSecrets', () => {
       "it's ?password='".repeat(4000),
       'password=\\"x\\"'.repeat(5000),
       'password=\\"x"'.repeat(5000),
+      'token=passwd:'.repeat(5000),
+      'x:"token":'.repeat(6000),
+      'token= passwd:= '.repeat(4000),
+      `${RECOVERY_KEY} `.repeat(1100),
+      `x${RECOVERY_KEY}`.repeat(1100),
     ];
 
     for (const input of inputs) {
