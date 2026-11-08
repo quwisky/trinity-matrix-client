@@ -10,7 +10,7 @@ vi.mock('./trinity-desktop-bridge', () => ({
   isElectronRenderer: () => electron.is,
 }));
 
-import { isIosWebKit, isNativeIos } from './mobile-os';
+import { isIosWebKit, isNativeIos, isWebKit } from './mobile-os';
 
 /**
  * A fresh evaluation: `isMobileOs` memoises for the life of the module, so each scenario
@@ -175,6 +175,26 @@ describe('isIosWebKit', () => {
 
     vi.stubGlobal('navigator', undefined);
     expect(isIosWebKit()).toBe(false);
+  });
+});
+
+describe('isWebKit', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('is true for Safari and an iOS web view, false for Chromium and with no navigator', () => {
+    device({
+      ua: 'Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Version/26.0 Safari/605.1.15',
+    });
+    expect(isWebKit()).toBe(true);
+    device({ ua: 'Mozilla/5.0 (iPhone) AppleWebKit/605.1.15 Mobile/15E148' });
+    expect(isWebKit()).toBe(true);
+
+    device({
+      ua: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/140 Safari/537.36',
+    });
+    expect(isWebKit()).toBe(false);
+    vi.stubGlobal('navigator', undefined);
+    expect(isWebKit()).toBe(false);
   });
 });
 

@@ -643,8 +643,9 @@ export class MessageComposerComponent {
     // Don't touch the menu mid-IME-composition: the in-progress reading is transient ASCII that
     // would mis-trigger `:shortcode` matching, and rewriting the value/caret during composition
     // drops characters.
-    if (!(event as InputEvent).isComposing) {
-      this.menus.sync();
+    const input = event as InputEvent;
+    if (!input.isComposing) {
+      this.menus.sync(!input.inputType?.startsWith('history'));
     }
   }
 

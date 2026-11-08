@@ -5,6 +5,7 @@ import {
   type Signal,
   type WritableSignal,
 } from '@angular/core';
+import { isWebKit } from '@trinity/platform-native';
 import { type EditResult } from '@trinity/util/matrix';
 
 /**
@@ -16,6 +17,53 @@ import { type EditResult } from '@trinity/util/matrix';
  * than its ceiling.
  */
 const MAX_HEIGHT_PX = 200;
+
+/**
+ * Replace `el.value[start, end)` with `insert` as a native edit, so the textarea's undo stack
+ * keeps it; assigning `value` from script empties that stack in Chromium and Firefox. False when
+ * the edit wasn't made (WebKit, an unfocusable field, a nested `execCommand`, jsdom) and the
+ * caller must write the value itself.
+ */
+function splice(
+  el: HTMLTextAreaElement,
+  start: number,
+  end: number,
+  insert: string,
+): boolean {
+  if (start === end && !insert) return true;
+  // WebKit merges this edit into the typing run before it, so one undo erases the whole draft.
+  if (isWebKit()) return false;
+  const expected = el.value.slice(0, start) + insert + el.value.slice(end);
+  el.focus();
+  if (el.ownerDocument.activeElement !== el) return false;
+  el.setSelectionRange(start, end);
+  // Optional call: jsdom has no execCommand.
+  // eslint-disable-next-line @typescript-eslint/no-deprecated -- no supported API lands a script edit on native undo
+  el.ownerDocument.execCommand?.(
+    insert ? 'insertText' : 'delete',
+    false,
+    insert,
+  );
+  return el.value === expected;
+}
+
+/** The span of `before` that differs from `after`, and what `after` has there instead. */
+function changedRange(
+  before: string,
+  after: string,
+): [start: number, end: number, insert: string] {
+  let start = 0;
+  while (start < before.length && before[start] === after[start]) start++;
+  let tail = 0;
+  while (
+    tail < before.length - start &&
+    tail < after.length - start &&
+    before.at(-1 - tail) === after.at(-1 - tail)
+  ) {
+    tail++;
+  }
+  return [start, before.length - tail, after.slice(start, after.length - tail)];
+}
 
 /**
  * The composer's textarea, as everything except the textarea's own markup: caret reads,
@@ -55,12 +103,14 @@ export class ComposerTextField {
    * resets the caret to the end.
    */
   write(result: EditResult): void {
-    this.text.set(result.text);
     const el = this.textarea()?.nativeElement;
     if (el) {
-      el.value = result.text;
+      if (!splice(el, ...changedRange(el.value, result.text))) {
+        el.value = result.text;
+      }
       el.setSelectionRange(result.selectionStart, result.selectionEnd);
     }
+    this.text.set(result.text);
     this.autoGrow();
     queueMicrotask(() => {
       const settled = this.textarea()?.nativeElement;
@@ -73,6 +123,10 @@ export class ComposerTextField {
   /** Replace text[start, end) with `insert`, then restore focus and the caret. */
   replaceRange(start: number, end: number, insert: string): void {
     const value = this.text();
+    const current = this.textarea()?.nativeElement;
+    if (current?.value === value) {
+      splice(current, start, end, insert);
+    }
     this.text.set(value.slice(0, start) + insert + value.slice(end));
     queueMicrotask(() => {
       const el = this.textarea()?.nativeElement;

@@ -15,7 +15,7 @@ Match the established owner before introducing a new pattern. Repository checks 
 - Use `@trinity/*` public entrypoints across libraries and relative imports within one library.
 - Keep features independent; shared product behavior belongs to data access or application orchestration.
 - Keep `matrix-js-sdk` in approved data-access adapters and Matrix modeling utilities.
-- Treat deprecations as errors; migrate to the supported API instead of suppressing the diagnostic.
+- Treat deprecations as errors; migrate to the supported API instead of suppressing the diagnostic. When no supported API does the job, use the deprecated one behind a single-line `eslint-disable-next-line @typescript-eslint/no-deprecated -- <why>` suppression that says what has no replacement.
 
 ## Angular and state {#angular-state}
 

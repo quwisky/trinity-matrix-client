@@ -77,6 +77,13 @@ export function isIosWebKit(): boolean {
   );
 }
 
+/** Whether the engine is WebKit: Safari and every iOS web view. Chromium and Electron also say AppleWebKit, but with Chrome/. */
+export function isWebKit(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  return ua.includes('AppleWebKit') && !ua.includes('Chrome/');
+}
+
 /** Whether this is the native iOS shell, not Safari/PWA or an iPad-like desktop UA. */
 export function isNativeIos(): boolean {
   return Capacitor.getPlatform() === 'ios';

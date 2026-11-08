@@ -94,6 +94,39 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     expect(cmp.menus.emojiOpen()).toBe(false);
   });
 
+  it('leaves a :shortcode: that an undo brought back as text', async () => {
+    const { fixture, container } = await renderWithIndex();
+    const cmp = fixture.componentInstance;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+
+    ta.value = 'party :tada:';
+    ta.selectionStart = ta.selectionEnd = ta.value.length;
+    ta.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'historyUndo' }),
+    );
+    fixture.detectChanges();
+
+    expect(cmp.text()).toBe('party :tada:');
+  });
+
+  it('keeps a restored :shortcode: once typing moves on, until the caret returns to it', async () => {
+    const { fixture, container } = await renderWithIndex();
+    const cmp = fixture.componentInstance;
+    const ta = container.querySelector('textarea') as HTMLTextAreaElement;
+    ta.value = 'party :tada:';
+    ta.dispatchEvent(
+      new InputEvent('input', { bubbles: true, inputType: 'historyUndo' }),
+    );
+
+    type(fixture, 'party :tada: now');
+    expect(cmp.text()).toBe('party :tada: now');
+
+    // Known limit: the converter reads only the text before the caret, so an edit that ends
+    // right after the shortcode (deleting what followed it) converts it after all.
+    type(fixture, 'party :tada:');
+    expect(cmp.text()).toBe('party 🎉');
+  });
+
   it('inserts the emoji when a suggestion is clicked', async () => {
     const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;
