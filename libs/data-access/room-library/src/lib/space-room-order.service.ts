@@ -22,7 +22,6 @@ import {
 } from 'rxjs';
 import {
   DEFAULT_ROOM_SORT,
-  TRINITY_ROOM_SORTS,
   isRoomSortMode,
   type RoomSortMode,
 } from './room-projection';
@@ -85,8 +84,7 @@ export interface SpaceRoomOrderSnapshot {
  * selected view. The mixed projection makes the active account the owner whenever it holds the
  * space, so an override set as `@me` is invisible to `@alt` even for a shared space (intended:
  * it is that account's view preference). Only a space the active account does not hold keeps
- * the other mixed-in account's ordering. {@link effectiveFor} and {@link overrideFor} read the
- * active account's record.
+ * the other mixed-in account's ordering.
  *
  * Overrides for spaces you have **left are deliberately not pruned**, as
  * {@link AccountScopeService} keeps stale account ids: the space list is sync-derived and
@@ -113,13 +111,10 @@ export class SpaceRoomOrderService {
   /**
    * Edits made before an account's stored value arrived, replayed onto it in order. Persisting
    * an edit applied to all-defaults would drop every preference on disk, and merging records
-   * afterwards cannot express a {@link clearForSpace} (an absent key is indistinguishable from
+   * afterwards cannot express a {@link clearForAccountSpace} (an absent key is indistinguishable from
    * one the merge should restore).
    */
   private readonly pending = new Map<string, Change[]>();
-
-  /** The orderings to offer in the UI (a plain field, so templates can `@for` over it). */
-  readonly modes = TRINITY_ROOM_SORTS;
 
   /** The active account's default — what a space with no override of its own uses. */
   readonly defaultMode = computed<RoomSortMode>(
@@ -205,23 +200,6 @@ export class SpaceRoomOrderService {
     });
   }
 
-  /**
-   * The ordering a space's list should use. Reads signals, so a caller inside a `computed`
-   * stays live to both a preference change and an account switch.
-   */
-  effectiveFor(spaceId: string | null): RoomSortMode {
-    const accountId = this.matrix.activeUserId();
-    return accountId
-      ? this.snapshotFor(accountId, spaceId).effectiveMode
-      : DEFAULT_ROOM_SORT;
-  }
-
-  /** A space's explicit override, or `null` when it follows the account default. */
-  overrideFor(spaceId: string | null): RoomSortMode | null {
-    const accountId = this.matrix.activeUserId();
-    return accountId ? this.snapshotFor(accountId, spaceId).overrideMode : null;
-  }
-
   /** Read one immutable Account-and-Space ordering without consulting Active Account. */
   snapshotFor(
     accountId: string,
@@ -244,14 +222,6 @@ export class SpaceRoomOrderService {
     }));
   }
 
-  /** Pin one space to an ordering of its own (the sidebar header menu). */
-  setForSpace(spaceId: string, mode: RoomSortMode): Observable<void> {
-    return this.writeActive('overrides', (order) => ({
-      ...order,
-      bySpace: { ...order.bySpace, [spaceId]: mode },
-    }));
-  }
-
   /** Pin one Space for an immutable Account context, independent of Active Account. */
   setForAccountSpace(
     accountId: string,
@@ -262,18 +232,6 @@ export class SpaceRoomOrderService {
       ...order,
       bySpace: { ...order.bySpace, [spaceId]: mode },
     }));
-  }
-
-  /**
-   * Drop a space's override so it follows the account default. Deleting rather than storing
-   * the current default keeps "Use my default" tracking a later change to that default.
-   */
-  clearForSpace(spaceId: string): Observable<void> {
-    return this.writeActive('overrides', (order) => {
-      const bySpace = { ...order.bySpace };
-      delete bySpace[spaceId];
-      return { ...order, bySpace };
-    });
   }
 
   /** Remove one exact Account-and-Space override so later default changes keep flowing. */

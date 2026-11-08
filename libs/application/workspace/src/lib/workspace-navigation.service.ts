@@ -7,7 +7,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { MediaPipeline } from '@trinity/data-access/media';
 import {
@@ -26,7 +26,11 @@ import {
   CONVERSATION_ATTENTION,
   ConversationRuntime,
 } from '@trinity/data-access/timeline';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import {
+  BELOW_MD_QUERY,
+  mediaQuerySignal,
+  signalChanges,
+} from '@trinity/util/ui';
 import {
   EMPTY,
   Observable,
@@ -395,7 +399,7 @@ export class WorkspaceNavigationService {
   private applyPanel(request: PanelRequest): Observable<unknown> {
     return defer(() =>
       this.workflow.busy()
-        ? toObservable(this.workflow.busy, { injector: this.injector }).pipe(
+        ? signalChanges(this.workflow.busy, this.injector).pipe(
             filter((busy) => !busy),
             take(1),
           )
@@ -576,9 +580,7 @@ export class WorkspaceNavigationService {
       clear();
       return;
     }
-    this.markedUnreadWait = toObservable(attention.attentive, {
-      injector: this.injector,
-    })
+    this.markedUnreadWait = signalChanges(attention.attentive, this.injector)
       .pipe(filter(Boolean), take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe(clear);
   }

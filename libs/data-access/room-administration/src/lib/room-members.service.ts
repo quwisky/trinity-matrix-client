@@ -1,5 +1,4 @@
 import {
-  Injector,
   Injectable,
   type Signal,
   type WritableSignal,
@@ -83,7 +82,9 @@ const EMPTY_KNOCKS: readonly KnockRequest[] = Object.freeze([]);
 @Injectable({ providedIn: 'root' })
 export class RoomMembersService {
   private readonly matrix = inject(MatrixClientService);
-  private readonly injector = inject(Injector);
+  // Created once: a `toObservable` made per call would outlive its subscriber until this
+  // root service is destroyed.
+  private readonly accountIds$ = toObservable(this.matrix.accountIds);
   private readonly projectionState = inject(RoomAdministrationProjectionState);
   private readonly memberSignals = new Map<
     string,
@@ -282,9 +283,9 @@ export class RoomMembersService {
    * membership listeners and reattaches if the Account is removed or restored.
    */
   observe(target: RoomSettingsTarget): Observable<RoomMembersSnapshot> {
-    return toObservable(this.matrix.accountIds, {
-      injector: this.injector,
-    }).pipe(switchMap(() => this.observeCurrentClient(target)));
+    return this.accountIds$.pipe(
+      switchMap(() => this.observeCurrentClient(target)),
+    );
   }
 
   private observeCurrentClient(

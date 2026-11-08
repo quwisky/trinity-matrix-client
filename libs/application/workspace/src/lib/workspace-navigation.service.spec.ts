@@ -1,4 +1,5 @@
 import { signal, type WritableSignal } from '@angular/core';
+import { liveConsumers } from '@trinity/testing';
 import { TestBed } from '@angular/core/testing';
 import { convertToParamMap, type ParamMap } from '@angular/router';
 import {
@@ -569,12 +570,15 @@ describe('WorkspaceNavigationService', () => {
     const attentive = signal(false);
     const h = harness({ routeAccountId: ALICE, routeRoomId: ROOM, attentive });
     await vi.waitFor(() => expect(h.conversations.focus).toHaveBeenCalled());
+    TestBed.tick();
 
     h.paramMap.next(convertToParamMap({}));
     h.queryParamMap.next(convertToParamMap({ account: ALICE }));
     await vi.waitFor(() =>
       expect(h.service.view()).toMatchObject({ roomId: null }),
     );
+    // The cancelled wait stops watching instead of living as long as the root service.
+    expect(liveConsumers(attentive)).toBe(0);
     attentive.set(true);
     TestBed.tick();
 

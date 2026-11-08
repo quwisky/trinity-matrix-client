@@ -4,6 +4,7 @@ import { ClientEvent, type MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { liveConsumers } from '@trinity/testing';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { RoomMembersService } from './room-members.service';
 import { RoomAdministrationProjectionState } from './room-administration-projection-state.service';
@@ -154,6 +155,31 @@ function fireMemberChange(
 }
 
 describe('RoomMembersService', () => {
+  it('does not leave a watcher behind for each closed member list', () => {
+    const opening = client([room('!shared:hs', [member('@ada:hs', 'Ada')])]);
+    const accountIds = signal<readonly string[]>(['@opening:hs']);
+    TestBed.configureTestingModule({
+      providers: [
+        RoomMembersService,
+        MockProvider(MatrixClientService, {
+          accountIds: accountIds.asReadonly(),
+          activeUserId: signal<string | null>('@opening:hs').asReadonly(),
+          clientFor: () => opening as unknown as MatrixClient,
+        }),
+      ],
+    });
+    const service = TestBed.inject(RoomMembersService);
+    for (let index = 0; index < 3; index += 1) {
+      const observation = service
+        .observe({ accountId: '@opening:hs', roomId: '!shared:hs' })
+        .subscribe();
+      TestBed.inject(ApplicationRef).tick();
+      observation.unsubscribe();
+    }
+
+    expect(liveConsumers(accountIds)).toBe(1);
+  });
+
   it('loads the full member list of the room it observes (#1295)', () => {
     const target = room('!shared:hs', [member('@ada:hs', 'Ada')]);
     const opening = client([target]);

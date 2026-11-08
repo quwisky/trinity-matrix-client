@@ -10,6 +10,7 @@ import {
 } from 'matrix-js-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { liveConsumers } from '@trinity/testing';
 import { RoomActionPermissionsService } from './room-action-permissions.service';
 import { KNOCK_RESTRICTED, RoomSettingsService } from './room-settings.service';
 
@@ -207,6 +208,20 @@ function setup(
 }
 
 describe('RoomSettingsService', () => {
+  it('does not leave watchers behind for each closed settings view', () => {
+    const { svc, accountIds, activeUserId } = setup();
+    for (let index = 0; index < 3; index += 1) {
+      const subscription = svc
+        .observe({ accountId: '@me:hs', roomId: '!r:hs' })
+        .subscribe();
+      TestBed.tick();
+      subscription.unsubscribe();
+    }
+
+    expect(liveConsumers(accountIds)).toBe(1);
+    expect(liveConsumers(activeUserId)).toBe(1);
+  });
+
   it('setName is cold and renames the room (trimmed) on subscribe', async () => {
     const { svc, setRoomName } = setup();
 

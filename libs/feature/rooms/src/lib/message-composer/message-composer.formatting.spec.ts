@@ -125,7 +125,7 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       const { fixture } = await renderComposer();
       await withSelection(fixture, 'say hello there', 4, 9);
 
-      fixture.componentInstance.onFormat('bold');
+      fixture.componentInstance['formatting'].onFormat('bold');
 
       expect(fixture.componentInstance.text()).toBe('say **hello** there');
     });
@@ -134,7 +134,7 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
       const { fixture } = await renderComposer();
       const ta = await withSelection(fixture, 'say hello there', 4, 9);
 
-      fixture.componentInstance.onFormat('bold');
+      fixture.componentInstance['formatting'].onFormat('bold');
       // The caret restore runs in a microtask, after the signal write reaches the DOM.
       await Promise.resolve();
 
@@ -235,7 +235,7 @@ describe('MessageComposerComponent — quoting, the formatting actions and the p
         new CompositionEvent('compositionstart', { bubbles: true }),
       );
 
-      fixture.componentInstance.onFormat('bold');
+      fixture.componentInstance['formatting'].onFormat('bold');
 
       expect(fixture.componentInstance.text()).toBe('say hello');
     });

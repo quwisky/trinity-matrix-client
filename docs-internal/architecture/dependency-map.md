@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **320 dependencies**. No project cycles detected.
+This snapshot contains **80 Nx projects** and **324 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -129,7 +129,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `application-badge`                 | `libs/application/badge`                 | role:application; capability:badge              |                   2 |
 | `application-runtime`               | `libs/application/runtime`               | role:application; capability:runtime            |                  31 |
 | `application-search`                | `libs/application/search`                | role:application; capability:search             |                   5 |
-| `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   8 |
+| `application-workspace`             | `libs/application/workspace`             | role:application; capability:workspace          |                   9 |
 | `avatar`                            | `libs/spartan/avatar`                    | role:design-system; capability:design-system    |                   0 |
 | `button`                            | `libs/spartan/button`                    | role:design-system; capability:design-system    |                   1 |
 | `card`                              | `libs/spartan/card`                      | role:design-system; capability:design-system    |                   1 |
@@ -151,8 +151,8 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `data-access-matrix-client`         | `libs/data-access/matrix-client`         | role:adapter; capability:matrix-runtime         |                   5 |
 | `data-access-media`                 | `libs/data-access/media`                 | role:adapter; capability:media                  |                   2 |
 | `data-access-notifications`         | `libs/data-access/notifications`         | role:capability; capability:notifications       |                   9 |
-| `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   4 |
-| `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   6 |
+| `data-access-room-administration`   | `libs/data-access/room-administration`   | role:capability; capability:room-administration |                   5 |
+| `data-access-room-library`          | `libs/data-access/room-library`          | role:capability; capability:room-library        |                   7 |
 | `data-access-timeline`              | `libs/data-access/timeline`              | role:capability; capability:conversations       |                   7 |
 | `data-access-trust`                 | `libs/data-access/trust`                 | role:capability; capability:trust               |                   5 |
 | `data-access-whats-new`             | `libs/data-access/whats-new`             | role:capability; capability:whats-new           |                   1 |
@@ -203,5 +203,5 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-ios`                       | `ios`                                    | role:app; capability:composition                |                   4 |
 | `trinity-web-container`             | `container`                              | role:app; capability:composition                |                   1 |
 | `util-matrix`                       | `libs/util/matrix`                       | role:kernel; capability:shared                  |                   0 |
-| `util-ui`                           | `libs/util/ui`                           | role:design-system; capability:design-system    |                   0 |
+| `util-ui`                           | `libs/util/ui`                           | role:design-system; capability:design-system    |                   1 |
 | `utils`                             | `libs/spartan/utils`                     | role:design-system; capability:design-system    |                   0 |
