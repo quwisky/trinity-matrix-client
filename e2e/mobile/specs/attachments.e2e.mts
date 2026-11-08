@@ -91,9 +91,20 @@ describe('mobile attachments', () => {
       'new UiSelector().descriptionStartsWith("Photo taken on")',
     );
     await expect(thumbnail).toBeDisplayed({ wait: 30_000 });
-    await thumbnail.click();
     const add = uiSelector('new UiSelector().text("Done")');
-    await expect(add).toBeDisplayed({ wait: 10_000 });
+    // The grid can draw before it accepts taps, so a first tap may select nothing; tap again
+    // until the selection shows "Done". A registered tap shows it at once, so no deselect.
+    await browser.waitUntil(
+      async () => {
+        if (await add.isDisplayed()) return true;
+        await thumbnail.click();
+        return add.waitForDisplayed({ timeout: 5_000 }).catch(() => false);
+      },
+      {
+        timeout: 30_000,
+        timeoutMsg: 'Photo picker never showed "Done" after tapping the photo',
+      },
+    );
     await add.click();
 
     await webview();
