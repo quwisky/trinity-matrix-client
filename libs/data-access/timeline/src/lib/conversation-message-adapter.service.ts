@@ -18,11 +18,18 @@ import {
   take,
   type Observable,
 } from 'rxjs';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { PrivacySettingsService } from '@trinity/platform-native';
+import {
+  MatrixClientService,
+  unsentText,
+} from '@trinity/data-access/matrix-client';
+import {
+  DraftStoreService,
+  PrivacySettingsService,
+} from '@trinity/platform-native';
 import {
   annotationContent,
   isTransientMatrixError,
+  isWaitingToSend,
   myReactionIds,
   resendAtEnd,
 } from '@trinity/util/matrix';
@@ -34,6 +41,8 @@ import type {
   ConversationMessagePolicy,
   ConversationReactionRequest,
 } from './conversation-messages';
+import { conversationDraftKey, threadDraftKey } from './conversation-draft-key';
+import { keepWhileWaiting } from './waiting-draft';
 
 const unavailablePolicy: ConversationMessagePolicy = {
   canRedactOthers: () => false,
@@ -84,6 +93,7 @@ interface PendingReceipt {
 class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly privacy = inject(PrivacySettingsService);
+  private readonly drafts = inject(DraftStoreService);
   private readonly policy = inject(CONVERSATION_MESSAGE_POLICY);
   private readonly receiptDebounceMs = inject(READ_RECEIPT_DEBOUNCE_MS);
   private readonly pendingReceipts = new Map<string, PendingReceipt>();
@@ -195,9 +205,29 @@ class MatrixConversationMessageAdapter implements ConversationMessageAdapter {
       }
       return from(resendAtEnd(context.client, event, context.room)).pipe(
         map(() => this.applied('retry')),
-        catchError((error: unknown) =>
-          of(this.requestRejected('retry', error)),
-        ),
+        catchError((error: unknown) => {
+          // Offline, the row now waits and the next sync resends it, so its text must not go
+          // back to the composer, where Send would post it a second time.
+          // A waiting echo with no composer text (a notice) still waits; there is just nothing
+          // to hold for a reload.
+          const text = unsentText(event);
+          const waiting =
+            text === null
+              ? isWaitingToSend(event)
+              : keepWhileWaiting(
+                  this.drafts,
+                  request.threadRootId
+                    ? threadDraftKey(request.threadRootId)
+                    : conversationDraftKey(request.key),
+                  event,
+                  text,
+                );
+          return of(
+            waiting
+              ? this.applied('retry')
+              : this.requestRejected('retry', error),
+          );
+        }),
       );
     });
   }

@@ -717,6 +717,40 @@ describe('MediaPipeline', () => {
     );
   });
 
+  it('sends again from the tray after the failed row was cancelled in the timeline', async () => {
+    const { pipeline, bytes, client, room, pendingEcho } = setup();
+    client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');
+    client.sendMessage.mockRejectedValueOnce(new Error('bad gateway'));
+    const staged = pipeline.stage(
+      new File([new Uint8Array([1])], 'cancelled.png', { type: 'image/png' }),
+    );
+    if (staged.kind !== 'staged') return;
+
+    await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+    // The row's Cancel: the SDK marks the echo cancelled and takes it out of the room.
+    pendingEcho.status = 'cancelled';
+    room.findEventById.mockImplementation((id: string) =>
+      id === '$event' ? { id: '$event' } : undefined,
+    );
+    const retry = await firstValueFrom(
+      pipeline
+        .transfer({ key: KEY, media: staged.media, caption: '' })
+        .pipe(toArray()),
+    );
+
+    expect(retry.at(-1)).toEqual({ kind: 'sent', eventId: '$event' });
+    expect(client.resendEvent).not.toHaveBeenCalled();
+    expect(client.sendMessage.mock.calls.map((call) => call[2])).toEqual([
+      'txn-1',
+      'txn-2',
+    ]);
+    expect(bytes.uploadMedia).toHaveBeenCalledTimes(1);
+  });
+
   it('cancels the failed echo and uses a fresh transaction when retry changes the caption', async () => {
     const { pipeline, bytes, client } = setup();
     client.makeTxnId.mockReturnValueOnce('txn-1').mockReturnValueOnce('txn-2');

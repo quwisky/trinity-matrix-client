@@ -344,7 +344,7 @@ function localEchoes(room: Room): MatrixEvent[] {
  * text, and a spoiler gets its `/spoiler` command back, since the plain body alone would send
  * it unhidden.
  */
-function unsentText(event: MatrixEvent): string | null {
+export function unsentText(event: MatrixEvent): string | null {
   if (event.status === null || !NOT_ON_SERVER.has(event.status)) return null;
   if (event.getType() !== EventType.RoomMessage) return null;
   // An edit is a change to a message that exists, not new text to send.

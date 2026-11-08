@@ -216,8 +216,20 @@ export class MediaPipeline {
           }
         };
 
+        /**
+         * The timeline row's Cancel withdraws the echo behind the pipeline's back. The Room keeps
+         * its transaction id, so the next send needs a new one; the upload stays good.
+         */
+        const forgetCancelled = (cached: CachedUpload): void => {
+          if (cached.pendingEvent?.status !== EventStatus.CANCELLED) return;
+          cached.pendingEvent = null;
+          cached.pendingCaption = null;
+          cached.txnId = client.makeTxnId();
+        };
+
         const send = (cached: CachedUpload): void => {
           activeUpload = cached;
+          forgetCancelled(cached);
           const pending = cached.pendingEvent;
           if (pending) {
             if (!canRetryPending(pending)) {
@@ -297,6 +309,7 @@ export class MediaPipeline {
         // it: sending the event is the disclosure, since nobody has the mxc (or, encrypted,
         // the key) before it. Withdraw the failed echo and upload again, stripped.
         if (previous?.imageMetadata === 'keep' && imageMetadata === 'strip') {
+          forgetCancelled(previous);
           const pending = previous.pendingEvent;
           if (pending && !canRetryPending(pending)) {
             inFlight();
