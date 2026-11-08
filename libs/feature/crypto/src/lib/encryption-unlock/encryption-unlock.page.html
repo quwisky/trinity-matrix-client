@@ -25,6 +25,11 @@
       confirmTestId="reset-done"
       (confirmed)="finishReset()"
     />
+    @if (error(); as message) {
+      <p class="mt-2 text-danger" role="alert" data-testid="unlock-error">
+        {{ message }}
+      </p>
+    }
   } @else {
     @if (identityWithoutRecovery()) {
       <!-- No secret storage, so no recovery key to ask for: this page is only the

@@ -75,15 +75,34 @@ export class EncryptionSetupPage {
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
+  /**
+   * A key is on screen and the last failure is one a retry answers; trying again reuses
+   * that key. A refusal withdraws the offer (its answer is in Security settings).
+   */
+  readonly unfinished = computed(
+    () =>
+      this.error() !== null &&
+      this.recoveryKey() !== null &&
+      this.failureRecovery() === 'retry',
+  );
+
   /** Bootstrap cross-signing, secret storage and key backup. */
   setUp(): void {
     this.failureRecovery.set(null);
     const setUp = this.crypto.setUp(this.promptPassword).pipe(
       tap({
-        error: (err: unknown) =>
-          this.failureRecovery.set(
-            err instanceof TrustOperationError ? err.recovery : null,
-          ),
+        error: (err: unknown) => {
+          if (!(err instanceof TrustOperationError)) {
+            return;
+          }
+          this.failureRecovery.set(err.recovery);
+          if (err.recoveryKey) {
+            this.recoveryKey.set(err.recoveryKey);
+          } else if (err.kind === 'invalid-secret') {
+            // The key on screen is provably not the account's: stop offering it.
+            this.recoveryKey.set(null);
+          }
+        },
       }),
     );
     this.withBusy(setUp).subscribe((key) => {

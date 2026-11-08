@@ -3,6 +3,7 @@ import {
   UiaCancelledError,
   UiaUnsupportedError,
 } from '@trinity/util/matrix';
+import { PartialRecoveryResetError } from './recovery-reset';
 import { catchError, throwError, type MonoTypeOperatorFunction } from 'rxjs';
 
 /** The recovery action a caller can safely offer for an expected Trust failure. */
@@ -50,10 +51,11 @@ export type TrustOperation =
 /**
  * Expected operational failure from Trust.
  *
- * The object intentionally retains no SDK error, secret, user id, device id, key bytes,
- * passphrase, or homeserver response. Its fields are safe for user diagnostics and
- * telemetry; unexpected causes are collapsed to a secret-safe `server-failure` rather
- * than crossing the capability boundary.
+ * The object intentionally retains no SDK error, user id, device id, key bytes,
+ * passphrase, or homeserver response; unexpected causes are collapsed to a secret-safe
+ * `server-failure` rather than crossing the capability boundary. The one secret is
+ * `recoveryKey`: a setup or reset that failed after minting a new recovery key carries it
+ * so the user can still save it, since the account may already use it. Never log it.
  */
 export class TrustOperationError extends Error {
   override readonly name = 'TrustOperationError';
@@ -64,6 +66,7 @@ export class TrustOperationError extends Error {
     readonly recovery: TrustRecovery,
     message: string,
     readonly partial = false,
+    readonly recoveryKey: string | null = null,
   ) {
     super(message);
   }
@@ -75,6 +78,23 @@ export function trustOperationFailure(
   cause: unknown,
   partial = false,
 ): TrustOperationError {
+  const recoveryKey =
+    cause instanceof TrustOperationError ||
+    cause instanceof PartialRecoveryResetError
+      ? cause.recoveryKey
+      : null;
+  if (recoveryKey) {
+    return new TrustOperationError(
+      operation,
+      'partial-update',
+      cause instanceof TrustOperationError
+        ? cause.recovery
+        : 'review-security-settings',
+      (cause as Error).message,
+      true,
+      recoveryKey,
+    );
+  }
   if (cause instanceof TrustOperationError) {
     return new TrustOperationError(
       operation,

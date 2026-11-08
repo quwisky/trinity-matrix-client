@@ -3,6 +3,7 @@ import type { UIAuthCallback } from 'matrix-js-sdk';
 import {
   decodeRecoveryKey,
   deriveRecoveryKeyFromPassphrase,
+  type GeneratedSecretStorageKey,
 } from 'matrix-js-sdk/lib/crypto-api';
 import type {
   SecretStorageKeyDescriptionAesV1,
@@ -41,6 +42,8 @@ import {
 import {
   assertNoIdentityElsewhere,
   assertNoRecoveryOnAccount,
+  isAnotherKeyDefault,
+  keyReplacedError,
 } from './setup-guards';
 import { TrustHealthService } from './trust-health.service';
 
@@ -51,6 +54,9 @@ export type {
 } from './trust-health.service';
 
 const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
+
+const PARTIAL_SETUP_MESSAGE =
+  'Encryption setup didn’t finish. Save this recovery key now, because your account may already use it. Then try again to finish setting up key backup.';
 
 /**
  * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
@@ -121,9 +127,34 @@ export class TrustService {
           const client = context.client;
           const crypto = this.requireCrypto('setup', context.crypto);
           const userId = client.getUserId() ?? '';
-          await assertNoRecoveryOnAccount(client);
+          // Per-account and cleared with the account: after sign-out the key is forgotten,
+          // so a retry is refused as stale-state unless the first try's pointer never landed.
+          const holder = this.cryptoPort.secretStorageKey();
+          const unfinished = holder?.unfinishedSetupKey ?? null;
+          const found = await assertNoRecoveryOnAccount(
+            client,
+            unfinished?.privateKey,
+          ).catch((err: unknown) => {
+            if (
+              err instanceof TrustOperationError &&
+              err.kind === 'invalid-secret'
+            ) {
+              holder?.holdUnfinishedSetupKey(null);
+            }
+            throw err;
+          });
           const identity = await assertNoIdentityElsewhere(client, crypto);
-          const recoveryKey = await crypto.createRecoveryKeyFromPassphrase();
+          const recoveryKey: GeneratedSecretStorageKey = unfinished
+            ? {
+                ...unfinished,
+                privateKey: new Uint8Array(unfinished.privateKey),
+              }
+            : await crypto.createRecoveryKeyFromPassphrase();
+          if (typeof found === 'object' && !holder?.released) {
+            // The first try's pointer landed but its cache step may not have, and with the
+            // default key in place the SDK stores secrets only through this callback cache.
+            holder?.set(found.ownKeyId, recoveryKey.privateKey);
+          }
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
               promptPassword,
@@ -134,10 +165,41 @@ export class TrustService {
             // no identity, so new keys replace nothing.
             ...(identity === 'unpublished' && { setupNewCrossSigning: true }),
           });
-          await crypto.bootstrapSecretStorage({
-            setupNewKeyBackup: true,
-            createSecretStorageKey: async () => recoveryKey,
-          });
+          try {
+            // On a retry the SDK finds the default key the first try wrote and does not
+            // call createSecretStorageKey; it only stores what is missing and the backup.
+            await crypto.bootstrapSecretStorage({
+              setupNewKeyBackup: true,
+              createSecretStorageKey: async () => recoveryKey,
+            });
+          } catch (cause) {
+            // The SDK makes the key the account default before the backup, its last and
+            // most failure-prone step, so the key may be in use: the user must see it.
+            // Unless the guard could not read the pointer and this device now sees another
+            // key as the default: then showing this one would mislead.
+            const mayBeInUse =
+              found !== 'unreadable' ||
+              !(await isAnotherKeyDefault(client, recoveryKey.privateKey));
+            await this.healthRuntime.reconcile();
+            if (!mayBeInUse) {
+              if (unfinished) {
+                // The key shown earlier is provably not the account's.
+                holder?.holdUnfinishedSetupKey(null);
+                throw keyReplacedError();
+              }
+              throw cause;
+            }
+            holder?.holdUnfinishedSetupKey(recoveryKey);
+            throw new TrustOperationError(
+              'setup',
+              'partial-update',
+              'retry',
+              PARTIAL_SETUP_MESSAGE,
+              true,
+              encodedRecoveryKey(recoveryKey),
+            );
+          }
+          holder?.holdUnfinishedSetupKey(null);
           await this.healthRuntime.reconcile();
           return encodedRecoveryKey(recoveryKey);
         })(),

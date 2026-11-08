@@ -15,7 +15,7 @@ import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, finalize, firstValueFrom, take } from 'rxjs';
-import { TrustService } from '@trinity/data-access/trust';
+import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import {
@@ -244,6 +244,11 @@ export class EncryptionUnlockPage {
     );
     if (!failure) {
       return;
+    }
+    if (err instanceof TrustOperationError && err.recoveryKey) {
+      // The reset failed after minting this key; the account may already use it.
+      this.clearKey();
+      this.newRecoveryKey.set(err.recoveryKey);
     }
     // Order matters: providerResetUrl is linked to error and clears when it changes.
     this.error.set(failure.message);

@@ -29,18 +29,44 @@ import {
  * **Fails open on purpose.** Only a pointer the server positively reports stops the setup;
  * an unreachable or unhappy server does not. This exists to block a known-destructive
  * action, not to become a new way for genuine first-run setup to fail.
+ *
+ * `ownKey` is the key an earlier, partly failed setup on this device minted and showed.
+ * When the server's pointer is that key, finishing the setup replaces nothing the user
+ * does not already hold.
+ *
+ * Resolves with what it found, so setup can tell whether a key it mints may become the
+ * account's: `none`, `unreadable` (failed open), or the id of `ownKey`.
  */
 export async function assertNoRecoveryOnAccount(
   client: TrustMatrixClient,
-): Promise<void> {
-  if (!(await readServerDefaultKeyId(client))) {
-    return;
+  ownKey: Uint8Array | null = null,
+): Promise<'none' | 'unreadable' | { readonly ownKeyId: string }> {
+  const keyId = await readServerDefaultKeyId(client);
+  if (keyId === null || keyId === undefined) {
+    return keyId === null ? 'none' : 'unreadable';
+  }
+  const match = ownKey ? await keyMatch(client, keyId, ownKey) : 'unknown';
+  if (match === 'match') {
+    return { ownKeyId: keyId };
+  }
+  if (match === 'mismatch') {
+    throw keyReplacedError();
   }
   throw new TrustOperationError(
     'setup',
     'stale-state',
     'review-security-settings',
     'This account already has a recovery key. Unlock this device with that key instead — setting up a new one here would replace it and delete the account’s key backup.',
+  );
+}
+
+/** `invalid-secret`: the key this device showed earlier is provably not the account's. */
+export function keyReplacedError(): TrustOperationError {
+  return new TrustOperationError(
+    'setup',
+    'invalid-secret',
+    'review-security-settings',
+    'This account now has a different recovery key, set up from another device. Don’t use the key shown earlier. Unlock this device with the account’s recovery key instead.',
   );
 }
 
@@ -143,15 +169,56 @@ export async function assertNoIdentityElsewhere(
 }
 
 /**
- * The account's 4S pointer as the SERVER has it, or null when there is none — which is
- * also what a failed read yields, since the caller fails open.
+ * Whether this device sees a default 4S key that `privateKey` provably does not open. No
+ * default, or one whose description has not synced yet, is not a different key.
+ */
+export async function isAnotherKeyDefault(
+  client: TrustMatrixClient,
+  privateKey: Uint8Array,
+): Promise<boolean> {
+  try {
+    const keyId = await client.secretStorage.getDefaultKeyId();
+    return (
+      !!keyId && (await keyMatch(client, keyId, privateKey)) === 'mismatch'
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether `privateKey` opens the 4S key `keyId`: `unknown` when the description is not
+ * readable here (a lagging local copy), so only `mismatch` proves it is another key.
+ */
+async function keyMatch(
+  client: TrustMatrixClient,
+  keyId: string,
+  privateKey: Uint8Array,
+): Promise<'match' | 'mismatch' | 'unknown'> {
+  try {
+    const stored = await client.secretStorage.getKey(keyId);
+    // checkKey answers true for a description with no MAC, which proves nothing.
+    if (!stored?.[1].mac) {
+      return 'unknown';
+    }
+    return (await client.secretStorage.checkKey(privateKey, stored[1]))
+      ? 'match'
+      : 'mismatch';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * The account's 4S pointer as the SERVER has it, null when there is none, or undefined
+ * when the read failed (the caller fails open either way).
  */
 async function readServerDefaultKeyId(
   client: TrustMatrixClient,
-): Promise<string | null> {
+): Promise<string | null | undefined> {
   const userId = client.getUserId();
   if (!userId) {
-    return null;
+    return undefined;
   }
   try {
     // Use the tighter crypto-flow deadline rather than the client's 30-second default, so
@@ -164,10 +231,12 @@ async function readServerDefaultKeyId(
       ),
     );
     return content.key ?? null;
-  } catch {
-    // `M_NOT_FOUND` is the ordinary first-run answer, and anything else (offline, 5xx,
-    // a homeserver that stopped answering) is a read we cannot trust either way. Both
+  } catch (err) {
+    // `M_NOT_FOUND` is the ordinary first-run answer; anything else (offline, 5xx, a
+    // homeserver that stopped answering) is a read we cannot trust either way. Both
     // mean "let the setup proceed".
-    return null;
+    return (err as { errcode?: unknown } | null)?.errcode === 'M_NOT_FOUND'
+      ? null
+      : undefined;
   }
 }

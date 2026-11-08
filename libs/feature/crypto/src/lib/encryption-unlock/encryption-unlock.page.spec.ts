@@ -279,6 +279,35 @@ describe('EncryptionUnlockPage', () => {
       ).toBe(false);
     });
 
+    it('shows the new key when the reset fails after minting it', async () => {
+      // The account may already use this key while its status reads ready, so the page
+      // is the only place the user can still get it.
+      const { fixture } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(
+          () =>
+            new TrustOperationError(
+              'reset-recovery',
+              'partial-update',
+              'review-security-settings',
+              'Your identity was reset, but recovery was not fully set up. Save this recovery key now.',
+              true,
+              'EsTPartial',
+            ),
+        ),
+      });
+
+      fixture.componentInstance.resetRecovery();
+      await flush();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('EsTPartial');
+      expect(screen.getByTestId('reset-done')).toBeTruthy();
+      expect(screen.getByTestId('unlock-error').textContent).toContain(
+        'Save this recovery key now.',
+      );
+    });
+
     it('sends an OIDC account to its provider, deep-linked to the reset', async () => {
       // An OIDC-native account cannot answer a password challenge in-app.
       const { fixture, externalBrowser } = await renderPage({

@@ -1,4 +1,7 @@
-import type { CryptoCallbacks } from 'matrix-js-sdk/lib/crypto-api';
+import type {
+  CryptoCallbacks,
+  GeneratedSecretStorageKey,
+} from 'matrix-js-sdk/lib/crypto-api';
 
 /**
  * In-memory holder for one account's unlocked secret-storage (4S) private key, handed to
@@ -14,6 +17,32 @@ import type { CryptoCallbacks } from 'matrix-js-sdk/lib/crypto-api';
 export class SecretStorageKeyHolder {
   private keyId: string | null = null;
   private privateKey: Uint8Array<ArrayBuffer> | null = null;
+  private unfinished: GeneratedSecretStorageKey | null = null;
+  private torn = false;
+
+  /** Whether {@link clear} ran: the account is gone and nothing should be cached here. */
+  get released(): boolean {
+    return this.torn;
+  }
+
+  /**
+   * The recovery key a partly failed first setup already showed, kept so a retry reuses
+   * it rather than minting another. Stored as a copy: the SDK and {@link set} zero the
+   * buffers they are handed.
+   */
+  get unfinishedSetupKey(): GeneratedSecretStorageKey | null {
+    return this.unfinished;
+  }
+
+  /** Remember (or, with null, zero and forget) {@link unfinishedSetupKey}. */
+  holdUnfinishedSetupKey(key: GeneratedSecretStorageKey | null): void {
+    this.unfinished?.privateKey.fill(0);
+    // A setup still running when its account signed out must not leave a key behind.
+    this.unfinished =
+      key && !this.torn
+        ? { ...key, privateKey: new Uint8Array(key.privateKey) }
+        : null;
+  }
 
   /** Cache the unlocked key for a key id (after generate or unlock). */
   set(keyId: string, privateKey: Uint8Array<ArrayBuffer>): void {
@@ -32,6 +61,8 @@ export class SecretStorageKeyHolder {
    * client has stopped, so no crypto operation still reads the returned reference.
    */
   clear(): void {
+    this.torn = true;
+    this.holdUnfinishedSetupKey(null);
     this.privateKey?.fill(0);
     this.keyId = null;
     this.privateKey = null;

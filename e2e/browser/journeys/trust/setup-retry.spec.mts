@@ -20,6 +20,7 @@ import {
 const session = homeserverSession();
 
 const DEVICE_SIGNING_UPLOAD = '**/_matrix/client/v3/keys/device_signing/upload';
+const KEY_BACKUP_VERSION = '**/_matrix/client/v3/room_keys/version';
 
 function passwordPrompt(page: Page) {
   return page.locator('trn-alert-dialog', { hasText: 'Confirm your password' });
@@ -216,5 +217,50 @@ test.describe('A first setup retried after an abandoned password prompt', () => 
     await expect
       .poll(() => masterKey(request, hs, account), { timeout: 30_000 })
       .toBeTruthy();
+  });
+
+  test('keeps the recovery key when creating the key backup fails', async ({
+    page,
+    request,
+    secondaryApp,
+  }, testInfo) => {
+    test.slow();
+    // The SDK makes the new key the account default before it creates the backup, so a
+    // failed backup used to leave the account on a key nobody was shown, and a retry was
+    // refused as "already has a recovery key".
+    const { hs, user, pass } = await signInFreshAccount(page, request, 'b');
+
+    await page.route(KEY_BACKUP_VERSION, (route) =>
+      route.request().method() === 'POST'
+        ? route.fulfill({ status: 502, json: {} })
+        : route.fallback(),
+    );
+    await startSetup(page);
+    const key = page.getByTestId('recovery-key');
+    await expect(key).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('alert')).toContainText(
+      'Save this recovery key now',
+    );
+    const shown = (await key.innerText()).trim();
+    await page.screenshot({
+      path: testInfo.outputPath('setup-partial-failure.png'),
+      fullPage: true,
+    });
+
+    await page.unroute(KEY_BACKUP_VERSION);
+    await page.getByRole('button', { name: 'Try again' }).click();
+    await expect(page.getByRole('alert')).toHaveCount(0, { timeout: 60_000 });
+    expect((await key.innerText()).trim()).toBe(shown);
+    await page
+      .getByRole('checkbox', { name: /I’ve saved my recovery key/ })
+      .click();
+    await page.getByRole('button', { name: 'Continue to Trinity' }).click();
+    await waitForRooms(page);
+
+    await unlockSecondDevice(
+      await secondaryApp.launch(),
+      { hs, user, pass },
+      shown,
+    );
   });
 });
