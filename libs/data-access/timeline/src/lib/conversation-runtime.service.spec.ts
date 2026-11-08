@@ -20,6 +20,7 @@ import {
 } from './conversation-runtime.service';
 import {
   CONVERSATION_TIMELINE_FACTORY,
+  type ConversationClientStatus,
   type ConversationTimeline,
   type ConversationTimelineController,
   type ConversationTimelineFactory,
@@ -187,6 +188,7 @@ function setup(
         liveSettled: signal(false),
         refill: vi.fn(() => of(undefined)),
         resources: () => ({ listenerCount: 11, retainedBytes: 64 }),
+        clientStatus: vi.fn((): ConversationClientStatus => 'attached'),
         visible,
         released,
         history,
@@ -198,10 +200,15 @@ function setup(
     }),
   };
   const errors = { handleError: vi.fn() };
+  const accountIds = signal<readonly string[]>([ALICE, BOB]);
   TestBed.configureTestingModule({
     providers: [
       ConversationRuntime,
       { provide: ErrorHandler, useValue: errors },
+      {
+        provide: MatrixClientService,
+        useValue: { accountIds: accountIds.asReadonly() },
+      },
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
       { provide: CONVERSATION_MESSAGE_ADAPTER, useValue: messageAdapter },
@@ -235,6 +242,7 @@ function setup(
     messageAdapter,
     keepPhotoMetadata,
     errors,
+    accountIds,
   };
 }
 
@@ -272,6 +280,70 @@ afterEach(() => {
   vi.restoreAllMocks();
   TestBed.resetTestingModule();
 });
+
+async function realFactory(liveClient: () => MatrixClient | null) {
+  const client = createClient({
+    baseUrl: 'https://hs',
+    userId: ALICE,
+    fetchFn: () => Promise.reject(new Error('no network in unit tests')),
+  });
+  const room = new Room('!a:example.org', client, ALICE);
+  client.store.storeRoom(room);
+  const message = (n: number) =>
+    new MatrixEvent({
+      event_id: `$${n}`,
+      room_id: room.roomId,
+      type: 'm.room.message',
+      sender: BOB,
+      origin_server_ts: n,
+      content: { msgtype: 'm.text', body: `${n}` },
+    });
+  room.getLiveTimeline().setPaginationToken('b1', Direction.Backward);
+  await room.addLiveEvents(
+    Array.from({ length: 100 }, (_, i) => message(i + 1)),
+    { addToState: false },
+  );
+  noteSyncPosition(room, 'b101');
+  await room.addLiveEvents(
+    Array.from({ length: 100 }, (_, i) => message(i + 101)),
+    { addToState: false },
+  );
+  vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
+    () => undefined,
+  );
+  vi.spyOn(ConversationTimelineReadiness.prototype, 'start').mockImplementation(
+    () => undefined,
+  );
+  vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
+    () => undefined,
+  );
+  vi.spyOn(RealPins.prototype, 'attach').mockImplementation(() => undefined);
+  vi.spyOn(ConversationSearchController.prototype, 'attach').mockImplementation(
+    () => undefined,
+  );
+  TestBed.configureTestingModule({
+    providers: [
+      {
+        provide: MatrixClientService,
+        useValue: {
+          clientFor: (accountId: string) =>
+            accountId === ALICE ? (liveClient() ?? client) : null,
+        },
+      },
+      { provide: MediaPipeline, useValue: {} },
+      {
+        provide: CONVERSATION_MESSAGE_ADAPTER,
+        useValue: { flushReceipts: vi.fn() },
+      },
+    ],
+  });
+  const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
+    accountId: ALICE,
+    roomId: room.roomId,
+  });
+  const loaded = () => room.getLiveTimeline().getEvents().length;
+  return { client, room, controller, loaded };
+}
 
 describe('ConversationRuntime', () => {
   it('keys one immutable handle by exactly Account and Room', () => {
@@ -347,74 +419,6 @@ describe('ConversationRuntime', () => {
   });
 
   describe("releasing a retired room's history", () => {
-    async function realFactory(liveClient: () => MatrixClient | null) {
-      const client = createClient({
-        baseUrl: 'https://hs',
-        userId: ALICE,
-        fetchFn: () => Promise.reject(new Error('no network in unit tests')),
-      });
-      const room = new Room('!a:example.org', client, ALICE);
-      client.store.storeRoom(room);
-      const message = (n: number) =>
-        new MatrixEvent({
-          event_id: `$${n}`,
-          room_id: room.roomId,
-          type: 'm.room.message',
-          sender: BOB,
-          origin_server_ts: n,
-          content: { msgtype: 'm.text', body: `${n}` },
-        });
-      room.getLiveTimeline().setPaginationToken('b1', Direction.Backward);
-      await room.addLiveEvents(
-        Array.from({ length: 100 }, (_, i) => message(i + 1)),
-        { addToState: false },
-      );
-      noteSyncPosition(room, 'b101');
-      await room.addLiveEvents(
-        Array.from({ length: 100 }, (_, i) => message(i + 101)),
-        { addToState: false },
-      );
-      vi.spyOn(TimelineService.prototype, 'open').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(
-        ConversationTimelineReadiness.prototype,
-        'start',
-      ).mockImplementation(() => undefined);
-      vi.spyOn(RealThreadsService.prototype, 'attach').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(RealPins.prototype, 'attach').mockImplementation(
-        () => undefined,
-      );
-      vi.spyOn(
-        ConversationSearchController.prototype,
-        'attach',
-      ).mockImplementation(() => undefined);
-      TestBed.configureTestingModule({
-        providers: [
-          {
-            provide: MatrixClientService,
-            useValue: {
-              clientFor: (accountId: string) =>
-                accountId === ALICE ? (liveClient() ?? client) : null,
-            },
-          },
-          { provide: MediaPipeline, useValue: {} },
-          {
-            provide: CONVERSATION_MESSAGE_ADAPTER,
-            useValue: { flushReceipts: vi.fn() },
-          },
-        ],
-      });
-      const controller = TestBed.inject(CONVERSATION_TIMELINE_FACTORY).create({
-        accountId: ALICE,
-        roomId: room.roomId,
-      });
-      const loaded = () => room.getLiveTimeline().getEvents().length;
-      return { client, room, controller, loaded };
-    }
-
     it('trims the room back to its latest events once the handle is released', async () => {
       const { controller, loaded } = await realFactory(() => null);
 
@@ -596,7 +600,10 @@ describe('ConversationRuntime', () => {
     ).mockImplementation(() => undefined);
     TestBed.configureTestingModule({
       providers: [
-        { provide: MatrixClientService, useValue: { clientFor: () => ({}) } },
+        {
+          provide: MatrixClientService,
+          useValue: { clientFor: () => ({}), accountIds: signal([]) },
+        },
         { provide: MediaPipeline, useValue: {} },
         {
           provide: CONVERSATION_MESSAGE_ADAPTER,
@@ -718,6 +725,134 @@ describe('ConversationRuntime', () => {
     expect(controller('!a:example.org').refill).toHaveBeenCalledExactlyOnceWith(
       40,
     );
+  });
+
+  describe("a room's client", () => {
+    it('reports whether the account still has the client it attached to', async () => {
+      let live: MatrixClient | null = null;
+      const { controller } = await realFactory(() => live);
+      const matrix = TestBed.inject(MatrixClientService);
+
+      expect(controller.clientStatus()).toBe('attached');
+
+      live = createClient({ baseUrl: 'https://hs', userId: ALICE });
+      expect(controller.clientStatus()).toBe('replaced');
+
+      vi.spyOn(matrix, 'clientFor').mockReturnValue(null);
+      expect(controller.clientStatus()).toBe('removed');
+      controller.release();
+    });
+
+    it('opens a warm room afresh once its account signed out and in again', () => {
+      const { runtime, factory, controller } = setup();
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      const stale = runtime.focus(x);
+      runtime.focus({ accountId: ALICE, roomId: '!y:example.org' });
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      const fresh = runtime.focus(x);
+
+      expect(fresh).not.toBe(stale);
+      expect(stale.state()).toBe('retired');
+      expect(controller('!x:example.org').released()).toBe(true);
+      expect(controller('!x:example.org', 1).visible()).toBe(true);
+      expect(factory.create).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps a warm room whose account has no client to open it with', () => {
+      const { runtime, factory, controller } = setup();
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      const warm = runtime.focus(x);
+      runtime.focus({ accountId: ALICE, roomId: '!y:example.org' });
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'removed',
+      );
+
+      expect(runtime.focus(x)).toBe(warm);
+      expect(factory.create).toHaveBeenCalledTimes(2);
+    });
+
+    it("reopens the room on screen on its account's new client", () => {
+      const { runtime, controller, accountIds } = setup();
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      const shown = runtime.focus(x);
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      accountIds.set([BOB, ALICE]);
+      TestBed.tick();
+
+      expect(runtime.focused()).not.toBe(shown);
+      expect(runtime.focused()?.key).toEqual(x);
+      expect(controller('!x:example.org').released()).toBe(true);
+      expect(controller('!x:example.org', 1).visible()).toBe(true);
+    });
+
+    it('carries an edit in progress over when the room on screen reopens', () => {
+      const { runtime, controller, accountIds } = setup(2, undefined, [
+        message('$edit'),
+      ]);
+      const x = { accountId: ALICE, roomId: '!x:example.org' };
+      runtime.focus(x).messages.beginEdit('$edit', 'original message');
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      accountIds.set([BOB, ALICE]);
+      TestBed.tick();
+
+      expect(runtime.focused()?.compose.intent()).toEqual({
+        kind: 'edit',
+        eventId: '$edit',
+      });
+      expect(runtime.focused()?.compose.draft()).toBe('original message');
+    });
+
+    it('keeps the room on screen while its account has no client', () => {
+      const { runtime, controller, accountIds } = setup();
+      const shown = runtime.focus({
+        accountId: ALICE,
+        roomId: '!x:example.org',
+      });
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'removed',
+      );
+
+      accountIds.set([BOB]);
+      TestBed.tick();
+
+      expect(runtime.focused()).toBe(shown);
+      expect(controller('!x:example.org').released()).toBe(false);
+    });
+
+    it('retires the warm rooms of an account that signed out or has another client', () => {
+      const { runtime, controller, accountIds } = setup();
+      runtime.focus({ accountId: ALICE, roomId: '!x:example.org' });
+      runtime.focus({ accountId: ALICE, roomId: '!y:example.org' });
+      runtime.focus({ accountId: BOB, roomId: '!z:example.org' });
+      TestBed.tick();
+      vi.mocked(controller('!x:example.org').clientStatus).mockReturnValue(
+        'removed',
+      );
+      vi.mocked(controller('!y:example.org').clientStatus).mockReturnValue(
+        'replaced',
+      );
+
+      accountIds.set([BOB]);
+      TestBed.tick();
+
+      expect(runtime.holds(ALICE, '!x:example.org')).toBe(false);
+      expect(runtime.holds(ALICE, '!y:example.org')).toBe(false);
+      expect(controller('!x:example.org').released()).toBe(true);
+      expect(controller('!y:example.org').released()).toBe(true);
+      expect(runtime.holds(BOB, '!z:example.org')).toBe(true);
+    });
   });
 
   describe('while the window is hidden', () => {

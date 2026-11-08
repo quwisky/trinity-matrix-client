@@ -17,7 +17,10 @@ import {
 } from './account-cleanup-attempt';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
-import { accountSignOutSettlement } from './account-sign-out-outcome';
+import {
+  accountSignOutSettlement,
+  survivingActiveAccount,
+} from './account-sign-out-outcome';
 import type {
   AccountCleanupIssue,
   AccountCleanupScope,
@@ -211,7 +214,7 @@ export class AccountSignOutRetryWorkflow {
     return [
       step(this.lifecycle.forgetPushHandoff(context.accountId)),
       step(
-        context.remainingAccountIds.length === 0
+        this.remainingAccountIds(context).length === 0
           ? this.lifecycle.unregisterNotifications()
           : this.lifecycle.unregisterNotifications(context.accountId),
       ),
@@ -224,7 +227,7 @@ export class AccountSignOutRetryWorkflow {
   ): Observable<unknown> {
     const keep = defer(() => of(providerRevocationUnresolved(attempt)));
     const source =
-      context.remainingAccountIds.length === 0
+      this.remainingAccountIds(context).length === 0
         ? keep.pipe(
             concatMap((kept) =>
               kept
@@ -241,7 +244,10 @@ export class AccountSignOutRetryWorkflow {
                 : this.storage.remove(context.accountId),
             ),
             concatMap(() => {
-              const active = context.remainingAccountIds[0] ?? null;
+              const active = survivingActiveAccount(
+                this.matrix.activeUserId(),
+                this.remainingAccountIds(context),
+              );
               return active ? this.storage.setActive(active) : of(void 0);
             }),
           );
@@ -254,6 +260,14 @@ export class AccountSignOutRetryWorkflow {
         attempt.resolveIssue('secure-storage');
       },
     });
+  }
+
+  /** The accounts left at removal, and any signed in since. */
+  private remainingAccountIds(context: SignOutRetryContext): string[] {
+    const signedIn = this.matrix
+      .accountIds()
+      .filter((id) => id !== context.accountId);
+    return [...new Set([...context.remainingAccountIds, ...signedIn])];
   }
 
   /** Best effort: a refusal leaves residue the startup sweep clears. */
@@ -284,7 +298,10 @@ export class AccountSignOutRetryWorkflow {
     const issues = attempt.settledIssues();
     const outcome = accountSignOutSettlement(
       this.matrix.activeUserId(),
-      context,
+      {
+        accountId: context.accountId,
+        remainingAccountIds: this.remainingAccountIds(context),
+      },
       issues,
     );
     if (issues.length === 0) {

@@ -19,7 +19,10 @@ import {
 } from './account-cleanup-attempt';
 import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import { ACCOUNT_LIFECYCLE_PORT } from './account-lifecycle.port';
-import { accountSignOutSettlement } from './account-sign-out-outcome';
+import {
+  accountSignOutSettlement,
+  survivingActiveAccount,
+} from './account-sign-out-outcome';
 import {
   AccountSignOutRetryWorkflow,
   providerRevocationUnresolved,
@@ -214,7 +217,14 @@ export class AccountLifecycleAdapter {
     accountId: string,
     issues: readonly AccountCleanupIssue[],
   ): Observable<AccountSignOutOutcome> {
-    return this.signOutRetry.retry(accountId, issues);
+    return defer(() => {
+      // Signed in again: the leftovers are stale, and the live account needs a full removal.
+      if (this.matrix.accountIds().includes(accountId)) {
+        this.signOutRetry.clear(accountId);
+        return this.signOutAccount(accountId);
+      }
+      return this.signOutRetry.retry(accountId, issues);
+    });
   }
 
   resetInstallation(): Observable<InstallationResetOutcome> {
@@ -419,10 +429,10 @@ export class AccountLifecycleAdapter {
         ),
         concatMap(() => {
           const currentActive = this.matrix.activeUserId();
-          const active =
-            currentActive && remainingAccountIds.includes(currentActive)
-              ? currentActive
-              : (remainingAccountIds[0] ?? null);
+          const active = survivingActiveAccount(
+            currentActive,
+            remainingAccountIds,
+          );
           if (
             active &&
             active !== currentActive &&

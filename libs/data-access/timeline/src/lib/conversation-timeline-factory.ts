@@ -57,6 +57,8 @@ export interface ConversationResources {
   readonly retainedBytes: number;
 }
 
+export type ConversationClientStatus = 'attached' | 'removed' | 'replaced';
+
 export interface ConversationTimelineController {
   readonly timeline: ConversationTimeline;
   readonly threads: ThreadsService;
@@ -82,6 +84,11 @@ export interface ConversationTimelineController {
   /** Page the room back in after its live timeline was rewound; see {@link TimelineService.refill}. */
   refill(depth: number): Observable<void>;
   resources(): ConversationResources;
+  /**
+   * The account's client now: the one this controller attached to, none, or another one,
+   * as after signing out and in again.
+   */
+  clientStatus(): ConversationClientStatus;
 }
 
 export interface ConversationTimelineFactory {
@@ -136,6 +143,11 @@ class AngularConversationTimelineFactory implements ConversationTimelineFactory 
       pins,
       search,
       refill: (depth) => timeline.refill(depth),
+      clientStatus: () => {
+        const current = this.matrix.clientFor(key.accountId);
+        if (current === client) return 'attached';
+        return current ? 'replaced' : 'removed';
+      },
       setVisible: (visible) => {
         timeline.setVisible(visible);
         // After the timeline: loadOlder() no-ops while hidden, so readiness must resume second.

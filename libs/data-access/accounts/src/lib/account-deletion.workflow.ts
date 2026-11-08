@@ -17,11 +17,14 @@ import {
   catchError,
   defer,
   finalize,
+  first,
   from,
   map,
   of,
+  repeat,
   switchMap,
   Subject,
+  tap,
 } from 'rxjs';
 import { AccountRuntimeService } from './account-runtime.service';
 import type { AccountSignOutOutcome } from './account-runtime.models';
@@ -71,6 +74,8 @@ export type AccountDeletionResult =
     }
   /** The server may or may not have deleted it; asking again can settle it. */
   | { readonly kind: 'unconfirmed'; readonly accountId: string };
+
+const TRANSITION_RETRY_MS = 500;
 
 type ServerAnswer =
   | { readonly kind: 'deleted' }
@@ -154,14 +159,32 @@ export class AccountDeletionWorkflow {
   }
 
   /** Clean up an account whose deletion is already known, such as at its provider. */
-  removeDeleted(accountId: string): Observable<AccountDeletionResult> {
-    return this.accounts.removeDeletedAccount(accountId).pipe(
-      map((cleanup): AccountDeletionResult => {
-        const result = { kind: 'deleted', accountId, cleanup } as const;
-        this.finished.set(accountId, result);
-        return result;
-      }),
-    );
+  removeDeleted(
+    accountId: string,
+    hold: ServerLogoutHold,
+  ): Observable<AccountDeletionResult> {
+    return defer(() => {
+      const client = this.matrix.clientFor(accountId);
+      // A sign-in or removal since then owns the account: removing it now would wipe that.
+      // A client merely stopped, as by a switch or a rolled-back start, does not.
+      const superseded = () => {
+        const now = this.matrix.clientFor(accountId);
+        return !hold.isHeld() || (now !== null && now !== client);
+      };
+      return defer(() =>
+        superseded() ? of(null) : this.accounts.removeDeletedAccount(accountId),
+      ).pipe(
+        // A switch, start or restore refuses the removal without doing anything.
+        repeat({ delay: TRANSITION_RETRY_MS }),
+        first((cleanup) => cleanup?.kind !== 'transition-in-progress'),
+        map((cleanup): AccountDeletionResult => {
+          if (!cleanup) return kept(accountId, 'signed-out');
+          const result = { kind: 'deleted', accountId, cleanup } as const;
+          this.finished.set(accountId, result);
+          return result;
+        }),
+      );
+    });
   }
 
   private holdFor(accountId: string): ServerLogoutHold {
@@ -185,8 +208,12 @@ export class AccountDeletionWorkflow {
     this.unconfirmed.delete(accountId);
     // A hold the account took with it when it left; a later deletion settles itself.
     if (!hold.isHeld()) return;
-    this.removeDeleted(accountId)
-      .pipe(finalize(() => hold.release({ deleted: true })))
+    let deleted = true;
+    this.removeDeleted(accountId, hold)
+      .pipe(
+        tap((result) => (deleted = result.kind === 'deleted')),
+        finalize(() => hold.release({ deleted })),
+      )
       .subscribe((result) => this.late.next(result));
   }
 
@@ -275,10 +302,12 @@ export class AccountDeletionWorkflow {
       pending?.release({ deleted: false });
       return of({ ...answer, accountId });
     }
-    return this.removeDeleted(accountId).pipe(
+    let deleted = true;
+    return this.removeDeleted(accountId, hold).pipe(
+      tap((result) => (deleted = result.kind === 'deleted')),
       finalize(() => {
-        hold.release({ deleted: true });
-        pending?.release({ deleted: true });
+        hold.release({ deleted });
+        pending?.release({ deleted });
       }),
     );
   }

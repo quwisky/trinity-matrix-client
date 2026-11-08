@@ -1,7 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
-import { Observable, ReplaySubject, defer, finalize, map } from 'rxjs';
+import { Observable, ReplaySubject, defer, finalize, map, tap } from 'rxjs';
 import {
   TrnSurfaceService,
   TrnToastService,
@@ -114,11 +114,14 @@ export class AccountDeletionLauncherAdapter implements AccountDeletionLauncher {
    */
   private finishAtProvider(accountId: string): void {
     const hold = this.providerHolds.get(accountId);
-    this.owned(this.workflow.removeDeleted(accountId))
+    if (!hold) return;
+    let deleted = true;
+    this.owned(this.workflow.removeDeleted(accountId, hold))
       .pipe(
+        tap((outcome) => (deleted = outcome.kind === 'deleted')),
         finalize(() => {
           this.providerHolds.delete(accountId);
-          hold?.release({ deleted: true });
+          hold.release({ deleted });
         }),
       )
       .subscribe();

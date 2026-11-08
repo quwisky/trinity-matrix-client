@@ -991,6 +991,162 @@ describe('MatrixAccountRuntimeAdapter', () => {
     }
   });
 
+  it('keeps the live active account when a registry cleanup retry saves the active account', async () => {
+    const { adapter, matrix, storage } = setup('@b:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of(
+        ['@a:hs', '@b:hs', '@c:hs'].map((userId, index) => ({
+          userId,
+          baseUrl: 'https://hs',
+          deviceId: `D${index}`,
+        })),
+      ),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove)
+      .mockReturnValueOnce(throwError(() => new Error('registry locked')))
+      .mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+
+    const first = await firstValueFrom(adapter.signOutAccount('@c:hs'));
+    expect(first).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'account-registry', recovery: 'retry-sign-out' }],
+    });
+
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@c:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(storage.setActive).toHaveBeenLastCalledWith('@b:hs');
+    expect(storage.setActive).not.toHaveBeenCalledWith('@a:hs');
+  });
+
+  it('keeps an account signed in since a sign-out when its registry cleanup is retried', async () => {
+    const { adapter, matrix, storage, active, accountIds } = setup('@a:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of(
+        ['@a:hs', '@c:hs'].map((userId, index) => ({
+          userId,
+          baseUrl: 'https://hs',
+          deviceId: `D${index}`,
+        })),
+      ),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove)
+      .mockReturnValueOnce(throwError(() => new Error('registry locked')))
+      .mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@c:hs'));
+    accountIds.set(['@a:hs', '@d:hs']);
+    active.set('@d:hs');
+
+    await expect(
+      firstValueFrom(
+        adapter.retrySignOutCleanup(
+          '@c:hs',
+          first.kind === 'partial-cleanup' ? first.issues : [],
+        ),
+      ),
+    ).resolves.toMatchObject({ kind: 'ready', activeAccountId: '@d:hs' });
+    expect(storage.setActive).toHaveBeenLastCalledWith('@d:hs');
+  });
+
+  it('removes only the signed-out account on retry when another signed in after the last one left', async () => {
+    const { adapter, matrix, storage, active, accountIds } = setup('@c:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([{ userId: '@c:hs', baseUrl: 'https://hs', deviceId: 'D0' }]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.clear).mockReturnValue(
+      throwError(() => new Error('registry locked')),
+    );
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@c:hs'));
+    expect(first).toMatchObject({
+      kind: 'partial-cleanup',
+      issues: [{ scope: 'account-registry', recovery: 'retry-sign-out' }],
+    });
+    vi.mocked(storage.clear).mockClear();
+    accountIds.set(['@d:hs']);
+    active.set('@d:hs');
+
+    await firstValueFrom(
+      adapter.retrySignOutCleanup(
+        '@c:hs',
+        first.kind === 'partial-cleanup' ? first.issues : [],
+      ),
+    );
+
+    expect(storage.clear).not.toHaveBeenCalled();
+    expect(storage.remove).toHaveBeenLastCalledWith('@c:hs');
+    expect(storage.setActive).toHaveBeenLastCalledWith('@d:hs');
+  });
+
+  it('removes an account signed in again afresh instead of retrying its old leftovers', async () => {
+    const { adapter, matrix, storage, lifecycle, accountIds } = setup('@a:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of(
+        ['@a:hs', '@x:hs'].map((userId, index) => ({
+          userId,
+          baseUrl: 'https://hs',
+          deviceId: `D${index}`,
+        })),
+      ),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove)
+      .mockReturnValueOnce(throwError(() => new Error('registry locked')))
+      .mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    vi.mocked(lifecycle.unregisterNotifications)
+      .mockReturnValueOnce(throwError(() => new Error('push unavailable')))
+      .mockReturnValue(of(void 0));
+    const first = await firstValueFrom(adapter.signOutAccount('@x:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toHaveLength(2);
+    accountIds.set(['@a:hs', '@x:hs']);
+
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
+    ).resolves.toMatchObject({ kind: 'ready', accountId: '@x:hs' });
+    expect(matrix.remove).toHaveBeenCalledTimes(2);
+    expect(storage.remove).toHaveBeenCalledTimes(2);
+    expect(storage.remove).toHaveBeenLastCalledWith('@x:hs');
+
+    // The old leftovers are gone with it: nothing stale is retried later.
+    accountIds.set(['@a:hs']);
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@x:hs', issues)),
+    ).resolves.toMatchObject({
+      kind: 'failed',
+      failure: 'account-unavailable',
+    });
+    expect(storage.remove).toHaveBeenCalledTimes(2);
+  });
+
   it('retries only settled safe Account-removal residue', async () => {
     const { adapter, matrix, storage, lifecycle } = setup('@outgoing:hs');
     const client = { logout: vi.fn(() => Promise.resolve()) };
