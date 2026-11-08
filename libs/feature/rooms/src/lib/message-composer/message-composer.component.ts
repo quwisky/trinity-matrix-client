@@ -1079,14 +1079,8 @@ export class MessageComposerComponent {
     const pad = (char: string | undefined) =>
       shortcode && SHORTCODE_JOINER.test(char ?? '') ? ' ' : '';
     const emoji = pad(value[start - 1]) + text + pad(value[end]);
-    this.text.set(value.slice(0, start) + emoji + value.slice(end));
+    this.field.replaceRange(start, end, emoji);
     this.pickerOpen.set(false);
-    queueMicrotask(() => {
-      const pos = start + emoji.length;
-      el?.focus();
-      el?.setSelectionRange(pos, pos);
-      this.field.autoGrow();
-    });
   }
 
   onArrowUp(event: Event): void {
