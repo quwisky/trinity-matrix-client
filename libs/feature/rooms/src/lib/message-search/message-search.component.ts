@@ -146,6 +146,8 @@ export class MessageSearchComponent {
     effect((onCleanup) => {
       const count = this.resultCount();
       if (!count) {
+        // Cleared at once, so the strip never keeps reading an old count.
+        untracked(() => this.countAnnouncement.set(''));
         return;
       }
       const timer = setTimeout(

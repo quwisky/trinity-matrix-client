@@ -673,6 +673,28 @@ describe('MessageSearchComponent', () => {
       }
     });
 
+    it('clears the count announcement when the query is cleared', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      try {
+        const { fixture, container, c } = await build(
+          loaded({ hits: [hit({ eventId: '$1' })] }),
+        );
+        const live = () =>
+          container.querySelector('[data-testid="search-count-status"]');
+        setQuery('hello', c);
+        fixture.detectChanges();
+        vi.advanceTimersByTime(1_000);
+        fixture.detectChanges();
+        expect(live()?.textContent?.trim()).toBe('1 result');
+
+        setQuery('', c);
+        fixture.detectChanges();
+        expect(live()?.textContent?.trim()).toBe('');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
     it('keeps the count announcement outside the body the skeleton replaces', async () => {
       const { container } = await build(loaded());
       const live = container.querySelector(

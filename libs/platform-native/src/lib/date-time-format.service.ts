@@ -196,17 +196,17 @@ export class DateTimeFormatService {
         style: 'short',
       },
     );
-    const seconds = Math.round((ts - now) / 1000);
+    // A future time is clock skew between devices: read it as now.
+    const seconds = Math.min(0, Math.round((ts - now) / 1000));
     const past = Math.abs(seconds);
-    // Rounded as a magnitude: Math.round(-59.5) is -59.
-    const sign = seconds < 0 ? -1 : 1;
     if (past < 45) return format.format(0, 'second');
     // Round first, then check the unit still fits: 59.5 minutes is "1 hr.", not "60 min.".
     for (const [unit, size, next] of RELATIVE_UNITS) {
+      // Rounded as a magnitude: Math.round(-59.5) is -59.
       const count = Math.round(past / size);
-      if (count * size < next) return format.format(sign * count, unit);
+      if (count * size < next) return format.format(-count, unit);
     }
-    return format.format(sign * Math.round(past / YEAR_SECONDS), 'year');
+    return format.format(-Math.round(past / YEAR_SECONDS), 'year');
   }
 
   /** The short weekday, as "Wed", in the reader's language. */
