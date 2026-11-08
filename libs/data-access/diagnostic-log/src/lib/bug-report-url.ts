@@ -11,8 +11,6 @@ export interface BugReportDraft {
   /** The user's "What went wrong?" text, possibly empty. */
   readonly description: string;
   readonly facts: DiagnosticReportFacts;
-  /** The saved log's name, or null when the user left logs out. */
-  readonly logFileName: string | null;
 }
 
 /**
@@ -38,14 +36,6 @@ export function buildBugReportUrl(
     if (draft.facts.platform) params.set('os', draft.facts.platform);
     if (draft.facts.homeservers.length > 0) {
       params.set('homeserver', draft.facts.homeservers.join('; '));
-    }
-    if (draft.logFileName) {
-      // The template renders this field as a shell code block, so it names the file and
-      // points at a field where an attachment renders.
-      params.set(
-        'logs',
-        `Diagnostic log: ${draft.logFileName}. Attach the saved file in "Other observations" below; this box is shown as code.`,
-      );
     }
     return `${base}?${params.toString()}`;
   };

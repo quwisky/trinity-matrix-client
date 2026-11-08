@@ -6,9 +6,8 @@ import {
   PreferenceStoreService,
   type PreferenceCommandOutcome,
 } from '@trinity/runtime/preferences';
-import { defer, filter, from, map, of, switchMap, type Observable } from 'rxjs';
+import { defer, from, map, switchMap, type Observable } from 'rxjs';
 import { buildLabel } from './build-label';
-import type { DiagnosticBundle } from './diagnostic-bundle';
 import { formatLogArgs, truncateMessage } from './capture/format-log-args';
 import {
   installConsoleCapture,
@@ -33,14 +32,12 @@ import {
   saveKeepLogSetting,
 } from './keep-diagnostic-log.preference';
 import { describePlatform, readPlatformFacts } from './platform-description';
-import { readAccounts, readKnownNames } from './report-facts';
-import { loadReportExport } from './report/load-report-export';
 import {
-  prepareDiagnosticReport,
-  type DiagnosticReportProgress,
-} from './report/prepare-report';
+  diagnosticReportFacts,
+  readAccounts,
+  type DiagnosticReportFacts,
+} from './report-facts';
 import { scrubMessage } from './scrub-secrets';
-import type { DiagnosticSnapshot } from './store/diagnostic-log-store';
 
 /** Whether the log survives a reload: not yet known, on disk, or in memory only. */
 export type DiagnosticAvailability = 'pending' | 'persistent' | 'memory-only';
@@ -75,19 +72,12 @@ export class DiagnosticLogNotDeletedError extends Error {
 
 const noop = (): void => undefined;
 
-/** What an export reads while "Keep a diagnostic log" is off: nothing, and no store opened. */
-const LOG_OFF_SNAPSHOT: DiagnosticSnapshot = {
-  entries: [],
-  dropped: false,
-  storage: 'memory',
-};
-
 /**
  * The on-device diagnostic log. {@link start} runs from `provideDiagnosticLog()` before any
  * Matrix client exists; from then on Trinity's console warnings and errors, uncaught errors,
  * matrix-js-sdk lines (through the SDK sink) and lifecycle markers are scrubbed of secrets
- * and batched into the store, while "Keep a diagnostic log" is on. Consumers never read the
- * store: they export a redacted bundle.
+ * and batched into the store, while "Keep a diagnostic log" is on. Nothing reads the store
+ * back out: the log never leaves the device.
  */
 @Injectable({ providedIn: 'root' })
 export class DiagnosticLogService {
@@ -116,11 +106,6 @@ export class DiagnosticLogService {
   });
   /** Entries recorded before the setting is known; null once it is. */
   private early: DiagnosticEntry[] | null = [];
-  private resolveSettled: () => void = noop;
-  /** Resolves once "Keep a diagnostic log" is known; `start()` begins reading it. */
-  private readonly settled = new Promise<void>((resolve) => {
-    this.resolveSettled = resolve;
-  });
   private started = false;
   private recording = false;
   private consoleCaptureSuspended = 0;
@@ -239,39 +224,18 @@ export class DiagnosticLogService {
   }
 
   /**
-   * Prepare a bug report: the issue's facts as soon as the accounts are read, then the
-   * redacted file from everything stored plus the last unflushed seconds. The file waits
-   * until the setting is known (`start()` must have run, as `provideDiagnosticLog()`
-   * ensures); with the log off it carries no entries and never opens the store. Cold; the
-   * account source failing leaves the accounts out rather than failing the report.
+   * The bug report's facts: the build, this platform and each signed-in homeserver's
+   * software. Cold; the account source failing leaves the homeservers out rather than failing.
    */
-  prepareReport(): Observable<DiagnosticReportProgress> {
-    return prepareDiagnosticReport({
-      build: this.build,
-      platform: () => describePlatform(readPlatformFacts()),
-      accounts: readAccounts(this.accountSource),
-      knownNames: () => readKnownNames(this.accountSource),
-      snapshot: defer(() => from(this.settled)).pipe(
-        switchMap(() =>
-          this._keepLog()
-            ? from(this.recorder.snapshot())
-            : of(LOG_OFF_SNAPSHOT),
+  reportFacts(): Observable<DiagnosticReportFacts> {
+    return defer(() => {
+      const platform = describePlatform(readPlatformFacts());
+      return readAccounts(this.accountSource).pipe(
+        map((accounts) =>
+          diagnosticReportFacts(this.build, platform, accounts),
         ),
-      ),
-      // The export code loads on first use, keeping it out of the initial bundle.
-      bundle: (input) =>
-        from(loadReportExport()).pipe(
-          switchMap((module) => module.buildDiagnosticBundleInSlices(input)),
-        ),
+      );
     });
-  }
-
-  /** The redacted file alone, as {@link prepareReport} builds it. Cold. */
-  export(): Observable<DiagnosticBundle> {
-    return this.prepareReport().pipe(
-      filter((step) => step.kind === 'bundle'),
-      map((step) => step.bundle),
-    );
   }
 
   /**
@@ -324,7 +288,6 @@ export class DiagnosticLogService {
       this.early = null;
       this._keepLog.set(false);
       this._settingKnown.set(true);
-      this.resolveSettled();
       return from(this.recorder.discard());
     });
   }
@@ -378,7 +341,6 @@ export class DiagnosticLogService {
     this.early = null;
     this._keepLog.set(keep);
     this._settingKnown.set(true);
-    this.resolveSettled();
     if (!keep) {
       return this.recorder.discard();
     }
@@ -397,7 +359,6 @@ export class DiagnosticLogService {
     this.early = null;
     this._keepLog.set(false);
     this._settingKnown.set(true);
-    this.resolveSettled();
   }
 
   /** The user's choice from Advanced, which also settles a setting still being read. */

@@ -20,7 +20,6 @@ function draft(overrides: Partial<BugReportDraft> = {}): BugReportDraft {
   return {
     description: 'Crash on send & "reply"',
     facts: FACTS,
-    logFileName: 'trinity-2026-10-11.log',
     ...overrides,
   };
 }
@@ -36,14 +35,7 @@ describe('buildBugReportUrl', () => {
       version: 'Trinity v0.4.0 · 261efbe9',
       os: 'Web, Firefox 141 on Linux',
       homeserver: 'Synapse 1.140.0',
-      logs: 'Diagnostic log: trinity-2026-10-11.log. Attach the saved file in "Other observations" below; this box is shown as code.',
     });
-  });
-
-  it('leaves out the logs field when no log file is attached', () => {
-    expect(
-      fields(buildBugReportUrl(REPOSITORY, draft({ logFileName: null }))),
-    ).not.toHaveProperty('logs');
   });
 
   it('accepts a fork, a trailing slash or .git, and refuses anything but GitHub', () => {

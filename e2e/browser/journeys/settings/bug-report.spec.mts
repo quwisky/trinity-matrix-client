@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { expect, test, testResourceId, type Page } from '../../../fixtures.mts';
 import {
   homeserverSession,
@@ -19,15 +18,14 @@ import {
   sendComposerLines,
 } from '../../../support/message-composer.mts';
 
-// Covers Report a bug: with Detailed logging turned on for the session before the user signs
-// in, matrix-js-sdk debug output is captured into IndexedDB and survives a reload; the stored entries never hold a credential; the preview and the saved
-// trinity-<date>.log are the same redacted text, and neither contains the app's access token,
-// its device ID, a room ID, the user ID, the server name, a room name or topic, the user's
-// display name, an email address or a message body received, sent, encrypted or decrypted.
-// Turning "Keep a diagnostic log" off deletes the log and the report then says logging is
-// off; after a reload it can be turned on again and stores a fresh log. Report a bug also
-// opens over System status and, signed out, from the sign-in page. The homeserver tests
-// self-skip without one.
+// Covers Report a bug and the on-device diagnostic log: with Detailed logging turned on for the
+// session before the user signs in, matrix-js-sdk debug output is captured into IndexedDB and
+// survives a reload, and the stored entries never hold a credential. Report a bug offers no log:
+// it opens a pre-filled GitHub issue whose URL holds no credential, device ID, room ID, user ID,
+// server name, room name or message body. Turning "Keep a diagnostic log" off deletes the log
+// and Report a bug still works; after a reload the log can be turned on again and stores a fresh
+// one. Report a bug also opens over System status and, signed out, from the sign-in page. The
+// homeserver tests self-skip without one.
 const session = homeserverSession();
 const DB_NAME = 'trinity-diagnostic-log';
 const KEEP_LOG_KEY = 'trinity.diagnostics.keep-log';
@@ -108,19 +106,10 @@ async function reloadIntoRoom(page: Page): Promise<void> {
   });
 }
 
-/** The file name the app will use: the browser's local date. */
-function expectedLogName(page: Page): Promise<string> {
-  return page.evaluate(() => {
-    const now = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `trinity-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.log`;
-  });
-}
-
 test.describe('Report a bug', () => {
   test.skip(!session.available, 'needs a homeserver');
 
-  test('saves a redacted diagnostic log, never stores a credential, and can be turned off', async ({
+  test('opens a pre-filled issue without the log, never stores a credential, and the log can be turned off', async ({
     page,
     request,
   }) => {
@@ -134,24 +123,15 @@ test.describe('Report a bug', () => {
     const body = `diagnostic-secret-body-${runId}`;
     const sealedRoomName = `Bug report sealed ${runId}`;
     const sealedBody = `diagnostic-sealed-body-${runId}`;
-    const roomTopic = `Quarterly launch plans ${runId}`;
-    const displayName = `Wren Quillfeather ${runId}`;
-    const email = `wren.${runId}@mail.example.net`;
 
     await registerUser(request, user, pass);
     await registerUser(request, helper, helperPass);
     const rest = await passwordLogin(request, hs, user, pass);
     const headers = { Authorization: `Bearer ${rest.accessToken}` };
-    // Set before the rooms exist, so every membership event carries the display name.
-    const named = await request.put(
-      `${hs}/_matrix/client/v3/profile/${encodeURIComponent(rest.userId)}/displayname`,
-      { headers, data: { displayname: displayName } },
-    );
-    expect(named.ok()).toBe(true);
     const { room_id: roomId } = (await (
       await request.post(`${hs}/_matrix/client/v3/createRoom`, {
         headers,
-        data: { name: roomName, topic: roomTopic, preset: 'private_chat' },
+        data: { name: roomName, preset: 'private_chat' },
       })
     ).json()) as { room_id: string };
     const sent = await request.put(
@@ -238,7 +218,7 @@ test.describe('Report a bug', () => {
       page.locator('.msg__text', { hasText: sealedBody }),
     ).toBeVisible({ timeout: 20_000 });
 
-    // The hard rule holds in the store itself, not only in the export. A marker logged after
+    // The hard rule holds in the store itself. A marker logged after
     // the last action waits out the recorder's batch, so the store is read only once real
     // sign-in, sync, send, encrypt and decrypt have all reached IndexedDB.
     expect(appTokens.size).toBeGreaterThan(0);
@@ -251,12 +231,6 @@ test.describe('Report a bug', () => {
       { label: 'password', value: pass },
       { label: 'helper password', value: helperPass },
     ];
-    // Names reach the log whenever the app or the SDK prints them; the export must replace
-    // them. Logged through the captured console, so the store holds them as any log would.
-    await page.evaluate(
-      (line) => console.warn(line),
-      `[bug-report-e2e] in ${roomName} (${roomTopic}), also ${sealedRoomName}, as ${displayName} <${email}>`,
-    );
     await storeMarker(page, `[bug-report-e2e] first session done ${runId}`);
     const firstSession = await storedMessages(page);
     // FetchHttpApi logs requests only at debug: these prove sign-in and the first sync were
@@ -321,12 +295,6 @@ test.describe('Report a bug', () => {
       { label: 'encrypted message body', value: sealedBody },
       { label: 'room name', value: roomName },
       { label: 'encrypted room name', value: sealedRoomName },
-      { label: 'room topic', value: roomTopic },
-      { label: 'display name', value: displayName },
-      { label: 'email address', value: email },
-      // Fragments too: a name must be replaced whole, never only partly.
-      { label: 'display name fragment', value: 'Quillfeather' },
-      { label: 'room topic fragment', value: 'Quarterly launch' },
     ];
     for (const { label, value } of secrets) {
       expect(value.length, `${label} is known`).toBeGreaterThan(0);
@@ -342,43 +310,9 @@ test.describe('Report a bug', () => {
     const dialog = page.getByRole('dialog', { name: 'Report a bug' });
     await expect(dialog).toBeVisible();
     await dialog.getByLabel('What went wrong?').fill('Messages arrive late');
-    await dialog.getByTestId('report-bug-preview-toggle').click();
-    const preview = dialog.getByRole('region', {
-      name: 'Diagnostic log preview',
-    });
-    await expect(preview).toBeVisible();
-    // Both sessions' markers are in the export. Read as a count so a failure never prints
-    // the log.
-    await expect
-      .poll(
-        async () =>
-          ((await preview.textContent()) ?? '').match(/app started: /g)
-            ?.length ?? 0,
-      )
-      .toBeGreaterThanOrEqual(2);
-    const previewText = (await preview.textContent()) ?? '';
-
-    for (const expected of [
-      '# Accounts signed in: 2',
-      '@me:server1',
-      'FetchHttpApi',
-      'email1@example.invalid',
-      'Person 1',
-      'Topic 1',
-    ]) {
-      expect(previewText.includes(expected), `preview shows ${expected}`).toBe(
-        true,
-      );
-    }
-    expectNoSecret(previewText, secrets, 'preview');
-
-    const downloadPromise = page.waitForEvent('download');
-    await dialog.getByTestId('report-bug-save').click();
-    const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe(await expectedLogName(page));
-    const saved = readFileSync(await download.path(), 'utf8');
-    expect(saved === previewText, 'saved file is the preview text').toBe(true);
-    expectNoSecret(saved, secrets, 'saved file');
+    // Nothing in the dialog offers, previews or saves the log.
+    await expect(dialog.getByText(/diagnostic log/i)).toHaveCount(0);
+    await expect(dialog.getByRole('switch')).toHaveCount(0);
 
     const popupPromise = page.context().waitForEvent('page');
     await dialog.getByTestId('report-bug-github').click();
@@ -387,9 +321,7 @@ test.describe('Report a bug', () => {
     expect(issue.pathname).toBe('/quwisky/trinity-matrix-client/issues/new');
     expect(issue.searchParams.get('template')).toBe('bug_report.yml');
     expect(issue.searchParams.get('summary')).toBe('Messages arrive late');
-    expect(issue.searchParams.get('logs')).toContain(
-      download.suggestedFilename(),
-    );
+    expect(issue.searchParams.has('logs')).toBe(false);
     expectNoSecret(popup.url(), secrets, 'issue URL');
     expectNoSecret(
       popup.url(),
@@ -425,7 +357,7 @@ test.describe('Report a bug', () => {
       .toBe(false);
 
     // Keep a diagnostic log off: the log is deleted, nothing more is recorded, the choice is
-    // kept for the installation, and the report says logging is off.
+    // kept for the installation, and Report a bug still opens GitHub.
     await page.getByRole('switch', { name: 'Keep a diagnostic log' }).click();
     await expect.poll(async () => (await storedMessages(page)).length).toBe(0);
     await expect.poll(() => preferenceKeys(page)).toContain(KEEP_LOG_KEY);
@@ -448,9 +380,6 @@ test.describe('Report a bug', () => {
       )
       .toBe('quiet');
     await reportButton.click();
-    await expect(dialog.getByTestId('report-bug-logging-off')).toBeVisible();
-    await expect(dialog.getByTestId('report-bug-include-logs')).toHaveCount(0);
-    await expect(dialog.getByTestId('report-bug-save')).toHaveCount(0);
     await expect(dialog.getByTestId('report-bug-github')).toBeEnabled();
     await dialog.getByRole('button', { name: 'Close Report a bug' }).click();
     await reloadIntoRoom(page);
@@ -506,10 +435,6 @@ test.describe('Report a bug while signed out', () => {
 
     const dialog = page.getByRole('dialog', { name: 'Report a bug' });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
-    await dialog.getByTestId('report-bug-preview-toggle').click();
-    await expect(
-      dialog.getByRole('region', { name: 'Diagnostic log preview' }),
-    ).toContainText('# Accounts signed in: 0');
     await expect(dialog.getByTestId('report-bug-github')).toBeEnabled();
     await dialog.getByRole('button', { name: 'Close Report a bug' }).click();
     await expect(dialog).toBeHidden();

@@ -1,10 +1,10 @@
 <trn-settings-group
   title="Diagnostics"
-  description="Report a problem to the developers, with a log from this device if you choose."
+  description="Report a problem to the developers, and choose whether this device keeps a log."
 >
   <trn-settings-row
     label="Keep a diagnostic log"
-    description="Trinity keeps up to two days of Trinity and Matrix logs on this device so you can attach them to a bug report. Tokens, keys and messages are never stored. Turning this off deletes the log."
+    description="Trinity keeps up to two days of Trinity and Matrix logs on this device. They never leave it. Tokens, keys and messages are never stored. Turning this off deletes the log."
     for="advanced-keep-diagnostic-log-switch"
     [attr.aria-busy]="pending() ? 'true' : null"
     data-testid="advanced-keep-diagnostic-log"
@@ -71,12 +71,6 @@
     >
       This device isn’t letting Trinity store logs, so they cover this session
       only.
-    </p>
-  }
-  @if (keepLog()) {
-    <p class="m-0 py-3 text-13 text-muted-foreground">
-      Logs never leave this device unless you save them. A saved log replaces
-      Matrix IDs and server names with placeholders.
     </p>
   }
 </trn-settings-group>

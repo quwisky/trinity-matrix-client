@@ -14,15 +14,10 @@ import {
 import { HomeserverInfoService } from '@trinity/data-access/homeserver';
 import {
   MATRIX_SDK_LOG_SINK,
-  MatrixClientService,
-  accountKnownNames,
   type MatrixSdkLogSink,
 } from '@trinity/data-access/matrix-client';
 import { SessionStorageService } from '@trinity/platform-native';
-import {
-  diagnosticAccounts,
-  diagnosticKnownNames,
-} from './diagnostic-accounts';
+import { diagnosticAccounts } from './diagnostic-accounts';
 import { matrixSdkCapture } from './diagnostic-sdk-capture';
 
 export interface TrinityDiagnosticOptions {
@@ -55,11 +50,7 @@ export function trinityDiagnosticProviders(
       useFactory: (): DiagnosticAccountSource => {
         const sessions = inject(SessionStorageService);
         const homeservers = inject(HomeserverInfoService);
-        const clients = inject(MatrixClientService);
-        return {
-          accounts: () => diagnosticAccounts(sessions, homeservers),
-          knownNames: () => diagnosticKnownNames(clients, accountKnownNames),
-        };
+        return { accounts: () => diagnosticAccounts(sessions, homeservers) };
       },
     },
     {

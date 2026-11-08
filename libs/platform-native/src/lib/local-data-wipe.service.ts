@@ -112,7 +112,7 @@ export class LocalDataWipeService {
     // Deleting the web wrapping keys alone already makes any surviving encrypted store
     // unreadable.
     names.add(WRAPPING_KEY_DB_NAME);
-    // The on-device diagnostic log keeps the removed accounts' identifiers until export.
+    // The on-device diagnostic log keeps the removed accounts' identifiers.
     names.add(DIAGNOSTIC_LOG_DB_NAME);
     // The mention index keeps which messages mentioned each removed account.
     names.add(MENTION_INDEX_DB_NAME);

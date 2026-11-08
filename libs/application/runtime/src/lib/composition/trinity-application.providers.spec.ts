@@ -36,7 +36,6 @@ import {
   MemoryLogStore,
 } from '@trinity/data-access/diagnostic-log';
 import { TrnDialogRef } from '@trinity/components/overlay';
-import { HostFileExportService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import {
   MATRIX_SDK_LOG_SINK,
@@ -65,31 +64,25 @@ import { provideTrinityApplication } from './trinity-application.providers';
 
 /**
  * Stands in for Report a bug (feature-settings, which Application Runtime may not import):
- * it asks the root for exactly what the dialog injects and shows the export's account header.
+ * it asks the root for exactly what the dialog injects and shows the report's facts.
  */
 @Component({
   selector: 'trn-report-bug-probe',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: '<pre data-testid="report-bug-probe">{{ header() }}</pre>',
+  template: '<pre data-testid="report-bug-probe">{{ version() }}</pre>',
 })
 class ReportBugDependencyProbeComponent {
   private readonly log = inject(DiagnosticLogService);
 
-  protected readonly header = signal('');
+  protected readonly version = signal('');
 
   constructor() {
-    inject(HostFileExportService);
     inject(ExternalBrowserService);
     inject(DIAGNOSTIC_REPORT_CONFIG);
     inject(TrnDialogRef);
-    this.log.export().subscribe((bundle) =>
-      this.header.set(
-        bundle.text
-          .split('\n')
-          .filter((line) => line.startsWith('# Accounts'))
-          .join('\n'),
-      ),
-    );
+    this.log
+      .reportFacts()
+      .subscribe((facts) => this.version.set(facts.version));
   }
 }
 
@@ -196,6 +189,7 @@ describe('Trinity application provider composition', () => {
   });
 
   it('starts the diagnostic log at startup and wires the SDK sink into it', async () => {
+    const store = new MemoryLogStore();
     TestBed.configureTestingModule({
       providers: [
         provideTrinityApplication({
@@ -217,14 +211,11 @@ describe('Trinity application provider composition', () => {
         }),
         {
           provide: DIAGNOSTIC_LOG_STORE_FACTORY,
-          useValue: () => Promise.resolve(new MemoryLogStore()),
+          useValue: () => Promise.resolve(store),
         },
         {
           provide: DIAGNOSTIC_ACCOUNT_SOURCE,
-          useValue: {
-            accounts: () => of([]),
-            knownNames: () => [],
-          },
+          useValue: { accounts: () => of([]) },
         },
         {
           provide: PREFERENCE_STORAGE_ADAPTER,
@@ -244,14 +235,18 @@ describe('Trinity application provider composition', () => {
         args: ['FetchHttpApi: --> GET probe'],
       });
 
-      const bundle = await firstValueFrom(
-        TestBed.inject(DiagnosticLogService).export(),
-      );
+      // Hiding the page writes the buffered lines to the store at once.
+      window.dispatchEvent(new Event('pagehide'));
 
-      expect(bundle.text).toContain('app started: Trinity v1.2.3 · abc1234');
-      expect(bundle.text).toContain(
-        'DEBUG sdk/matrix FetchHttpApi: --> GET probe',
-      );
+      await vi.waitFor(async () => {
+        const { entries } = await store.read();
+        expect(entries.map((entry) => entry.message)).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^app started: Trinity v1\.2\.3 · abc1234/),
+            'FetchHttpApi: --> GET probe',
+          ]),
+        );
+      });
       expect(matrixSdkLogLevel()).toBe('warn');
     } finally {
       TestBed.resetTestingModule();
@@ -537,7 +532,7 @@ describe('Trinity application provider composition', () => {
         expect(
           document.querySelector('[data-testid="report-bug-probe"]')
             ?.textContent,
-        ).toBe('# Accounts signed in: 0');
+        ).toBe('Trinity v1.2.3 · abc1234');
       });
     } finally {
       TestBed.resetTestingModule();

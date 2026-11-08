@@ -1,5 +1,5 @@
 // The on-device diagnostic log. Consumers go through DiagnosticLogService and nothing reads
-// the store; capture, scrubbing, redaction and the IndexedDB store stay internal.
+// the store; capture, scrubbing and the IndexedDB store stay internal.
 export {
   DiagnosticLogNotDeletedError,
   DiagnosticLogService,
@@ -9,15 +9,10 @@ export {
 } from './lib/diagnostic-log.service';
 export * from './lib/diagnostic-log.tokens';
 export { provideDiagnosticLog } from './lib/provide-diagnostic-log';
-export type { DiagnosticBundle } from './lib/diagnostic-bundle';
-export type { DiagnosticReportProgress } from './lib/report/prepare-report';
-export {
-  diagnosticLogFileName,
-  type DiagnosticAccount,
-  type DiagnosticNameGroup,
-  type DiagnosticReportFacts,
+export type {
+  DiagnosticAccount,
+  DiagnosticReportFacts,
 } from './lib/report-facts';
-// Eager (about 1 KB), so GitHub works with facts alone even when the export chunk fails.
 export {
   GITHUB_ISSUE_URL_LIMIT,
   buildBugReportUrl,

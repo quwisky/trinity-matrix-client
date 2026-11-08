@@ -10,24 +10,10 @@ import {
 import { buildLabel } from './build-label';
 import type { DiagnosticAccountSource } from './diagnostic-log.tokens';
 
-/** One signed-in account as the export sees it; never a token. */
+/** One signed-in account as the bug report sees it: only what its server runs. */
 export interface DiagnosticAccount {
-  readonly userId: string;
-  readonly deviceId: string | null;
-  readonly homeserverUrl: string;
   /** What the server says it runs, or null when it did not answer. */
   readonly software: { readonly name: string; readonly version: string } | null;
-}
-
-/**
- * Names one source knows, usually one room's: its name and topic and its members' display
- * names, read lazily so a large room is read a few names at a time. The export reads them
- * once, while it builds the file, and keeps only those that occur in the log. Never stored.
- */
-export interface DiagnosticNameGroup {
-  readonly roomNames: readonly string[];
-  readonly roomTopics: readonly string[];
-  readonly displayNames: Iterable<string>;
 }
 
 /** What the GitHub form is pre-filled with. Never carries a server name. */
@@ -64,11 +50,6 @@ export function softwareLabel(account: DiagnosticAccount): string | null {
     : null;
 }
 
-/** `trinity-<YYYY-MM-DD>.log` on the user's calendar, not UTC's. */
-export function diagnosticLogFileName(now: Date): string {
-  return `trinity-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.log`;
-}
-
 /**
  * The signed-in accounts, active first, read once: none when the app has no source, or when
  * it fails or completes empty. Never errors. Cold.
@@ -83,20 +64,4 @@ export function readAccounts(
     defaultIfEmpty([] as readonly DiagnosticAccount[]),
     catchError(() => of<readonly DiagnosticAccount[]>([])),
   );
-}
-
-/**
- * The names to replace in the file, read from the app's source only when iterated: none
- * when there is no source. The redactor keeps what it read if the source fails part-way.
- */
-export function readKnownNames(
-  source: DiagnosticAccountSource | null,
-): Iterable<DiagnosticNameGroup> {
-  return {
-    [Symbol.iterator]: () => (source?.knownNames() ?? [])[Symbol.iterator](),
-  };
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
 }

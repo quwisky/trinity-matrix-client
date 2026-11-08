@@ -55,8 +55,8 @@ export class TitleBarComponent {
   protected readonly visible =
     this.bridge?.capabilities.titleBar?.mode === 'row';
   /**
-   * Report a bug, while "Keep a diagnostic log" is known to be on: a log is being kept, so
-   * there is something worth sending. Hidden while the setting is still being read.
+   * Report a bug, while "Keep a diagnostic log" is known to be on. Hidden while the setting
+   * is still being read.
    */
   protected readonly canReportBug = computed(
     () =>
