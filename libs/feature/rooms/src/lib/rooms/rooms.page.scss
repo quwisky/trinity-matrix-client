@@ -314,11 +314,12 @@
       grid-template-rows: auto auto auto auto minmax(0, 1fr);
     }
 
-    // 400px rather than the timeline's 320px floor: this column also holds the room header,
-    // whose avatar, four actions, search field and menu need about 376px before they overlap.
+    // 480px rather than the timeline's 320px floor: this column also holds the room header,
+    // whose avatar, four actions, search field and menu need about 376px, plus ~120px so the
+    // room name stays readable.
     .main:has(> .chat-body > [data-right-panel-surface]) {
       grid-template-columns:
-        minmax(min(400px, 100%), 1fr) auto
+        minmax(min(480px, 100%), 1fr) auto
         minmax(0, var(--shell-right-panel-w, 360px));
     }
 

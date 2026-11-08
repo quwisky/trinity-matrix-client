@@ -3,12 +3,13 @@ import {
   Component,
   DestroyRef,
   ElementRef,
-  afterNextRender,
+  afterRenderEffect,
   computed,
   inject,
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 
 /**
@@ -47,7 +48,7 @@ const COARSE_STEP_PX = 64;
     'aria-orientation': 'vertical',
     '[attr.aria-label]': 'label()',
     '[attr.aria-valuenow]': 'announcedValue()',
-    '[attr.aria-valuemin]': 'min()',
+    '[attr.aria-valuemin]': 'announcedMin()',
     '[attr.aria-valuemax]': 'announcedMax()',
     '[class.pane-handle--dragging]': 'dragging',
     class: 'pane-handle',
@@ -86,6 +87,9 @@ export class PaneHandleComponent {
    */
   readonly invert = input(false);
 
+  /** Changes when the caller swaps the pane for another element, so the handle watches the new one. */
+  readonly paneKey = input<unknown>(null);
+
   /** The committed width, once the gesture ends or a key is pressed. */
   readonly committed = output<number>();
 
@@ -94,9 +98,15 @@ export class PaneHandleComponent {
   protected readonly announcedValue = computed(
     () => this.renderedValue() ?? this.value(),
   );
+  // A squeezed pane can render below `min`; the range widens to keep min <= now <= max.
+  protected readonly announcedMin = computed(() =>
+    Math.min(this.min(), this.renderedValue() ?? this.min()),
+  );
   protected readonly announcedMax = computed(() => {
     const rendered = this.renderedValue();
-    return rendered !== null && this.value() > rendered ? rendered : this.max();
+    const max =
+      rendered !== null && this.value() > rendered ? rendered : this.max();
+    return Math.max(max, this.announcedMin());
   });
 
   private startX = 0;
@@ -112,19 +122,9 @@ export class PaneHandleComponent {
 
   constructor() {
     const destroyRef = inject(DestroyRef);
-    afterNextRender(() => {
-      this.syncRenderedValue();
-      const pane = this.renderedPane();
-      if (pane && typeof ResizeObserver !== 'undefined') {
-        this.paneObserver = new ResizeObserver(() => {
-          // A pointer drag stays outside Angular's render loop; ARIA is reconciled once the
-          // gesture lands.
-          if (!this.dragging) {
-            this.syncRenderedValue();
-          }
-        });
-        this.paneObserver.observe(pane);
-      }
+    afterRenderEffect(() => {
+      this.paneKey();
+      untracked(() => this.observePane());
     });
 
     // A gesture can outlive the handle: the right-hand one sits in the slot's `@if` and Escape
@@ -257,6 +257,23 @@ export class PaneHandleComponent {
 
   private clamp(px: number): number {
     return Math.min(this.max(), Math.max(this.min(), Math.round(px)));
+  }
+
+  private observePane(): void {
+    this.paneObserver?.disconnect();
+    this.paneObserver = null;
+    this.syncRenderedValue();
+    const pane = this.renderedPane();
+    if (pane && typeof ResizeObserver !== 'undefined') {
+      this.paneObserver = new ResizeObserver(() => {
+        // A pointer drag stays outside Angular's render loop; ARIA is reconciled once the
+        // gesture lands.
+        if (!this.dragging) {
+          this.syncRenderedValue();
+        }
+      });
+      this.paneObserver.observe(pane);
+    }
   }
 
   private renderedPane(): HTMLElement | null {

@@ -23,6 +23,8 @@ const session = homeserverSession();
 const PANEL_WIDTH_KEY = 'trinity.shell.right-panel-width';
 const SIDEBAR_WIDTH_KEY = 'trinity.shell.sidebar-width';
 const TIMELINE_FLOOR = 320;
+/** Enough of the room name to recognise it beside the header's actions. */
+const ROOM_TITLE_FLOOR = 120;
 
 async function seedRoom(
   request: Parameters<typeof apiLogin>[0],
@@ -71,6 +73,7 @@ async function geometry(page: Page) {
       panel: rect('[data-right-panel-surface]'),
       main: rect('.main'),
       timeline: rect('.chat-body > trn-message-list'),
+      title: rect('[data-testid="room-title"]'),
       close: rect('[data-right-panel-surface] trn-side-panel-header button'),
     };
   });
@@ -78,10 +81,11 @@ async function geometry(page: Page) {
 
 /** The panel stays inside the conversation column, its close button included. */
 async function expectNotClipped(page: Page): Promise<void> {
-  const { panel, main, timeline, close } = await geometry(page);
+  const { panel, main, timeline, close, title } = await geometry(page);
   expect(panel!.right).toBeLessThanOrEqual(main!.right);
   expect(close!.right).toBeLessThanOrEqual(main!.right);
   expect(timeline!.width).toBeGreaterThanOrEqual(TIMELINE_FLOOR);
+  expect(title!.width).toBeGreaterThanOrEqual(ROOM_TITLE_FLOOR);
   await expect(page.getByTestId('close-members')).toBeInViewport();
   // The room header keeps its actions apart: none of its buttons overlaps another.
   const overlaps = await page
@@ -197,7 +201,39 @@ test.describe('Side panel width', () => {
     ).toBe(min + 80);
   });
 
+  test('follows the panel it sizes across a switch and a window resize', async ({
+    page,
+    request,
+  }) => {
+    const { reader, roomName } = await seedRoom(
+      request,
+      testResourceId('switch'),
+    );
+    await seedPreference(page, PANEL_WIDTH_KEY, '720');
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await login(page, reader);
+    await openMembers(page, roomName);
+
+    await page.getByTestId('open-pinned').click();
+    await expect(page.getByTestId('pinned-panel')).toBeVisible();
+    // Narrow the window: the new panel squeezes, and the divider has to see it.
+    await page.setViewportSize({ width: 1300, height: 900 });
+    const panel = page.locator('.chat-panel');
+    const handle = page.getByRole('separator', { name: 'Panel width' });
+    await expect
+      .poll(async () => Math.round((await panel.boundingBox())!.width))
+      .toBeLessThan(720);
+    const width = Math.round((await panel.boundingBox())!.width);
+    await expect(handle).toHaveAttribute('aria-valuenow', String(width));
+    expect(
+      Number(await handle.getAttribute('aria-valuemax')),
+    ).toBeGreaterThanOrEqual(
+      Number(await handle.getAttribute('aria-valuemin')),
+    );
+  });
+
   for (const viewport of [
+    { width: 1100, height: 800, layout: 'the row under the room header' },
     { width: 1180, height: 800, layout: 'the row under the room header' },
     { width: 1280, height: 800, layout: 'the full-height grid' },
     { width: 1440, height: 900, layout: 'the full-height grid' },
@@ -216,13 +252,19 @@ test.describe('Side panel width', () => {
       await openMembers(page, roomName);
       await expectNotClipped(page);
 
-      // The divider says how wide the panel really is, not the stored 720.
+      // The divider says how wide the panel really is, not the stored 720, inside a range
+      // that stays valid when the panel is squeezed below its minimum.
       const { panel } = await geometry(page);
       const handle = page.getByRole('separator', { name: 'Panel width' });
       await expect(handle).toHaveAttribute(
         'aria-valuenow',
         String(Math.min(720, panel!.width)),
       );
+      const min = Number(await handle.getAttribute('aria-valuemin'));
+      expect(min).toBeLessThanOrEqual(panel!.width);
+      expect(
+        Number(await handle.getAttribute('aria-valuemax')),
+      ).toBeGreaterThanOrEqual(min);
 
       // With the widest room list too.
       await seedPreference(page, SIDEBAR_WIDTH_KEY, '560');

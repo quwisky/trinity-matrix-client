@@ -246,8 +246,10 @@ describe('modern room shell layout contracts', () => {
     ).toHaveLength(2);
     expect(roomsCss.match(/--shell-right-panel-w/gu)).toHaveLength(2);
     expect(roomsCss).toMatch(
-      /minmax\(min\(400px, 100%\), 1fr\) auto\s+minmax\(0, var\(--shell-right-panel-w, 360px\)\)/u,
+      /minmax\(min\(480px, 100%\), 1fr\) auto\s+minmax\(0, var\(--shell-right-panel-w, 360px\)\)/u,
     );
+    // The handle follows the panel element across a switch.
+    expect(roomsHtml).toContain('[paneKey]="panel.kind"');
     // The roster resizes like every other panel.
     expect(roomsHtml).not.toContain("panel.kind !== 'members'");
   });

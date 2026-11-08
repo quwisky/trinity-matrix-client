@@ -296,6 +296,7 @@
                 cssVariable="--shell-right-panel-w"
                 paneSelector="[data-right-panel-surface]"
                 label="Panel width"
+                [paneKey]="panel.kind"
                 [invert]="true"
                 [value]="layout.rightPanelWidth()"
                 [min]="layout.rightPanelBounds.min"
