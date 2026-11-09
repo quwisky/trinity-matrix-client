@@ -58,6 +58,8 @@ export class TrustDevicesService {
   private loadGen = 0;
   /** Increments per key-cache read, so a slow read cannot overwrite a newer one. */
   private shareGen = 0;
+  /** The newest key-cache read, which owns {@link canShareSecrets}. */
+  private shareRead: Promise<boolean> = Promise.resolve(false);
 
   private readonly onTrustChanged = (): void => {
     if (this.cryptoPort.isAvailable()) {
@@ -172,12 +174,26 @@ export class TrustDevicesService {
 
   /** Re-read {@link canShareSecrets} now, after something changed this device's keys. */
   refreshCanShareSecrets(): Observable<boolean> {
-    return defer(() =>
-      from(this.readCanShareSecrets(this.cryptoPort.active().client)),
-    );
+    return defer(async () => {
+      let read = this.readCanShareSecrets(this.cryptoPort.active().client);
+      // A trust change during the read (the import itself fires one) starts a newer read;
+      // wait for the newest, whose answer is the one the signal holds.
+      for (;;) {
+        await read;
+        if (read === this.shareRead) {
+          return this._canShareSecrets();
+        }
+        read = this.shareRead;
+      }
+    });
   }
 
-  private async readCanShareSecrets(
+  private readCanShareSecrets(client: TrustMatrixClient): Promise<boolean> {
+    this.shareRead = this.readCanShareSecretsNow(client);
+    return this.shareRead;
+  }
+
+  private async readCanShareSecretsNow(
     client: TrustMatrixClient,
   ): Promise<boolean> {
     const gen = ++this.shareGen;
