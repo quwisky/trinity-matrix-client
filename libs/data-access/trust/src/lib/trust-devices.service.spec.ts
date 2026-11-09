@@ -441,6 +441,27 @@ describe('TrustDevicesService', () => {
       expect(svc.canShareSecrets()).toBe(true);
     });
 
+    it('answers a refresh with the newest read when a trust change overtakes it', async () => {
+      const keys = withKeys(ALL);
+      const { svc, client } = setup(keys);
+      await firstValueFrom(svc.list());
+      svc.connect();
+      let answerRefresh!: (value: unknown) => void;
+      keys.crypto.getCrossSigningStatus.mockReturnValueOnce(
+        new Promise((resolve) => (answerRefresh = resolve)) as never,
+      );
+      const refreshed = firstValueFrom(svc.refreshCanShareSecrets());
+      onKeysChanged(client)(); // the import's own trust change: all three cached
+      answerRefresh({
+        publicKeysOnDevice: true,
+        privateKeysInSecretStorage: false,
+        privateKeysCachedLocally: { ...ALL, masterKey: false },
+      });
+
+      await expect(refreshed).resolves.toBe(true);
+      expect(svc.canShareSecrets()).toBe(true);
+    });
+
     it('resets on an account switch', async () => {
       const { svc, matrix } = setup(withKeys(ALL));
       activeUserId.set('@a:hs');

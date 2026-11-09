@@ -26,6 +26,7 @@ import { TrnTooltip } from '@trinity/components/generic-content';
 import { runWithBusy } from '@trinity/util/ui';
 import {
   TrustDevicesService,
+  TrustService,
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
@@ -36,6 +37,7 @@ import {
   TrnSettingsRowComponent,
 } from '@trinity/components/overlay';
 import { LinkDeviceComponent } from './link-device/link-device.component';
+import { LinkDeviceKeysComponent } from './link-device-keys/link-device-keys.component';
 
 /**
  * Device-management section of the Settings page: lists the user's sessions with
@@ -55,6 +57,7 @@ import { LinkDeviceComponent } from './link-device/link-device.component';
     TrnButton,
     TrnTooltip,
     LinkDeviceComponent,
+    LinkDeviceKeysComponent,
   ],
 })
 export class DevicesSectionComponent {
@@ -64,6 +67,7 @@ export class DevicesSectionComponent {
     WorkspaceApplicationSurfaceService,
   );
   private readonly qrSignIn = inject(QrSignInService);
+  private readonly trust = inject(TrustService);
   private readonly activeAccountId = inject(MatrixClientService).activeUserId;
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
@@ -78,6 +82,23 @@ export class DevicesSectionComponent {
   readonly devices = this.devicesSvc.devices;
   /** Only a device holding all three cross-signing keys can link another one. */
   readonly canLinkDevice = this.devicesSvc.canShareSecrets;
+  /**
+   * Verified, but missing a key a new device needs (emoji verification hands over no master
+   * key). Linking is still offered: the recovery key fetches the missing keys first.
+   */
+  readonly linkNeedsKeys = computed(
+    () => !this.canLinkDevice() && this.trust.thisDeviceVerified() === true,
+  );
+  /**
+   * The account may have secret storage, so a recovery key can fetch the keys. Only the
+   * statuses that mean "no secret storage" say no; an unknown status still asks for the key.
+   */
+  readonly hasRecovery = computed(() => {
+    const status = this.trust.status();
+    return status !== 'needs-setup' && status !== 'needs-verification';
+  });
+  /** The account the recovery-key step was opened for, while it is open. */
+  readonly keysStep = signal<string | null>(null);
   /** The open link flow's account, captured when "Link a new device" was clicked. */
   readonly linker = signal<QrDeviceLinker | null>(null);
   readonly loading = signal(false);
@@ -112,15 +133,64 @@ export class DevicesSectionComponent {
         untracked(() => this.closeLink());
       }
     });
+    // A recovery key belongs to the account the step was opened for.
+    effect(() => {
+      const account = this.keysStep();
+      if (account !== null && account !== this.activeAccountId()) {
+        untracked(() => this.closeKeysStep());
+      }
+    });
   }
 
   openLink(): void {
+    // Not `disabled` while loading: the button keeps focus during the key refresh.
+    if (this.loading()) {
+      return;
+    }
+    this.error.set(null);
+    if (!this.canLinkDevice()) {
+      this.keysStep.set(this.activeAccountId());
+      return;
+    }
     this.linker.set(this.qrSignIn.linkerForActiveAccount());
+  }
+
+  /** The recovery key fetched the keys; open the scanner once this device can share them. */
+  keysUnlocked(): void {
+    const account = this.keysStep();
+    this.keysStep.set(null);
+    this.focusLinkButton();
+    runWithBusy(this.devicesSvc.refreshCanShareSecrets(), {
+      busy: this.loading,
+      error: this.error,
+      destroyRef: this.destroyRef,
+    }).subscribe((canShare) => {
+      if (account !== this.activeAccountId()) {
+        return;
+      }
+      if (canShare && this.canLinkDevice()) {
+        this.linker.set(this.qrSignIn.linkerForActiveAccount());
+        return;
+      }
+      this.error.set(
+        'This device still doesn’t have all the keys a new device needs. Link the new device from the device where you set up encryption.',
+      );
+      this.closeLink();
+    });
+  }
+
+  closeKeysStep(): void {
+    this.keysStep.set(null);
+    this.closeLink();
   }
 
   /** Close the link flow; focus returns to its button, or to the section heading without one. */
   closeLink(): void {
     this.linker.set(null);
+    this.focusLinkButton();
+  }
+
+  private focusLinkButton(): void {
     afterNextRender(
       () => {
         const target =

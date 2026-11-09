@@ -18,6 +18,7 @@ import {
 } from '@trinity/platform-native';
 import { fireEvent, render, screen, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
+import { TrustService } from '@trinity/data-access/trust';
 import { Observable, of } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
@@ -61,6 +62,10 @@ describe('DevicesSectionComponent', () => {
   const disconnect = vi.fn();
   let devices: ReturnType<typeof signal<DeviceInfo[]>>;
   let canShareSecrets: ReturnType<typeof signal<boolean>>;
+  let thisDeviceVerified: ReturnType<typeof signal<boolean | null>>;
+  let trustStatus: ReturnType<typeof signal<string>>;
+  let recoverWithKey: Mock;
+  let refreshCanShareSecrets: Mock;
   let alertConfirm: Mock;
   let alertPrompt: Mock;
   let open: Mock;
@@ -88,6 +93,13 @@ describe('DevicesSectionComponent', () => {
     disconnect.mockClear();
     devices = signal<DeviceInfo[]>([CURRENT, OTHER]);
     canShareSecrets = signal(true);
+    thisDeviceVerified = signal<boolean | null>(true);
+    trustStatus = signal('ready');
+    recoverWithKey = vi.fn(() => of(undefined));
+    refreshCanShareSecrets = vi.fn(() => {
+      canShareSecrets.set(true);
+      return of(true);
+    });
     alertConfirm = vi.fn(() => of(true));
     alertPrompt = vi.fn(() => of('Tablet'));
     open = vi.fn((request: WorkspaceApplicationSurfaceRequest) =>
@@ -105,10 +117,16 @@ describe('DevicesSectionComponent', () => {
         devices,
         canShareSecrets,
         list: () => of(devices()),
+        refreshCanShareSecrets,
         rename,
         delete: del,
         connect,
         disconnect,
+      }),
+      MockProvider(TrustService, {
+        thisDeviceVerified: thisDeviceVerified.asReadonly(),
+        status: trustStatus.asReadonly() as TrustService['status'],
+        recoverWithKey,
       }),
       MockProvider(TrnAlertService, {
         confirm$: alertConfirm,
@@ -232,19 +250,116 @@ describe('DevicesSectionComponent', () => {
 
     expect(container.querySelector('[data-testid=verify-devices]')).toBeNull();
   });
-  it('offers to link a new device only when this device can share its keys', async () => {
+  it('offers to link a new device only when this device is verified', async () => {
     canShareSecrets.set(false);
+    thisDeviceVerified.set(false);
     const { fixture } = await renderSection();
     expect(
       screen.queryByRole('button', { name: 'Link a new device' }),
     ).toBeNull();
 
-    canShareSecrets.set(true);
+    thisDeviceVerified.set(true);
     fixture.detectChanges();
 
     expect(
       screen.getByRole('button', { name: 'Link a new device' }),
     ).toBeTruthy();
+  });
+
+  describe('when this device lacks a key a new device needs (emoji-verified)', () => {
+    beforeEach(() => canShareSecrets.set(false));
+
+    it('asks for the recovery key once, then opens the scanner', async () => {
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+      expect(
+        fixture.debugElement.query(By.directive(LinkDeviceComponent)),
+      ).toBeNull();
+
+      const input = screen.getByLabelText('Recovery key');
+      fireEvent.input(input, { target: { value: ' EsTx 1234 ' } });
+      fixture.detectChanges();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      fixture.detectChanges();
+
+      expect(recoverWithKey).toHaveBeenCalledWith('EsTx 1234');
+      expect(refreshCanShareSecrets).toHaveBeenCalledOnce();
+      await waitFor(() =>
+        expect(
+          fixture.debugElement.query(By.directive(LinkDeviceComponent)),
+        ).not.toBeNull(),
+      );
+      expect(linkerForActiveAccount).toHaveBeenCalledOnce();
+    });
+
+    it('says so when the recovery key still leaves a key missing', async () => {
+      refreshCanShareSecrets.mockReturnValue(of(false));
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+      fireEvent.input(screen.getByLabelText('Recovery key'), {
+        target: { value: 'EsTx 1234' },
+      });
+      fixture.detectChanges();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      fixture.detectChanges();
+
+      expect(
+        await screen.findByText(/still doesn’t have all the keys/),
+      ).toBeTruthy();
+      expect(linkerForActiveAccount).not.toHaveBeenCalled();
+    });
+
+    it('closes the recovery-key step when the account switches', async () => {
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+      expect(screen.getByLabelText('Recovery key')).toBeTruthy();
+
+      activeUserId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(screen.queryByLabelText('Recovery key')).toBeNull();
+      expect(recoverWithKey).not.toHaveBeenCalled();
+    });
+
+    it('still asks for the recovery key while the trust status is unknown', async () => {
+      trustStatus.set('unknown');
+      await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+
+      expect(await screen.findByLabelText('Recovery key')).toBeTruthy();
+    });
+
+    it('explains where to link from when the account has no recovery key', async () => {
+      trustStatus.set('needs-setup');
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+
+      expect(
+        screen.getByRole('heading', {
+          name: 'Link the new device from another device',
+        }),
+      ).toBeTruthy();
+      expect(screen.queryByLabelText('Recovery key')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fixture.detectChanges();
+      expect(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      ).toBeTruthy();
+    });
   });
 
   /** Opens the link panel and starts a flow in it; returns the flow's teardown flag. */
@@ -288,7 +403,9 @@ describe('DevicesSectionComponent', () => {
     });
     await startLink(fixture);
 
+    // Unverified too, so no "Link a new device" button is left to take focus.
     canShareSecrets.set(false);
+    thisDeviceVerified.set(false);
     fixture.detectChanges();
 
     expect(

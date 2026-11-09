@@ -66,7 +66,13 @@
 
   @if (linker(); as linker) {
     <trn-link-device [linker]="linker" (closed)="closeLink()" />
-  } @else if (canLinkDevice()) {
+  } @else if (keysStep() !== null) {
+    <trn-link-device-keys
+      [hasRecovery]="hasRecovery()"
+      (unlocked)="keysUnlocked()"
+      (cancelled)="closeKeysStep()"
+    />
+  } @else if (canLinkDevice() || linkNeedsKeys()) {
     <div class="py-3">
       <button
         #linkButton
@@ -74,6 +80,7 @@
         presentation="ghost"
         size="sm"
         data-testid="link-device"
+        [attr.aria-disabled]="loading() || null"
         (click)="openLink()"
       >
         <trn-icon name="monitor-smartphone" size="md" />
