@@ -315,6 +315,31 @@ describe('DevicesSectionComponent', () => {
       expect(linkerForActiveAccount).not.toHaveBeenCalled();
     });
 
+    it('closes the recovery-key step when the account switches', async () => {
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+      expect(screen.getByLabelText('Recovery key')).toBeTruthy();
+
+      activeUserId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(screen.queryByLabelText('Recovery key')).toBeNull();
+      expect(recoverWithKey).not.toHaveBeenCalled();
+    });
+
+    it('still asks for the recovery key while the trust status is unknown', async () => {
+      trustStatus.set('unknown');
+      await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+
+      expect(await screen.findByLabelText('Recovery key')).toBeTruthy();
+    });
+
     it('explains where to link from when the account has no recovery key', async () => {
       trustStatus.set('needs-setup');
       const { fixture } = await renderSection();

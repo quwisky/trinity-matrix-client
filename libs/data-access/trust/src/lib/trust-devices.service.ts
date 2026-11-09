@@ -194,9 +194,10 @@ export class TrustDevicesService {
     } catch {
       // An unreadable key cache offers nothing to share.
     }
-    if (gen === this.shareGen) {
-      this._canShareSecrets.set(canShare);
+    if (gen !== this.shareGen) {
+      return false; // superseded: a newer read or an account switch owns the answer
     }
+    this._canShareSecrets.set(canShare);
     return canShare;
   }
 

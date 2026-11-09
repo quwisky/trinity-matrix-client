@@ -89,13 +89,16 @@ export class DevicesSectionComponent {
   readonly linkNeedsKeys = computed(
     () => !this.canLinkDevice() && this.trust.thisDeviceVerified() === true,
   );
-  /** The account has secret storage, so a recovery key can fetch the keys. */
+  /**
+   * The account may have secret storage, so a recovery key can fetch the keys. Only the
+   * statuses that mean "no secret storage" say no; an unknown status still asks for the key.
+   */
   readonly hasRecovery = computed(() => {
     const status = this.trust.status();
-    return status === 'ready' || status === 'needs-recovery';
+    return status !== 'needs-setup' && status !== 'needs-verification';
   });
-  /** The recovery-key step before linking is open. */
-  readonly keysStep = signal(false);
+  /** The account the recovery-key step was opened for, while it is open. */
+  readonly keysStep = signal<string | null>(null);
   /** The open link flow's account, captured when "Link a new device" was clicked. */
   readonly linker = signal<QrDeviceLinker | null>(null);
   readonly loading = signal(false);
@@ -130,12 +133,19 @@ export class DevicesSectionComponent {
         untracked(() => this.closeLink());
       }
     });
+    // A recovery key belongs to the account the step was opened for.
+    effect(() => {
+      const account = this.keysStep();
+      if (account !== null && account !== this.activeAccountId()) {
+        untracked(() => this.closeKeysStep());
+      }
+    });
   }
 
   openLink(): void {
     this.error.set(null);
     if (!this.canLinkDevice()) {
-      this.keysStep.set(true);
+      this.keysStep.set(this.activeAccountId());
       return;
     }
     this.linker.set(this.qrSignIn.linkerForActiveAccount());
@@ -143,14 +153,19 @@ export class DevicesSectionComponent {
 
   /** The recovery key fetched the keys; open the scanner once this device can share them. */
   keysUnlocked(): void {
-    this.keysStep.set(false);
+    const account = this.keysStep();
+    this.keysStep.set(null);
+    this.focusLinkButton();
     runWithBusy(this.devicesSvc.refreshCanShareSecrets(), {
       busy: this.loading,
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe((canShare) => {
-      if (canShare) {
-        this.openLink();
+      if (account !== this.activeAccountId()) {
+        return;
+      }
+      if (canShare && this.canLinkDevice()) {
+        this.linker.set(this.qrSignIn.linkerForActiveAccount());
         return;
       }
       this.error.set(
@@ -161,13 +176,17 @@ export class DevicesSectionComponent {
   }
 
   closeKeysStep(): void {
-    this.keysStep.set(false);
+    this.keysStep.set(null);
     this.closeLink();
   }
 
   /** Close the link flow; focus returns to its button, or to the section heading without one. */
   closeLink(): void {
     this.linker.set(null);
+    this.focusLinkButton();
+  }
+
+  private focusLinkButton(): void {
     afterNextRender(
       () => {
         const target =

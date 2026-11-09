@@ -66,7 +66,7 @@
 
   @if (linker(); as linker) {
     <trn-link-device [linker]="linker" (closed)="closeLink()" />
-  } @else if (keysStep()) {
+  } @else if (keysStep() !== null) {
     <trn-link-device-keys
       [hasRecovery]="hasRecovery()"
       (unlocked)="keysUnlocked()"

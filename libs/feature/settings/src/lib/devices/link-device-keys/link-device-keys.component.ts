@@ -41,7 +41,7 @@ import { runWithBusy } from '@trinity/util/ui';
     TrnFieldLockComponent,
     TrnSpinnerComponent,
   ],
-  host: { class: 'block py-3', '(keydown.escape)': 'cancelled.emit()' },
+  host: { class: 'block py-3', '(keydown.escape)': 'cancel()' },
 })
 export class LinkDeviceKeysComponent {
   private readonly trust = inject(TrustService);
@@ -69,6 +69,13 @@ export class LinkDeviceKeysComponent {
 
   constructor() {
     afterNextRender(() => this.heading().nativeElement.focus());
+  }
+
+  /** Escape matches the Cancel button, which a recovery in flight disables. */
+  cancel(): void {
+    if (!this.busy()) {
+      this.cancelled.emit();
+    }
   }
 
   submit(): void {
