@@ -1,0 +1,38 @@
+<div id="app-lock-erase-text" class="grid w-full gap-4 text-start">
+  @if (lead(); as lead) {
+    <p
+      class="m-0 text-[length:var(--trinity-text-base)] leading-normal text-[var(--trinity-text-muted)]"
+    >
+      {{ lead }}
+    </p>
+  }
+  <ul
+    class="m-0 grid list-none gap-3 rounded-xl border border-[color-mix(in_oklch,var(--trinity-danger)_25%,var(--trinity-border-subtle))] bg-[color-mix(in_oklch,var(--trinity-danger)_6%,var(--trinity-surface-app))] p-4 text-sm leading-normal"
+  >
+    <li class="flex gap-2.5">
+      <trn-icon class="mt-px shrink-0" name="user" size="md" variant="danger" />
+      <span>Every account on this device is signed out.</span>
+    </li>
+    <li class="flex gap-2.5">
+      <trn-icon class="mt-px shrink-0" name="lock" size="md" variant="danger" />
+      <span
+        >Encrypted messages are lost unless you have your recovery key or
+        another signed-in device.</span
+      >
+    </li>
+    @if (turnsOffHello()) {
+      <li class="flex gap-2.5">
+        <trn-icon
+          class="mt-px shrink-0"
+          name="key-round"
+          size="md"
+          variant="danger"
+        />
+        <span
+          >Windows Hello unlock is turned off too. You can turn it on again in
+          Settings › Security › App lock.</span
+        >
+      </li>
+    }
+  </ul>
+</div>

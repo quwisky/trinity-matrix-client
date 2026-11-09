@@ -15,6 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormField, FormRoot } from '@angular/forms/signals';
 import { TitleBarState } from '@trinity/application/workspace';
+import { TrnIconComponent } from '@trinity/components/foundations';
 import {
   TrnButton,
   TrnFieldImports,
@@ -28,6 +29,11 @@ import { EMPTY, type Subscription, take } from 'rxjs';
 import { afterPaint } from '../../composition/after-paint';
 import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
+import {
+  AppLockCoverHeaderComponent,
+  isUnlockView,
+} from './app-lock-cover-header.component';
+import { AppLockEraseConsequencesComponent } from './app-lock-erase-consequences.component';
 import { AppLockCoverState, type CoverView } from './app-lock-cover.state';
 
 export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
@@ -58,6 +64,9 @@ export { unlockLabel, useMethodLabel } from './app-lock-cover.copy';
     TrnFieldImports,
     TrnInput,
     TrnPasswordInputComponent,
+    TrnIconComponent,
+    AppLockCoverHeaderComponent,
+    AppLockEraseConsequencesComponent,
   ],
   providers: [AppLockCoverState],
   host: { 'aria-live': 'off' },
@@ -79,6 +88,26 @@ export class AppLockCoverComponent {
   protected readonly describedBy = computed(() =>
     coverDescription(this.state.view()),
   );
+  protected readonly unlockView = computed(() =>
+    isUnlockView(this.state.view()),
+  );
+  protected readonly brandTint =
+    'radial-gradient(ellipse 70% 60% at 50% 40%, color-mix(in oklch, var(--trinity-accent) 10%, var(--trinity-surface-app)) 0%, var(--trinity-surface-app) 70%)';
+  protected readonly messageBoxClass =
+    'rounded-lg bg-[var(--trinity-surface-raised)] px-3 py-2.5 md:bg-[var(--trinity-surface-pane)]';
+  /**
+   * The erase moves behind "Other options…" wherever another way back in is shown; where it
+   * is the only one it stays a button in view.
+   */
+  protected readonly otherOptions = computed(() => {
+    const view = this.state.view();
+    return (
+      view === 'pin-unreadable' ||
+      view === 'forgot' ||
+      ((view === 'no-pin' || view === 'no-pin-store') &&
+        this.state.backText() !== null)
+    );
+  });
   /** A frameless desktop window keeps a drag strip where its title row was. */
   protected readonly titleRow = inject(TitleBarState).active;
 
