@@ -48,11 +48,11 @@ type RecoveryTone = 'accent' | 'warning' | 'danger';
 
 const TONE_CLASS: Readonly<Record<RecoveryTone, string>> = {
   accent:
-    'bg-[color-mix(in_oklch,var(--trinity-accent)_14%,var(--trinity-surface-app))] text-[var(--trinity-accent)]',
+    'bg-[color-mix(in_oklab,var(--trinity-accent)_22%,var(--trinity-surface-app))] text-[var(--trinity-accent)]',
   warning:
-    'bg-[color-mix(in_oklch,var(--trinity-warning)_14%,var(--trinity-surface-app))] text-[var(--trinity-warning)]',
+    'bg-[color-mix(in_oklab,var(--trinity-warning)_22%,var(--trinity-surface-app))] text-[var(--trinity-warning)]',
   danger:
-    'bg-[color-mix(in_oklch,var(--trinity-danger)_14%,var(--trinity-surface-app))] text-[var(--trinity-danger)]',
+    'bg-[color-mix(in_oklab,var(--trinity-danger)_22%,var(--trinity-surface-app))] text-[var(--trinity-danger)]',
 };
 
 /** A recovery view's mark; the unlock views show the app's own and never read theirs. */
