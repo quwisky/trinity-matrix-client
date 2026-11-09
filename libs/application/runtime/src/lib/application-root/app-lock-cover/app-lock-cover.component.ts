@@ -92,7 +92,7 @@ export class AppLockCoverComponent {
     isUnlockView(this.state.view()),
   );
   protected readonly brandTint =
-    'radial-gradient(ellipse 70% 60% at 50% 40%, color-mix(in oklch, var(--trinity-accent) 10%, var(--trinity-surface-app)) 0%, var(--trinity-surface-app) 70%)';
+    'radial-gradient(ellipse 70% 60% at 50% 40%, color-mix(in oklab, var(--trinity-accent) 10%, var(--trinity-surface-app)) 0%, var(--trinity-surface-app) 70%)';
   protected readonly messageBoxClass =
     'rounded-lg bg-[var(--trinity-surface-raised)] px-3 py-2.5 md:bg-[var(--trinity-surface-pane)]';
   /**
