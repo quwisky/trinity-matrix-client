@@ -80,7 +80,7 @@
         presentation="ghost"
         size="sm"
         data-testid="link-device"
-        [disabled]="loading()"
+        [attr.aria-disabled]="loading() || null"
         (click)="openLink()"
       >
         <trn-icon name="monitor-smartphone" size="md" />

@@ -143,6 +143,10 @@ export class DevicesSectionComponent {
   }
 
   openLink(): void {
+    // Not `disabled` while loading: the button keeps focus during the key refresh.
+    if (this.loading()) {
+      return;
+    }
     this.error.set(null);
     if (!this.canLinkDevice()) {
       this.keysStep.set(this.activeAccountId());
