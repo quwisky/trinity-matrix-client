@@ -1,6 +1,7 @@
 import {
   enter,
   renderComposer,
+  setMobilePlatform,
   stubObjectUrls,
 } from './message-composer.spec-harness';
 import { ApplicationRef } from '@angular/core';
@@ -118,6 +119,37 @@ describe('MessageComposerComponent — sendBlocked', () => {
       );
       expect(item, id).not.toBeNull();
       expect(item?.disabled, id).toBe(true);
+    }
+  });
+
+  it('leaves Enter to the textarea on a phone, so only the send button sends', async () => {
+    setMobilePlatform(true);
+    try {
+      const { fixture } = await renderComposer({});
+      const cmp = fixture.componentInstance;
+      let sends = 0;
+      cmp.submitText.subscribe(() => sends++);
+      const input = fixture.nativeElement.querySelector(
+        '[data-testid="composer-input"]',
+      ) as HTMLTextAreaElement;
+      input.value = 'hello';
+      input.dispatchEvent(new Event('input'));
+      const event = new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(sends).toBe(0);
+
+      setMobilePlatform(false);
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+      );
+      expect(sends).toBe(1);
+    } finally {
+      setMobilePlatform(false);
     }
   });
 });

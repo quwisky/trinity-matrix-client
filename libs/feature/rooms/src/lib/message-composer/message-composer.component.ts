@@ -89,7 +89,8 @@ export interface ComposerSubmit {
 let nextPickerId = 0;
 
 /**
- * Composer: Enter sends, Shift+Enter inserts a newline. In edit mode it is prefilled with the
+ * Composer: Enter sends, Shift+Enter inserts a newline; on a phone or tablet Enter inserts a
+ * newline and only the send button sends. In edit mode it is prefilled with the
  * message draft and Esc cancels. The emoji button opens one panel for GIFs, stickers and emoji;
  * an emoji inserts at the cursor.
  *
@@ -676,8 +677,9 @@ export class MessageComposerComponent {
       keyEvent.preventDefault();
       return;
     }
-    if (keyEvent.shiftKey) {
-      return; // Shift+Enter → newline (default textarea behavior)
+    // Shift+Enter, or any Enter on a phone keyboard → newline (default textarea behavior).
+    if (keyEvent.shiftKey || isMobileOs()) {
+      return;
     }
     keyEvent.preventDefault();
     this.submit();

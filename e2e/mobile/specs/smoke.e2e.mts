@@ -28,14 +28,14 @@ describe('mobile smoke', () => {
     const body = `hello from ${user}`;
     if (browser.isIOS) {
       // XCUITest `keys` types natively, and an atom click gives WKWebView no keyboard
-      // session: type through atoms and send with the button (Enter is a keydown listener).
+      // session: type through atoms.
       await composer.addValue(body);
-      await $('[data-testid="composer-send"]').click();
     } else {
       await composer.click();
       await browser.keys(body);
-      await browser.keys('Enter');
     }
+    // Enter inserts a newline on phones, so the send button sends.
+    await $('[data-testid="composer-send"]').click();
     // The row itself (class token `msg`): `contains(@class,"msg")` also matches its
     // msg__* descendants, which strict `$` rejects.
     const row = $(
