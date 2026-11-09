@@ -170,7 +170,16 @@ export class TrustDevicesService {
     return result;
   }
 
-  private async readCanShareSecrets(client: TrustMatrixClient): Promise<void> {
+  /** Re-read {@link canShareSecrets} now, after something changed this device's keys. */
+  refreshCanShareSecrets(): Observable<boolean> {
+    return defer(() =>
+      from(this.readCanShareSecrets(this.cryptoPort.active().client)),
+    );
+  }
+
+  private async readCanShareSecrets(
+    client: TrustMatrixClient,
+  ): Promise<boolean> {
     const gen = ++this.shareGen;
     let canShare = false;
     try {
@@ -188,6 +197,7 @@ export class TrustDevicesService {
     if (gen === this.shareGen) {
       this._canShareSecrets.set(canShare);
     }
+    return canShare;
   }
 
   /**

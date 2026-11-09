@@ -1,0 +1,86 @@
+@if (hasRecovery()) {
+  <h3
+    #heading
+    tabindex="-1"
+    class="m-0 mb-2 text-base font-semibold text-[var(--trinity-text-bright)]"
+  >
+    Enter your recovery key to link a device
+  </h3>
+  <p id="link-device-keys-lead" class="m-0 text-13 text-muted-foreground">
+    This device was verified by another device, so it doesn’t have all the keys
+    a new device needs. Enter your recovery key once to fetch them.
+  </p>
+  <form class="mt-3 grid gap-3" (submit)="$event.preventDefault(); submit()">
+    <trn-field>
+      <trn-field-label controlId="link-device-recovery-key">
+        Recovery key
+      </trn-field-label>
+      <trn-field-lock>
+        <input
+          id="link-device-recovery-key"
+          trnInput
+          autocapitalize="off"
+          autocorrect="off"
+          autocomplete="off"
+          aria-describedby="link-device-keys-lead"
+          data-testid="link-device-recovery-key"
+          [formField]="keyForm.recoveryKey"
+        />
+      </trn-field-lock>
+    </trn-field>
+    @if (error(); as message) {
+      <p class="m-0 text-13 text-danger" role="alert">{{ message }}</p>
+    }
+    <div class="flex flex-wrap items-center gap-2">
+      <button
+        trnBtn
+        type="submit"
+        data-testid="link-device-keys-submit"
+        [disabled]="busy() || !hasKey()"
+      >
+        Continue
+      </button>
+      <button
+        trnBtn
+        variant="secondary"
+        presentation="ghost"
+        type="button"
+        [disabled]="busy()"
+        (click)="cancelled.emit()"
+      >
+        Cancel
+      </button>
+      @if (busy()) {
+        <trn-spinner size="sm" />
+        <span class="text-13 text-muted-foreground" role="status">
+          Fetching your keys…
+        </span>
+      }
+    </div>
+  </form>
+} @else {
+  <h3
+    #heading
+    tabindex="-1"
+    class="m-0 mb-2 text-base font-semibold text-[var(--trinity-text-bright)]"
+  >
+    Link the new device from another device
+  </h3>
+  <p class="m-0 text-13 text-muted-foreground">
+    This device was verified by another device, so it doesn’t have all the keys
+    a new device needs, and your account has no recovery key to fetch them with.
+    Link the new device from the device where you set up encryption, or set up
+    recovery in Security settings and come back.
+  </p>
+  <div class="mt-3">
+    <button
+      trnBtn
+      variant="secondary"
+      presentation="ghost"
+      type="button"
+      (click)="cancelled.emit()"
+    >
+      Close
+    </button>
+  </div>
+}
