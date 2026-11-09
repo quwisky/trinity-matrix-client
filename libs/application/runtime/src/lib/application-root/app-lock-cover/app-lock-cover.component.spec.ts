@@ -363,7 +363,7 @@ describe('AppLockCoverComponent', () => {
       expect(images[0].getAttribute('alt')).toBe('');
       const text = (dialog.textContent ?? '').replace(/\s+/g, ' ').trim();
       expect(text).toBe(
-        'Trinity is locked Unlock with Face ID Use PIN instead',
+        'Trinity is locked Unlock to pick up where you left off. Unlock with Face ID Use PIN instead',
       );
       expect(
         screen.getAllByRole('button').map((b) => b.textContent?.trim()),
@@ -1132,6 +1132,33 @@ describe('AppLockCoverComponent', () => {
       expect(screen.queryByTestId('app-lock-erase')).toBeNull();
     });
 
+    it('gives each recovery step its heading and keeps the erase behind Other options', async () => {
+      const { dialog } = await setup();
+      await click(screen.getByRole('button', { name: 'Use PIN instead' }));
+      await click(screen.getByTestId('app-lock-forgot'));
+      expect(
+        screen.getByRole('heading', { name: 'Forgot your PIN?' }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Erase all data on this device' }),
+      ).toBeNull();
+
+      await click(screen.getByRole('button', { name: 'Other options…' }));
+      expect(
+        screen.getByRole('heading', { name: 'Erase all data?' }),
+      ).toBeTruthy();
+      const buttons = screen.getAllByRole('button');
+      expect(buttons.map((b) => b.textContent?.trim())).toEqual([
+        'Cancel',
+        'Erase all data on this device',
+      ]);
+      await vi.waitFor(() => expect(document.activeElement).toBe(buttons[0]));
+      expect(dialog.getAttribute('aria-labelledby')).toBe('app-lock-heading');
+      expect(
+        screen.getByRole('dialog', { name: 'Trinity is locked' }),
+      ).toBeTruthy();
+    });
+
     it('goes back to the PIN form on Cancel', async () => {
       await setup({ support: PIN_ONLY });
       await click(screen.getByTestId('app-lock-forgot'));
@@ -1169,14 +1196,12 @@ describe('AppLockCoverComponent', () => {
       });
       await click(screen.getByRole('button', { name: 'Use PIN instead' }));
       expect(
-        screen.getByText('Trinity can’t read your PIN right now.'),
+        screen.getByText(/^Trinity can’t read your PIN right now\./),
       ).toBeTruthy();
       expect(screen.queryByLabelText('Trinity PIN')).toBeNull();
       await click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledOnce();
-      await click(
-        screen.getByRole('button', { name: 'Erase all data on this device' }),
-      );
+      await click(screen.getByRole('button', { name: 'Other options…' }));
       expect(screen.getByTestId('app-lock-erase')).toBeTruthy();
       await click(screen.getByRole('button', { name: 'Cancel' }));
       unlockWithSystem.mockClear();
@@ -1221,7 +1246,7 @@ describe('AppLockCoverComponent', () => {
     it('names Trinity Next when it is the app running', async () => {
       await setup({ support: UNREADABLE_ONLY, appName: 'Trinity Next' });
       expect(
-        screen.getByText('Trinity Next can’t read your PIN right now.'),
+        screen.getByText(/^Trinity Next can’t read your PIN right now\./),
       ).toBeTruthy();
     });
   });
@@ -1235,7 +1260,7 @@ describe('AppLockCoverComponent', () => {
       expect(dialog.querySelector('input')).toBeNull();
       expect(
         screen.getAllByRole('button').map((b) => b.textContent?.trim()),
-      ).toEqual(['Retry', 'Erase all data on this device']);
+      ).toEqual(['Retry', 'Other options…']);
       await click(screen.getByRole('button', { name: 'Retry' }));
       expect(retry).toHaveBeenCalledOnce();
       expect(unlockWithPin).not.toHaveBeenCalled();
@@ -1272,7 +1297,7 @@ describe('AppLockCoverComponent', () => {
       await vi.waitFor(() =>
         expect(
           screen.getAllByRole('button').map((b) => b.textContent?.trim()),
-        ).toEqual(['Use Face ID', 'Erase all data on this device']),
+        ).toEqual(['Use Face ID', 'Other options…']),
       );
     });
 
@@ -1304,7 +1329,7 @@ describe('AppLockCoverComponent', () => {
       );
       await click(entry);
       expect(describedBy(screen.getByTestId('app-lock-erase'))).toContain(
-        'signs out every account',
+        'Every account on this device is signed out.',
       );
     });
 
@@ -1347,7 +1372,9 @@ describe('AppLockCoverComponent', () => {
       );
       expect(
         screen.getByRole('dialog', { name: 'Trinity is locked' }),
-      ).toHaveAccessibleDescription(/signs out every account/);
+      ).toHaveAccessibleDescription(
+        /Every account on this device is signed out\./,
+      );
     });
 
     it('offers only the reset where this device can’t keep a PIN', async () => {

@@ -1,4 +1,5 @@
 import type { InstallationResetOutcome } from '@trinity/data-access/accounts';
+import type { CoverView } from './app-lock-cover.state';
 import type {
   HostPresenceBiometry,
   HostSystemPresenceUnavailableReason,
@@ -121,6 +122,30 @@ export function resetFailure(
       const unhandled: never = outcome;
       void unhandled;
       return `${appName} couldn’t erase everything on this device. Try again.`;
+    }
+  }
+}
+
+/** A recovery view's heading; the unlock views say the app is locked instead. */
+export function recoveryHeading(view: CoverView): string {
+  switch (view) {
+    case 'pin-unreadable':
+      return 'Can’t read your PIN';
+    case 'forgot':
+      return 'Forgot your PIN?';
+    case 'erase':
+      return 'Erase all data?';
+    case 'no-pin':
+      return 'No PIN on this device';
+    case 'no-pin-store':
+      return 'Can’t check a PIN here';
+    case 'system':
+    case 'pin':
+      return '';
+    default: {
+      const unhandled: never = view;
+      void unhandled;
+      return '';
     }
   }
 }

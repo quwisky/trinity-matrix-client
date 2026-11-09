@@ -1,0 +1,53 @@
+@if (unlockView()) {
+  <div
+    class="flex size-22 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--trinity-accent)_14%,var(--trinity-surface-raised))] shadow-[0_0_0_6px_color-mix(in_oklab,var(--trinity-accent)_8%,transparent)]"
+  >
+    <img
+      class="size-14"
+      src="assets/icon/icon-plated.svg"
+      alt=""
+      aria-hidden="true"
+    />
+  </div>
+  <div class="grid gap-1.5">
+    <h1
+      id="app-lock-heading"
+      class="m-0 text-[1.375rem] leading-snug font-semibold text-[var(--trinity-text-bright)]"
+    >
+      {{ appName() }} is locked
+    </h1>
+    <p
+      class="m-0 text-[length:var(--trinity-text-base)] leading-normal text-[var(--trinity-text-muted)]"
+    >
+      @if (view() === 'pin') {
+        Enter your PIN to continue.
+      } @else {
+        Unlock to pick up where you left off.
+      }
+    </p>
+  </div>
+} @else {
+  <div
+    class="flex items-center gap-2 text-sm font-medium text-[var(--trinity-text-muted)]"
+  >
+    <img
+      class="size-6"
+      src="assets/icon/icon-plated.svg"
+      alt=""
+      aria-hidden="true"
+    />
+    <span id="app-lock-heading">{{ appName() }} is locked</span>
+  </div>
+  <div
+    class="mt-12 flex size-18 items-center justify-center rounded-full md:mt-0"
+    [class]="recoveryToneClass()"
+    data-testid="app-lock-recovery-icon"
+  >
+    <trn-icon [name]="recoveryIcon()" size="2xl" />
+  </div>
+  <h1
+    class="m-0 text-[1.375rem] leading-snug font-semibold text-[var(--trinity-text-bright)]"
+  >
+    {{ recoveryHeading() }}
+  </h1>
+}
