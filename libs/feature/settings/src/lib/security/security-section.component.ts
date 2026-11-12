@@ -165,6 +165,30 @@ export class SecuritySectionComponent {
       })
       .pipe(
         filter((passphrase): passphrase is string => Boolean(passphrase)),
+        // The input is masked and a mistyped passphrase makes a file nobody can open.
+        switchMap((passphrase) =>
+          this.alert
+            .prompt$({
+              header: 'Export room keys',
+              message: 'Enter the passphrase again to confirm it.',
+              placeholder: 'Repeat passphrase',
+              inputType: 'password',
+              confirmText: 'Export',
+            })
+            .pipe(
+              filter((repeated): repeated is string => Boolean(repeated)),
+              filter((repeated) => {
+                const matches = repeated === passphrase;
+                if (!matches) {
+                  this.toast.show('Passphrases don’t match.', {
+                    duration: 4000,
+                    variant: 'danger',
+                  });
+                }
+                return matches;
+              }),
+            ),
+        ),
         tap(() => this.busy.set(true)),
         switchMap((passphrase) => this.crypto.exportRoomKeys(passphrase)),
         switchMap((armored) =>
