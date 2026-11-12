@@ -47,6 +47,7 @@ allowBuilds:
   geckodriver: false
 
 patchedDependencies:
+  '@aparajita/capacitor-secure-storage@8.0.1': patches/@aparajita__capacitor-secure-storage@8.0.1.patch
   '@capacitor/privacy-screen@2.0.1': patches/@capacitor__privacy-screen@2.0.1.patch
   '@ctrl/ngx-emoji-mart@9.3.0': patches/@ctrl__ngx-emoji-mart@9.3.0.patch
   '@spartan-ng/brain@1.9.0': patches/@spartan-ng__brain@1.9.0.patch

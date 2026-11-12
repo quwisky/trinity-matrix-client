@@ -163,6 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@aparajita/capacitor-secure-storage@8.0.1': 5bb222c2741922f64f669992af4c8c67d328c0d491e351ea16a7bdc0a986dbfe
   '@capacitor/privacy-screen@2.0.1': 895d821e62e80deee12f2e83515a60ebb6c4727b1cd86079c4b909f531ca3f7e
   '@ctrl/ngx-emoji-mart@9.3.0': 4d506eef6b9b44e36ca18f16eba0a7f341de02c0100116ea377a328e5f890b0e
   '@spartan-ng/brain@1.9.0': b3685ff7d1273af1894c9805d711a68ea4c372fafde0171d0753e3ff62575ea7
@@ -202,8 +203,8 @@ importers:
         specifier: 10.0.0
         version: 10.0.0
       '@aparajita/capacitor-secure-storage':
-        specifier: ^8.0.0
-        version: 8.0.1
+        specifier: 8.0.1
+        version: 8.0.1(patch_hash=5bb222c2741922f64f669992af4c8c67d328c0d491e351ea16a7bdc0a986dbfe)
       '@capacitor/android':
         specifier: ^8.6.0
         version: 8.6.0(@capacitor/core@8.6.0)
@@ -10476,7 +10477,7 @@ snapshots:
       '@capacitor/core': 8.6.0
       '@capacitor/ios': 8.6.0(@capacitor/core@8.6.0)
 
-  '@aparajita/capacitor-secure-storage@8.0.1':
+  '@aparajita/capacitor-secure-storage@8.0.1(patch_hash=5bb222c2741922f64f669992af4c8c67d328c0d491e351ea16a7bdc0a986dbfe)':
     dependencies:
       '@capacitor/android': 8.6.0(@capacitor/core@8.6.0)
       '@capacitor/app': 8.1.2(@capacitor/core@8.6.0)
