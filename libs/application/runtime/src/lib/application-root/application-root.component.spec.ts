@@ -547,6 +547,30 @@ describe('ApplicationRootComponent', () => {
     expect(recover).toHaveBeenCalledExactlyOnceWith('reauthenticate');
   });
 
+  it('offers a retry first and erasing second when saved data cannot be read', async () => {
+    const { fixture, getByTestId, recover, prompt } = await setup(
+      blocked({
+        stage: 'account-restoration',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reset-installation',
+        diagnostic: { code: 'account-local-state-unavailable' },
+      }),
+    );
+    expect(getByTestId('app-startup-blocked').textContent).toContain(
+      'Trinity could not read its saved data on this device. Try again before removing anything.',
+    );
+    expect(getByTestId('app-startup-recovery').textContent).toContain(
+      'Retry startup',
+    );
+    const erase = getByTestId('app-startup-secondary-recovery');
+    expect(erase.textContent).toContain('Reset this installation');
+
+    prompt.mockReturnValueOnce(of('RESET TRINITY'));
+    erase.click();
+    fixture.detectChanges();
+    expect(recover).toHaveBeenCalledExactlyOnceWith('reset-installation');
+  });
+
   it('focuses blocked startup on user-function copy and confirms Account removal', async () => {
     const { fixture, getByTestId, recover, confirm } = await setup(
       blocked({
@@ -574,12 +598,13 @@ describe('ApplicationRootComponent', () => {
     const installation = await setup(
       blocked({
         stage: 'account-restoration',
-        recovery: 'reset-installation',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reset-installation',
         diagnostic: { code: 'account-local-state-unavailable' },
       }),
     );
     installation.prompt.mockReturnValueOnce(of('RESET TRINITY'));
-    installation.getByTestId('app-startup-recovery').click();
+    installation.getByTestId('app-startup-secondary-recovery').click();
     installation.fixture.detectChanges();
     expect(installation.recover).toHaveBeenCalledOnce();
     expect(installation.prompt).toHaveBeenCalledWith(

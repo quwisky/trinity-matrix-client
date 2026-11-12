@@ -238,18 +238,26 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           case 'restored-with-inactive-failures':
             return ready();
           case 'active-account-unavailable':
-            // A locked keychain is an outage: retrying after unlocking it opens the
-            // Account. Offering removal there would delete a store that is fine.
-            if (activeFailure(result) === 'secure-storage-unavailable') {
-              // Removal stays reachable as a confirmed second choice: a key that is truly
-              // gone but reads as unavailable (no keyring, a replaced one, an invalidated
-              // Keystore) would otherwise leave only retries. It is never run on its own.
-              return {
-                kind: 'blocked',
-                recovery: 'retry-startup',
-                secondaryRecovery: 'reauthenticate',
-                diagnostic: { code: 'account-secure-storage-unavailable' },
-              } as const;
+            // A locked keychain or a failed storage read is an outage: a retry may open the
+            // Account. Offering only removal there would delete a store that is fine.
+            // Removal stays reachable as a confirmed second choice: a key that is truly
+            // gone but reads as unavailable (no keyring, a replaced one, an invalidated
+            // Keystore) would otherwise leave only retries. It is never run on its own.
+            switch (activeFailure(result)) {
+              case 'secure-storage-unavailable':
+                return {
+                  kind: 'blocked',
+                  recovery: 'retry-startup',
+                  secondaryRecovery: 'reauthenticate',
+                  diagnostic: { code: 'account-secure-storage-unavailable' },
+                } as const;
+              case 'corrupt-local-state':
+                return {
+                  kind: 'blocked',
+                  recovery: 'retry-startup',
+                  secondaryRecovery: 'reauthenticate',
+                  diagnostic: { code: 'account-local-state-unavailable' },
+                } as const;
             }
             // Its sign-in page brings it back with its keys; a removal blocker would not.
             if (this.matrix.reauthTargets().includes(result.activeAccountId)) {
@@ -261,9 +269,11 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
               diagnostic: { code: 'active-account-unavailable' },
             } as const;
           case 'local-state-unavailable':
+            // Any thrown registry read lands here, a passing bridge error included.
             return {
               kind: 'blocked',
-              recovery: 'reset-installation',
+              recovery: 'retry-startup',
+              secondaryRecovery: 'reset-installation',
               diagnostic: { code: 'account-local-state-unavailable' },
             } as const;
           case 'transition-in-progress':

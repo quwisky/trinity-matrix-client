@@ -956,6 +956,48 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     });
   });
 
+  describe('a saved-data read that failed at startup', () => {
+    it('offers a retry before erasing when the saved accounts cannot be read', async () => {
+      restoreAccounts.mockReturnValueOnce(
+        of<AccountRestoreResult>({
+          kind: 'local-state-unavailable',
+          accounts: [],
+        }),
+      );
+
+      await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reset-installation',
+        diagnostic: { code: 'account-local-state-unavailable' },
+      });
+    });
+
+    it('offers a retry before removal when the active account cannot be read', async () => {
+      restoreAccounts.mockReturnValueOnce(
+        of<AccountRestoreResult>({
+          kind: 'active-account-unavailable',
+          activeAccountId: '@me:hs',
+          accounts: [
+            {
+              kind: 'failed',
+              failure: 'corrupt-local-state',
+              accountId: '@me:hs',
+              role: 'active',
+            },
+          ],
+        }),
+      );
+
+      await expect(firstValueFrom(adapter.restoreAccounts())).resolves.toEqual({
+        kind: 'blocked',
+        recovery: 'retry-startup',
+        secondaryRecovery: 'reauthenticate',
+        diagnostic: { code: 'account-local-state-unavailable' },
+      });
+    });
+  });
+
   describe('an active account that cannot start', () => {
     function restored(
       account:

@@ -345,6 +345,13 @@ function recoveryAction(
         'Your system keychain is locked or unavailable. Unlock it and try again.',
     };
   }
+  if (code === 'account-local-state-unavailable') {
+    return {
+      label: 'Retry startup',
+      detail:
+        'Trinity could not read its saved data on this device. Try again before removing anything.',
+    };
+  }
   switch (recovery) {
     case 'reauthenticate':
       return {
