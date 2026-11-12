@@ -28,7 +28,13 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
-import { FileSaveService } from './host-media/file-save.service';
+vi.mock('@capacitor/filesystem', () => ({
+  Filesystem: { rmdir: vi.fn(), stat: vi.fn() },
+  Directory: { Cache: 'CACHE' },
+}));
+
+import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import { LocalDataWipeService } from './local-data-wipe.service';
 import { SecureStorageService } from './secure-storage.service';
 import type { AccountRecord } from './session-storage.service';
@@ -386,24 +392,44 @@ describe('LocalDataWipeService', () => {
   });
 
   describe('wipeSharedFiles', () => {
-    it('deletes the decrypted attachments left for the share sheet', async () => {
-      const service = setup();
-      const clearShared = vi
-        .spyOn(TestBed.inject(FileSaveService), 'clearShared')
-        .mockResolvedValue();
-
-      await expect(service.wipeSharedFiles()).resolves.toBe(true);
-      expect(clearShared).toHaveBeenCalledOnce();
+    // The real FileSaveService on a native host: only the Filesystem plugin is faked.
+    beforeEach(() => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+      vi.mocked(Filesystem.rmdir).mockReset().mockResolvedValue();
+      vi.mocked(Filesystem.stat)
+        .mockReset()
+        .mockRejectedValue(new Error('missing'));
     });
 
-    it('reports a failed delete instead of throwing', async () => {
-      const service = setup();
-      vi.spyOn(
-        TestBed.inject(FileSaveService),
-        'clearShared',
-      ).mockRejectedValue(new Error('no disk'));
+    afterEach(() => vi.restoreAllMocks());
 
-      await expect(service.wipeSharedFiles()).resolves.toBe(false);
+    it('deletes the decrypted attachments left for the share sheet', async () => {
+      await expect(setup().wipeSharedFiles()).resolves.toBe(true);
+      expect(Filesystem.rmdir).toHaveBeenCalledExactlyOnceWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+        recursive: true,
+      });
+    });
+
+    it('counts a folder that never existed as deleted', async () => {
+      vi.mocked(Filesystem.rmdir).mockRejectedValue(
+        new Error('Folder does not exist.'),
+      );
+
+      await expect(setup().wipeSharedFiles()).resolves.toBe(true);
+    });
+
+    it('reports the attachments still on disk when the delete fails', async () => {
+      vi.mocked(Filesystem.rmdir).mockRejectedValue(
+        new Error('Unable to delete directory'),
+      );
+      vi.mocked(Filesystem.stat).mockResolvedValue({
+        type: 'directory',
+      } as never);
+
+      await expect(setup().wipeSharedFiles()).resolves.toBe(false);
     });
   });
 

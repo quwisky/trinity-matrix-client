@@ -101,7 +101,7 @@ export class InstallationResetWorkflow {
               concatMap((records) => {
                 this.clearDrafts(attempt);
                 return this.stopMentionIndex().pipe(
-                  concatMap(() => this.wipeSharedFiles()),
+                  concatMap(() => this.wipeSharedFiles(attempt)),
                   map(() => records),
                 );
               }),
@@ -181,6 +181,9 @@ export class InstallationResetWorkflow {
           }
           if (scopes.has('service-worker')) {
             operations.push(this.wipeServiceWorker(attempt, true));
+          }
+          if (scopes.has('shared-files')) {
+            operations.push(this.wipeSharedFiles(attempt));
           }
           return operations.length === 0
             ? of(void 0)
@@ -295,22 +298,27 @@ export class InstallationResetWorkflow {
     return this.bounded(defer(() => this.lifecycle.stopMentionIndex()));
   }
 
-  /** Best-effort: the next native save sweeps the same folder, so nothing records residue. */
-  private wipeSharedFiles(): Observable<void> {
-    return this.bounded(
-      defer(() => from(this.wipe.wipeSharedFiles())).pipe(map(() => void 0)),
-      ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+  private wipeSharedFiles(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+  ): Observable<unknown> {
+    return attempt.step(
+      defer(() => from(this.wipe.wipeSharedFiles())),
+      {
+        budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+        scope: 'shared-files',
+        recovery: 'retry-installation-reset',
+        fallback: false,
+        onSettled: (succeeded) =>
+          this.recordOrResolve(attempt, 'shared-files', succeeded),
+      },
     );
   }
 
-  private bounded(
-    source: Observable<void>,
-    budgetMs: number = ACCOUNT_CLEANUP_STEP_BUDGET_MS.mentionIndexStop,
-  ): Observable<void> {
+  private bounded(source: Observable<void>): Observable<void> {
     return source.pipe(
       take(1),
       timeout({
-        first: budgetMs,
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.mentionIndexStop,
         with: () => of(void 0),
       }),
       catchError(() => of(void 0)),

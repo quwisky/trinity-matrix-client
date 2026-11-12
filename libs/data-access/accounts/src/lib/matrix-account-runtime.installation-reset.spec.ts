@@ -155,14 +155,38 @@ it('deletes the attachments left on disk for the share sheet', async () => {
   expect(test.wipe.wipeSharedFiles).toHaveBeenCalledOnce();
 });
 
-it('still finishes the reset when the shared attachments cannot be deleted', async () => {
+it('reports partial cleanup when the shared attachments are still on disk, and a retry deletes them', async () => {
   const test = setup();
   prepareSuccessfulReset(test);
-  vi.mocked(test.wipe.wipeSharedFiles).mockRejectedValue(new Error('no disk'));
+  vi.mocked(test.wipe.wipeSharedFiles)
+    .mockResolvedValueOnce(false)
+    .mockResolvedValue(true);
+  const issues = [
+    { scope: 'shared-files', recovery: 'retry-installation-reset' },
+  ] as const;
 
   await expect(
     firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({ kind: 'partial-cleanup', issues });
+  // The rest of the wipe still ran.
+  expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+
+  await expect(
+    firstValueFrom(test.adapter.retryInstallationCleanup(issues)),
   ).resolves.toEqual({ kind: 'ready' });
+  expect(test.wipe.wipeSharedFiles).toHaveBeenCalledTimes(2);
+});
+
+it('keeps the shared attachments as residue when the retry fails again', async () => {
+  const { adapter, wipe } = setup();
+  vi.mocked(wipe.wipeSharedFiles).mockResolvedValue(false);
+  const issues = [
+    { scope: 'shared-files', recovery: 'retry-installation-reset' },
+  ] as const;
+
+  await expect(
+    firstValueFrom(adapter.retryInstallationCleanup(issues)),
+  ).resolves.toEqual({ kind: 'partial-cleanup', issues });
 });
 
 it('asks for a restart when the drafts held in memory cannot be emptied', async () => {
