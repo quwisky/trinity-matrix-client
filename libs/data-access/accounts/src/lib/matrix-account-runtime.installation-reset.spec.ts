@@ -91,6 +91,53 @@ it('resets only the approved installation storage scopes in order', async () => 
   ]);
 });
 
+describe('stored accounts with no live client', () => {
+  const LIVE = { userId: '@live:hs', baseUrl: 'https://hs', deviceId: 'A' };
+  const STALE = { userId: '@stale:hs', baseUrl: 'https://hs', deviceId: 'B' };
+
+  function resetting(logout: () => Promise<unknown>) {
+    const test = setup();
+    prepareSuccessfulReset(test, [LIVE, STALE] as AccountRecord[]);
+    const detached = { logout: vi.fn(logout) };
+    vi.mocked(test.matrix.clientFor).mockImplementation((userId) =>
+      userId === LIVE.userId ? ({} as never) : null,
+    );
+    vi.mocked(test.matrix.detachedClient).mockReturnValue(detached as never);
+    vi.mocked(test.storage.load).mockImplementation((userId) =>
+      of({ ...(userId === LIVE.userId ? LIVE : STALE), accessToken: 'token' }),
+    );
+    return { ...test, detached };
+  }
+
+  it('are logged out at the homeserver with their stored token', async () => {
+    const { adapter, matrix, detached } = resetting(() => Promise.resolve());
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+    // The live account is signOutAll's; only the other one needs a client of its own.
+    expect(matrix.detachedClient).toHaveBeenCalledExactlyOnceWith({
+      ...STALE,
+      accessToken: 'token',
+    });
+    expect(detached.logout).toHaveBeenCalledExactlyOnceWith(true);
+    expect(detached.logout.mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(matrix.stop).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('never hold up the erase when that logout fails', async () => {
+    const { adapter, wipe } = resetting(() =>
+      Promise.reject(new Error('homeserver down')),
+    );
+
+    await expect(firstValueFrom(adapter.resetInstallation())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(wipe.wipeSecureStorage).toHaveBeenCalledOnce();
+  });
+});
+
 it('stops the mention index before the database wipe', async () => {
   const test = setup();
   prepareSuccessfulReset(test);
