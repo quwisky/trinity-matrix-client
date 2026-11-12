@@ -11,7 +11,10 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  TimelineActionsService,
+} from '@trinity/data-access/timeline';
 import { GeolocationService, type GeoPoint } from '@trinity/platform-native';
 import { ManualLocationDialogComponent } from './manual-location-dialog/manual-location-dialog.component';
 
@@ -27,6 +30,7 @@ import { ManualLocationDialogComponent } from './manual-location-dialog/manual-l
 export class LocationShareService {
   private readonly geo = inject(GeolocationService);
   private readonly timelineActions = inject(TimelineActionsService);
+  private readonly conversations = inject(ConversationRuntime);
   private readonly toast = inject(TrnToastService);
   private readonly dialog = inject(TrnSurfaceService);
 
@@ -68,11 +72,24 @@ export class LocationShareService {
 
   private send(source: Observable<GeoPoint>): void {
     this.sharingSig.set(true);
+    // The point arrives after a permission prompt, a fix or a dialog, and `sendLocation` posts
+    // to the room open then: exact coordinates must not reach a room opened in between.
+    const atStart = this.conversations.focused()?.key;
     source
       .pipe(
-        switchMap(({ lat, lng }) =>
-          this.timelineActions.sendLocation(lat, lng),
-        ),
+        switchMap(({ lat, lng }) => {
+          const now = this.conversations.focused()?.key;
+          if (
+            now?.accountId !== atStart?.accountId ||
+            now?.roomId !== atStart?.roomId
+          ) {
+            return throwError(
+              () =>
+                new Error('Location not shared: you left the room it was for.'),
+            );
+          }
+          return this.timelineActions.sendLocation(lat, lng);
+        }),
         finalize(() => this.sharingSig.set(false)),
       )
       .subscribe({
