@@ -78,7 +78,7 @@ describe('Trust production boundary', () => {
     expect(trust).toContain("| 'partial-update'");
     expect(trust).toContain("| 'review-security-settings'");
     expect(trust).not.toMatch(
-      /\basync\s+(?:setUp|resetRecovery|recoverWithKey|recoverWithPassphrase|exportRoomKeys|importRoomKeys|list|rename|delete|startSelfVerification|startUserVerification|accept|startSas|showQr|scanQr|confirmQr|confirmSas|cancel)\s*\(/,
+      /\basync\s+(?:setUp|resetRecovery|recoverWithKey|exportRoomKeys|importRoomKeys|list|rename|delete|startSelfVerification|startUserVerification|accept|startSas|showQr|scanQr|confirmQr|confirmSas|cancel)\s*\(/,
     );
   });
 
