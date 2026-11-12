@@ -160,6 +160,7 @@ export class SecuritySectionComponent {
         message:
           'Choose a passphrase to protect the file. You’ll need it to import the keys again.',
         placeholder: 'Passphrase',
+        inputLabel: 'Passphrase',
         inputType: 'password',
         confirmText: 'Export',
       })
@@ -172,7 +173,9 @@ export class SecuritySectionComponent {
               header: 'Export room keys',
               message: 'Enter the passphrase again to confirm it.',
               placeholder: 'Repeat passphrase',
+              inputLabel: 'Repeat passphrase',
               inputType: 'password',
+              required: true,
               confirmText: 'Export',
             })
             .pipe(
