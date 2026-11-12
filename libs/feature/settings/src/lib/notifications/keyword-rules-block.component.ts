@@ -27,6 +27,7 @@ import {
 } from '@trinity/components/overlay';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { Subject, takeUntil } from 'rxjs';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /**
  * The keyword list in Settings → Notifications: words that notify wherever they are said.
@@ -136,6 +137,7 @@ export class KeywordRulesBlockComponent {
    * `<form>` today, but a bare Enter inside one submits it.
    */
   onEnter(event: Event): void {
+    if (isImeKeydown(event)) return;
     event.preventDefault();
     this.add();
   }

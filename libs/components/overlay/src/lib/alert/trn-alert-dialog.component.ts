@@ -14,6 +14,7 @@ import {
   TrnDialogActions,
   TrnDialogShellComponent,
 } from '../dialog-shell/trn-dialog-shell.component';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /** Payload for {@link TrnAlertDialogComponent}, built by TrnAlertService. */
 export interface AlertDialogData {
@@ -70,7 +71,7 @@ export type AlertDialogResult = boolean | string | null;
           [attr.aria-describedby]="promptInvalid() ? promptErrorId : null"
           [attr.aria-invalid]="promptInvalid() ? 'true' : null"
           [formField]="promptForm.value"
-          (keydown.enter)="onConfirm()"
+          (keydown.enter)="onPromptEnter($event)"
         />
         @if (promptInvalid()) {
           <p
@@ -151,6 +152,10 @@ export class TrnAlertDialogComponent {
 
   protected onAlternative(): void {
     this.ref.close('alternative');
+  }
+
+  protected onPromptEnter(event: Event): void {
+    if (!isImeKeydown(event)) this.onConfirm();
   }
 
   protected onConfirm(): void {

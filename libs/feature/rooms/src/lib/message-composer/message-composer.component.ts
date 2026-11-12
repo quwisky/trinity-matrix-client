@@ -75,6 +75,7 @@ import {
 } from '@trinity/data-access/timeline';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /** A room member offered by the @-mention autocomplete; the shape of the `members` input. */
 export type { MentionMember };
@@ -670,7 +671,7 @@ export class MessageComposerComponent {
     const keyEvent = event as KeyboardEvent;
     // An Enter that confirms an IME candidate must reach neither send nor accept: let the
     // composition commit normally.
-    if (keyEvent.isComposing) {
+    if (isImeKeydown(keyEvent)) {
       return;
     }
     if (this.menus.acceptHighlighted()) {

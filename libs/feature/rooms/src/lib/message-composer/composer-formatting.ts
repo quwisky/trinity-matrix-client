@@ -13,6 +13,7 @@ import {
   type EditResult,
   type FormatAction,
 } from '@trinity/util/matrix';
+import { isImeKeydown } from '@trinity/util/ui';
 
 interface FormatSelection {
   readonly context: object;
@@ -101,7 +102,7 @@ export class ComposerFormatting {
   onKeydown(event: Event): void {
     const keyEvent = event as KeyboardEvent;
     // Never rewrite the buffer mid-composition; the same reason onInput and onEnter guard.
-    if (keyEvent.isComposing) {
+    if (isImeKeydown(keyEvent)) {
       return;
     }
 

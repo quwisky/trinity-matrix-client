@@ -489,6 +489,31 @@ describe('KeywordRulesBlockComponent', () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
+    it.each([
+      ['while composing', 'isComposing', true],
+      ['after WebKit ended the composition', 'keyCode', 229],
+    ])(
+      'does not add on the Enter that confirms an IME candidate, %s',
+      async (_case, property, value) => {
+        const { cmp, fixture, add } = await build({ keywords: [[]] });
+        cmp.keywordForm.word().value.set('当番');
+        fixture.detectChanges();
+        const event = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+        });
+        Object.defineProperty(event, property, { value });
+
+        el(fixture)
+          .querySelector('[data-testid="keyword-input"]')
+          ?.dispatchEvent(event);
+
+        expect(add).not.toHaveBeenCalled();
+        expect(event.defaultPrevented).toBe(false);
+      },
+    );
+
     it('keeps Add disabled until something is typed', async () => {
       const { cmp, fixture } = await build({ keywords: [[]] });
 

@@ -233,6 +233,22 @@ describe('MessageComposerComponent — the :shortcode autocomplete', () => {
     expect(cmp.text()).toBe('😂');
   });
 
+  it('lets the Enter WebKit fires after the composition ended pass through too', async () => {
+    const { fixture } = await renderWithIndex();
+    const cmp = fixture.componentInstance;
+    let sent = 0;
+    cmp.submitText.subscribe(() => sent++);
+
+    type(fixture, 'こんにちは');
+    // Safari and iOS end the composition first: only keyCode 229 marks this keydown.
+    const confirming = new KeyboardEvent('keydown', { key: 'Enter' });
+    Object.defineProperty(confirming, 'keyCode', { value: 229 });
+    cmp.onEnter(confirming);
+
+    expect(sent).toBe(0);
+    expect(cmp.text()).toBe('こんにちは');
+  });
+
   it('resolves the +1/-1 shortcodes through the emoji index', async () => {
     const { fixture } = await renderWithIndex();
     const cmp = fixture.componentInstance;

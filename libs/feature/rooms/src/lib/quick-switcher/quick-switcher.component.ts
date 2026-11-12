@@ -30,6 +30,7 @@ import {
   TrnIconComponent,
   type TrnIconName,
 } from '@trinity/components/foundations';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /** Human-readable kind hint shown at the trailing edge of a result row. */
 const KIND_LABEL: Record<SwitcherKind, string> = {
@@ -120,6 +121,7 @@ export class QuickSwitcherComponent {
   }
 
   choose(event: Event): void {
+    if (isImeKeydown(event)) return;
     event.preventDefault();
     const result = this.results()[this.highlight()];
     if (result) {

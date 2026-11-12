@@ -15,6 +15,7 @@ import { TrnButton, TrnInput } from '@trinity/components/controls';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomAliasRowComponent, matrixToUrl } from './room-alias-row.component';
 import { RoomAliasesController } from './room-aliases.controller';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /**
  * Manage one Room or Space's published addresses inside its settings hub. The address
@@ -61,6 +62,7 @@ export class RoomAliasesComponent implements OnChanges {
 
   /** Swallow Enter so the enclosing settings form cannot treat this as a global Save. */
   onEnter(event: Event): void {
+    if (isImeKeydown(event)) return;
     event.preventDefault();
     this.controller.add();
   }
