@@ -662,6 +662,12 @@ export function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
 }
 
 /**
+ * How a rich-reply fallback opens: `> <@user:server> …`, or `> * <@user:server> …` for an
+ * emote. Any other leading `>` is the writer's own text (`>_>`, a quote they typed).
+ */
+const REPLY_FALLBACK_START = /^> (?:\* )?<@[^>\s]+:[^>\s]+>/;
+
+/**
  * Strip the rich-reply fallback from a body: the leading `> …` quote lines and
  * the blank line that separates them from the actual reply text. A body that is not
  * text, which only a malformed event carries, reads as empty.
@@ -670,7 +676,7 @@ export function stripReplyFallbackText(body: unknown): string {
   if (typeof body !== 'string') {
     return '';
   }
-  if (!body.startsWith('>')) {
+  if (!REPLY_FALLBACK_START.test(body)) {
     return body;
   }
   const lines = body.split('\n');

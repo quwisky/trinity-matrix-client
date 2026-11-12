@@ -21,6 +21,7 @@ import {
   renderNormalizedTextBody,
   readersFrom,
   replyPreview,
+  stripReplyFallbackText,
   trackEncryptedNonMessages,
 } from './message-view';
 import { linkifyHtml } from './message-html';
@@ -775,6 +776,22 @@ describe('isDisplayableMessage for a deleted event', () => {
       expect(isDisplayableMessage(event)).toBe(false);
     });
   });
+});
+
+describe('stripReplyFallbackText', () => {
+  it('strips a rich-reply fallback and the blank line after it', () => {
+    expect(
+      stripReplyFallbackText('> <@alice:hs> first\n> second\n\nthe reply'),
+    ).toBe('the reply');
+    expect(stripReplyFallbackText('> * <@alice:hs> waves\n\nhi')).toBe('hi');
+  });
+
+  it.each(['>_>', '> 5 is enough', '> a quote\n\nmy answer', '> <b> tag'])(
+    "keeps the writer's own text %j",
+    (own) => {
+      expect(stripReplyFallbackText(own)).toBe(own);
+    },
+  );
 });
 
 describe('replyPreview', () => {
