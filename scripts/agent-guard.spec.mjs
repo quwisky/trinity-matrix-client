@@ -191,6 +191,37 @@ describe('agent-guard PreToolUse hook', () => {
   });
 
   it.each([
+    'gh api -X PUT "repos/o/r/pulls/12/merge"',
+    "gh api -X PUT 'repos/o/r/pulls/12/merge'",
+    'gh api -X PUT "repos/$OWNER/$REPO/pulls/12/merge"',
+    'gh api -X PUT \\\n  "repos/o/r/pulls/12/merge"',
+    'gh pr "merge" 12',
+    "gh pr $'merge' 12",
+    'gh pr me"rge" 12',
+    'gh pr m\\erge 12',
+    '"gh" pr merge 12',
+    'gh pr review 12 "--approve"',
+    'gh pr review 12 "--app"rove',
+    'gh api --method POST "repos/o/r/pulls/12/reviews" -f event=APPROVE',
+    'gh api repos/o/r/pulls/12/reviews -f event="APPROVE"',
+    "gh api repos/o/r/pulls/12/reviews -f 'event=APPROVE'",
+    'gh api -X PUT "repos/o/r/rulesets/1" --input f.json',
+    'gh api "repos/o/r/rulesets?a=1&b=2" -X DELETE',
+  ])('reads a quoted word as the argument it is: %s', (command) => {
+    expect(hook(command).status).toBe(2);
+  });
+
+  it.each([
+    'git commit -m "docs: explain gh pr merge"',
+    'gh pr create --draft --title "merge" --body "approve it; gh pr merge 5"',
+    'gh pr comment 12 --body "merge"',
+    "gh pr comment 12 --body $'the maintainer runs\\ngh pr merge'",
+    'gh api "repos/o/r/rulesets?per_page=5&page=2"',
+  ])('leaves quoted prose and harmless quoted words alone: %s', (command) => {
+    expect(hook(command).status).toBe(0);
+  });
+
+  it.each([
     'time gh pr merge 5',
     'command gh pr merge 5',
     'env GH_REPO=o/r gh pr merge 5',
@@ -462,6 +493,8 @@ describe('agent-guard PreToolUse hook', () => {
     const result = hook(`cd ${repo} && git push -u origin HEAD`, tmpdir());
     expect(result.status).toBe(2);
     expect(result.stderr).toMatch(/TS2322/);
+    expect(hook('git commit -m "docs: explain git push"').status).toBe(0);
+    expect(hook('git commit -m "docs: x" && git "push"').status).toBe(2);
     writeFileSync(join(repo, 'scripts/nx.mjs'), 'process.exit(0);\n');
     expect(hook('git push').status).toBe(0);
   });

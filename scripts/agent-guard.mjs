@@ -67,10 +67,25 @@ const gitRoot = (dir) =>
 const gitCommand = (names) =>
   new RegExp(String.raw`\bgit\b(?:\s+-[cC]\s+\S+)*\s+(${names})(?![\w-])`);
 
-/** The command with quoted text blanked, so a PR body or grep pattern is not a command. */
+/**
+ * The command roughly as the shell reads it. Quoted text holding whitespace is blanked, so a
+ * PR body or grep pattern is not a command; a quoted single word keeps its text, since
+ * `"repos/o/r/pulls/1/merge"` and `me"rge"` are arguments. Its separators become `_` so
+ * they do not end the command.
+ * shortcut: not a shell parser (no variables, aliases or `$'\x6d'` escapes); parse properly
+ * if the guard ever has to hold against an agent that is trying to get past it.
+ */
 const unquoted = (command) =>
-  command.replace(/\\.|"(?:\\.|[^"\\])*"|'[^']*'/g, (text) =>
-    text[0] === '\\' ? text : '""',
+  command.replace(
+    /\\[\s\S]|\$'((?:\\[\s\S]|[^'\\])*)'|\$?"((?:\\[\s\S]|[^"\\])*)"|'([^']*)'/g,
+    (text, ansi, double, single) => {
+      if (text[0] === '\\') {
+        if (text[1] === '\n') return '';
+        return /[\w-]/.test(text[1]) ? text[1] : text;
+      }
+      const word = ansi ?? double ?? single;
+      return /\s/.test(word) ? '""' : word.replace(/[;&|`]/g, '_');
+    },
   );
 
 export function liveOwner(file) {
@@ -203,9 +218,11 @@ function commitIdentity(command, dir) {
   return 'No git user.email is configured, so this commit would carry a hostname address. Set one with `git config user.email <address>`, or pass GIT_AUTHOR_EMAIL and GIT_COMMITTER_EMAIL for this command.';
 }
 
+const PUSH = /\bgit\b(?:\s+-[cC]\s+\S+)*\s+push\b([^\n;&|]*)/;
+
 /** A ready pull request goes back to draft before new work lands on it. */
 function readyPullRequestPush(command, dir) {
-  const push = command.match(/\bgit\b(?:\s+-[cC]\s+\S+)*\s+push\b([^\n;&|]*)/);
+  const push = PUSH.exec(unquoted(command));
   if (!push || /(?:^|\s)(?:--delete|-d)(?:\s|$)/.test(push[1])) return null;
   const current = () =>
     out(run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], dir));
@@ -288,7 +305,7 @@ function pgrepLoop(command) {
 }
 
 function pushTypecheck(command, dir) {
-  const push = command.match(/\bgit\b(?:\s+-[cC]\s+\S+)*\s+push\b([^\n;&|]*)/);
+  const push = PUSH.exec(unquoted(command));
   if (!push) return null;
   const args = push[1].trim().split(/\s+/).filter(Boolean);
   const refs = args.filter((arg) => !arg.startsWith('-')).slice(1);
