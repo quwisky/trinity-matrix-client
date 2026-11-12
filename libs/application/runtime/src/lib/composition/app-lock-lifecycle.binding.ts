@@ -7,6 +7,7 @@ import {
   AppLockService,
   DESKTOP_IMMEDIATE_GRACE_MS,
   awayVerdict,
+  lockDelayMs,
   type AppLockSurface,
 } from '@trinity/data-access/app-lock';
 import {
@@ -68,11 +69,16 @@ interface AwayPeriod {
  */
 const SYSTEM_UI_CLOSED_GRACE_MS = DESKTOP_IMMEDIATE_GRACE_MS;
 
+/** Extra time away allowed with Trinity's own system UI open, so a slow picker never locks but a forgotten one does. */
+const SYSTEM_UI_AWAY_ALLOWANCE_MS = 5 * 60_000;
+
 /**
  * App lock's part of the shell: the away timer over the host lifecycle and, on desktop,
  * window focus; the shell's lock requests; the state and accelerator the shell shows; the
  * window title; and the mobile app-switcher cover. Time in Trinity's own system UI is not
- * "away": it never starts the timer, and it stops one that is running.
+ * "away": it never starts the timer, and it stops one that is running. Leaving the app with
+ * that UI open is bounded instead: past the delay plus SYSTEM_UI_AWAY_ALLOWANCE_MS, coming
+ * back locks.
  */
 @Injectable({ providedIn: 'root' })
 export class AppLockLifecycleBinding {
@@ -227,6 +233,8 @@ export class AppLockLifecycleBinding {
       // Hidden or minimised and not yet reported shown: only then can the shell hold the window.
       let hidden = false;
       let period: AwayPeriod | null = null;
+      // When the app went away with its own system UI open, where no period runs.
+      let systemUiAwaySince: number | null = null;
       let pending: Subscription | undefined;
       let reveal: Subscription | undefined;
 
@@ -236,11 +244,9 @@ export class AppLockLifecycleBinding {
         pending = undefined;
       };
       const begin = (floorMs: number): void => {
-        if (
-          period ||
-          this.appLock.status() !== 'unlocked' ||
-          this.systemUi.active()
-        ) {
+        if (period || this.appLock.status() !== 'unlocked') return;
+        if (this.systemUi.active()) {
+          systemUiAwaySince ??= this.now();
           return;
         }
         period = { since: this.now(), floorMs };
@@ -262,11 +268,13 @@ export class AppLockLifecycleBinding {
         // Only the host's own report ends the hidden state. A DOM focus can arrive before the
         // shell starts its reveal, which then ignores that first signal; the report sends it again.
         if (shown) hidden = false;
+        const systemUiSince = systemUiAwaySince;
+        systemUiAwaySince = null;
         stop();
         if (
-          ended &&
           this.appLock.status() === 'unlocked' &&
-          this.remainingMs(ended) <= 0
+          ((ended && this.remainingMs(ended) <= 0) ||
+            (systemUiSince !== null && this.systemUiAwayTooLong(systemUiSince)))
         ) {
           this.appLock.lockNow();
         }
@@ -309,6 +317,7 @@ export class AppLockLifecycleBinding {
               this.visitEvents.next('front');
               return;
             case 'system-ui-opened':
+              if (period) systemUiAwaySince ??= period.since;
               stop();
               return;
             case 'system-ui-closed':
@@ -327,6 +336,15 @@ export class AppLockLifecycleBinding {
         }),
       );
     });
+  }
+
+  /** Fails closed like `awayVerdict`: a clock that went backwards or is not finite locks. */
+  private systemUiAwayTooLong(since: number): boolean {
+    const elapsed = this.now() - since;
+    const limit =
+      lockDelayMs(this.appLock.lockAfter(), this.surface) +
+      SYSTEM_UI_AWAY_ALLOWANCE_MS;
+    return !(elapsed >= 0 && elapsed <= limit);
   }
 
   /** Milliseconds until the period locks; zero or less locks now. */
