@@ -153,7 +153,24 @@ describe('LocationShareService', () => {
       );
     });
 
-    it('still sends when the same room was left and reopened', () => {
+    it('ends the wait for a device position as soon as the room is left', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, toastShow, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      TestBed.tick();
+
+      // The room now open is not left with a busy Location action, nor told about a share
+      // it never asked for.
+      expect(svc.sharing()).toBe(false);
+      expect(location$.observed).toBe(false);
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('does not pick the share up again when the room is reopened', () => {
       const location$ = new Subject<{ lat: number; lng: number }>();
       const { svc, sendLocation, focused } = setup({
         current: vi.fn(() => location$),
@@ -161,7 +178,24 @@ describe('LocationShareService', () => {
 
       svc.share();
       focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      TestBed.tick();
       focused.set({ key: { accountId: '@me:hs', roomId: '!a:hs' } });
+      TestBed.tick();
+      location$.next({ lat: 1.5, lng: 2.5 });
+
+      expect(sendLocation).not.toHaveBeenCalled();
+    });
+
+    it('keeps waiting while the same room stays open', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, sendLocation, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      // A new handle for the same account and room is not a room change.
+      focused.set({ key: { accountId: '@me:hs', roomId: '!a:hs' } });
+      TestBed.tick();
       location$.next({ lat: 1.5, lng: 2.5 });
 
       expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
