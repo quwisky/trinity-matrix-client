@@ -201,7 +201,6 @@ describe('SessionHandoverWorkflow', () => {
     expect(steps).toEqual(['pause-sync']);
     await vi.advanceTimersByTimeAsync(100);
     expect(steps).toEqual(HANDED_OVER);
-    expect(matrix.reset).not.toHaveBeenCalled();
     expect(matrix.remove).not.toHaveBeenCalled();
     expect(matrix.signOutAll).not.toHaveBeenCalled();
     // A reload keeps the route; a restart at `/` would lose the room this tab showed.

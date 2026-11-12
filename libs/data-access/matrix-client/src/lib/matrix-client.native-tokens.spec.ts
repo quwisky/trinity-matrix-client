@@ -10,7 +10,11 @@ import {
   METADATA,
   fakeNetwork,
 } from './matrix-client.oauth-network.spec-harness';
-import { OIDC_SESSION, setup } from './matrix-client.spec-harness';
+import {
+  OIDC_SESSION,
+  setup,
+  startAccount,
+} from './matrix-client.spec-harness';
 
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
 /** The host a test runs on, read as the real bridge is built, and the plugin it answers from. */
@@ -208,7 +212,9 @@ describe('a phone account whose refresh token native code holds', () => {
     } = {},
   ) {
     const ctx = await service(options);
-    await firstValueFrom(ctx.svc.init(options.session ?? STORED));
+    await firstValueFrom(
+      startAccount(ctx.svc, options.session ?? STORED, 'replace'),
+    );
     return { ...ctx, client: ctx.svc.instance };
   }
 
@@ -718,7 +724,7 @@ describe('a phone account whose refresh token native code holds', () => {
         return { kind: 'current', accessToken: 'at-1' };
       });
 
-      await firstValueFrom(svc.add(STORED));
+      await firstValueFrom(startAccount(svc, STORED));
 
       expect(order).toEqual(['stopped', 'read']);
     });

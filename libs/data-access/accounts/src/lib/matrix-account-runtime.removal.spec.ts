@@ -1008,8 +1008,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
       activeAccountId: null,
       remainingAccountIds: [],
     });
-    expect(matrix.remove).toHaveBeenCalledWith('@stale:hs');
-    expect(matrix.reset).not.toHaveBeenCalled();
+    expect(matrix.remove).toHaveBeenCalledExactlyOnceWith('@stale:hs');
   });
 
   it('keeps a surviving Account active when outgoing crypto cleanup fails', async () => {
