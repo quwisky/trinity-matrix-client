@@ -322,6 +322,20 @@ describe('AppLockLifecycleBinding', () => {
     expect(lockNow).toHaveBeenCalledOnce();
   });
 
+  it('does not add up separate short trips with its own system UI open', () => {
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
+      lockAfter: 'immediately',
+    });
+    systemUiActive.set(true);
+    lifecycle.next({ kind: 'background' });
+    advance(4 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'background' });
+    advance(4 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).not.toHaveBeenCalled();
+  });
+
   it('locks on return when the clock went backwards while away with its own system UI open', () => {
     const { lifecycle, systemUiActive, lockNow, skipClock } = setup();
     systemUiActive.set(true);
