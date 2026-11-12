@@ -100,7 +100,10 @@ export class InstallationResetWorkflow {
               ),
               concatMap((records) => {
                 this.clearDrafts(attempt);
-                return this.stopMentionIndex().pipe(map(() => records));
+                return this.stopMentionIndex().pipe(
+                  concatMap(() => this.wipeSharedFiles()),
+                  map(() => records),
+                );
               }),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
@@ -292,11 +295,22 @@ export class InstallationResetWorkflow {
     return this.bounded(defer(() => this.lifecycle.stopMentionIndex()));
   }
 
-  private bounded(source: Observable<void>): Observable<void> {
+  /** Best-effort: the next native save sweeps the same folder, so nothing records residue. */
+  private wipeSharedFiles(): Observable<void> {
+    return this.bounded(
+      defer(() => from(this.wipe.wipeSharedFiles())).pipe(map(() => void 0)),
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+    );
+  }
+
+  private bounded(
+    source: Observable<void>,
+    budgetMs: number = ACCOUNT_CLEANUP_STEP_BUDGET_MS.mentionIndexStop,
+  ): Observable<void> {
     return source.pipe(
       take(1),
       timeout({
-        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.mentionIndexStop,
+        first: budgetMs,
         with: () => of(void 0),
       }),
       catchError(() => of(void 0)),

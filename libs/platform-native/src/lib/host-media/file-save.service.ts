@@ -33,6 +33,14 @@ export class FileSaveService {
     );
   }
 
+  /**
+   * Delete every file handed to the share sheet. Sign-out and erase call it, as nothing
+   * else removes the last share until the next save. Never rejects.
+   */
+  clearShared(): Promise<void> {
+    return this.nativeAvailable ? sweepShareDir() : Promise.resolve();
+  }
+
   /** Write the blob to the cache and surface the native share sheet. */
   private async saveNative(
     blob: Blob,

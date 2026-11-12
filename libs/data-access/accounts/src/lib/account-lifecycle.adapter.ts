@@ -1,6 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  LocalDataWipeService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import {
   Observable,
   catchError,
@@ -12,6 +15,7 @@ import {
   reduce,
   switchMap,
   tap,
+  timeout,
 } from 'rxjs';
 import {
   AccountCleanupAttempt,
@@ -42,6 +46,7 @@ import { InstallationResetWorkflow } from './installation-reset.workflow';
 export class AccountLifecycleAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly installationReset = inject(InstallationResetWorkflow);
   private readonly signOutRetry = inject(AccountSignOutRetryWorkflow);
@@ -382,6 +387,7 @@ export class AccountLifecycleAdapter {
         // After the client stops, so no late write follows; the next start's sweep covers a failure.
         concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearSharedAccountState(attempt)),
+        concatMap(() => this.wipeSharedFiles()),
         concatMap(() =>
           attempt.capture(
             defer(() =>
@@ -414,6 +420,7 @@ export class AccountLifecycleAdapter {
         // After the client stops, so no late write follows; the next start's sweep covers a failure.
         concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearDrafts(attempt)),
+        concatMap(() => this.wipeSharedFiles()),
         concatMap(() =>
           attempt.capture(
             defer(() =>
@@ -461,6 +468,21 @@ export class AccountLifecycleAdapter {
       attempt.addIssue('crypto-and-cache', 'restart-application');
     }
     this.clearDrafts(attempt);
+  }
+
+  /**
+   * A decrypted attachment saved for the share sheet may be the leaving account's.
+   * Best-effort: the next native save sweeps the same folder, so nothing records residue.
+   */
+  private wipeSharedFiles(): Observable<void> {
+    return defer(() => from(this.wipe.wipeSharedFiles())).pipe(
+      timeout({
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+        with: () => of(false),
+      }),
+      catchError(() => of(false)),
+      map(() => void 0),
+    );
   }
 
   private clearDrafts(

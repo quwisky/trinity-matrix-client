@@ -6,6 +6,7 @@ import {
   syncStoreIndexedDbName,
 } from '@trinity/util/matrix';
 import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
+import { FileSaveService } from './host-media/file-save.service';
 import { RETIRED_DIAGNOSTIC_LOG_DB_NAME } from './retired-diagnostic-log';
 import { MENTION_INDEX_DB_NAME } from './mention-index-db-name';
 import { firstValueFrom } from 'rxjs';
@@ -41,8 +42,8 @@ export interface IndexedDbWipeAttempt {
 
 /**
  * Deletes every local storage surface the app writes: IndexedDB (message sync + Rust
- * crypto), Capacitor Preferences, secure storage, raw web storage, and the service worker
- * with its caches.
+ * crypto), Capacitor Preferences, secure storage, raw web storage, the service worker
+ * with its caches, and the attachments saved to disk for the native share sheet.
  *
  * **Nothing here throws.** Each phase reports whether its scopes were cleared, so the
  * reset can finish and still give recovery guidance for residue.
@@ -54,6 +55,7 @@ export interface IndexedDbWipeAttempt {
 export class LocalDataWipeService {
   private readonly secure = inject(SecureStorageService);
   private readonly presence = inject(HostUserPresenceService);
+  private readonly files = inject(FileSaveService);
 
   /**
    * Delete every IndexedDB database this app could own.
@@ -197,6 +199,11 @@ export class LocalDataWipeService {
       pin = false;
     }
     return secrets && pin;
+  }
+
+  /** Delete the decrypted attachments left in the native cache for the share sheet. */
+  wipeSharedFiles(): Promise<boolean> {
+    return attemptAsync(() => this.files.clearShared());
   }
 
   /** Clear the app-scoped Preferences group. */

@@ -146,7 +146,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('signs out one explicit Account while keeping the surviving Account active', async () => {
-    const { adapter, matrix, storage, lifecycle, active } =
+    const { adapter, matrix, storage, lifecycle, active, wipe } =
       setup('@outgoing:hs');
     const client = { logout: vi.fn(() => Promise.resolve()) };
     vi.mocked(matrix.clientFor).mockReturnValue(client as never);
@@ -181,10 +181,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
     expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
     expect(lifecycle.clearDrafts).toHaveBeenCalledOnce();
+    expect(wipe.wipeSharedFiles).toHaveBeenCalledOnce();
   });
 
   it('fully clears local Account state when signing out the last Account', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@last:hs');
+    const { adapter, matrix, storage, lifecycle, active, wipe } =
+      setup('@last:hs');
     vi.mocked(matrix.clientFor).mockReturnValue({
       logout: vi.fn(() => Promise.resolve()),
     } as never);
@@ -211,6 +213,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
     expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
     expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
+    expect(wipe.wipeSharedFiles).toHaveBeenCalledOnce();
     expect(storage.clear).toHaveBeenCalledOnce();
   });
 

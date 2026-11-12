@@ -144,6 +144,27 @@ it('empties the drafts held in memory once the clients have stopped, so no later
   ).toBeGreaterThan(vi.mocked(test.matrix.stop).mock.invocationCallOrder[0]);
 });
 
+it('deletes the attachments left on disk for the share sheet', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test);
+
+  await expect(
+    firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(test.wipe.wipeSharedFiles).toHaveBeenCalledOnce();
+});
+
+it('still finishes the reset when the shared attachments cannot be deleted', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test);
+  vi.mocked(test.wipe.wipeSharedFiles).mockRejectedValue(new Error('no disk'));
+
+  await expect(
+    firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({ kind: 'ready' });
+});
+
 it('asks for a restart when the drafts held in memory cannot be emptied', async () => {
   const test = setup();
   prepareSuccessfulReset(test);

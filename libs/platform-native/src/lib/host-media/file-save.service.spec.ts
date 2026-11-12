@@ -100,8 +100,24 @@ describe('FileSaveService host adapter', () => {
     });
   });
 
+  it('has no shared files to clear on the web', async () => {
+    await build().clearShared();
+
+    expect(rmdir).not.toHaveBeenCalled();
+  });
+
   describe('native', () => {
     beforeEach(() => isNative.mockReturnValue(true));
+
+    it('deletes every shared file on request, without a new save', async () => {
+      await build().clearShared();
+
+      expect(rmdir).toHaveBeenCalledExactlyOnceWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+        recursive: true,
+      });
+    });
 
     it('sweeps prior shares, writes to a per-share folder, then shares', async () => {
       const svc = build();

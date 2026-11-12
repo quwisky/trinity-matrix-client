@@ -58,6 +58,7 @@ export function setup(activeAccountId: string | null = '@old:hs') {
       Promise.resolve({ cacheStorage: true, registrations: true }),
     ),
     wipeSecureStorage: vi.fn(() => Promise.resolve(true)),
+    wipeSharedFiles: vi.fn(() => Promise.resolve(true)),
     wipePreferences: vi.fn(() => Promise.resolve(true)),
     wipeWebStorage: vi.fn(() => Promise.resolve(true)),
     wipeCacheStorage: vi.fn(() => Promise.resolve(true)),
