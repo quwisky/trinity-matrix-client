@@ -263,7 +263,7 @@ describe('mediaCaptionFields', () => {
 });
 
 /** A room whose `findEventById` returns the replied-to event, or nothing when omitted. */
-function replyRoom(target?: { sender: string; body: string }): Room {
+function replyRoom(target?: { sender: string; body: unknown }): Room {
   return {
     roomId: '!r:hs',
     findEventById: () =>
@@ -651,7 +651,7 @@ describe('mentions in content builders', () => {
 
 // A fake shaped like the bits messagePreview() reads off a MatrixEvent.
 function fakeEvent(o: {
-  body?: string;
+  body?: unknown;
   redacted?: boolean;
   decryptFail?: boolean;
   encrypted?: boolean;
@@ -668,7 +668,23 @@ function fakeEvent(o: {
   } as unknown as MatrixEvent;
 }
 
+describe('a reply to a message whose body is not text', () => {
+  it('quotes it as empty instead of throwing', () => {
+    const content = replyMessageContent(
+      replyRoom({ sender: '@alice:hs', body: 1 }),
+      '$t',
+      'nice',
+      renderMarkdown('nice'),
+    );
+    expect(content.body).toBe('> <@alice:hs> \n\nnice');
+  });
+});
+
 describe('messagePreview', () => {
+  it('previews a body that is not text as empty instead of throwing', () => {
+    expect(messagePreview(fakeEvent({ body: 1 }))).toBe('…');
+  });
+
   // The SDK's setClearData puts the content back when a decrypt outlasts the deletion.
   it('hides the text of a message deleted while it was decrypting', async () => {
     const event = new MatrixEvent({

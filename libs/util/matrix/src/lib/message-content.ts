@@ -545,9 +545,7 @@ function replyFallback(
   target: MatrixEvent,
   contentOf: (event: MatrixEvent) => Record<string, unknown>,
 ): { body: string; html: string } {
-  const origBody = stripReplyFallbackText(
-    (contentOf(target)['body'] as string) ?? '',
-  );
+  const origBody = stripReplyFallbackText(contentOf(target)['body']);
   const firstLine = origBody.split('\n')[0] ?? '';
   // Escape the ids interpolated into href attributes: a hostile sender/room id must not break
   // out of the attribute and inject markup.
@@ -619,6 +617,6 @@ export function messagePreview(
   if (event.isRedacted()) {
     return '(message deleted)';
   }
-  const body = stripReplyFallbackText((content['body'] as string) ?? '');
+  const body = stripReplyFallbackText(content['body']);
   return body.replace(/\s+/g, ' ').trim() || '…';
 }

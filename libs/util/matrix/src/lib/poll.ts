@@ -53,12 +53,10 @@ function extensibleText(obj: Record<string, unknown> | undefined): string {
   if (!obj) {
     return '';
   }
-  return (
-    (obj[M_TEXT.name] as string) ??
-    (obj[M_TEXT.altName] as string) ??
-    (obj['body'] as string) ??
-    ''
+  const text = [obj[M_TEXT.name], obj[M_TEXT.altName], obj['body']].find(
+    (candidate): candidate is string => typeof candidate === 'string',
   );
+  return text ?? '';
 }
 
 /** The `m.poll.start` subtype from a start event's content (either namespace). */

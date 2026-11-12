@@ -336,6 +336,22 @@ describe('formatter cache', () => {
   });
 });
 
+describe('a timestamp no date can hold', () => {
+  // `origin_server_ts` is a raw federated number: past ±8.64e15 `Intl` throws a RangeError.
+  it.each([9_000_000_000_000_000, -9_000_000_000_000_000, NaN, Infinity])(
+    'formats %s as nothing instead of throwing',
+    (ts) => {
+      for (const date of ['system', 'iso'] as const) {
+        const p = prefs('h24', date);
+        expect(formatClockTime(ts, p)).toBe('');
+        expect(formatDateOnly(ts, p)).toBe('');
+        expect(formatDateTime(ts, p)).toBe('');
+        expect(formatDaySeparator(ts, p, true)).toBe('');
+      }
+    },
+  );
+});
+
 describe('type guards', () => {
   it('accepts every catalogued id and rejects anything else', () => {
     expect(isTimeFormat('system')).toBe(true);
