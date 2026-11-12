@@ -134,7 +134,6 @@ export class RegistrationService {
       const request: RegisterRequest = {
         username: localpart,
         password,
-        refresh_token: true,
         inhibit_login: false,
         initial_device_display_name: this.handoff.deviceDisplayName(),
       };
