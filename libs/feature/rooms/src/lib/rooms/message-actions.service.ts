@@ -282,6 +282,20 @@ export class MessageActionsService {
       });
   }
 
+  /** A batch caption: its own message, not the edit, reply or draft in the box by now. */
+  onSendCaption({
+    body,
+    mentions,
+  }: {
+    body: string;
+    mentions: Mention[];
+  }): void {
+    this.compose
+      .sendMessage(body, mentions)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe();
+  }
+
   onSendSticker(sticker: ImagePackImage): void {
     if (this.timeline.roomEncrypted) {
       this.status.showWarning(

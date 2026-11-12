@@ -109,10 +109,17 @@ describe('MessageActionsService', () => {
   });
   const toastShow = vi.fn();
   const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
+  const sendMessage = vi.fn<
+    (
+      body: string,
+      mentions?: Mention[],
+    ) => Observable<ConversationTextSendOutcome>
+  >(() => of({ kind: 'sent', eventId: '$caption' }));
   const compose = {
     setDraft,
     draft,
     submit: submitText,
+    sendMessage,
     setTyping,
     intent,
     cancelIntent,
@@ -163,6 +170,8 @@ describe('MessageActionsService', () => {
                 m?: Mention[],
               ) => ReturnType<typeof submitText>
             )(mentions),
+          sendMessage: (body: string, mentions?: Mention[]) =>
+            currentCompose().sendMessage(body, mentions),
           setTyping: (typing: boolean) => currentCompose().setTyping(typing),
         },
         messages: { redact, toggleReaction, retry, cancel, toComposer },
@@ -268,6 +277,35 @@ describe('MessageActionsService', () => {
       actions.onSend({ body: 'x', mentions: [] });
 
       expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    describe('a batch caption, written before its upload', () => {
+      afterEach(() => {
+        intent.set({ kind: 'message' });
+        draft.set('');
+      });
+
+      it('goes out as a new message, not as the edit started since', () => {
+        const { actions } = build();
+        intent.set({ kind: 'edit', eventId: '$old' });
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith('holiday', []);
+        expect(submitText).not.toHaveBeenCalled();
+        expect(setDraft).not.toHaveBeenCalled();
+      });
+
+      it('leaves text typed since in the draft', () => {
+        const { actions } = build();
+        draft.set('next message');
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith('holiday', []);
+        expect(submitText).not.toHaveBeenCalled();
+        expect(setDraft).not.toHaveBeenCalled();
+      });
     });
 
     describe('editing', () => {

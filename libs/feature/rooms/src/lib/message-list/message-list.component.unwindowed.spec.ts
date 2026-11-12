@@ -1554,7 +1554,7 @@ describe('MessageListComponent with windowing off', () => {
     });
     const cmp = fixture.componentInstance;
     const sent: string[] = [];
-    cmp.send.subscribe((e) => sent.push(e.body));
+    cmp.sendCaption.subscribe((e) => sent.push(e.body));
     cmp.startEdit({
       ...msg('$1', '@a:hs', 'Alice', 1000),
       showHeader: true,
