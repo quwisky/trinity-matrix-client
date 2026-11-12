@@ -307,6 +307,25 @@ describe('buildPollView', () => {
     expect(view.question).toBe('Q');
   });
 
+  it('skips an answer that is not an object', () => {
+    const hostile = {
+      getId: () => POLL_ID,
+      getType: () => 'm.poll.start',
+      getTs: () => 0,
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({
+        'm.poll.start': {
+          question: { 'm.text': 'Q' },
+          answers: [null, 5, { id: 'a0', 'm.text': 'A' }],
+        },
+      }),
+    } as unknown as MatrixEvent;
+
+    const view = buildPollView(client, room([]), hostile, false);
+    expect(view.options.map((option) => option.text)).toEqual(['A']);
+  });
+
   it('counts every answer of a multi-select response', () => {
     const view = buildPollView(
       client,

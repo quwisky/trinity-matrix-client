@@ -229,12 +229,11 @@ export function buildPollView(
   const rawAnswers = subtype?.['answers'];
   const answers = (
     Array.isArray(rawAnswers) ? rawAnswers.slice(0, MAX_POLL_ANSWERS) : []
-  ) as Array<Record<string, unknown>>;
-  const optionIds = new Set(
-    answers.map((a) =>
-      String((a && typeof a === 'object' ? a['id'] : undefined) ?? ''),
-    ),
+  ).filter(
+    (answer): answer is Record<string, unknown> =>
+      typeof answer === 'object' && answer !== null,
   );
+  const optionIds = new Set(answers.map((a) => String(a['id'] ?? '')));
   const maxSelections = maxSelectionsOf(
     subtype?.['max_selections'],
     answers.length,

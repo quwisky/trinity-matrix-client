@@ -693,7 +693,9 @@ export class MessageRowComponent {
     const r = this.row();
     const text = (r.body ?? '').trim().replace(/\s+/g, ' ');
     const excerpt = text.length > 80 ? `${text.slice(0, 80)}…` : text;
-    const head = `${r.senderName}, ${this.fmt.dateTime(r.timestamp)}`;
+    const head = [r.senderName, this.fmt.dateTime(r.timestamp)]
+      .filter(Boolean)
+      .join(', ');
     return excerpt ? `${head}: ${excerpt}` : head;
   });
 
