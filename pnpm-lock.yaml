@@ -498,7 +498,7 @@ importers:
         version: 17.6.0
       ng-mocks:
         specifier: ^14.15.3
-        version: 14.18.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/forms@22.2.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))
+        version: 14.18.6(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/forms@22.2.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))
       ng-packagr:
         specifier: 22.2.6
         version: 22.2.6(@angular/compiler-cli@22.2.5(@angular/compiler@22.2.5)(typescript@6.0.3))(@volar/typescript@2.4.30(typescript@6.0.3))(oxc-resolver@11.21.2)(supports-color@8.1.1)(tailwindcss@4.3.5)(tslib@2.8.1)(typescript@6.0.3)
@@ -7499,8 +7499,8 @@ packages:
     resolution: {integrity: sha512-WmmLty1YWwJl9yZi77v2dVIV6X2kuYV8YYBI/G3LWGKdGHmHUvL1z7FW0iDvEvGAwNEoc5x1tOOOyDnf5jJw/w==}
     engines: {node: '>= 10'}
 
-  ng-mocks@14.18.5:
-    resolution: {integrity: sha512-adq2kXCvaRx/Bk4tFUohhmEawJLukX0kddPzszAHt3V5hBwpU+AUEcUlofSgOg/3b7I8ByBTcDMMer/LiReMMg==}
+  ng-mocks@14.18.6:
+    resolution: {integrity: sha512-SrvSGi+AdtXYNYG0LIrRQGVieOm4igNa776GlrEp9nbV4PtA53ChRLRVDHqzsWbpD5ARNzjM5jrZ0/uNk9WpoA==}
     peerDependencies:
       '@angular/common': 5.0.0-alpha - 5 || 6.0.0-alpha - 6 || 7.0.0-alpha - 7 || 8.0.0-alpha - 8 || 9.0.0-alpha - 9 || 10.0.0-alpha - 10 || 11.0.0-alpha - 11 || 12.0.0-alpha - 12 || 13.0.0-alpha - 13 || 14.0.0-alpha - 14 || 15.0.0-alpha - 15 || 16.0.0-alpha - 16 || 17.0.0-alpha - 17 || 18.0.0-alpha - 18 || 19.0.0-alpha - 19 || 20.0.0-alpha - 20 || 21.0.0-alpha - 21 || 22.0.0-alpha - 22
       '@angular/core': 5.0.0-alpha - 5 || 6.0.0-alpha - 6 || 7.0.0-alpha - 7 || 8.0.0-alpha - 8 || 9.0.0-alpha - 9 || 10.0.0-alpha - 10 || 11.0.0-alpha - 11 || 12.0.0-alpha - 12 || 13.0.0-alpha - 13 || 14.0.0-alpha - 14 || 15.0.0-alpha - 15 || 16.0.0-alpha - 16 || 17.0.0-alpha - 17 || 18.0.0-alpha - 18 || 19.0.0-alpha - 19 || 20.0.0-alpha - 20 || 21.0.0-alpha - 21 || 22.0.0-alpha - 22
@@ -17829,7 +17829,7 @@ snapshots:
 
   neotraverse@1.0.1: {}
 
-  ng-mocks@14.18.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/forms@22.2.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))):
+  ng-mocks@14.18.6(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/forms@22.2.5(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(rxjs@7.8.2))(@angular/platform-browser@22.2.5(@angular/animations@22.2.4(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))):
     dependencies:
       '@angular/common': 22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2)
