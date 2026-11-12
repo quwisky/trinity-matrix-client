@@ -636,6 +636,67 @@ describe('release-please token', () => {
   });
 });
 
+describe('release run queue', () => {
+  it('queues every release run behind the one in flight, in one group with Release stable', () => {
+    // Without `queue: max` a group holds one pending run: a push to main would replace a
+    // queued stable release or re-package, which then never tags, drafts or back-merges.
+    expect(workflow.concurrency).toEqual({
+      group: 'release',
+      queue: 'max',
+      'cancel-in-progress': false,
+    });
+    expect(loadWorkflow('release-stable.yml').concurrency).toEqual(
+      workflow.concurrency,
+    );
+  });
+});
+
+describe('draft release upload', () => {
+  const step = workflow.jobs['draft-release'].steps.find(
+    (s) => s.name === 'Create or update the draft release',
+  );
+
+  /** Runs the step against a `gh` whose `release view` prints `isDraft` or fails. */
+  function upload(view) {
+    const dir = mkdtempSync(join(tmpdir(), 'draft-release-'));
+    try {
+      mkdirSync(join(dir, 'artifacts'));
+      writeFileSync(join(dir, 'artifacts/Trinity.dmg'), '');
+      writeFileSync(
+        join(dir, 'gh'),
+        `#!/bin/sh\nif [ "$2" = view ]; then ${view}; fi\necho "$@" >> "${join(dir, 'calls')}"\n`,
+        { mode: 0o755 },
+      );
+      const { status } = spawnSync('bash', ['-e', '-c', step.run], {
+        cwd: dir,
+        env: { PATH: `${dir}:${process.env.PATH}`, TAG: 'v1.2.3' },
+      });
+      const calls = join(dir, 'calls');
+      return {
+        status,
+        uploaded: existsSync(calls) && readFileSync(calls, 'utf8'),
+      };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it('uploads to a draft', () => {
+    expect(upload('echo true; exit 0')).toEqual({
+      status: 0,
+      uploaded: 'release upload v1.2.3 artifacts/Trinity.dmg --clobber\n',
+    });
+  });
+
+  it.each([
+    ['a published release', 'echo false; exit 0'],
+    ['a release it could not read', 'exit 1'],
+    ['an unexpected answer', 'echo; exit 0'],
+  ])('fails without uploading to %s', (_, view) => {
+    expect(upload(view)).toEqual({ status: 1, uploaded: false });
+  });
+});
+
 describe('release publishing job', () => {
   const job = workflow.jobs.publish;
 
