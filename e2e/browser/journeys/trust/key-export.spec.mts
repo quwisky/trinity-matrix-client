@@ -36,10 +36,12 @@ test.describe('Encrypted key export', () => {
       timeout: 15_000,
     });
 
-    // Export: enter a passphrase, confirm, and capture the downloaded file.
+    // Export: enter a passphrase, repeat it, and capture the downloaded file.
     await page.getByTestId('security-export-keys').click();
     const dialog = page.locator('trn-alert-dialog');
-    await dialog.locator('input').fill(PASSPHRASE);
+    await dialog.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
+    await page.getByTestId('alert-confirm').click();
+    await dialog.getByLabel('Repeat passphrase').fill(PASSPHRASE);
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('alert-confirm').click();
     const inputFile = await downloadPromise.then((download) => download.path());
