@@ -383,7 +383,10 @@ export class TrustService {
           // them over the account's identity. Checked before the key is cached, so a
           // refusal leaves nothing to clear.
           const { privateKeysInSecretStorage, privateKeysCachedLocally: held } =
-            await crypto.getCrossSigningStatus();
+            await crypto.getCrossSigningStatus().catch((error: unknown) => {
+              privateKey.fill(0);
+              throw error;
+            });
           if (
             !privateKeysInSecretStorage &&
             !(held.masterKey && held.selfSigningKey && held.userSigningKey)
