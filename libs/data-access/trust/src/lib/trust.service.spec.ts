@@ -40,6 +40,13 @@ vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
 // A valid recovery key (round-trips through decodeRecoveryKey to 32 bytes).
 const VALID_KEY = encodeRecoveryKey(new Uint8Array(32)) as string;
 
+// The cross-signing seeds of an account whose recovery was set up completely.
+const SEEDS = {
+  'm.cross_signing.master': 'real-master',
+  'm.cross_signing.self_signing': 'real-self',
+  'm.cross_signing.user_signing': 'real-user',
+};
+
 // A failed rebuild is these specs' subject; the runtime's development warning would only add noise.
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -182,6 +189,7 @@ describe('TrustService', () => {
       const { svc, keys, crypto, secretStorage } = setup({
         defaultKeyId: 'k',
         checkKey: true,
+        storedSecrets: SEEDS,
         crossSigningReady: true,
         secretStorageReady: true,
       });
@@ -201,6 +209,7 @@ describe('TrustService', () => {
       const { svc, matrix, secretStorage } = setup({
         defaultKeyId: 'k',
         checkKey: true,
+        storedSecrets: SEEDS,
         crossSigningReady: true,
         secretStorageReady: true,
       });
@@ -250,17 +259,45 @@ describe('TrustService', () => {
       ).rejects.toThrow(/no recovery key/i);
     });
 
+    // A setup or reset that failed after writing the default 4S key but before storing the
+    // m.cross_signing.* secrets. bootstrapCrossSigning({}) would then create new keys and
+    // upload them over the account's identity.
+    it('refuses instead of bootstrapping when 4S has a default key but no cross-signing keys', async () => {
+      const { svc, keys, crypto } = setup({
+        defaultKeyId: 'k',
+        checkKey: true,
+        identityOnServer: true,
+      });
+
+      await expect(
+        firstValueFrom(svc.recoverWithKey(VALID_KEY)),
+      ).rejects.toMatchObject({
+        operation: 'recover',
+        kind: 'recovery-not-configured',
+        recovery: 'verify-another-device',
+      });
+      expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+      expect(keys.hasKey).toBe(false);
+    });
+
+    it('still stores the keys this device holds when 4S lacks them', async () => {
+      const { svc, crypto } = setup({
+        defaultKeyId: 'k',
+        checkKey: true,
+        crossSigningReady: true,
+        privatesCachedLocally: true,
+      });
+
+      await firstValueFrom(svc.recoverWithKey(VALID_KEY));
+
+      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
+    });
+
     // An interrupted reset leaves the olm machine holding cross-signing privates it
     // rotated but never published. bootstrapCrossSigning({}) then sees privates already
     // in place and logs "doing nothing" — so unlocking 4S never replaced them, and the
     // device stayed at needs-recovery no matter how many times the user tried.
     describe('cross-signing keys stranded by an interrupted reset', () => {
-      const SEEDS = {
-        'm.cross_signing.master': 'real-master',
-        'm.cross_signing.self_signing': 'real-self',
-        'm.cross_signing.user_signing': 'real-user',
-      };
-
       it('re-imports the real keys from 4S and cross-signs this device', async () => {
         const { svc, crypto } = setup({
           defaultKeyId: 'k',
@@ -404,6 +441,7 @@ describe('TrustService', () => {
       const { svc, crypto } = setup({
         defaultKeyId: 'k',
         checkKey: true,
+        storedSecrets: SEEDS,
         backupInfo: null,
       });
 
@@ -421,6 +459,7 @@ describe('TrustService', () => {
       const { svc, keys, crypto } = setup({
         defaultKeyId: 'k',
         checkKey: true,
+        storedSecrets: SEEDS,
         keyInfo: {
           passphrase: { algorithm: 'm.pbkdf2', salt: 'salty', iterations: 1 },
         },
@@ -450,6 +489,7 @@ describe('TrustService', () => {
       const { svc, keys, crypto } = setup({
         defaultKeyId: 'k',
         checkKey: true,
+        storedSecrets: SEEDS,
       });
       crypto.loadSessionBackupPrivateKeyFromSecretStorage.mockRejectedValue(
         new Error('stale backup key in 4S'),
