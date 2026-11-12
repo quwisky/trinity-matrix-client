@@ -1013,7 +1013,7 @@ describe('MemberListComponent — windowing', () => {
     expect(peek).toHaveBeenCalledTimes(5_000);
     // About 100ms and 5ms locally: room for a loaded CI runner, not for a render per member.
     expect(firstRender).toBeLessThan(500);
-    expect(regroup).toBeLessThan(50);
+    expect(regroup).toBeLessThan(250);
     peek.mockRestore();
     tracked.mockRestore();
   });

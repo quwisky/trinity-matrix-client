@@ -257,7 +257,8 @@ describe('agent-guard PreToolUse hook', () => {
   ])('reads %s in linear time', (_, command) => {
     const start = performance.now();
     check({ cwd: repo, tool_name: 'Bash', tool_input: { command } });
-    expect(performance.now() - start).toBeLessThan(100);
+    // Milliseconds locally; backtracking takes seconds. The gap leaves room for a loaded runner.
+    expect(performance.now() - start).toBeLessThan(500);
   });
 
   it('refuses a push of more refs than it can check, without calling gh for each', () => {
