@@ -2667,7 +2667,6 @@ describe('MatrixClientService', () => {
           fakeClient('https://hs.example') as never,
         );
         const { svc, storage } = setup();
-        vi.mocked(storage.save).mockReturnValue(of(SESSION));
         vi.mocked(storage.setActive).mockReturnValue(of(undefined));
 
         await firstValueFrom(svc.init(SESSION));
@@ -2679,7 +2678,6 @@ describe('MatrixClientService', () => {
         vi.mocked(createClient).mockReturnValueOnce(
           fakeClient('https://other.example') as never,
         );
-        vi.mocked(storage.save).mockReturnValue(of(SESSION_B));
         await firstValueFrom(svc.add(SESSION_B));
         expect(setAllowedOrigins).toHaveBeenLastCalledWith([
           'https://hs.example',
