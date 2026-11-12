@@ -692,11 +692,13 @@ export class ThreadsService {
         return of(void 0);
       }
       const { client, room, roomId, threadId } = ctx;
+      const edited = room.findEventById(messageId);
       const content = editMessageContent(
         messageId,
         text,
         renderMarkdown(text, this.packs.emoticons()),
         mentions,
+        edited && shownContent(edited)['msgtype'],
       );
       const txnId = client.makeTxnId();
       return from(

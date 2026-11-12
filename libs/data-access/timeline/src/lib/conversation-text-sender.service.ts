@@ -265,13 +265,16 @@ class MatrixConversationTextSender implements ConversationTextSender {
           shownContent,
         );
       }
-      case 'edit':
+      case 'edit': {
+        const edited = room.findEventById(request.intent.eventId);
         return editMessageContent(
           request.intent.eventId,
           request.body,
           render(request.body),
           mentions,
+          edited && shownContent(edited)['msgtype'],
         );
+      }
     }
   }
 }
