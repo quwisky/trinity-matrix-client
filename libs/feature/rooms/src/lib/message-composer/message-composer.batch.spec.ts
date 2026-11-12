@@ -268,6 +268,8 @@ describe('MessageComposerComponent — sending a batch and reconciling its outco
       cmp.text.set('for the room');
       cmp.submit();
 
+      // As `beginEdit` does: while editing, the Conversation's draft is the edit's.
+      runtime.compose.draft.set('the edited body');
       fixture.componentRef.setInput('editing', true);
       fixture.componentRef.setInput('editTargetId', '$m');
       fixture.componentRef.setInput('draft', 'the edited body');
