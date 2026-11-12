@@ -792,6 +792,17 @@ describe('stripReplyFallbackText', () => {
       expect(stripReplyFallbackText(own)).toBe(own);
     },
   );
+
+  it('stays fast on a hostile body that never closes the user id', () => {
+    const hostile = `> <@${':'.repeat(60_000)}`;
+    const started = performance.now();
+    expect(stripReplyFallbackText(hostile)).toBe(hostile);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it('recognises a user id on a server with a port', () => {
+    expect(stripReplyFallbackText('> <@a:hs:8448> hi\n\nyo')).toBe('yo');
+  });
 });
 
 describe('replyPreview', () => {

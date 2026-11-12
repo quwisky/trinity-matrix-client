@@ -665,7 +665,7 @@ export function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
  * How a rich-reply fallback opens: `> <@user:server> …`, or `> * <@user:server> …` for an
  * emote. Any other leading `>` is the writer's own text (`>_>`, a quote they typed).
  */
-const REPLY_FALLBACK_START = /^> (?:\* )?<@[^>\s]+:[^>\s]+>/;
+const REPLY_FALLBACK_START = /^> (?:\* )?<@[^>\s:]+:[^>\s]+>/;
 
 /**
  * Strip the rich-reply fallback from a body: the leading `> …` quote lines and
