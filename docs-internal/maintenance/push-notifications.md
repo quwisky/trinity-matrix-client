@@ -208,6 +208,10 @@ than assuming arbitrary pusher metadata survives delivery.
    repeat call reapplies pushers for every current account. An unavailable
    platform, plugin, or gateway remains a no-op; denied permission and native
    registration errors are reported in the registration state.
+   `NativePushLifetime` calls it whenever the set of live accounts changes while
+   it owns the listener, so an account that becomes live after the token arrived
+   gets its pusher, and a replacing sign-in's `unregister()` is followed by a new
+   registration.
 3. Each pusher uses `append: true`, so accounts on the same homeserver do not
    remove each other's pusher.
 4. `unregister(userId)` removes that account's pushers. `unregister()` removes

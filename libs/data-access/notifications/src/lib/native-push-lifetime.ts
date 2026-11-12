@@ -118,10 +118,20 @@ export class NativePushLifetime {
           PREPARATION_BUDGET_MS,
         );
       };
-      const apply = (): void => {
+      const apply = (accountsChanged = false): void => {
         if (applying) return;
         const next = this.push.runtimePrerequisite();
-        if (next === prerequisite && this.current) return;
+        if (next === prerequisite && this.current) {
+          // The token event set pushers only for the accounts live then. register() gives
+          // one that is live only now its pusher, or restarts a registration that a
+          // replacing sign-in tore down.
+          if (accountsChanged && next === 'ready' && ownsListener) {
+            listener.add(
+              this.push.register().subscribe({ error: () => undefined }),
+            );
+          }
+          return;
+        }
         applying = true;
         try {
           disconnect();
@@ -205,10 +215,14 @@ export class NativePushLifetime {
         },
         { injector: this.injector },
       );
+      // The effect's first run only repeats the apply() above; later runs are real changes.
+      let accountsSeen = false;
       const demandChanges = effect(
         () => {
           this.matrix.accountIds();
-          untracked(apply);
+          const changed = accountsSeen;
+          accountsSeen = true;
+          untracked(() => apply(changed));
         },
         { injector: this.injector },
       );

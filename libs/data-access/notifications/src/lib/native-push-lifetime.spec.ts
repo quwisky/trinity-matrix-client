@@ -111,6 +111,37 @@ describe('NativePushLifetime', () => {
     vi.useRealTimers();
   });
 
+  it('registers again when a second account becomes live after the token arrived', () => {
+    const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
+    TestBed.tick();
+    // Starting is the listener's job: its ready event registers, not the account list.
+    expect(register).not.toHaveBeenCalled();
+    runtimeStatus.set({ status: 'available', code: 'push-registration-ready' });
+    TestBed.tick();
+
+    accountIds.set(['@a:example.org', '@b:example.org']);
+    TestBed.tick();
+
+    expect(register).toHaveBeenCalledOnce();
+    // The same listener is kept: only the pushers are reapplied.
+    expect(run).toHaveBeenCalledOnce();
+    TestBed.tick();
+    expect(register).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('leaves the account list alone while native push is not demanded', () => {
+    prerequisite = 'not-configured';
+    const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
+    TestBed.tick();
+
+    accountIds.set(['@a:example.org', '@b:example.org']);
+    TestBed.tick();
+
+    expect(register).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
+  });
+
   it('settles as expected dormancy when the host turns out unable to register', () => {
     vi.useFakeTimers();
     const events: NativePushLifetimeEvent[] = [];
