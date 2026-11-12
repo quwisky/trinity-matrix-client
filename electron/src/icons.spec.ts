@@ -8,29 +8,7 @@ vi.mock('electron', () => ({
   nativeImage: { createFromPath },
 }));
 
-import { iconCandidatePaths, resolveIconFile, trayIconFile } from './icons';
-
-describe('resolveIconFile', () => {
-  // iconCandidatePaths() joins process.resourcesPath, which only Electron defines.
-  beforeAll(() => {
-    Object.defineProperty(process, 'resourcesPath', {
-      value: '/resources',
-      configurable: true,
-    });
-  });
-  beforeEach(() => existsSync.mockReset());
-
-  it('returns the first candidate that exists', () => {
-    const [, second] = iconCandidatePaths('icon.png');
-    existsSync.mockImplementation((path: string) => path === second);
-    expect(resolveIconFile('icon.png')).toBe(second);
-  });
-
-  it('returns undefined when no candidate exists', () => {
-    existsSync.mockReturnValue(false);
-    expect(resolveIconFile('icon.png')).toBeUndefined();
-  });
-});
+import { iconCandidatePaths, trayIconFile } from './icons';
 
 describe('trayIconFile', () => {
   it('uses the template on macOS, a 32 px tray on Linux and a 16 px tray elsewhere', () => {

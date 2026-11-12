@@ -7,7 +7,6 @@ import { logger as sdkRootLogger } from 'matrix-js-sdk/lib/logger';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   configureMatrixSdkLogging,
-  matrixSdkLogLevel,
   provideMatrixSdkLogging,
 } from './matrix-sdk-logging';
 
@@ -124,6 +123,5 @@ describe('configureMatrixSdkLogging', () => {
     sdkRootLogger.debug('root debug');
 
     expect(debug).not.toHaveBeenCalled();
-    expect(matrixSdkLogLevel()).toBe('warn');
   });
 });

@@ -16,13 +16,6 @@ export function iconCandidatePaths(fileName: string): string[] {
   ];
 }
 
-/** First existing candidate for an `electron/build/` asset, or `undefined`. */
-export function resolveIconFile(fileName: string): string | undefined {
-  return iconCandidatePaths(fileName).find((candidate) =>
-    fs.existsSync(candidate),
-  );
-}
-
 /** The tray image for a platform: a template on macOS, a larger icon for Linux AppIndicators. */
 export function trayIconFile(platform: NodeJS.Platform): string {
   if (platform === 'darwin') return 'trinityTrayTemplate.png';

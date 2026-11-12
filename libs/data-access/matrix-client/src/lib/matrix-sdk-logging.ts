@@ -34,11 +34,6 @@ export function configureMatrixSdkLogging(level: MatrixSdkLogLevel): void {
   }
 }
 
-/** The level last set by {@link configureMatrixSdkLogging}; `debug` until then. */
-export function matrixSdkLogLevel(): MatrixSdkLogLevel {
-  return sdkLogLevel;
-}
-
 /**
  * Apply {@link configureMatrixSdkLogging} when the root injector is created, before any
  * service can create a client.
