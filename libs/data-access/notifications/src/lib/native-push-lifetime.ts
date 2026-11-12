@@ -122,12 +122,12 @@ export class NativePushLifetime {
         if (applying) return;
         const next = this.push.runtimePrerequisite();
         if (next === prerequisite && this.current) {
-          // The token event set pushers only for the accounts live then. register() gives
-          // one that is live only now its pusher, or restarts a registration that a
-          // replacing sign-in tore down.
+          // The token event set pushers only for the accounts live then.
           if (accountsChanged && next === 'ready' && ownsListener) {
             listener.add(
-              this.push.register().subscribe({ error: () => undefined }),
+              this.push
+                .registerNewAccounts()
+                .subscribe({ error: () => undefined }),
             );
           }
           return;

@@ -17,6 +17,8 @@ import {
 } from '@trinity/platform-native';
 import { DEFAULT_APP_ID, PUSH_CONFIG } from './push-config';
 
+type AccountClient = ReturnType<MatrixClientService['all']>[number];
+
 /** Semantic destination emitted by a native notification tap. */
 export interface NativePushActivation {
   readonly accountId?: string;
@@ -112,7 +114,8 @@ function deviceErrorMessage(err: unknown): string {
  * config-gated: a no-op on web/desktop or when no `PushConfig` is provided.
  *
  * Pair {@link register} (which also re-applies pushers for accounts added later) with
- * {@link unregister} (one account on sign-out, or all on full logout).
+ * {@link unregister} (one account on sign-out, or all on full logout). An account that was
+ * unregistered gets no pusher again while its client stays live: see {@link unregister}.
  */
 @Injectable({ providedIn: 'root' })
 export class PushService {
@@ -125,6 +128,17 @@ export class PushService {
   private currentPushkey: string | null = null;
   /** Guards the one-time OS-registration flow (permission + token request). */
   private registered = false;
+  /** Clients whose own sign-out removed their pusher. Never given one again. */
+  private readonly signingOut = new WeakSet<object>();
+  /** Clients live at a full teardown. Only {@link register} takes them back. */
+  private released = new WeakSet<object>();
+  /**
+   * The token each client's pusher was last set with, so a later round posts only what is
+   * missing. The rest of a pusher is fixed per client: gateway, app id, user id, device id.
+   */
+  private applied = new WeakMap<object, string>();
+  /** The pusher rounds, one at a time: {@link unregister} removes only after the last one. */
+  private round: Promise<void> = Promise.resolve();
 
   private readonly _registration = signal<PushRegistrationState>({
     status: 'idle',
@@ -195,6 +209,8 @@ export class PushService {
    */
   register(): Observable<void> {
     return defer(async () => {
+      this.released = new WeakSet();
+      this.applied = new WeakMap();
       if (!this.canPush()) {
         return;
       }
@@ -272,6 +288,21 @@ export class PushService {
     });
   }
 
+  /**
+   * Give the accounts that became live after the device token arrived their pusher.
+   *
+   * Unlike {@link register} it never asks the OS: with no token, a registration is in
+   * progress, was denied or failed, or was torn down, and none of those is restarted by a
+   * change of the account list. It posts only pushers that are not already applied.
+   */
+  registerNewAccounts(): Observable<void> {
+    return defer(async () => {
+      if (this.canPush() && this.currentPushkey) {
+        await this.setPushers(this.currentPushkey);
+      }
+    });
+  }
+
   /** Restart a registration attempt whose native callback never settled. */
   retryRegistration(): Observable<void> {
     return defer(() => {
@@ -284,6 +315,11 @@ export class PushService {
    * Delete pusher(s). With a `userId`, remove just that account's pusher; without one, tear
    * everything down (full logout / reset). Run before the access token is invalidated so
    * the gateway stops delivering.
+   *
+   * The clients it covers are left out of every later pusher round, so an account that is
+   * signing out or being replaced cannot get its pusher back while its client is still
+   * live. After a full teardown {@link register} takes the surviving clients back (an
+   * abandoned replacing sign-in); a single account's sign-out is final.
    */
   unregister(userId?: string): Observable<void> {
     return defer(async () => {
@@ -291,11 +327,18 @@ export class PushService {
       const appId = this.pusherAppId();
       if (userId) {
         const client = this.matrix.clientFor(userId);
-        if (pushkey && client) {
+        if (!client) return;
+        this.signingOut.add(client);
+        this.applied.delete(client);
+        await this.round;
+        if (pushkey) {
           await client.removePusher(pushkey, appId).catch(() => undefined);
         }
         return;
       }
+      const accounts = this.matrix.all();
+      for (const account of accounts) this.released.add(account.client);
+      this.applied = new WeakMap();
       this.currentPushkey = null;
       this.registered = false;
       // Every pusher is going away, so "applied to N accounts" would be stale.
@@ -304,8 +347,9 @@ export class PushService {
         status: 'idle',
         code: 'push-registration-idle',
       });
+      await this.round;
       if (pushkey) {
-        for (const account of this.matrix.all()) {
+        for (const account of accounts) {
           await account.client
             .removePusher(pushkey, appId)
             .catch(() => undefined);
@@ -355,6 +399,8 @@ export class PushService {
           }),
         );
       case 'registered':
+        if (!this.config) return EMPTY;
+        this.currentPushkey = event.token;
         return defer(() => this.setPushers(event.token)).pipe(ignoreElements());
       case 'registration-failed':
         this.registered = false;
@@ -372,8 +418,16 @@ export class PushService {
     }
   }
 
+  /** Queue a pusher round behind the one in flight. */
+  private setPushers(pushkey: string): Promise<void> {
+    const round = this.round.then(() => this.applyPushers(pushkey));
+    this.round = round.catch(() => undefined);
+    return round;
+  }
+
   /**
-   * Register (or refresh) a pusher for every signed-in account with `pushkey`.
+   * Register a pusher with `pushkey` for every signed-in account that is staying and does
+   * not have it yet.
    *
    * `event_id_only` keeps message content off the gateway; `trinity_user_id` tags the
    * pusher so the gateway can fan out to the right account and a tap can switch to it;
@@ -381,32 +435,35 @@ export class PushService {
    * Built as a value, not an inline literal: the Matrix spec allows extra `data` keys but
    * the SDK types the field narrowly (`{ url, format, brand }`).
    */
-  private async setPushers(pushkey: string): Promise<void> {
+  private async applyPushers(pushkey: string): Promise<void> {
     const config = this.config;
     if (!config) {
       return;
     }
-    this.currentPushkey = pushkey;
     const appId = this.pusherAppId();
     // The first failure's message, kept so diagnostics can say why registration failed.
     let failure: string | null = null;
     let accounts = 0;
+    const posted: AccountClient[] = [];
 
     for (const account of this.matrix.all()) {
+      const client = account.client;
+      if (this.signingOut.has(client) || this.released.has(client)) continue;
       accounts++;
+      if (this.applied.get(client) === pushkey) continue;
       const data = {
         url: config.gatewayUrl,
         format: 'event_id_only',
         [ACCOUNT_DATA_KEY]: account.userId,
         [RENDER_DATA_KEY]: DEVICE_RENDER,
       };
-      await account.client
+      await client
         .setPusher({
           app_id: appId,
           pushkey,
           kind: 'http',
           app_display_name: 'Trinity',
-          device_display_name: account.client.getDeviceId() ?? 'Trinity',
+          device_display_name: client.getDeviceId() ?? 'Trinity',
           lang: 'en',
           data,
           // `append` governs pushers belonging to *other users*; the homeserver always
@@ -416,16 +473,24 @@ export class PushService {
           // (Synapse).
           append: true,
         })
-        .catch((e) => (failure ??= pushErrorMessage(e)));
+        .then(
+          () => {
+            this.applied.set(client, pushkey);
+            posted.push(account);
+          },
+          (e: unknown) => (failure ??= pushErrorMessage(e)),
+        );
     }
 
+    // Every account is on its way out: the teardown's state stands.
+    if (accounts === 0) return;
     if (failure === null) {
       this._registration.set({ status: 'applied', accounts, at: Date.now() });
       this._runtimeStatus.set({
         status: 'available',
         code: 'push-registration-ready',
       });
-      await this.verifyPushers(pushkey, appId);
+      await this.verifyPushers(posted, pushkey, appId);
     } else {
       this._registration.set({ status: 'error', message: failure });
       this._runtimeStatus.set({
@@ -436,7 +501,7 @@ export class PushService {
   }
 
   /**
-   * Read the pushers back and confirm the one just registered is actually there.
+   * Read the pushers back and confirm the ones just registered are actually there.
    *
    * Catches a homeserver that accepts the POST (200) but does not persist the pusher, a
    * risk on non-Synapse homeservers. It confirms registration, never delivery: the gateway
@@ -446,8 +511,12 @@ export class PushService {
    * may canonicalise the URL. Only a definitive *absence* downgrades the state; if the
    * readback GET itself fails, the registration stands.
    */
-  private async verifyPushers(pushkey: string, appId: string): Promise<void> {
-    for (const account of this.matrix.all()) {
+  private async verifyPushers(
+    accounts: readonly AccountClient[],
+    pushkey: string,
+    appId: string,
+  ): Promise<void> {
+    for (const account of accounts) {
       let pushers: readonly { app_id: string; pushkey: string }[];
       try {
         pushers = (await account.client.getPushers()).pushers;
@@ -458,6 +527,7 @@ export class PushService {
         (p) => p.app_id === appId && p.pushkey === pushkey,
       );
       if (!present) {
+        this.applied.delete(account.client);
         this._registration.set({
           status: 'error',
           message: `${account.userId} accepted the pusher but the homeserver did not keep it.`,

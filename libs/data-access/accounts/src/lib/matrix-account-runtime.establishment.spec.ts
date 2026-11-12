@@ -482,7 +482,38 @@ it("does not register the replaced Accounts' pushers again when left after activ
   expect(matrix.activateAccount).toHaveBeenCalled();
   attempt.unsubscribe();
 
-  expect(lifecycle.registerNotifications).not.toHaveBeenCalled();
+  // Only the registration that follows activation, when the replaced clients are gone.
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(
+    vi.mocked(matrix.activateAccount).mock.invocationCallOrder[0],
+  ).toBeLessThan(
+    vi.mocked(lifecycle.registerNotifications).mock.invocationCallOrder[0],
+  );
+});
+
+it('registers push for the new Account once it replaced the live ones', async () => {
+  const { adapter, matrix, storage, lifecycle } = setup();
+  vi.mocked(storage.persistForEstablishment).mockReturnValue(of(session));
+  vi.mocked(matrix.restorePersisted).mockReturnValue(
+    of({ kind: 'ready' as const }),
+  );
+  vi.mocked(storage.setActiveForEstablishment).mockReturnValue(of(void 0));
+
+  await expect(
+    firstValueFrom(
+      adapter.establishAccount(
+        AuthenticatedAccountGrant.issue(session),
+        activeIntent,
+      ),
+    ),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(lifecycle.registerNotifications).toHaveBeenCalledOnce();
+  expect(
+    vi.mocked(matrix.activateAccount).mock.invocationCallOrder[0],
+  ).toBeLessThan(
+    vi.mocked(lifecycle.registerNotifications).mock.invocationCallOrder[0],
+  );
 });
 
 it('still signs in and tears pushers down when the push handoff refuses to empty', async () => {

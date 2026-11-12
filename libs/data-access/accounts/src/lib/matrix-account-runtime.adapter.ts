@@ -313,11 +313,16 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
           if (outcome.kind !== 'ready' || !placed) {
             return of(outcome);
           }
-          return (
-            intent.liveAccounts === 'keep'
-              ? this.lifecycle.registerNotifications()
-              : forgetReplacedHandoffs$
-          ).pipe(map(() => outcome));
+          // After a replacement too: its teardown cleared the device token, and only a
+          // deliberate registration takes the new account back.
+          return this.lifecycle.registerNotifications().pipe(
+            switchMap(() =>
+              intent.liveAccounts === 'keep'
+                ? of(void 0)
+                : forgetReplacedHandoffs$,
+            ),
+            map(() => outcome),
+          );
         }),
       );
     });

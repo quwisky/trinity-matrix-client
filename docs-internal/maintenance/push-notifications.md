@@ -208,16 +208,25 @@ than assuming arbitrary pusher metadata survives delivery.
    repeat call reapplies pushers for every current account. An unavailable
    platform, plugin, or gateway remains a no-op; denied permission and native
    registration errors are reported in the registration state.
-   `NativePushLifetime` calls it whenever the set of live accounts changes while
-   it owns the listener, so an account that becomes live after the token arrived
-   gets its pusher, and a replacing sign-in's `unregister()` is followed by a new
-   registration.
+   When the set of live accounts changes while `NativePushLifetime` owns the
+   listener, it calls `registerNewAccounts()`, so an account that becomes live
+   after the token arrived gets its pusher. That call posts only pushers not
+   yet applied with the current token in this process, reads back only those,
+   and never asks the OS: with no token it does nothing, so a denied
+   permission is not prompted again.
 3. Each pusher uses `append: true`, so accounts on the same homeserver do not
    remove each other's pusher.
 4. `unregister(userId)` removes that account's pushers. `unregister()` removes
    pushers for every account and clears local token/registration state; the
    listener ends with the runtime `run()` subscription, rather than during
    unregister. Remove pushers before invalidating credentials.
+   Both wait for a pusher round in flight, then remove. The clients they cover
+   are skipped by every later round while they stay live, so an account that
+   is signing out or being replaced cannot get its pusher back. A single
+   account's sign-out is final for that client. After a full teardown only
+   `register()` takes the surviving clients back: the account adapter calls it
+   after a replacing sign-in activated the new account (the replaced clients
+   are gone by then) and when that sign-in is abandoned before activation.
 5. Listener preparation and recovery observation are bounded, but a healthy retained listener has
    no idle timeout. Targeted retry reuses retained ownership for registration failures and
    reattaches only the push listener when ownership was released. Diagnostics include stable

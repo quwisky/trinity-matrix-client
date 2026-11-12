@@ -33,6 +33,7 @@ describe('NativePushLifetime', () => {
       }),
   );
   const register = vi.fn(() => of(void 0));
+  const registerNewAccounts = vi.fn(() => of(void 0));
   const retryRegistration = vi.fn(() => of(void 0));
 
   beforeEach(() => {
@@ -54,6 +55,7 @@ describe('NativePushLifetime', () => {
         MockProvider(PushService, {
           run,
           register,
+          registerNewAccounts,
           retryRegistration,
           runtimeStatus: runtimeStatus.asReadonly(),
           runtimePrerequisite: () => prerequisite,
@@ -111,7 +113,7 @@ describe('NativePushLifetime', () => {
     vi.useRealTimers();
   });
 
-  it('registers again when a second account becomes live after the token arrived', () => {
+  it('gives a second account its pusher when it becomes live after the token arrived', () => {
     const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
     TestBed.tick();
     // Starting is the listener's job: its ready event registers, not the account list.
@@ -122,11 +124,12 @@ describe('NativePushLifetime', () => {
     accountIds.set(['@a:example.org', '@b:example.org']);
     TestBed.tick();
 
-    expect(register).toHaveBeenCalledOnce();
-    // The same listener is kept: only the pushers are reapplied.
+    expect(registerNewAccounts).toHaveBeenCalledOnce();
+    // The same listener is kept, and the OS is not asked again.
+    expect(register).not.toHaveBeenCalled();
     expect(run).toHaveBeenCalledOnce();
     TestBed.tick();
-    expect(register).toHaveBeenCalledOnce();
+    expect(registerNewAccounts).toHaveBeenCalledOnce();
     lifetime.unsubscribe();
   });
 
@@ -138,7 +141,7 @@ describe('NativePushLifetime', () => {
     accountIds.set(['@a:example.org', '@b:example.org']);
     TestBed.tick();
 
-    expect(register).not.toHaveBeenCalled();
+    expect(registerNewAccounts).not.toHaveBeenCalled();
     lifetime.unsubscribe();
   });
 

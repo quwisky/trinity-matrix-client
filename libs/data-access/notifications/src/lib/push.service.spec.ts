@@ -694,4 +694,154 @@ describe('PushService', () => {
     // A single-account teardown must NOT detach the shared listeners.
     expect(h.push.removeAllListeners).not.toHaveBeenCalled();
   });
+
+  describe('accounts on their way out', () => {
+    const APP_ID = 'dev.trinityproject.trinity.ios';
+
+    it('gives a replaced account no pusher when a token arrives before it is dropped', async () => {
+      const { svc, clients } = setup({ accounts: ['@old:hs'] });
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+      const old = clients.get('@old:hs')!;
+
+      // A replacing sign-in: the new account is live before the old one is released.
+      clients.set('@new:hs', makeClient());
+      await firstValueFrom(svc.unregister());
+      old.setPusher.mockClear();
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      expect(old.setPusher).not.toHaveBeenCalled();
+      expect((await old.getPushers()).pushers).toEqual([]);
+
+      clients.delete('@old:hs');
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      expect(old.setPusher).not.toHaveBeenCalled();
+      expect((await clients.get('@new:hs')!.getPushers()).pushers).toEqual([
+        expect.objectContaining({ app_id: APP_ID, pushkey: 'TOKEN123' }),
+      ]);
+    });
+
+    it('gives the live accounts their pushers back when the replacing sign-in is abandoned', async () => {
+      const { svc, client } = setup({ accounts: ['@old:hs'] });
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      await firstValueFrom(svc.unregister());
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      expect((await client.getPushers()).pushers).toHaveLength(1);
+    });
+
+    it('keeps a signing-out account without a pusher when another account registers', async () => {
+      const { svc, clients } = setup({ accounts: ['@a:hs', '@b:hs'] });
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+      const leaving = clients.get('@a:hs')!;
+
+      await firstValueFrom(svc.unregister('@a:hs'));
+      leaving.setPusher.mockClear();
+      // Another account becomes live before @a:hs is removed.
+      clients.set('@c:hs', makeClient());
+      await firstValueFrom(svc.register());
+      await flush();
+
+      expect(leaving.setPusher).not.toHaveBeenCalled();
+      expect((await leaving.getPushers()).pushers).toEqual([]);
+      expect(clients.get('@c:hs')!.setPusher).toHaveBeenCalledOnce();
+    });
+
+    it('removes a pusher that was still being set when the account signed out', async () => {
+      const { svc, client } = setup({ accounts: ['@a:hs'] });
+      await firstValueFrom(svc.register());
+      const store = client.setPusher.getMockImplementation()!;
+      let finishPost!: () => void;
+      client.setPusher.mockImplementationOnce(async (pusher) => {
+        await new Promise<void>((resolve) => (finishPost = resolve));
+        return store(pusher);
+      });
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      const signedOut = firstValueFrom(svc.unregister('@a:hs'));
+      await flush();
+      finishPost();
+      await signedOut;
+
+      expect((await client.getPushers()).pushers).toEqual([]);
+    });
+  });
+
+  describe('accounts that become live after the token arrived', () => {
+    it('sets and reads back only the new account pusher', async () => {
+      const { svc, clients } = setup({ accounts: ['@a:hs'] });
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+      const first = clients.get('@a:hs')!;
+      first.setPusher.mockClear();
+      first.getPushers.mockClear();
+
+      clients.set('@b:hs', makeClient());
+      await firstValueFrom(svc.registerNewAccounts());
+      await firstValueFrom(svc.registerNewAccounts());
+
+      expect(first.setPusher).not.toHaveBeenCalled();
+      expect(first.getPushers).not.toHaveBeenCalled();
+      expect(clients.get('@b:hs')!.setPusher).toHaveBeenCalledOnce();
+      expect(clients.get('@b:hs')!.getPushers).toHaveBeenCalledOnce();
+      expect(svc.registration()).toMatchObject({
+        status: 'applied',
+        accounts: 2,
+      });
+    });
+
+    it('sets every pusher again when the device token changes', async () => {
+      const { svc, client } = setup({ accounts: ['@a:hs'] });
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+
+      h.listeners['registration']({ value: 'TOKEN456' });
+      await flush();
+
+      expect(client.setPusher).toHaveBeenLastCalledWith(
+        expect.objectContaining({ pushkey: 'TOKEN456' }),
+      );
+    });
+
+    it('tries an account again after its homeserver refused the pusher', async () => {
+      const { svc, client } = setup({ accounts: ['@a:hs'] });
+      client.setPusher.mockRejectedValueOnce(new Error('offline'));
+      await firstValueFrom(svc.register());
+      h.listeners['registration']({ value: 'TOKEN123' });
+      await flush();
+      expect(svc.registration().status).toBe('error');
+
+      await firstValueFrom(svc.registerNewAccounts());
+
+      expect(svc.registration().status).toBe('applied');
+    });
+
+    it('does not ask for permission again after the user denied it', async () => {
+      h.state.permission = 'denied';
+      const { svc, clients } = setup({ accounts: ['@a:hs'] });
+      await firstValueFrom(svc.register());
+      expect(h.push.requestPermissions).toHaveBeenCalledOnce();
+
+      clients.set('@b:hs', makeClient());
+      await firstValueFrom(svc.registerNewAccounts());
+
+      expect(h.push.requestPermissions).toHaveBeenCalledOnce();
+      expect(svc.runtimeStatus().code).toBe('push-permission-disabled');
+    });
+  });
 });
