@@ -4,12 +4,8 @@ import { MockProvider } from 'ng-mocks';
 import { EMPTY, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-// In-memory @capacitor/preferences, hoisted so the vi.mock factory can see it. `calls`
-// records the phase order, which one test below asserts.
-const { prefs, calls } = vi.hoisted(() => ({
-  prefs: new Map<string, string>(),
-  calls: [] as string[],
-}));
+// In-memory @capacitor/preferences, hoisted so the vi.mock factory can see it.
+const { prefs } = vi.hoisted(() => ({ prefs: new Map<string, string>() }));
 vi.mock('@capacitor/preferences', () => ({
   Preferences: {
     get: async ({ key }: { key: string }) => ({
@@ -22,7 +18,6 @@ vi.mock('@capacitor/preferences', () => ({
       prefs.delete(key);
     },
     clear: async () => {
-      calls.push('preferences.clear');
       prefs.clear();
     },
   },
@@ -52,7 +47,6 @@ function fakeIdb(names?: string[]) {
   const factory = {
     deleteDatabase: (name: string) => {
       deleted.push(name);
-      calls.push(`idb.delete:${name}`);
       const request: Record<string, (() => void) | null> = {};
       queueMicrotask(() => request['onsuccess']?.());
       return request as unknown as IDBOpenDBRequest;
@@ -64,30 +58,19 @@ function fakeIdb(names?: string[]) {
   return { factory, deleted };
 }
 
-function setup(bulkSecureClear = false) {
+function setup() {
   TestBed.configureTestingModule({
-    providers: [
-      LocalDataWipeService,
-      MockProvider(SecureStorageService, {
-        clearAll: vi.fn(async () => {
-          calls.push('secure.clearAll');
-          return bulkSecureClear;
-        }),
-      }),
-    ],
+    providers: [LocalDataWipeService, MockProvider(SecureStorageService)],
   });
   return TestBed.inject(LocalDataWipeService);
 }
 
 describe('LocalDataWipeService', () => {
-  beforeEach(() => {
-    prefs.clear();
-    calls.length = 0;
-  });
+  beforeEach(() => prefs.clear());
 
   afterEach(() => vi.unstubAllGlobals());
 
-  describe('wipeIndexedDb', () => {
+  describe('beginIndexedDbWipe', () => {
     it('deletes the sync store under its REAL name, not the one the app passes', async () => {
       // matrix-js-sdk prepends `matrix-js-sdk:` to the dbName it is given, so deleting
       // `trinity-sync:@alice:hs` would silently delete nothing and the "cleared" claim
@@ -95,7 +78,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb();
       vi.stubGlobal('indexedDB', factory);
 
-      await setup().wipeIndexedDb([ALICE]);
+      await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(deleted).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
       expect(deleted).not.toContain('trinity-sync:@alice:hs');
@@ -105,7 +88,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb();
       vi.stubGlobal('indexedDB', factory);
 
-      await setup().wipeIndexedDb([ALICE]);
+      await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(deleted).toContain(
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto',
@@ -123,7 +106,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb(); // no `databases` member
       vi.stubGlobal('indexedDB', factory);
 
-      const report = await setup().wipeIndexedDb([ALICE]);
+      const report = await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(report.enumerated).toBe(false);
       expect(deleted).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
@@ -133,7 +116,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb(); // no `databases` member
       vi.stubGlobal('indexedDB', factory);
 
-      await setup().wipeIndexedDb([ALICE]);
+      await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(deleted).toContain('trinity-crypto-store-keys');
     });
@@ -144,7 +127,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb(); // no `databases` member
       vi.stubGlobal('indexedDB', factory);
 
-      await setup().wipeIndexedDb([ALICE]);
+      await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(deleted).toContain('trinity-diagnostic-log');
     });
@@ -153,7 +136,7 @@ describe('LocalDataWipeService', () => {
       const { factory, deleted } = fakeIdb(); // no `databases` member
       vi.stubGlobal('indexedDB', factory);
 
-      await setup().wipeIndexedDb([ALICE]);
+      await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(deleted).toContain('trinity-mention-index');
     });
@@ -164,7 +147,7 @@ describe('LocalDataWipeService', () => {
       ]);
       vi.stubGlobal('indexedDB', factory);
 
-      const report = await setup().wipeIndexedDb([ALICE]);
+      const report = await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(report.enumerated).toBe(true);
       expect(deleted).toContain('matrix-js-sdk:trinity-sync:@ghost:hs');
@@ -180,7 +163,7 @@ describe('LocalDataWipeService', () => {
       } as unknown as IDBFactory;
       vi.stubGlobal('indexedDB', factory);
 
-      const report = await setup().wipeIndexedDb([ALICE]);
+      const report = await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(report.blocked).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
     });
@@ -200,7 +183,7 @@ describe('LocalDataWipeService', () => {
       } as unknown as IDBFactory;
       vi.stubGlobal('indexedDB', factory);
 
-      const report = await setup().wipeIndexedDb([ALICE]);
+      const report = await setup().beginIndexedDbWipe([ALICE]).observation;
 
       expect(report.failed).toContain('matrix-js-sdk:trinity-sync:@alice:hs');
       expect(report.blocked).toEqual([]);
@@ -209,7 +192,9 @@ describe('LocalDataWipeService', () => {
     it('is a no-op off-browser rather than throwing', async () => {
       vi.stubGlobal('indexedDB', undefined);
 
-      await expect(setup().wipeIndexedDb([ALICE])).resolves.toEqual({
+      await expect(
+        setup().beginIndexedDbWipe([ALICE]).observation,
+      ).resolves.toEqual({
         blocked: [],
         failed: [],
         enumerated: false,
@@ -217,7 +202,7 @@ describe('LocalDataWipeService', () => {
     });
   });
 
-  describe('wipeKeyValueStores', () => {
+  describe('wipePreferences', () => {
     it('clears Preferences as a group rather than by key list', async () => {
       // The keys are not uniformly namespaced — trinity.*, matrix.*, oidc.*, sso.*, plus
       // unbounded per-issuer and per-user prefixes — so a list would be wrong the day it
@@ -229,46 +214,22 @@ describe('LocalDataWipeService', () => {
       prefs.set('sso.state', 'NONCE');
       prefs.set('trinity.spaces.order.overrides.@alice:hs', '[]');
 
-      await setup().wipeKeyValueStores();
+      await expect(setup().wipePreferences()).resolves.toBe(true);
 
       expect(prefs.size).toBe(0);
     });
 
-    it('sweeps secure storage before clearing Preferences', async () => {
-      // Order matters on web, where the secure backend's keys ARE Preferences entries
-      // under a `secure.` prefix: clearing the group first would leave the sweep with
-      // nothing to find, and silently turn a two-mechanism wipe into a one-mechanism one.
-      await setup(true).wipeKeyValueStores();
-
-      expect(calls).toEqual(['secure.clearAll', 'preferences.clear']);
-    });
-
-    it('asks the secure backend to sweep itself as well', async () => {
-      // Secondary to the caller's per-key removals, but the only thing that reaches a
-      // secret whose account is no longer in the registry.
-      const svc = setup(true);
-      const secure = TestBed.inject(SecureStorageService);
-
-      await svc.wipeKeyValueStores();
-
-      expect(secure.clearAll).toHaveBeenCalled();
-    });
-
-    it('reports secure-storage residue without skipping Preferences', async () => {
-      const svc = setup(true);
-      const secure = TestBed.inject(SecureStorageService);
-      vi.mocked(secure.clearAll).mockRejectedValueOnce(
-        new Error('keychain unavailable'),
+    it('reports a Preferences backend that rejects', async () => {
+      const { Preferences } = await import('@capacitor/preferences');
+      vi.spyOn(Preferences, 'clear').mockRejectedValueOnce(
+        new Error('storage disabled'),
       );
 
-      await expect(svc.wipeKeyValueStores()).resolves.toEqual({
-        secureStorage: false,
-        preferences: true,
-        webStorage: true,
-      });
-      expect(calls).toContain('preferences.clear');
+      await expect(setup().wipePreferences()).resolves.toBe(false);
     });
+  });
 
+  describe('wipeWebStorage', () => {
     it('clears raw web storage unconditionally, with no platform branch', async () => {
       // There is deliberately no `isNativePlatform()` check left to flip: the OIDC callback
       // re-seeds the sign-in state into sessionStorage ON NATIVE, so a branch that skipped
@@ -280,23 +241,10 @@ describe('LocalDataWipeService', () => {
       vi.stubGlobal('localStorage', local);
       vi.stubGlobal('sessionStorage', session);
 
-      await setup().wipeKeyValueStores();
+      await expect(setup().wipeWebStorage()).resolves.toBe(true);
 
       expect(session.clear).toHaveBeenCalled();
       expect(local.clear).toHaveBeenCalled();
-    });
-
-    it('reports a Preferences backend that rejects without aborting later scopes', async () => {
-      const { Preferences } = await import('@capacitor/preferences');
-      vi.spyOn(Preferences, 'clear').mockRejectedValueOnce(
-        new Error('storage disabled'),
-      );
-
-      await expect(setup().wipeKeyValueStores()).resolves.toEqual({
-        secureStorage: true,
-        preferences: false,
-        webStorage: true,
-      });
     });
 
     it('reports a context where touching web storage throws', async () => {
@@ -307,11 +255,7 @@ describe('LocalDataWipeService', () => {
         },
       });
 
-      await expect(setup().wipeKeyValueStores()).resolves.toEqual({
-        secureStorage: true,
-        preferences: true,
-        webStorage: false,
-      });
+      await expect(setup().wipeWebStorage()).resolves.toBe(false);
     });
   });
 
@@ -331,6 +275,17 @@ describe('LocalDataWipeService', () => {
       });
       return TestBed.inject(LocalDataWipeService);
     }
+
+    it('asks the secure backend to sweep itself', async () => {
+      // Secondary to the caller's per-key removals, but the only thing that reaches a
+      // secret whose account is no longer in the registry.
+      const clearAll = vi.fn(async () => true);
+      const clearPin = () => of({ kind: 'completed' as const });
+
+      await withPresence(clearPin, clearAll).wipeSecureStorage();
+
+      expect(clearAll).toHaveBeenCalledOnce();
+    });
 
     it('clears the Trinity PIN with the other secrets', async () => {
       const clearPin = vi.fn(() => of({ kind: 'completed' as const }));
@@ -433,7 +388,7 @@ describe('LocalDataWipeService', () => {
     });
   });
 
-  describe('wipeServiceWorker', () => {
+  describe('wipeCacheStorage and wipeServiceWorkerRegistrations', () => {
     it('deletes every cache and unregisters every worker', async () => {
       const del = vi.fn(async () => true);
       vi.stubGlobal('caches', {
@@ -444,8 +399,10 @@ describe('LocalDataWipeService', () => {
       vi.stubGlobal('navigator', {
         serviceWorker: { getRegistrations: async () => [{ unregister }] },
       });
+      const svc = setup();
 
-      await setup().wipeServiceWorker();
+      await expect(svc.wipeCacheStorage()).resolves.toBe(true);
+      await expect(svc.wipeServiceWorkerRegistrations()).resolves.toBe(true);
 
       expect(del).toHaveBeenCalledWith('ngsw:a');
       expect(del).toHaveBeenCalledWith('other');
@@ -455,11 +412,10 @@ describe('LocalDataWipeService', () => {
     it('is a no-op where neither API exists (native, Electron, older browsers)', async () => {
       vi.stubGlobal('caches', undefined);
       vi.stubGlobal('navigator', {});
+      const svc = setup();
 
-      await expect(setup().wipeServiceWorker()).resolves.toEqual({
-        cacheStorage: true,
-        registrations: true,
-      });
+      await expect(svc.wipeCacheStorage()).resolves.toBe(true);
+      await expect(svc.wipeServiceWorkerRegistrations()).resolves.toBe(true);
     });
 
     it('reports a caches API that rejects', async () => {
@@ -469,11 +425,10 @@ describe('LocalDataWipeService', () => {
         },
       });
       vi.stubGlobal('navigator', {});
+      const svc = setup();
 
-      await expect(setup().wipeServiceWorker()).resolves.toEqual({
-        cacheStorage: false,
-        registrations: true,
-      });
+      await expect(svc.wipeCacheStorage()).resolves.toBe(false);
+      await expect(svc.wipeServiceWorkerRegistrations()).resolves.toBe(true);
     });
   });
 });

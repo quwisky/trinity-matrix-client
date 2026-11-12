@@ -7,6 +7,7 @@ import { ACCOUNT_CLEANUP_STEP_BUDGET_MS } from './account-cleanup-policy';
 import {
   OIDC_RECORD,
   deferred,
+  indexedDbWipe,
   prepareSuccessfulReset,
   setup,
   type AdapterTest,
@@ -40,9 +41,9 @@ it('resets only the approved installation storage scopes in order', async () => 
       return of(void 0);
     }),
   );
-  vi.mocked(wipe.wipeIndexedDb).mockImplementation(() => {
+  vi.mocked(wipe.beginIndexedDbWipe).mockImplementation(() => {
     order.push('indexed-db');
-    return Promise.resolve({ blocked: [], failed: [], enumerated: true });
+    return indexedDbWipe();
   });
   vi.mocked(storage.clearAll).mockReturnValue(
     defer(() => {
@@ -148,9 +149,9 @@ it('stops the mention index before the database wipe', async () => {
       return of(void 0);
     }),
   );
-  vi.mocked(test.wipe.wipeIndexedDb).mockImplementation(() => {
+  vi.mocked(test.wipe.beginIndexedDbWipe).mockImplementation(() => {
     order.push('indexed-db');
-    return Promise.resolve({ blocked: [], failed: [], enumerated: true });
+    return indexedDbWipe();
   });
 
   await firstValueFrom(test.adapter.resetInstallation());
@@ -256,11 +257,13 @@ it('reports cleanup failures by safe scope without leaking database names', asyn
   vi.mocked(storage.list).mockReturnValue(of([]));
   vi.mocked(matrix.signOutAll).mockReturnValue(of(void 0));
   vi.mocked(matrix.stop).mockReturnValue(of(void 0));
-  vi.mocked(wipe.wipeIndexedDb).mockResolvedValue({
-    blocked: ['secret-account-db'],
-    failed: [],
-    enumerated: true,
-  });
+  vi.mocked(wipe.beginIndexedDbWipe).mockReturnValue(
+    indexedDbWipe({
+      blocked: ['secret-account-db'],
+      failed: [],
+      enumerated: true,
+    }),
+  );
   vi.mocked(storage.clearAll).mockReturnValue(of([]));
 
   const outcome = await firstValueFrom(adapter.resetInstallation());

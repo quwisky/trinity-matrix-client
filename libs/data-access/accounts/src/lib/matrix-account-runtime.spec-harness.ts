@@ -11,6 +11,8 @@ import {
   SecureStorageService,
   SessionStorageService,
   type AccountRecord,
+  type IndexedDbWipeAttempt,
+  type WipeReport,
 } from '@trinity/platform-native';
 import {
   ACCOUNT_LIFECYCLE_PORT,
@@ -33,30 +35,21 @@ export const activeIntent = {
   accountRecord: 'upsert',
 } satisfies AccountEstablishmentIntent;
 
+/** An IndexedDB wipe that has already settled with `report`. */
+export function indexedDbWipe(
+  report: WipeReport = { blocked: [], failed: [], enumerated: true },
+): IndexedDbWipeAttempt {
+  const settlement = Promise.resolve(report);
+  return { observation: settlement, settlement };
+}
+
 export function setup(activeAccountId: string | null = '@old:hs') {
   const active = signal(activeAccountId);
   const softLoggedOut = signal<readonly string[]>([]);
   const accountIds = signal<readonly string[]>([]);
   const reauthTargets = signal<readonly string[]>([]);
-  const wipeIndexedDb = vi.fn((_records: readonly never[]) =>
-    Promise.resolve({ blocked: [], failed: [], enumerated: true }),
-  );
   const wipeAdapter = {
-    wipeIndexedDb,
-    beginIndexedDbWipe: vi.fn((records: readonly never[]) => {
-      const settlement = wipeIndexedDb(records);
-      return { observation: settlement, settlement };
-    }),
-    wipeKeyValueStores: vi.fn(() =>
-      Promise.resolve({
-        secureStorage: true,
-        preferences: true,
-        webStorage: true,
-      }),
-    ),
-    wipeServiceWorker: vi.fn(() =>
-      Promise.resolve({ cacheStorage: true, registrations: true }),
-    ),
+    beginIndexedDbWipe: vi.fn(() => indexedDbWipe()),
     wipeSecureStorage: vi.fn(() => Promise.resolve(true)),
     wipeSharedFiles: vi.fn(() => Promise.resolve(true)),
     wipePreferences: vi.fn(() => Promise.resolve(true)),

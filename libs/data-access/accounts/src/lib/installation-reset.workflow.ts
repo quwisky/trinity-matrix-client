@@ -402,6 +402,8 @@ export class InstallationResetWorkflow {
     resolve = false,
   ): Observable<unknown> {
     const operations: Observable<unknown>[] = [];
+    // Secure storage first: on web its keys are Preferences entries under a `secure.`
+    // prefix, so clearing the group first would leave the sweep nothing to find.
     if (selected.secureStorage) {
       operations.push(
         attempt.step(
