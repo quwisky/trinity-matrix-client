@@ -4,6 +4,7 @@ import { type WorkspaceRoomNavigationOrigin } from '@trinity/application/workspa
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { TrnSurfaceService } from '@trinity/components/overlay';
 import {
+  type ConversationHandle,
   type ConversationMessageOutcome,
   ConversationRuntime,
   TimelineActionsService,
@@ -76,6 +77,12 @@ export class MessageActionsService {
 
   /** Identity allocator and current owner for the progress signal shared by rooms. */
   private readonly uploads = latestGuard();
+
+  /**
+   * The conversation of the batch whose outcomes are being reported. The composer sends that
+   * batch's caption synchronously from `onOutcomes`, before it has rendered a room change.
+   */
+  private settlingBatch: ConversationHandle | null = null;
 
   /**
    * Route a `matrix.to` permalink clicked in a message, in-app. A user shows a profile
@@ -282,7 +289,11 @@ export class MessageActionsService {
       });
   }
 
-  /** A batch caption: its own message, not the edit, reply or draft in the box by now. */
+  /**
+   * A batch caption: its own message, not the edit, reply or draft in the box by now. It goes
+   * to the conversation its files went to. Once that one is no longer focused, its compose
+   * keeps the text as its draft, which needs no toast.
+   */
   onSendCaption({
     body,
     mentions,
@@ -290,10 +301,22 @@ export class MessageActionsService {
     body: string;
     mentions: Mention[];
   }): void {
-    this.compose
+    const failed = (): void =>
+      void this.status.showError('Could not send the caption.');
+    (this.settlingBatch?.compose ?? this.compose)
       .sendMessage(body, mentions)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+      .subscribe({
+        next: (outcome) => {
+          if (
+            outcome.kind === 'rejected' &&
+            outcome.failure === 'send-rejected'
+          ) {
+            failed();
+          }
+        },
+        error: failed,
+      });
   }
 
   onSendSticker(sticker: ImagePackImage): void {
@@ -387,7 +410,12 @@ export class MessageActionsService {
       // is unsubscribe — and this service belongs to the page the composer lives in, so
       // there is no composer left to strand when that happens.
       .subscribe((outcomes) => {
-        onOutcomes(outcomes);
+        this.settlingBatch = pinnedConversation;
+        try {
+          onOutcomes(outcomes);
+        } finally {
+          this.settlingBatch = null;
+        }
         const failed = outcomes.filter((outcome) => outcome.failed).length;
         if (!failed) {
           return;

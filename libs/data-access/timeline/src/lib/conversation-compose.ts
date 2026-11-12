@@ -65,7 +65,8 @@ export interface ConversationCompose {
   ): Observable<ConversationTextSendOutcome>;
   /**
    * Send `body` as a new message, whatever is being composed: the draft and a reply or edit in
-   * progress stay as they are. Text nothing sent or kept goes after the message draft.
+   * progress stay as they are. Text nothing sent or kept goes after the message draft, also
+   * when this conversation is no longer the focused one (`conversation-unavailable`).
    */
   sendMessage(
     body: string,
@@ -297,9 +298,6 @@ export class ConversationComposeController {
     mentions: readonly Mention[],
   ): Observable<ConversationTextSendOutcome> {
     return defer(() => {
-      if (this.ports.state() !== 'focused') {
-        return of(this.rejected('conversation-unavailable', false));
-      }
       const body = text.trim();
       if (!body) {
         return of(this.rejected('empty-draft', false));
@@ -308,6 +306,10 @@ export class ConversationComposeController {
         if (this.ports.state() === 'retired') this.ports.putBackRetired(body);
         else this.keepMessageDraft(body);
       };
+      if (this.ports.state() !== 'focused') {
+        keep();
+        return of(this.rejected('conversation-unavailable', false));
+      }
       let settled = false;
 
       return new Observable<ConversationTextSendOutcome>((subscriber) => {
