@@ -167,13 +167,13 @@ const MAINTAINER_ONLY = [
   new RegExp(
     String.raw`${GH}\bpr${REPO}\s+review\b[^\n;&|]*\s(?:-a|--approve)\b`,
   ),
-  new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*/pulls/\d+/merge\b`),
+  new RegExp(String.raw`${GH}\bapi\b[^\n;&|]*/pulls/[^/\s]+/merge\b`),
   new RegExp(
     String.raw`${GH}\bapi\b[^\n;&|]*/reviews\b[^\n;&|]*\bevent=APPROVE\b`,
   ),
   // gh api writes with a method other than GET, wherever it sits, or with a field after the path.
   new RegExp(
-    String.raw`${GH}\bapi\b(?=[^\n;&|]*\brulesets\b)[^\n;&|]*\s(?:-X|--method)(?:=|\s+)(?!GET\b)\w`,
+    String.raw`${GH}\bapi\b(?=[^\n;&|]*\brulesets\b)[^\n;&|]*\s(?:-X|--method)(?:=|\s*)(?!GET\b)\w`,
   ),
   new RegExp(
     String.raw`${GH}\bapi\b[^\n;&|]*\brulesets\b[^\n;&|]*\s(?:-f|-F|--field|--raw-field|--input)\b`,

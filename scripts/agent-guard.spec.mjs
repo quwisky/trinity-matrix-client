@@ -194,6 +194,8 @@ describe('agent-guard PreToolUse hook', () => {
     'gh api -X PUT "repos/o/r/pulls/12/merge"',
     "gh api -X PUT 'repos/o/r/pulls/12/merge'",
     'gh api -X PUT "repos/$OWNER/$REPO/pulls/12/merge"',
+    'gh api -X PUT "repos/o/r/pulls/$PR/merge"',
+    'gh api -XDELETE repos/o/r/rulesets/1',
     'gh api -X PUT \\\n  "repos/o/r/pulls/12/merge"',
     'gh pr "merge" 12',
     "gh pr $'merge' 12",
