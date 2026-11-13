@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnToastService } from '@trinity/components/overlay';
+import { IdentityService } from '@trinity/data-access/identity';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
@@ -9,8 +11,12 @@ import {
 } from '@trinity/data-access/trust';
 import { finalize, type Observable } from 'rxjs';
 
-/** Who an identity action is for: the id it acts on and the name its failure toast uses. */
+/**
+ * Who an identity action is for: the Account they were listed for, the id it acts on and the
+ * name its failure toast uses.
+ */
 export interface IdentityChangeTarget {
+  readonly accountId: string;
   readonly userId: string;
   readonly name: string;
 }
@@ -31,6 +37,8 @@ export class IdentityChangeActionsService {
   private readonly verification = inject(TrustVerificationService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly toast = inject(TrnToastService);
+  private readonly workspace = inject(WorkspaceNavigationService);
+  private readonly identity = inject(IdentityService);
   private readonly running = signal<ReadonlyMap<string, IdentityChangeAction>>(
     new Map(),
   );
@@ -51,20 +59,22 @@ export class IdentityChangeActionsService {
   /** Accept a changed identity as theirs. */
   acknowledge(target: IdentityChangeTarget): void {
     this.run(
-      target.userId,
+      target,
       'acknowledge',
       () => this.trust.acknowledgeIdentity(target.userId),
       `Couldn't accept ${target.name}'s new identity.`,
+      'Identity not accepted',
     );
   }
 
   /** Stop requiring a previously verified person to be verified. */
   withdraw(target: IdentityChangeTarget): void {
     this.run(
-      target.userId,
+      target,
       'withdraw',
       () => this.trust.withdrawVerification(target.userId),
       `Couldn't withdraw verification for ${target.name}.`,
+      'Verification not withdrawn',
     );
   }
 
@@ -74,7 +84,7 @@ export class IdentityChangeActionsService {
    */
   verifyAgain(target: IdentityChangeTarget, started?: () => void): void {
     this.run(
-      target.userId,
+      target,
       'verify',
       () =>
         this.verification.startUserVerification(
@@ -82,18 +92,33 @@ export class IdentityChangeActionsService {
           this.rooms.createDirectMessage(target.userId),
         ),
       null,
+      'Verification not started',
       started,
     );
   }
 
   private run(
-    userId: string,
+    { accountId, userId }: IdentityChangeTarget,
     kind: IdentityChangeAction,
     action: () => Observable<unknown>,
     failure: string | null,
+    refusal: string,
     succeeded?: () => void,
   ): void {
     if (this.pending(userId)) return;
+    // The action runs as the client's active Account, resolved when `action` is subscribed
+    // below, in this same tick. The row can outlive a switch by a render, with both the shown
+    // and the active Account already another one, so it must be the row's own Account.
+    if (
+      accountId !== this.workspace.activeAccountId() ||
+      accountId !== this.identity.activeUserId()
+    ) {
+      this.toast.show(`${refusal}: you switched account while this was open.`, {
+        duration: 4000,
+        variant: 'danger',
+      });
+      return;
+    }
     this.running.update((map) => new Map(map).set(userId, kind));
     action()
       .pipe(

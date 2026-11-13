@@ -6,6 +6,8 @@ import { TrustUsersService, type UserTrust } from '@trinity/data-access/trust';
 
 /** A room member whose cryptographic identity changed and still needs a response. */
 export interface IdentityChange {
+  /** The Account whose view this is; the change is answered only as it. */
+  readonly accountId: string;
   readonly userId: string;
   readonly name: string;
   readonly initial: string;
@@ -48,6 +50,7 @@ export class RoomIdentityChangesService {
         trust === 'verified-identity-changed'
         ? [
             {
+              accountId: key.accountId,
               userId: member.userId,
               name: member.roomDisplayName,
               initial: member.roomInitial,

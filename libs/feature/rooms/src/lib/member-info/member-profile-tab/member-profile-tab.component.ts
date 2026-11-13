@@ -68,6 +68,8 @@ export class MemberProfileTabComponent {
   readonly member = input.required<MemberSummary>();
   readonly isSelf = input.required<boolean>();
   readonly trust = input.required<UserTrust | null>();
+  /** The Account {@link trust} is the view of. */
+  readonly trustAccountId = input.required<string | null>();
   readonly presence = input.required<PresenceDetails | null>();
   /** Null unless the person's global display name differs from their name in this room. */
   readonly globalName = input.required<string | null>();
@@ -128,9 +130,11 @@ export class MemberProfileTabComponent {
   /** A changed identity to answer in place of plain Verify, or null. */
   readonly identityChange = computed(() => {
     const trust = this.trust();
-    if (this.isSelf() || !this.showIdentityActions()) return null;
+    const accountId = this.trustAccountId();
+    if (this.isSelf() || !this.showIdentityActions() || !accountId) return null;
     return trust === 'identity-changed' || trust === 'verified-identity-changed'
       ? {
+          accountId,
           userId: this.member().userId,
           name: this.member().roomDisplayName,
           trust,

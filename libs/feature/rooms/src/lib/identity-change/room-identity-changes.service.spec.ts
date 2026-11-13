@@ -79,6 +79,7 @@ describe('RoomIdentityChangesService', () => {
 
     expect(service.changes(KEY)).toEqual([
       {
+        accountId: '@me:hs',
         userId: '@bob:hs',
         name: 'Bob',
         initial: 'B',
@@ -86,6 +87,7 @@ describe('RoomIdentityChangesService', () => {
         trust: 'verified-identity-changed',
       },
       {
+        accountId: '@me:hs',
         userId: '@carol:hs',
         name: 'Carol',
         initial: 'C',

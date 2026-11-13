@@ -60,6 +60,7 @@ async function build(
       member: BOB,
       isSelf: inputs.isSelf ?? false,
       trust: inputs.trust ?? null,
+      trustAccountId: '@me:hs',
       presence: inputs.presence ?? null,
       globalName: inputs.globalName ?? null,
       showIdentityActions: inputs.showIdentityActions ?? true,
