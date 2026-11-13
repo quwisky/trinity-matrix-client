@@ -27,7 +27,9 @@ import { APP_ORIGIN } from './scheme';
  * answers, so the renderer's first requests to a new homeserver cannot lose the race. An
  * origin that could not be reached is asked again when a response from it next arrives
  * (an offline start), and one that answered as something else (a redirect included) is
- * asked again no sooner than {@link REFUSAL_RETRY_MS} later.
+ * asked again no sooner than {@link REFUSAL_RETRY_MS} later. So is one confirmed only for
+ * its well-known documents, when a response for any other path arrives: its homeserver
+ * may have been restarting behind the proxy that served the well-known.
  *
  * RESIDUAL: script injected into the renderer (a sanitizer bypass on untrusted federated
  * message HTML) can read response bodies, without cookies or other credentials, from any
@@ -67,11 +69,13 @@ const allowedOrigins = new Set<string>();
 
 /**
  * What main's own probe found, kept for the session so a republished set costs no
- * request. A `well-known` host is not a homeserver, so only those documents are rewritten.
+ * request. A `well-known` host is not a homeserver, so only those documents are rewritten;
+ * it can still become `homeserver`, never the reverse.
  */
 const confirmed = new Map<string, 'homeserver' | 'well-known'>();
 const probing = new Map<string, Promise<void>>();
-const refusedAt = new Map<string, number>();
+/** When an origin last answered as anything short of a homeserver. */
+const notHomeserverAt = new Map<string, number>();
 
 // Everything the client reads from a server name that delegates. Whole paths, not a
 // prefix: `/.well-known/matrix/..%2f..%2fadmin` is another path to a server that decodes
@@ -87,17 +91,29 @@ const REFUSAL_RETRY_MS = 30_000;
 const MAX_PROBED_ORIGINS = 100;
 const probedOrigins = new Set<string>();
 
-/** The probe a not-yet-confirmed origin is waiting on, started if it may be. */
-function confirmation(origin: string): Promise<void> | undefined {
-  if (confirmed.has(origin)) {
+/**
+ * The probe a response for `pathname` of `origin` is waiting on, started if it may be.
+ * Without a path the renderer has only named the origin, which never asks a confirmed
+ * one again.
+ */
+function confirmation(
+  origin: string,
+  pathname?: string,
+): Promise<void> | undefined {
+  const kind = confirmed.get(origin);
+  if (
+    kind === 'homeserver' ||
+    (kind === 'well-known' &&
+      (pathname === undefined || WELL_KNOWN_PATHS.includes(pathname)))
+  ) {
     return undefined;
   }
   const running = probing.get(origin);
   if (running) {
     return running;
   }
-  const refused = refusedAt.get(origin);
-  if (refused !== undefined && Date.now() - refused < REFUSAL_RETRY_MS) {
+  const asked = notHomeserverAt.get(origin);
+  if (asked !== undefined && Date.now() - asked < REFUSAL_RETRY_MS) {
     return undefined;
   }
   if (!probedOrigins.has(origin) && probedOrigins.size >= MAX_PROBED_ORIGINS) {
@@ -106,10 +122,16 @@ function confirmation(origin: string): Promise<void> | undefined {
   probedOrigins.add(origin);
   const probe = probeMatrixOrigin(origin)
     .then((result) => {
-      if (result === 'refused') {
-        refusedAt.set(origin, Date.now());
-      } else if (result !== 'unreachable') {
+      if (result === 'homeserver' || result === 'well-known') {
         confirmed.set(origin, result);
+      }
+      // An unreachable origin is asked again at once (an offline start), unless its
+      // well-known is already confirmed: that one is answering, so it backs off too.
+      if (
+        result !== 'homeserver' &&
+        (result !== 'unreachable' || confirmed.has(origin))
+      ) {
+        notHomeserverAt.set(origin, Date.now());
       }
     })
     .catch(() => undefined)
@@ -232,7 +254,7 @@ export function installMatrixCors(session: Electron.Session): void {
         callback(
           rewrites(url) ? { responseHeaders: corsHeaders(details) } : {},
         );
-      const pending = confirmation(url.origin);
+      const pending = confirmation(url.origin, url.pathname);
       if (pending) {
         void pending.then(respond);
       } else {

@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 
 // cors.ts pulls APP_ORIGIN from ./scheme, whose module load imports `electron`.
 // Stub it so the graph resolves under the node test env (protocol is only used
@@ -416,6 +424,116 @@ describe('CORS boundary (main confirms an origin is a Matrix server itself)', ()
     ])('does not rewrite %s', (path) => {
       expect(s.run({ method: 'GET', url: `${origin}${path}` })).toEqual({});
     });
+  });
+
+  // nginx serves the static well-known and proxies `/_matrix/` to a homeserver that was
+  // restarting when main first asked.
+  describe('a homeserver whose versions endpoint was down at the first probe', () => {
+    let origin: string;
+    let now: MockInstance<() => number>;
+    const sync = (): string => `${origin}/_matrix/client/v3/sync`;
+
+    beforeEach(async () => {
+      origin = freshOrigin();
+      now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      probe.mockResolvedValue('well-known');
+      allowCorsOrigin(origin);
+      await probesSettled();
+    });
+
+    it('rewrites its responses once a later probe finds the homeserver', async () => {
+      now.mockReturnValue(1_030_000);
+      probe.mockResolvedValue('homeserver');
+      let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+      s.handle({ method: 'GET', url: sync() }, (r) => (out = r));
+      expect(out).toBeUndefined();
+      await probesSettled();
+
+      expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+      expect(pick(s.run({ method: 'GET', url: sync() }), ACAO_NAME)).toEqual([
+        APP_ORIGIN,
+      ]);
+      expect(probe).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not probe it again before the back-off has passed', async () => {
+      now.mockReturnValue(1_029_999);
+      probe.mockResolvedValue('homeserver');
+
+      expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+      await probesSettled();
+
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not probe it again because the renderer names it again', async () => {
+      now.mockReturnValue(1_030_000);
+
+      allowCorsOrigin(origin);
+      setAllowedCorsOrigins([origin]);
+      await probesSettled();
+
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps its well-known documents readable while the later probe is pending', async () => {
+      now.mockReturnValue(1_030_000);
+      let answer: (result: string) => void = () => undefined;
+      probe.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      let held: { responseHeaders?: Record<string, string[]> } | undefined;
+
+      s.handle({ method: 'GET', url: sync() }, (r) => (held = r));
+
+      for (const path of [
+        '/.well-known/matrix/client',
+        '/.well-known/matrix/server',
+      ]) {
+        expect(
+          pick(s.run({ method: 'GET', url: `${origin}${path}` }), ACAO_NAME),
+        ).toEqual([APP_ORIGIN]);
+      }
+      expect(held).toBeUndefined();
+
+      answer('well-known');
+      await probesSettled();
+      expect(held).toEqual({});
+    });
+
+    it.each(['well-known', 'refused', 'unreachable'])(
+      'asks a host that stays without a homeserver once per back-off (%s)',
+      async (later) => {
+        probe.mockResolvedValue(later);
+
+        now.mockReturnValue(1_030_000);
+        expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+        s.handle(
+          { method: 'GET', url: `${origin}/index.html` },
+          () => undefined,
+        );
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(2);
+
+        now.mockReturnValue(1_059_999);
+        expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(2);
+
+        now.mockReturnValue(1_060_000);
+        s.handle({ method: 'GET', url: sync() }, () => undefined);
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(
+          pick(
+            s.run({
+              method: 'GET',
+              url: `${origin}/.well-known/matrix/client`,
+            }),
+            ACAO_NAME,
+          ),
+        ).toEqual([APP_ORIGIN]);
+      },
+    );
   });
 
   it('never allows an http origin', async () => {
