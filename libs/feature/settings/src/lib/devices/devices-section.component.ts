@@ -30,7 +30,7 @@ import {
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { filter, firstValueFrom, type Observable } from 'rxjs';
+import { filter, firstValueFrom, merge, Subject, type Observable } from 'rxjs';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
@@ -71,6 +71,7 @@ export class DevicesSectionComponent {
   private readonly activeAccountId = inject(MatrixClientService).activeUserId;
   private readonly activeAccount$ = toObservable(this.activeAccountId);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly left$ = new Subject<void>();
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly linkButton =
@@ -123,6 +124,7 @@ export class DevicesSectionComponent {
     // signs a device out), and detach on destroy.
     this.devicesSvc.connect();
     this.destroyRef.onDestroy(() => this.devicesSvc.disconnect());
+    this.destroyRef.onDestroy(() => this.left$.next());
     // Closing the panel cancels its flow: a link never outlives its account or this
     // device's ability to share the keys.
     effect(() => {
@@ -315,8 +317,15 @@ export class DevicesSectionComponent {
     );
   }
 
-  /** Emits once `accountId` is no longer on screen, to close a dialog opened for it. */
+  /**
+   * Emits once `accountId` is no longer on screen, to close a dialog opened for it. On a
+   * phone this section is a routed page: a switch navigates away and destroys it, which
+   * would otherwise leave its prompt open over the other Account's room.
+   */
   private switchedFrom(accountId: string): Observable<unknown> {
-    return this.activeAccount$.pipe(filter((active) => active !== accountId));
+    return merge(
+      this.activeAccount$.pipe(filter((active) => active !== accountId)),
+      this.left$,
+    );
   }
 }

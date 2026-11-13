@@ -246,6 +246,22 @@ describe('DevicesSectionComponent', () => {
     expect(closesOnSwitch(fixture, alertPrompt.mock.calls[0][0])).toBe(true);
   });
 
+  it('closes an open prompt when the section itself goes away, as a switch does on a phone', async () => {
+    alertPrompt.mockReturnValue(new Subject<string | null>());
+    const { fixture } = await renderSection();
+    fixture.componentInstance.rename(OTHER);
+    let closed = false;
+    const opts = alertPrompt.mock.calls[0][0] as {
+      closeWhen?: Observable<unknown>;
+    };
+    const sub = opts.closeWhen?.subscribe(() => (closed = true));
+
+    fixture.destroy();
+
+    sub?.unsubscribe();
+    expect(closed).toBe(true);
+  });
+
   it('closes the sign-out confirmation when another account becomes active', async () => {
     alertConfirm.mockReturnValue(new Subject<boolean>());
     const { fixture } = await renderSection();
