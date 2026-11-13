@@ -260,7 +260,8 @@ export interface NormalizedTextEvent extends NormalizedCommon {
   readonly body: string;
   readonly formattedBody: string | null;
   readonly replyFallback: boolean;
-  readonly addressesViewer: boolean;
+  /** The viewer's ID when the event's `m.mentions` names them. */
+  readonly addressedViewerId: string | null;
   /** Display names of the users the formatted body links to, for its mention pills. */
   readonly mentionNames: Readonly<Record<string, string>>;
   readonly roomEncrypted: boolean;
@@ -339,7 +340,8 @@ export interface NormalizedMediaEvent extends NormalizedCommon {
   readonly caption: string | null;
   readonly formattedCaption: string | null;
   readonly replyFallback: boolean;
-  readonly addressesViewer: boolean;
+  /** The viewer's ID when the event's `m.mentions` names them. */
+  readonly addressedViewerId: string | null;
   /** Display names of the users the formatted body links to, for its mention pills. */
   readonly mentionNames: Readonly<Record<string, string>>;
 }
@@ -604,7 +606,7 @@ export function presentNormalizedTimelineEvent(
       event.body,
       event.formattedBody,
       event.replyFallback,
-      event.addressesViewer,
+      event.addressedViewerId,
       event.mentionNames,
     );
     return Object.freeze({
@@ -646,7 +648,7 @@ export function presentNormalizedTimelineEvent(
           event.caption,
           event.formattedCaption,
           event.replyFallback,
-          event.addressesViewer,
+          event.addressedViewerId,
           event.mentionNames,
         )
       : null;

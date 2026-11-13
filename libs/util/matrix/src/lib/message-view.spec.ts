@@ -919,7 +919,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
 
   it('links a bare URL in a reply', () => {
     const { body, html } = reply('see https://example.com/page.');
-    const { textHtml } = renderNormalizedTextBody(body, html, true, false);
+    const { textHtml } = renderNormalizedTextBody(body, html, true, null);
     const link = new DOMParser()
       .parseFromString(textHtml ?? '', 'text/html')
       .querySelector('a[href="https://example.com/page"]');
@@ -935,7 +935,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       '<a href="https://a.example">https://b.example</a> <code>https://c.example</code>' +
         '<pre><code>https://d.example</code></pre>',
       false,
-      false,
+      null,
     );
     const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
 
@@ -948,7 +948,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       'see https://example.com',
       'see https://example.com',
       false,
-      false,
+      null,
     );
 
     expect(html).not.toContain('<a');
@@ -959,7 +959,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       'x',
       'javascript:alert(1) &lt;a href="https://evil.example"&gt;',
       false,
-      false,
+      null,
     );
     const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
 
@@ -974,7 +974,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       'x',
       '<span data-mx-spoiler="">see https://example.com/secret</span>',
       false,
-      false,
+      null,
     );
     const doc = new DOMParser().parseFromString(textHtml ?? '', 'text/html');
     const spoiler = doc.querySelector('.mx-spoiler');
@@ -990,7 +990,7 @@ describe('renderNormalizedTextBody: bare URLs in formatted messages', () => {
       'x',
       'room: https://matrix.to/#/#room:example.org',
       false,
-      false,
+      null,
     );
     const link = new DOMParser()
       .parseFromString(textHtml ?? '', 'text/html')
