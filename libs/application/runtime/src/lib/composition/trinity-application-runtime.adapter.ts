@@ -61,6 +61,7 @@ import {
   switchMap,
   take,
   takeUntil,
+  tap,
   timeout,
 } from 'rxjs';
 import { AccountStartupHealthService } from './account-startup-health.service';
@@ -129,6 +130,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private preferenceResetAttempt: number | null = null;
   private workspaceNavigationStarted = false;
   private workspaceUrl: string | null = null;
+  private restoredUrl: string | null = null;
+  private keptUrl: string | null = null;
   /** Emits when a Workspace restoration starts; releases the one it supersedes. */
   private readonly workspaceRestorations = new Subject<void>();
 
@@ -364,7 +367,17 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           this.initialWorkspaceNavigation(),
         );
       } else {
-        navigation = this.navigateWorkspace(this.workspaceUrl);
+        // A user who moved on since a restoration keeps their page on this and later
+        // retries: the launch URL may be a spent sign-in callback. With no account the page
+        // is not theirs to keep, and the launch URL's guard sends them to sign in.
+        if (this.restoredUrl !== null && this.router.url !== this.restoredUrl) {
+          this.keptUrl = this.router.url;
+        }
+        navigation = this.navigateWorkspace(
+          this.keptUrl !== null && this.accounts.hasActiveAccount()
+            ? this.keptUrl
+            : this.workspaceUrl,
+        );
       }
       return navigation.pipe(
         take(1),
@@ -377,6 +390,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
                 ),
               ),
         ),
+        tap(() => (this.restoredUrl = this.router.url)),
         takeUntil(this.workspaceRestorations),
         defaultIfEmpty(navigationFailed),
       );
