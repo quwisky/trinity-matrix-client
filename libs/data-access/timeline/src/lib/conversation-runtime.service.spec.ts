@@ -1354,6 +1354,25 @@ describe('ConversationRuntime', () => {
         expect(stored(fixture) ?? '').toBe('');
       });
 
+      it('does not store a failed send from the open room of an account that has signed out', async () => {
+        // The room on screen keeps its handle when its account's client is removed.
+        const fixture = setup();
+        const handle = fixture.runtime.focus(KEY);
+        handle.compose.setDraft('private text');
+        const failed = firstValueFrom(handle.compose.submit());
+        vi.mocked(fixture.controller(KEY.roomId).clientStatus).mockReturnValue(
+          'removed',
+        );
+        fixture.accountIds.set([BOB]);
+        TestBed.tick();
+        fixture.drafts.clearAll();
+
+        fixture.sends.next({ kind: 'rejected', retryable: true });
+        await failed;
+
+        expect(stored(fixture) ?? '').toBe('');
+      });
+
       it('puts back and drops from storage alone when no handle holds the room', async () => {
         const failing = setup();
         const failed = sendAndRetire(failing, 'x');

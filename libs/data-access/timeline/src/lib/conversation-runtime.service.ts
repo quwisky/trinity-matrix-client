@@ -277,8 +277,24 @@ export class ConversationRuntime {
       entry.composeController.keepMessageDraft(text);
       return;
     }
-    const draftKey = conversationDraftKey(key);
-    this.drafts.set(draftKey, appendDraft(this.drafts.get(draftKey), text));
+    this.storeDraft(
+      key,
+      appendDraft(this.drafts.get(conversationDraftKey(key)), text),
+    );
+  }
+
+  /**
+   * Every draft write goes through here: an open room outlives its Account's sign-out, and a
+   * send that fails afterwards must not put that Account's text back on disk. A
+   * soft-logged-out Account keeps its drafts for the sign-in that restores it.
+   */
+  private storeDraft(key: ConversationKey, draft: string): void {
+    if (
+      this.matrix.accountIds().includes(key.accountId) ||
+      this.matrix.softLoggedOut().includes(key.accountId)
+    ) {
+      this.drafts.set(conversationDraftKey(key), draft);
+    }
   }
 
   /** The focused or retained handle for the room, if one holds it. */
@@ -417,18 +433,13 @@ export class ConversationRuntime {
       state: state.asReadonly(),
       initialDraft: this.initialDraft(immutableKey, draftKey),
       initialSnapshot: this.composeSnapshots.get(draftKey),
-      persistDraft: (draft) => this.drafts.set(draftKey, draft),
+      persistDraft: (draft) => this.storeDraft(immutableKey, draft),
       putBackRetired: (unsent) => {
         const live = this.entry(immutableKey);
         if (live) live.composeController.putBack(unsent);
-        // A send that fails after sign-out must not write that account's text back to disk.
-        // A soft-logged-out Account keeps its drafts for the sign-in that restores it.
-        else if (
-          this.matrix.accountIds().includes(immutableKey.accountId) ||
-          this.matrix.softLoggedOut().includes(immutableKey.accountId)
-        ) {
-          this.drafts.set(
-            draftKey,
+        else {
+          this.storeDraft(
+            immutableKey,
             appendDraft(unsent, this.drafts.get(draftKey)),
           );
         }
