@@ -321,6 +321,28 @@ describe('PushService', () => {
       expect(svc.backgroundDelivery()).toBe('app');
     });
 
+    it('hands only the accounts whose pusher was applied to native push', async () => {
+      h.state.platform = 'android';
+      const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+      clients
+        .get('@alt:hs')!
+        .setPusher.mockRejectedValueOnce(new Error('server down'));
+
+      await registerWithToken(svc);
+
+      expect(svc.runtimeStatus().status).toBe('degraded');
+      expect(svc.backgroundDeliveryFor('@me:hs')).toBe('push');
+      expect(svc.backgroundDeliveryFor('@alt:hs')).toBe('app');
+    });
+
+    it('keeps every account with the app on iOS', async () => {
+      const { svc } = setup();
+
+      await registerWithToken(svc);
+
+      expect(svc.backgroundDeliveryFor('@me:hs')).toBe('app');
+    });
+
     it('keeps the background with the app on Android without a gateway', async () => {
       h.state.platform = 'android';
       const { svc } = setup({ config: null });

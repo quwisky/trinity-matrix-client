@@ -117,9 +117,7 @@ function setup(
       provideHostCapabilities(),
       NotificationService,
       MockProvider(PushService, {
-        backgroundDelivery: signal<'app' | 'push'>(
-          opts.backgroundDelivery ?? 'app',
-        ).asReadonly(),
+        backgroundDeliveryFor: () => opts.backgroundDelivery ?? 'app',
       }),
       MockProvider(MatrixClientService, {
         // A session can start signed out. Notification Runtime must remain dormant
