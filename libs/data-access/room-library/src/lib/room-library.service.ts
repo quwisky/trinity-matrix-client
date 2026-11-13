@@ -526,6 +526,11 @@ export class RoomLibraryService {
           forkJoin([
             from(client.setRoomReadMarkers(roomId, latestId)),
             from(client.sendReadReceipt(newest, receiptType, true)),
+            // "Newest" goes by the sender's clock. A reply dated ahead of later messages
+            // would leave those unread, so the main timeline is acked on its own as well.
+            ...(newest === latest
+              ? []
+              : [from(client.sendReadReceipt(latest, receiptType))]),
           ]),
         ),
         map(() => void 0),
