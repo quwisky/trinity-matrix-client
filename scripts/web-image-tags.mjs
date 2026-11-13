@@ -4,6 +4,7 @@
  * release on that line, so republishing an older release never moves them back.
  */
 import { parseArgs } from 'node:util';
+import { compareVersions } from './back-merge.mjs';
 
 const TAG =
   /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
@@ -11,25 +12,15 @@ const TAG =
 function parse(tag) {
   const match = TAG.exec(tag);
   if (!match) return null;
-  const [, major, minor, patch, next] = match;
+  const [, major, minor, , next] = match;
   return {
-    parts: [
-      Number(major),
-      Number(minor),
-      Number(patch),
-      next === undefined ? -1 : Number(next),
-    ],
     prerelease: next !== undefined,
     version: tag.slice(1),
     minor: `${major}.${minor}`,
   };
 }
 
-const newer = (a, b) => {
-  for (let i = 0; i < a.parts.length; i += 1)
-    if (a.parts[i] !== b.parts[i]) return a.parts[i] > b.parts[i];
-  return false;
-};
+const newer = (a, b) => compareVersions(a.version, b.version) > 0;
 
 export function imageTags(tag, publishedTags) {
   const release = parse(tag);

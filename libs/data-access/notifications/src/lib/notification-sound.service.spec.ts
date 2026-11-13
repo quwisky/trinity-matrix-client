@@ -90,6 +90,18 @@ describe('NotificationSoundService', () => {
     });
   });
 
+  it('leaves the shown value alone when the account switched before the write returned', async () => {
+    const { svc } = setup();
+    const write = firstValueFrom(svc.setOn(false));
+    Object.defineProperty(TestBed.inject(MatrixClientService), 'instance', {
+      value: { getAccountData: () => undefined },
+    });
+
+    await write;
+
+    expect(svc.enabled()).toBe(true);
+  });
+
   it('never throws while a notification is being built', () => {
     // isOn() runs inside show(); a throw here would stop the notification appearing at all
     // rather than surfacing as a broken setting. Signed out, and a client that exposes no

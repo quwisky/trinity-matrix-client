@@ -35,7 +35,7 @@ import {
   type PendingReset,
   type ResetRefused,
 } from '@trinity/data-access/auth';
-import { shownError } from '@trinity/util/ui';
+import { isImeKeydown, shownError } from '@trinity/util/ui';
 import { finalize, type Observable } from 'rxjs';
 import { AuthCardComponent } from '../auth-card/auth-card.component';
 import { RESET_PASSWORD_COPY, refusalMessage } from './reset-password.copy';
@@ -124,6 +124,11 @@ export class ResetPasswordPage {
   constructor() {
     this.destroyRef.onDestroy(() => clearInterval(this.waitTimer));
     this.discover();
+  }
+
+  /** Enter in a field submits, but not the Enter that confirms an IME candidate, nor a held key. */
+  protected submitsOnEnter(event: Event): boolean {
+    return !isImeKeydown(event) && !(event as KeyboardEvent).repeat;
   }
 
   protected send(): void {

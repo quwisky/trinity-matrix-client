@@ -192,6 +192,21 @@ describe('diffTokens', () => {
     expect(added[0]).not.toMatch(/^\s/);
   });
 
+  // A sender controls the edit's text. The run of spaces fits the event size limit, and
+  // peeling it with a backtracking pattern took seconds; this takes a few milliseconds.
+  it('peels a huge run of whitespace inside an addition without stalling', () => {
+    const hostile = `a${' '.repeat(60_000)}b`;
+
+    const started = performance.now();
+    const ops = diffTokens('x', ` ${hostile} `);
+    const elapsed = performance.now() - started;
+
+    expect(ops.filter((op) => op.kind === 'add').map((op) => op.text)).toEqual([
+      hostile,
+    ]);
+    expect(elapsed).toBeLessThan(500);
+  });
+
   // The point of diffing characters rather than words: a typo fix marks the letters that
   // changed instead of striking the whole word and re-adding it.
   it('marks the letters that changed, not the whole word', () => {

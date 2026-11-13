@@ -193,6 +193,29 @@ describe('ThreadsService.loadThreadRoot, on a real SDK room', () => {
     expect(room.getThread(ROOT)?.rootEvent?.isRedacted()).toBe(true);
   });
 
+  // The root is taken as the server gives it, so it need not be a message at all.
+  it.each([
+    ['of a type that is not a message', { type: 'org.example.custom' }],
+    [
+      'that is still encrypted',
+      {
+        type: 'm.room.encrypted',
+        content: { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'x' },
+      },
+    ],
+  ])('opens a thread on a root %s', async (_case, root) => {
+    const { threads, room, fetchRoot } = build();
+    fetchRoot.mockResolvedValue({ ...rootEvent(), ...root });
+    await firstValueFrom(threads.loadThreadRoot(ROOT));
+    // Let the SDK's own first page settle while the client is still mocked.
+    await vi.waitFor(() =>
+      expect(room.getThread(ROOT)?.initialEventsFetched).toBe(true),
+    );
+
+    expect(() => threads.attachThreadRoot(ROOT)).not.toThrow();
+    expect(threads.openThreadRootId()).toBe(ROOT);
+  });
+
   it('answers false, making no thread, when the root cannot be fetched', async () => {
     const { threads, room, fetchRoot } = build();
     fetchRoot.mockRejectedValue(new Error('not found'));

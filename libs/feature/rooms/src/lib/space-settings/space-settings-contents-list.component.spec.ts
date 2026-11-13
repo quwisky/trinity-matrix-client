@@ -64,6 +64,7 @@ async function build(
       target: SpaceContentsTarget,
       childId: string,
       beforeChildId: string | null,
+      shownOrder: readonly string[],
     ) => Observable<SpaceChildWriteReceipt>;
     canManage?: boolean;
     items?: readonly SpaceContentsItem[];
@@ -98,8 +99,8 @@ async function build(
         MockProvider(SpaceContentsService, {
           setSuggested: (target, childId, suggested) =>
             setSuggested(target, childId, suggested),
-          moveChildBefore: (target, childId, beforeChildId) =>
-            moveChildBefore(target, childId, beforeChildId),
+          moveChildBefore: (target, childId, beforeChildId, shownOrder) =>
+            moveChildBefore(target, childId, beforeChildId, shownOrder),
         }),
       ],
     },
@@ -167,7 +168,12 @@ describe('SpaceSettingsContentsListComponent', () => {
       ),
     );
     cmp.move('!b:hs', 'up');
-    expect(moveChildBefore).toHaveBeenCalledWith(TARGET, '!b:hs', '!a:hs');
+    expect(moveChildBefore).toHaveBeenCalledWith(
+      TARGET,
+      '!b:hs',
+      '!a:hs',
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('blocks rapid repeated input through the server response and until its sync echo', async () => {
@@ -196,7 +202,12 @@ describe('SpaceSettingsContentsListComponent', () => {
       ),
     );
     cmp.move('!b:hs', 'up');
-    expect(moveChildBefore).toHaveBeenCalledWith(TARGET, '!b:hs', '!a:hs');
+    expect(moveChildBefore).toHaveBeenCalledWith(
+      TARGET,
+      '!b:hs',
+      '!a:hs',
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('waits for every renumbered sibling in a multi-event write receipt', async () => {
@@ -277,7 +288,7 @@ describe('SpaceSettingsContentsListComponent', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('retains a rejected move and recomputes its destination when retried', async () => {
+  it('retains a rejected move and aims its retry at the same destination', async () => {
     const moveChildBefore = vi
       .fn()
       .mockReturnValueOnce(throwError(() => new Error('rate limited')))
@@ -288,7 +299,36 @@ describe('SpaceSettingsContentsListComponent', () => {
     expect(cmp.failure()?.message).toContain('rate limited');
     cmp.retry();
 
-    expect(moveChildBefore).toHaveBeenNthCalledWith(2, TARGET, '!b:hs', null);
+    expect(moveChildBefore).toHaveBeenNthCalledWith(
+      2,
+      TARGET,
+      '!b:hs',
+      null,
+      INITIAL.map(({ id }) => id),
+    );
+  });
+
+  it('aims a retried move at its first destination after a part-way failure reordered the list', async () => {
+    const moveChildBefore = vi
+      .fn()
+      .mockReturnValueOnce(throwError(() => new Error('rate limited')))
+      .mockReturnValueOnce(of(receipt({ ...INITIAL[0], order: 'moved' })));
+    const { cmp, setItems } = await build({ moveChildBefore });
+    const moved = INITIAL[0].id;
+
+    cmp.move(moved, 'down');
+    const firstDestination: unknown = moveChildBefore.mock.calls[0][2];
+    // The writes that landed already show the room one place down.
+    await setItems([INITIAL[1], INITIAL[0], ...INITIAL.slice(2)]);
+    cmp.retry();
+
+    expect(moveChildBefore).toHaveBeenNthCalledWith(
+      2,
+      TARGET,
+      moved,
+      firstDestination,
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('keeps contents inspectable but removes every command for an ordinary member', async () => {

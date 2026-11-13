@@ -614,17 +614,33 @@ describe('sanitizeMatrixHtml mention pills', () => {
   it('marks the pill as addressed to the viewer only when the EVENT says so', () => {
     const html = link('@me:hs', '@Me');
 
-    expect(sanitizeMatrixHtml(html, true)).toContain('mention--self');
-    expect(sanitizeMatrixHtml(html, false)).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(html, '@me:hs')).toContain('mention--self');
+    expect(sanitizeMatrixHtml(html, null)).not.toContain('mention--self');
+  });
+
+  it('marks only the viewer’s own pill in a message that mentions others too', () => {
+    const body = parse(
+      sanitizeMatrixHtml(
+        link('@me:hs', '@Me') + link('@bob:hs', '@Bob'),
+        '@me:hs',
+      ),
+    );
+
+    expect(
+      [...body.querySelectorAll('.mention--self')].map((pill) =>
+        pill.getAttribute('title'),
+      ),
+    ).toEqual(['@me:hs']);
+    expect(body.querySelectorAll('.mention')).toHaveLength(2);
   });
 
   it('leaves ordinary links and room links alone', () => {
     // Only a USER link is a mention; a room permalink is a destination.
-    expect(sanitizeMatrixHtml(link('!r:hs', 'the room'), true)).not.toContain(
-      'mention',
-    );
     expect(
-      sanitizeMatrixHtml('<a href="https://example.test">a link</a>', true),
+      sanitizeMatrixHtml(link('!r:hs', 'the room'), '@me:hs'),
+    ).not.toContain('mention');
+    expect(
+      sanitizeMatrixHtml('<a href="https://example.test">a link</a>', '@me:hs'),
     ).not.toContain('mention');
   });
 
@@ -636,7 +652,7 @@ describe('sanitizeMatrixHtml mention pills', () => {
       '<span class="mention--self">not really you</span>' +
       '<a class="mention--self" href="https://example.test">nor this</a>';
 
-    expect(sanitizeMatrixHtml(hostile, false)).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(hostile, null)).not.toContain('mention--self');
   });
 
   it('cannot be made to look addressed to you by writing a link to you', () => {
@@ -645,8 +661,8 @@ describe('sanitizeMatrixHtml mention pills', () => {
     // event's `m.mentions` decides, and that is what a notification is decided on too.
     const spoof = link('@me:hs', 'totally addressed to you');
 
-    expect(sanitizeMatrixHtml(spoof, false)).toContain('class="mention"');
-    expect(sanitizeMatrixHtml(spoof, false)).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(spoof, null)).toContain('class="mention"');
+    expect(sanitizeMatrixHtml(spoof, null)).not.toContain('mention--self');
   });
 
   it('does not serve one event’s marking to another with the same body', () => {
@@ -655,8 +671,8 @@ describe('sanitizeMatrixHtml mention pills', () => {
     // across an account switch.
     const source = link('@me:hs', '@Me');
 
-    expect(sanitizeMatrixHtml(source, true)).toContain('mention--self');
-    expect(sanitizeMatrixHtml(source, false)).not.toContain('mention--self');
+    expect(sanitizeMatrixHtml(source, '@me:hs')).toContain('mention--self');
+    expect(sanitizeMatrixHtml(source, null)).not.toContain('mention--self');
   });
 });
 
@@ -667,7 +683,7 @@ describe('mention pill text', () => {
   it('names the linked user, never the text the sender wrote', () => {
     const html = sanitizeMatrixHtml(
       link('https://matrix.to/#/@mallory:evil.example', '@Alice (admin)'),
-      false,
+      null,
       { '@mallory:evil.example': 'Mallory' },
     );
 
@@ -688,10 +704,10 @@ describe('mention pill text', () => {
   it('does not serve one name to another render of the same body', () => {
     const source = link('https://matrix.to/#/@a:hs', '@A');
 
-    expect(sanitizeMatrixHtml(source, false, { '@a:hs': 'Ann' })).toContain(
+    expect(sanitizeMatrixHtml(source, null, { '@a:hs': 'Ann' })).toContain(
       '>@Ann</a>',
     );
-    expect(sanitizeMatrixHtml(source, false, { '@a:hs': 'Anna' })).toContain(
+    expect(sanitizeMatrixHtml(source, null, { '@a:hs': 'Anna' })).toContain(
       '>@Anna</a>',
     );
   });

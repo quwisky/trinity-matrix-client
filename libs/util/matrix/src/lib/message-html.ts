@@ -165,7 +165,7 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   }
 });
 
-// Pure in its inputs (`html`, `addressesViewer`); FIFO-bounded so a long session can't grow it.
+// Pure in its inputs (`html`, `addressedViewerId`); FIFO-bounded so a long session can't grow it.
 const SANITIZED_HTML_CACHE_MAX = 1000;
 const sanitizedHtmlCache = new Map<string, string>();
 
@@ -280,15 +280,15 @@ function replaceDeprecatedTags(root: ParentNode): void {
  */
 export function sanitizeMatrixHtml(
   html: string,
-  /** Set only when the event's `m.mentions` names the viewer; see {@link markMentionPills}. */
-  addressesViewer = false,
+  /** The viewer's ID, only when the event's `m.mentions` names them; see {@link markMentionPills}. */
+  addressedViewerId: string | null = null,
   /** Display names by user ID for mention pills, from {@link mentionNamesIn}. */
   mentionNames: Readonly<Record<string, string>> = {},
 ): string {
   // Whether the event addresses the viewer, and the names its pills show, are part of the
   // OUTPUT, so they are part of the key: otherwise one event's rendering leaks to another with
   // the same body, and survives an account switch or a rename.
-  const cacheKey = `${addressesViewer ? '1' : '0'}\u0000${JSON.stringify(mentionNames)}\u0000${html}`;
+  const cacheKey = `${addressedViewerId ?? ''}\u0000${JSON.stringify(mentionNames)}\u0000${html}`;
   const memoized = sanitizedHtmlCache.get(cacheKey);
   if (memoized !== undefined) {
     return memoized;
@@ -312,7 +312,7 @@ export function sanitizeMatrixHtml(
   normaliseTaskItems(body);
   markWideLists(body);
   renderCodeBlocks(body);
-  markMentionPills(body, addressesViewer, mentionNames);
+  markMentionPills(body, addressedViewerId, mentionNames);
   const clean = body.innerHTML;
   if (sanitizedHtmlCache.size >= SANITIZED_HTML_CACHE_MAX) {
     const oldest = sanitizedHtmlCache.keys().next().value;
@@ -542,7 +542,7 @@ export function mentionNamesIn(
  * `.mention--self` is NOT: `formatted_body` is sender-written, so anyone could put
  * `<a href="…/@you">` in a message and get the "addressed to you" treatment without addressing
  * you. It is gated on the event's `m.mentions`, so the strong visual means what a notification
- * means.
+ * means, and it goes on the viewer's own pill only: the same message can mention others.
  *
  * Render-only, not in the `afterSanitizeAttributes` hook: attributes set there are not
  * re-filtered and would ride out onto the wire. Running after DOMPurify also means any `class`
@@ -550,7 +550,7 @@ export function mentionNamesIn(
  */
 function markMentionPills(
   body: HTMLElement,
-  addressesViewer: boolean,
+  addressedViewerId: string | null,
   names: Readonly<Record<string, string>>,
 ): void {
   for (const anchor of body.querySelectorAll('a[href]')) {
@@ -562,7 +562,7 @@ function markMentionPills(
     anchor.textContent = name ? `@${name}` : target.userId;
     anchor.setAttribute('title', target.userId);
     anchor.classList.add('mention');
-    if (addressesViewer) {
+    if (target.userId === addressedViewerId) {
       anchor.classList.add('mention--self');
     }
   }

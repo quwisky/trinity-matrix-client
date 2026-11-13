@@ -248,6 +248,7 @@ export class AccountRuntimeService {
         return of(this.transitionOutcome(session.userId, intent));
       }
 
+      this.lifecycleWorkflow.forgetResetSettlement();
       let termination: 'pending' | 'settled' | 'failed' = 'pending';
       this.runtimeState.set({
         phase: 'establishing',

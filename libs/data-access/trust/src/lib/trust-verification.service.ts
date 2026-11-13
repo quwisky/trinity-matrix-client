@@ -259,8 +259,15 @@ export class TrustVerificationService {
     return defer(() =>
       from(
         (async (): Promise<void> => {
-          const request =
-            await this.requireCrypto().requestOwnUserVerification();
+          const { client, crypto: active } = this.cryptoPort.active();
+          const crypto = this.requireCrypto(active);
+          const request = await crypto.requestOwnUserVerification();
+          try {
+            this.requireCurrentCrypto(client, crypto);
+          } catch (error) {
+            void request.cancel().catch(() => undefined);
+            throw error;
+          }
           this.adopt(request);
         })(),
       ),
@@ -327,8 +334,14 @@ export class TrustVerificationService {
         (async (): Promise<void> => {
           this.qrShown = false;
           this.recompute();
-          const verifier =
-            await this.requireRequest().startVerification(SAS_METHOD);
+          const request = this.requireRequest();
+          const verifier = await request.startVerification(SAS_METHOD);
+          if (request !== this.request || this.isTerminal(request)) {
+            verifier.cancel(
+              new Error('The verification request changed while starting.'),
+            );
+            return;
+          }
           this.attachVerifier(verifier);
         })(),
       ),

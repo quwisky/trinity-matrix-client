@@ -399,7 +399,10 @@ describe('SpaceContentsService', () => {
 
     await firstValueFrom(service.setSuggested(TARGET, '!child:remote', true));
     await firstValueFrom(
-      service.moveChildBefore(TARGET, '!nested:hs', '!child:remote'),
+      service.moveChildBefore(TARGET, '!nested:hs', '!child:remote', [
+        '!nested:hs',
+        '!child:remote',
+      ]),
     );
 
     expect(setSuggested).toHaveBeenCalledWith(
@@ -413,6 +416,7 @@ describe('SpaceContentsService', () => {
       TARGET.spaceId,
       '!nested:hs',
       '!child:remote',
+      ['!nested:hs', '!child:remote'],
     );
   });
 });

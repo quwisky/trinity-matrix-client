@@ -645,7 +645,10 @@ push after CI passes. Whenever `CI` completes on a `back-merge/**` branch of thi
 whatever its conclusion, [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml)
 runs [`scripts/land-back-merge.mjs`](../../scripts/land-back-merge.mjs) with the release App
 token, which pushes the branch's head to `main` as a fast-forward, never forced. GitHub then
-marks the PR merged. The script refuses, and pushes nothing, unless:
+marks the PR merged. Every `CI` completion on any branch starts a run of the workflow (the
+branch filter only skips its job), so its concurrency group sets `queue: max`: a landing that
+waits behind another run is not cancelled by the next completion. The script refuses, and
+pushes nothing, unless:
 
 - the branch is still at the commit that CI run tested;
 - `release/X.Y.x` exists on `origin` and the `vX.Y.Z` tag is on it, as `release.yml`'s verify
@@ -800,6 +803,8 @@ that marker inside a version block. Prereleases leave the user guide alone. The 
 guide always deploys from `main`. Between merging the back-merge PR and publishing the release,
 `docs-pages.yml` builds the user guide from the newest commit whose version is
 published, and publishing the release re-runs the workflow on `main` to switch it.
+A release it cannot read (an API error, not a draft) fails the build instead of deploying
+an older guide; re-run it.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `main` or a `release/*` branch; it does not

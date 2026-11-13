@@ -34,6 +34,9 @@ destination = "/index.html"
 source = "/register"
 destination = "/index.html"
 [[advanced.rewrites]]
+source = "/reset-password"
+destination = "/index.html"
+[[advanced.rewrites]]
 source = "/sso-callback"
 destination = "/index.html"
 [[advanced.rewrites]]
@@ -95,6 +98,9 @@ source = "/encryption/unlock"
 destination = "/index.html"
 [[advanced.rewrites]]
 source = "/encryption/verify"
+destination = "/index.html"
+[[advanced.rewrites]]
+source = "/encryption/confirm"
 destination = "/index.html"
 
 # The application supplies its complete CSP; the host adds only the origin-level

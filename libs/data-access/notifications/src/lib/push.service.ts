@@ -165,6 +165,20 @@ export class PushService {
   );
 
   /**
+   * {@link backgroundDelivery} for one account's messages: `push` once that account's own
+   * pusher carries the token, even while another account's homeserver refuses its pusher.
+   */
+  backgroundDeliveryFor(userId: string): 'app' | 'push' {
+    const client = this.matrix.clientFor(userId);
+    return this.nativePush.platform === 'android' &&
+      this.currentPushkey !== null &&
+      client !== null &&
+      this.applied.get(client) === this.currentPushkey
+      ? 'push'
+      : 'app';
+  }
+
+  /**
    * Whether the app's own sync is what notifies while it is in the background: on Android
    * until push delivers there. iOS is suspended in the background and always relies on push.
    */
@@ -521,7 +535,7 @@ export class PushService {
       try {
         pushers = (await account.client.getPushers()).pushers;
       } catch {
-        return; // Inconclusive — leave the applied state as it stands.
+        continue; // Inconclusive for this account: its applied state stands.
       }
       const present = pushers.some(
         (p) => p.app_id === appId && p.pushkey === pushkey,
@@ -536,7 +550,7 @@ export class PushService {
           status: 'degraded',
           code: 'push-pusher-verification-failed',
         });
-        return;
+        // Keep reading: another account's pusher may be missing as well.
       }
     }
   }

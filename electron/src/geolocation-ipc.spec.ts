@@ -100,6 +100,21 @@ describe('registerGeolocationIpc', () => {
     ).resolves.toBeNull();
   });
 
+  it.each([
+    ['null', null],
+    ['an empty string', ''],
+    ['an empty array', []],
+    ['a numeric string', '48.8'],
+  ])('returns null when the coordinates are %s', async (_label, value) => {
+    netFetch.mockResolvedValue(
+      jsonResponse({ latitude: value, longitude: value }),
+    );
+
+    await expect(
+      invoke(mainWindowRef.current!.webContents),
+    ).resolves.toBeNull();
+  });
+
   it('returns null when the lookup throws', async () => {
     netFetch.mockRejectedValue(new Error('offline'));
 

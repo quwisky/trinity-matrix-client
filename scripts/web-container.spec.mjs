@@ -236,4 +236,23 @@ describe('container host configuration', () => {
       'source = "/*-' + '[A-Za-z0-9_-]'.repeat(8) + '.{js,css}"',
     );
   });
+
+  it('rewrites every literal application route to the shell and smoke-tests it', () => {
+    const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
+    const routes = [
+      ...read('apps/trinity/src/app/app.routes.ts').matchAll(
+        // A route with a parameter needs a glob rewrite written by hand, not this literal one.
+        /^ {4}path: '([^'*:]+)'/gm,
+      ),
+    ].map((match) => `/${match[1]}`);
+    const config = read('container/sws.toml');
+    const smoke = read('container/smoke.mjs');
+    expect(routes).toContain('/login');
+    for (const route of routes) {
+      expect(config).toContain(
+        `source = "${route}"\ndestination = "/index.html"`,
+      );
+      expect(smoke).toContain(`'${route}',`);
+    }
+  });
 });

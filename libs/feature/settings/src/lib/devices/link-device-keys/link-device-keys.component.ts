@@ -12,7 +12,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { FormField, disabled, form } from '@angular/forms/signals';
-import { TrustService } from '@trinity/data-access/trust';
+import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import {
   TrnButton,
   TrnFieldImports,
@@ -23,6 +23,13 @@ import {
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
 import { runWithBusy } from '@trinity/util/ui';
+
+/**
+ * This device is already verified here, so the unlock screen's advice to verify it is wrong.
+ * True both when recovery lacks the keys and when the account has no recovery at all.
+ */
+const NO_KEYS_IN_RECOVERY =
+  'This account’s recovery can’t give a new device the keys it needs. Link the new device from the device where you set up encryption instead.';
 
 /**
  * Before linking: this device is verified but lacks a private cross-signing key a new device
@@ -83,11 +90,19 @@ export class LinkDeviceKeysComponent {
     if (!key || this.busy()) {
       return;
     }
-    runWithBusy(this.trust.recoverWithKey(key), {
-      busy: this.busy,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    }).subscribe(() => {
+    runWithBusy(
+      this.trust.recoverWithKey(key),
+      { busy: this.busy, error: this.error, destroyRef: this.destroyRef },
+      {
+        formatError: (error) =>
+          error instanceof TrustOperationError &&
+          error.kind === 'recovery-not-configured'
+            ? NO_KEYS_IN_RECOVERY
+            : error instanceof Error
+              ? error.message
+              : String(error),
+      },
+    ).subscribe(() => {
       this.keyModel.set({ recoveryKey: '' });
       this.unlocked.emit();
     });

@@ -113,4 +113,44 @@ describe('MessageComposerComponent — postUnavailableReason', () => {
     expect(cancel).toHaveBeenCalled();
     expect(cmp['attachments'].recordingVoice()).toBe(false);
   });
+
+  it('does not start a recording while another composer holds the recorder', async () => {
+    const start = vi.fn(() => Promise.resolve());
+    const { fixture } = await renderComposer({}, [
+      MockProvider(VoiceRecorderService, {
+        supported: true,
+        busy: true,
+        start,
+      }),
+    ]);
+    const cmp = fixture.componentInstance;
+
+    await cmp.startVoiceRecording();
+
+    expect(start).not.toHaveBeenCalled();
+    expect(cmp['attachments'].recordingVoice()).toBe(false);
+  });
+
+  it('stops a recording whose microphone opened after posting became unavailable', async () => {
+    const cancel = vi.fn();
+    let grantMic: () => void = () => undefined;
+    const { fixture } = await renderComposer({}, [
+      MockProvider(VoiceRecorderService, {
+        supported: true,
+        start: () => new Promise<void>((resolve) => (grantMic = resolve)),
+        cancel,
+      }),
+    ]);
+    const cmp = fixture.componentInstance;
+    const starting = cmp.startVoiceRecording();
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+
+    grantMic();
+    await starting;
+    fixture.detectChanges();
+
+    expect(cancel).toHaveBeenCalled();
+    expect(cmp['attachments'].recordingVoice()).toBe(false);
+  });
 });

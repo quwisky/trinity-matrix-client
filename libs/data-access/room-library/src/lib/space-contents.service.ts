@@ -160,11 +160,15 @@ export class SpaceContentsService {
     );
   }
 
-  /** Move one child in the shared Space order through the immutable target. */
+  /**
+   * Move one child in the shared Space order through the immutable target. `shownOrder` is
+   * the list the move was chosen from, which places the children that have no order.
+   */
   moveChildBefore(
     target: SpaceContentsTarget,
     childId: string,
     beforeChildId: string | null,
+    shownOrder: readonly string[],
   ): Observable<SpaceChildWriteReceipt> {
     return defer(() =>
       this.children.moveChildBefore(
@@ -172,6 +176,7 @@ export class SpaceContentsService {
         target.spaceId,
         childId,
         beforeChildId,
+        shownOrder,
       ),
     );
   }

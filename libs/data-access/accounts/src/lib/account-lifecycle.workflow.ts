@@ -152,6 +152,11 @@ export class AccountLifecycleWorkflow {
     });
   }
 
+  /** An account saved after a reset is not covered by that reset's result or its residue. */
+  forgetResetSettlement(): void {
+    this.resetSettlement = null;
+  }
+
   private startSignOut(
     accountId: string,
   ): Extract<InFlightLifecycle, { readonly kind: 'sign-out' }> {

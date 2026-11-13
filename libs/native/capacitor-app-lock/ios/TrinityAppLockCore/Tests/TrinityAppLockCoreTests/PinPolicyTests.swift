@@ -81,6 +81,6 @@ final class PinPolicyTests: XCTestCase {
             }
             directory.deleteLastPathComponent()
         }
-        throw XCTSkip("native/app-lock/pin-policy-cases.json not found above \(file)")
+        throw CocoaError(.fileNoSuchFile, userInfo: [NSFilePathErrorKey: "native/app-lock/pin-policy-cases.json above \(file)"])
     }
 }

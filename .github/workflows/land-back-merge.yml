@@ -13,8 +13,11 @@ on:
 
 permissions: {}
 
+# Every CI completion on any branch starts a run here; only the job is filtered. Without
+# `queue: max` the group holds one pending run and a third completion cancels a waiting landing.
 concurrency:
   group: land-back-merge
+  queue: max
   cancel-in-progress: false
 
 jobs:

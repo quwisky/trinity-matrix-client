@@ -262,6 +262,47 @@ describe('MessageComposerComponent — staging files for the next send', () => {
     expect(emitted?.caption).toBe('');
   });
 
+  it('leaves a spreadsheet or document paste to the text field', async () => {
+    // Excel, LibreOffice and Word put a bitmap of the selection next to its text.
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const { event, preventDefault } = pasteEvent({
+      files: [png('cells.png')],
+      types: ['text/plain', 'text/html', 'text/rtf', 'Files'],
+      text: 'Q1\t1200',
+    });
+
+    cmp.onPaste(event);
+
+    expect(stagedFiles(cmp)).toEqual([]);
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it('stages a picture copied out of a document, which has rich text but no plain text', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const file = png('figure.png');
+
+    cmp.onPaste(
+      pasteEvent({ files: [file], types: ['text/html', 'text/rtf', 'Files'] })
+        .event,
+    );
+
+    expect(stagedFiles(cmp)).toEqual([file]);
+  });
+
+  it('stages an image file copied from a file manager, which names it as text', async () => {
+    const { fixture } = await renderComposer();
+    const cmp = fixture.componentInstance;
+    const file = png('photo.png');
+
+    cmp.onPaste(
+      pasteEvent({ files: [file], types: ['text/plain', 'Files'] }).event,
+    );
+
+    expect(stagedFiles(cmp)).toEqual([file]);
+  });
+
   it('stages a pasted image exposed only via clipboard items (WebKit fallback)', async () => {
     const { fixture } = await renderComposer();
     const cmp = fixture.componentInstance;

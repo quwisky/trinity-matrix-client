@@ -267,31 +267,43 @@ export class AccountSignOutRetryWorkflow {
     context: SignOutRetryContext,
   ): Observable<unknown> {
     const keep = defer(() => of(providerRevocationUnresolved(attempt)));
-    const source =
-      this.remainingAccountIds(context).length === 0
-        ? keep.pipe(
-            concatMap((kept) =>
-              kept
-                ? this.storage.clear({ keepNativeTokens: true })
-                : this.storage.clear(),
-            ),
-          )
-        : keep.pipe(
-            concatMap((kept) =>
-              kept
-                ? this.storage.remove(context.accountId, {
-                    keepNativeTokens: true,
-                  })
-                : this.storage.remove(context.accountId),
-            ),
-            concatMap(() => {
-              const active = survivingActiveAccount(
-                this.matrix.activeUserId(),
-                this.remainingAccountIds(context),
-              );
-              return active ? this.storage.setActive(active) : of(void 0);
-            }),
-          );
+    // The registry, not the running clients: an account saved since may have failed to start.
+    const source = this.storage.list().pipe(
+      concatMap((records) => {
+        const remaining = [
+          ...new Set([
+            ...this.remainingAccountIds(context),
+            ...records
+              .map(({ userId }) => userId)
+              .filter((id) => id !== context.accountId),
+          ]),
+        ];
+        return remaining.length === 0
+          ? keep.pipe(
+              concatMap((kept) =>
+                kept
+                  ? this.storage.clear({ keepNativeTokens: true })
+                  : this.storage.clear(),
+              ),
+            )
+          : keep.pipe(
+              concatMap((kept) =>
+                kept
+                  ? this.storage.remove(context.accountId, {
+                      keepNativeTokens: true,
+                    })
+                  : this.storage.remove(context.accountId),
+              ),
+              concatMap(() => {
+                const active = survivingActiveAccount(
+                  this.matrix.activeUserId(),
+                  remaining,
+                );
+                return active ? this.storage.setActive(active) : of(void 0);
+              }),
+            );
+      }),
+    );
     return attempt.step(source, {
       budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
       scope: 'account-registry',

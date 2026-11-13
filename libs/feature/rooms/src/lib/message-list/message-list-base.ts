@@ -278,11 +278,15 @@ export abstract class MessageListBase {
   );
 
   readonly replyingToId = this.commands.replyingToId;
-  readonly replyingToName = computed(
-    () =>
-      this.messages().find((m) => m.id === this.replyingToId())?.senderName ??
-      '',
-  );
+  /** Empty only when no reply is on: the composer reads it as whether one is. */
+  readonly replyingToName = computed(() => {
+    const id = this.replyingToId();
+    if (id === null) return '';
+    return (
+      this.messages().find((m) => m.id === id)?.senderName ||
+      'an earlier message'
+    );
+  });
 
   /** Live-region text announcing a newly-arrived incoming message to screen readers. */
   readonly announcement = signal('');

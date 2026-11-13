@@ -154,7 +154,7 @@ describe('reaction notifications integration', () => {
         { provide: NOTIFICATION_VISIBILITY, useValue: visibility },
         {
           provide: PushService,
-          useValue: { backgroundDelivery: backgroundDelivery.asReadonly() },
+          useValue: { backgroundDeliveryFor: () => backgroundDelivery() },
         },
         {
           provide: HostNotificationPresentationService,

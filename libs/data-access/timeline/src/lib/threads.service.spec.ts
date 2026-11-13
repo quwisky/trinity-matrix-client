@@ -1930,6 +1930,65 @@ describe('ThreadsService', () => {
     ]);
   });
 
+  // `origin_server_ts` is the sending server's word. Dated in 2100, a reply would otherwise
+  // sort last for good, and the receipt, sent once for it, would never move to a later reply.
+  it('keeps a future-dated reply where it arrived, and reads past it', () => {
+    const now = Date.now();
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+    const events = [
+      root,
+      fakeEvent({ id: '$r1', sender: '@b:hs', body: 'one', ts: now - 3000 }),
+      fakeEvent({
+        id: '$future',
+        sender: '@evil:hs',
+        body: 'from 2100',
+        ts: Date.UTC(2100, 0, 1),
+      }),
+      fakeEvent({ id: '$r2', sender: '@b:hs', body: 'two', ts: now - 1000 }),
+    ];
+    const { svc, acknowledge } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events }),
+    ]);
+    svc.attachThreadRoot('$root');
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$r1',
+      '$future',
+      '$r2',
+    ]);
+    expect(acknowledge).toHaveBeenLastCalledWith(
+      expect.objectContaining({ messageId: '$r2' }),
+    );
+  });
+
+  it('does not move an older reply below a future-dated one that follows two out-of-order replies', () => {
+    const now = Date.now();
+    const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
+    const events = [
+      root,
+      fakeEvent({ id: '$late', sender: '@b:hs', body: 'b', ts: now - 5000 }),
+      fakeEvent({ id: '$early', sender: '@b:hs', body: 'a', ts: now - 5010 }),
+      fakeEvent({
+        id: '$future',
+        sender: '@evil:hs',
+        body: 'from 2100',
+        ts: Date.UTC(2100, 0, 1),
+      }),
+    ];
+    const { svc } = setup([
+      fakeThread({ id: '$root', rootEvent: root, events }),
+    ]);
+    svc.attachThreadRoot('$root');
+
+    expect(svc.threadMessages().map((m) => m.id)).toEqual([
+      '$root',
+      '$early',
+      '$late',
+      '$future',
+    ]);
+  });
+
   describe('history pagination', () => {
     it('exposes the oldest raw thread event as the backfill marker, a hidden one included', () => {
       const root = fakeEvent({ id: '$root', sender: '@a:hs', body: 'root' });
