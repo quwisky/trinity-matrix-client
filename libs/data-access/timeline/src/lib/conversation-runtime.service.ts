@@ -421,7 +421,12 @@ export class ConversationRuntime {
       putBackRetired: (unsent) => {
         const live = this.entry(immutableKey);
         if (live) live.composeController.putBack(unsent);
-        else {
+        // A send that fails after sign-out must not write that account's text back to disk.
+        // A soft-logged-out Account keeps its drafts for the sign-in that restores it.
+        else if (
+          this.matrix.accountIds().includes(immutableKey.accountId) ||
+          this.matrix.softLoggedOut().includes(immutableKey.accountId)
+        ) {
           this.drafts.set(
             draftKey,
             appendDraft(unsent, this.drafts.get(draftKey)),

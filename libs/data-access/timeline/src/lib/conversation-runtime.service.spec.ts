@@ -203,7 +203,10 @@ function setup(
       { provide: ErrorHandler, useValue: errors },
       {
         provide: MatrixClientService,
-        useValue: { accountIds: accountIds.asReadonly() },
+        useValue: {
+          accountIds: accountIds.asReadonly(),
+          softLoggedOut: signal<readonly string[]>([]),
+        },
       },
       { provide: CONVERSATION_TIMELINE_FACTORY, useValue: factory },
       { provide: CONVERSATION_TEXT_SENDER, useValue: sender },
@@ -598,7 +601,11 @@ describe('ConversationRuntime', () => {
       providers: [
         {
           provide: MatrixClientService,
-          useValue: { clientFor: () => ({}), accountIds: signal([]) },
+          useValue: {
+            clientFor: () => ({}),
+            accountIds: signal([]),
+            softLoggedOut: signal([]),
+          },
         },
         { provide: MediaPipeline, useValue: {} },
         {
@@ -1334,6 +1341,18 @@ describe('ConversationRuntime', () => {
 
       const stored = (fixture: ReturnType<typeof setup>) =>
         fixture.drafts.get(conversationDraftKey(KEY));
+
+      it('does not store a failed send for an account that has signed out', async () => {
+        const fixture = setup();
+        const failed = sendAndRetire(fixture, 'private text');
+        fixture.accountIds.set([BOB]);
+        TestBed.tick();
+
+        fixture.sends.next({ kind: 'rejected', retryable: true });
+        await failed;
+
+        expect(stored(fixture) ?? '').toBe('');
+      });
 
       it('puts back and drops from storage alone when no handle holds the room', async () => {
         const failing = setup();
