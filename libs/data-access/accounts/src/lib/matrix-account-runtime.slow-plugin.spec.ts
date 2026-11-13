@@ -106,7 +106,9 @@ describe('restoring an account behind a very slow native plugin', () => {
     expect(test.matrix.requireReauthentication).not.toHaveBeenCalled();
     expect(test.matrix.signOutAll).not.toHaveBeenCalled();
     expect(test.matrix.remove).not.toHaveBeenCalled();
-    expect(test.wipe.wipeIndexedDb).not.toHaveBeenCalled();
-    expect(test.wipe.wipeKeyValueStores).not.toHaveBeenCalled();
+    expect(test.wipe.beginIndexedDbWipe).not.toHaveBeenCalled();
+    expect(test.wipe.wipeSecureStorage).not.toHaveBeenCalled();
+    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+    expect(test.wipe.wipeWebStorage).not.toHaveBeenCalled();
   });
 });
