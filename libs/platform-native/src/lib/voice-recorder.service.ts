@@ -40,6 +40,7 @@ export class VoiceRecorderService {
   private recorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private startedAt = 0;
+  private acquiring = false;
 
   /** Whether this platform can record (MediaRecorder + getUserMedia present). */
   get supported(): boolean {
@@ -55,24 +56,46 @@ export class VoiceRecorderService {
     return this.recorder !== null;
   }
 
+  /** A recording is running or its microphone is still being opened. */
+  get busy(): boolean {
+    return !!this.recorder || this.acquiring;
+  }
+
   /**
    * Prompt for the mic and begin recording. Rejects when recording isn't supported
-   * or the permission is denied. A no-op if already recording.
+   * or the permission is denied. Rejects too while another recording is in progress or
+   * starting: resolving would let a second composer stop and send the first one's clip.
    */
   async start(): Promise<void> {
-    if (this.recorder) {
-      return;
+    if (this.busy) {
+      throw new Error('A voice recording is already in progress.');
     }
     if (!this.supported) {
       throw new Error('Voice recording isn’t available on this device.');
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    this.acquiring = true;
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } finally {
+      this.acquiring = false;
+    }
+    this.stream = stream;
+    try {
+      this.begin(stream);
+    } catch (error) {
+      // A recorder that cannot be built or started must not keep the mic or the handle.
+      this.teardown();
+      throw error;
+    }
+  }
+
+  private begin(stream: MediaStream): void {
     const mimeType = pickMimeType();
     const recorder = new MediaRecorder(
       stream,
       mimeType ? { mimeType } : undefined,
     );
-    this.stream = stream;
     this.chunks = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
@@ -80,7 +103,7 @@ export class VoiceRecorderService {
       }
     };
     // The recorder can die on its own (permission revoked mid-record, device grabbed by
-    // another app). `start()` no-ops while the handle is set, so a stale one would wedge
+    // another app). `start()` rejects while the handle is set, so a stale one would wedge
     // voice messaging for the session.
     recorder.onerror = () => {
       if (this.recorder === recorder) {
@@ -129,7 +152,7 @@ export class VoiceRecorderService {
         });
       }
     } finally {
-      // On every exit path, or the mic stays live and `start()` no-ops.
+      // On every exit path, or the mic stays live and `start()` rejects.
       this.teardown();
     }
     const waveform = await computeWaveform(blob);

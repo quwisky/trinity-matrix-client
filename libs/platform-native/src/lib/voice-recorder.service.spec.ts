@@ -94,6 +94,50 @@ describe('VoiceRecorderService', () => {
     expect(svc.recording).toBe(true);
   });
 
+  it('start() rejects while another recording is in progress', async () => {
+    const svc = make();
+    await svc.start();
+
+    await expect(svc.start()).rejects.toThrow();
+    expect(getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it('start() rejects while the mic is still being acquired', async () => {
+    const svc = make();
+    const first = svc.start();
+
+    await expect(svc.start()).rejects.toThrow();
+    await first;
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+  });
+
+  it('start() works again after the mic was refused', async () => {
+    getUserMedia.mockRejectedValueOnce(new Error('denied'));
+    const svc = make();
+    await expect(svc.start()).rejects.toThrow('denied');
+
+    await svc.start();
+    expect(svc.recording).toBe(true);
+  });
+
+  it('releases the mic and works again when the recorder cannot start', async () => {
+    const svc = make();
+    const start = vi
+      .spyOn(FakeMediaRecorder.prototype, 'start')
+      .mockImplementationOnce(() => {
+        throw new Error('NotSupportedError');
+      });
+
+    await expect(svc.start()).rejects.toThrow('NotSupportedError');
+    expect(trackStop).toHaveBeenCalled();
+    expect(svc.busy).toBe(false);
+
+    await svc.start();
+    expect(svc.recording).toBe(true);
+    start.mockRestore();
+  });
+
   it('stop() resolves the clip with a duration and waveform, releasing the mic', async () => {
     const svc = make();
     await svc.start();
@@ -125,7 +169,7 @@ describe('VoiceRecorderService', () => {
 
   // The tracks can end under us (permission revoked mid-record, the device grabbed by
   // another app). stop() used to reject there, stranding the mic and — because start()
-  // no-ops while a recorder handle is held — killing voice messaging for the session.
+  // rejects while a recorder handle is held — killing voice messaging for the session.
   it('stop() resolves from the captured chunks when the recorder already went inactive', async () => {
     const svc = make();
     await svc.start();
@@ -152,7 +196,7 @@ describe('VoiceRecorderService', () => {
     expect(svc.recording).toBe(true);
   });
 
-  it('a recorder error releases the mic so the next start() is not a no-op', async () => {
+  it('a recorder error releases the mic so the next start() is not refused', async () => {
     const svc = make();
     await svc.start();
 
