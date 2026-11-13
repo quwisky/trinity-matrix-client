@@ -298,6 +298,19 @@ describe('SpaceChildrenService', () => {
       expect(compareOrder('b', order)).toBe(-1);
     });
 
+    it('leaves the new room unordered after an unordered last child', async () => {
+      // Any key would sort it ahead of the unordered children instead of after them.
+      const { svc, sendStateEvent } = setup({
+        children: [{ childId: '!a:hs', order: 'a' }, { childId: '!b:hs' }],
+      });
+
+      await firstValueFrom(
+        svc.addExistingRoom('@me:hs.example', '!s:hs', '!c:hs'),
+      );
+
+      expect(sentContent(sendStateEvent)).not.toHaveProperty('order');
+    });
+
     it('does not re-link a room that is already a child', async () => {
       // Re-sending would silently reset whatever curation the link carries.
       const { svc, sendStateEvent } = setup({
@@ -500,6 +513,64 @@ describe('SpaceChildrenService', () => {
       expect(
         compareOrder(finalOrder[1] as string, finalOrder[2] as string),
       ).toBe(-1);
+    });
+
+    it('numbers the list when the child lands after an unordered one', async () => {
+      // No single key can follow a child that has none: a minted one sorts first.
+      const { svc, sendStateEvent } = setup({
+        children: [
+          { childId: '!a:hs' },
+          { childId: '!b:hs' },
+          { childId: '!c:hs' },
+        ],
+      });
+
+      const receipt = await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!a:hs', '!c:hs'),
+      );
+
+      const moved = ['!b:hs', '!a:hs', '!c:hs'];
+      expect(receipt.expectedLinks.map(({ childId }) => childId)).toEqual(
+        moved,
+      );
+      const written = new Map(
+        sendStateEvent.mock.calls.map((call) => [
+          call[3] as string,
+          (call[2] as Record<string, unknown>)['order'] as string,
+        ]),
+      );
+      expect(
+        [...moved].sort((a, b) =>
+          compareOrder(written.get(a) ?? '', written.get(b) ?? ''),
+        ),
+      ).toEqual(moved);
+      expect(moved.every((id) => written.get(id))).toBe(true);
+    });
+
+    it('places unordered children the way the caller showed them', async () => {
+      // The contents list sorts unordered children by name, not by room ID.
+      const { svc } = setup({
+        children: [
+          { childId: '!a:hs' },
+          { childId: '!b:hs' },
+          { childId: '!c:hs' },
+        ],
+      });
+
+      // Shown as c, b, a: moving c down one puts it before a.
+      const receipt = await firstValueFrom(
+        svc.moveChildBefore('@me:hs.example', '!s:hs', '!c:hs', '!a:hs', [
+          '!c:hs',
+          '!b:hs',
+          '!a:hs',
+        ]),
+      );
+
+      expect(receipt.expectedLinks.map(({ childId }) => childId)).toEqual([
+        '!b:hs',
+        '!c:hs',
+        '!a:hs',
+      ]);
     });
 
     it('rejects moving a room that is not in the space', async () => {

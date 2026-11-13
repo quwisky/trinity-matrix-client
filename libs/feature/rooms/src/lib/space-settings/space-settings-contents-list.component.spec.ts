@@ -64,6 +64,7 @@ async function build(
       target: SpaceContentsTarget,
       childId: string,
       beforeChildId: string | null,
+      shownOrder: readonly string[],
     ) => Observable<SpaceChildWriteReceipt>;
     canManage?: boolean;
     items?: readonly SpaceContentsItem[];
@@ -98,8 +99,8 @@ async function build(
         MockProvider(SpaceContentsService, {
           setSuggested: (target, childId, suggested) =>
             setSuggested(target, childId, suggested),
-          moveChildBefore: (target, childId, beforeChildId) =>
-            moveChildBefore(target, childId, beforeChildId),
+          moveChildBefore: (target, childId, beforeChildId, shownOrder) =>
+            moveChildBefore(target, childId, beforeChildId, shownOrder),
         }),
       ],
     },
@@ -167,7 +168,12 @@ describe('SpaceSettingsContentsListComponent', () => {
       ),
     );
     cmp.move('!b:hs', 'up');
-    expect(moveChildBefore).toHaveBeenCalledWith(TARGET, '!b:hs', '!a:hs');
+    expect(moveChildBefore).toHaveBeenCalledWith(
+      TARGET,
+      '!b:hs',
+      '!a:hs',
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('blocks rapid repeated input through the server response and until its sync echo', async () => {
@@ -196,7 +202,12 @@ describe('SpaceSettingsContentsListComponent', () => {
       ),
     );
     cmp.move('!b:hs', 'up');
-    expect(moveChildBefore).toHaveBeenCalledWith(TARGET, '!b:hs', '!a:hs');
+    expect(moveChildBefore).toHaveBeenCalledWith(
+      TARGET,
+      '!b:hs',
+      '!a:hs',
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('waits for every renumbered sibling in a multi-event write receipt', async () => {
@@ -288,7 +299,13 @@ describe('SpaceSettingsContentsListComponent', () => {
     expect(cmp.failure()?.message).toContain('rate limited');
     cmp.retry();
 
-    expect(moveChildBefore).toHaveBeenNthCalledWith(2, TARGET, '!b:hs', null);
+    expect(moveChildBefore).toHaveBeenNthCalledWith(
+      2,
+      TARGET,
+      '!b:hs',
+      null,
+      INITIAL.map(({ id }) => id),
+    );
   });
 
   it('keeps contents inspectable but removes every command for an ordinary member', async () => {

@@ -174,6 +174,7 @@ export class SpaceSettingsContentsListComponent {
         this.target(),
         intent.childId,
         before,
+        this.items().map(({ id }) => id),
       );
     }
 
