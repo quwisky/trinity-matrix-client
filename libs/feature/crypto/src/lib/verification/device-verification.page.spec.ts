@@ -155,7 +155,7 @@ describe('DeviceVerificationPage', () => {
         ) as HTMLElement,
       ),
     ).toContain(
-      'This device can’t verify other people until its own encryption setup is finished. Decline, finish setup in Security settings, then ask them to try again.',
+      'This device can’t verify other people yet. Decline, then open their profile to see what this device needs.',
     );
 
     fireEvent.click(button(container, 'Decline'));

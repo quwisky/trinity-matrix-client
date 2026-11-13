@@ -79,7 +79,7 @@ export class MemberProfileTabComponent {
 
   readonly messageUser = output<void>();
   readonly verify = output<void>();
-  /** Security settings is opening; the host closes so the card does not cover it. */
+  /** A trust flow is opening; the host closes so the card does not cover it. */
   readonly setupOpened = output<void>();
   /** The clipboard refused the id; the host selects its user id handle for a manual copy. */
   readonly copyFailed = output<void>();

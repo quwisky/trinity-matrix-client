@@ -78,7 +78,7 @@ export class IdentityChangeActionsComponent {
   readonly verifyRequested = output<void>();
   /** Verification started here; the host can close so it isn't covered. */
   readonly verificationStarted = output<void>();
-  /** Security settings is opening from here; the host can close so it isn't covered. */
+  /** A trust flow is opening from here; the host can close so it isn't covered. */
   readonly setupOpened = output<void>();
 
   protected readonly pending = computed(() =>

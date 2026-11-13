@@ -36,6 +36,8 @@ interface RenderOptions {
   status?: TrustStatus;
   /** A verified device whose identity's keys, and recovery, live on another device. */
   setupElsewhere?: boolean;
+  /** This device is already verified, so the key is only fetching its missing keys. */
+  verified?: boolean;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -52,6 +54,7 @@ async function renderPage(options: RenderOptions = {}) {
     confirmClose = true,
     status = 'needs-recovery',
     setupElsewhere = false,
+    verified = false,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
@@ -70,6 +73,7 @@ async function renderPage(options: RenderOptions = {}) {
       MockProvider(TrustService, {
         status: liveStatus.asReadonly(),
         recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
+        thisDeviceVerified: signal(verified),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
@@ -746,5 +750,21 @@ describe('EncryptionUnlockPage', () => {
       expect(fixture.componentInstance.error()).toContain('identity provider');
       expect(fixture.componentInstance.busy()).toBe(false);
     });
+  });
+
+  // A device verified by another one is trusted but lacks its signing keys; telling it
+  // "this device isn’t trusted yet" would be false.
+  it('says the key fetches missing keys on a device that is already verified', async () => {
+    const { fixture, container } = await renderPage({
+      status: 'ready',
+      verified: true,
+    });
+
+    expect(fixture.componentInstance.title()).toBe('Enter recovery key');
+    const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain(
+      'This device was verified by another device, so it doesn’t have all the keys. Enter your recovery key once to fetch them.',
+    );
+    expect(text).not.toContain('isn’t trusted yet');
   });
 });

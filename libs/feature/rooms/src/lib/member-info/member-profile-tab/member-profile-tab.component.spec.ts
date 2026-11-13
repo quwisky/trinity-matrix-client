@@ -1,9 +1,14 @@
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceDetails } from '@trinity/data-access/identity';
-import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
+import {
+  TrustService,
+  type UserSessions,
+  type UserTrust,
+} from '@trinity/data-access/trust';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnToastService } from '@trinity/components/overlay';
 import { fireEvent, render, screen, waitFor, within } from '@trinity/testing';
+import { signal } from '@angular/core';
 import { MockProvider } from 'ng-mocks';
 import { IdentityChangeActionsService } from '../../identity-change/identity-change-actions.service';
 import { of } from 'rxjs';
@@ -73,6 +78,11 @@ async function build(
       MockProvider(TrnToastService, { show: toastShow }),
       MockProvider(WorkspaceApplicationSurfaceService, {
         open: openSurface as never,
+      }),
+      MockProvider(TrustService, {
+        status: signal('ready' as const),
+        recoverySetupElsewhere: signal(false),
+        refresh: () => of(undefined),
       }),
       MockProvider(IdentityChangeActionsService, {
         pending: () => null,
@@ -165,13 +175,13 @@ describe('MemberProfileTabComponent', () => {
 
   // Without its user-signing key this device would match emoji and sign nobody.
   it.each([
-    ['unverified', ['Security settings']],
+    ['unverified', ['Enter recovery key']],
     [
       'verified-identity-changed',
-      ['Security settings', 'Withdraw verification'],
+      ['Enter recovery key', 'Withdraw verification'],
     ],
   ] as const)(
-    'offers finishing setup in place of verifying a %s person when this device cannot sign users',
+    'offers fetching this device’s keys in place of verifying a %s person when it cannot sign users',
     async (trust, labels) => {
       const { container, verify, openSurface, setupOpened } = await build({
         trust,
@@ -182,7 +192,7 @@ describe('MemberProfileTabComponent', () => {
       expect(byTestId(container, 'identity-verify-again')).toBeNull();
       const blocked = byTestId(container, 'verify-needs-setup');
       expect(blocked?.textContent).toContain(
-        'Finish this device’s encryption setup to verify people.',
+        'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
       );
       expect(
         [
@@ -193,11 +203,11 @@ describe('MemberProfileTabComponent', () => {
       ).toEqual(labels);
 
       fireEvent.click(
-        screen.getByRole('button', { name: 'Security settings' }),
+        screen.getByRole('button', { name: 'Enter recovery key' }),
       );
 
       expect(openSurface).toHaveBeenCalledWith({
-        surface: { kind: 'settings', section: 'security' },
+        surface: { kind: 'trust', flow: 'unlock' },
       });
       expect(setupOpened).toHaveBeenCalledOnce();
       expect(verify).not.toHaveBeenCalled();

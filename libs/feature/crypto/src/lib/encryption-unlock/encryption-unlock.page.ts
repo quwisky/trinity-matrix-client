@@ -147,13 +147,22 @@ export class EncryptionUnlockPage {
       resetting && previous ? previous.value : live,
   }).asReadonly();
 
+  /**
+   * This device arrived already verified, so the key only fetches the keys a device
+   * verified by another one never received. Read once: a successful unlock verifies the
+   * device, and the copy must not change under the person as it does.
+   */
+  protected readonly alreadyVerified =
+    this.crypto.thisDeviceVerified() === true;
+
   readonly title = computed(() => {
     if (this.newRecoveryKey()) {
       return 'Identity reset';
     }
-    return this.identityWithoutRecovery()
-      ? 'Reset your identity'
-      : 'Verify this device';
+    if (this.identityWithoutRecovery()) {
+      return 'Reset your identity';
+    }
+    return this.alreadyVerified ? 'Enter recovery key' : 'Verify this device';
   });
 
   /**
