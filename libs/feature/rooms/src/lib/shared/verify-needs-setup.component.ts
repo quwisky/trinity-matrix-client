@@ -28,6 +28,7 @@ let nextId = 0;
     '[class.items-start]': '!centered()',
     '[class.items-center]': 'centered()',
     '[class.text-center]': 'centered()',
+    '[class.px-4]': 'centered()',
     'data-testid': 'verify-needs-setup',
   },
   template: `
