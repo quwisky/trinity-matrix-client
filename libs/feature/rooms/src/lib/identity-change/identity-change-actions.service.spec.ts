@@ -1,8 +1,10 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnToastService } from '@trinity/components/overlay';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
+  TrustService,
   TrustUsersService,
   TrustVerificationService,
 } from '@trinity/data-access/trust';
@@ -18,6 +20,7 @@ describe('IdentityChangeActionsService', () => {
   let withdrawVerification: Mock;
   let startUserVerification: Mock;
   let show: Mock;
+  const canSignUsers = signal<boolean | null>(null);
   const dm = of('!dm:hs');
 
   beforeEach(() => {
@@ -27,6 +30,7 @@ describe('IdentityChangeActionsService', () => {
     show = vi.fn();
     TestBed.configureTestingModule({
       providers: [
+        MockProvider(TrustService, { canSignUsers }),
         MockProvider(TrustUsersService, {
           acknowledgeIdentity,
           withdrawVerification,
@@ -55,6 +59,17 @@ describe('IdentityChangeActionsService', () => {
 
     expect(startUserVerification).toHaveBeenCalledWith('@bob:hs', dm);
     expect(started).toHaveBeenCalledOnce();
+  });
+
+  // Unknown is not blocked: Trust itself refuses at the moment of use.
+  it.each([
+    [false, true],
+    [true, false],
+    [null, false],
+  ])('with canSignUsers %s, verifying is blocked: %s', (can, blocked) => {
+    canSignUsers.set(can);
+
+    expect(service().verifyBlocked()).toBe(blocked);
   });
 
   it('names the running action and runs one at a time per person', () => {

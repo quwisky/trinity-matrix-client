@@ -141,15 +141,42 @@
                 person or on a call you already trust.
               </p>
             }
-            <button
-              trnBtn
-              class="mt-4 w-full"
-              data-testid="verify-accept"
-              [disabled]="busy()"
-              (click)="accept()"
-            >
-              Accept
-            </button>
+            @if (!v.isSelfVerification && cannotSignUsers()) {
+              @let block = verifyBlock();
+              <p
+                id="verify-cannot-sign"
+                class="mt-4"
+                data-testid="verify-cannot-sign"
+                role="note"
+              >
+                This device can’t verify other people yet. {{ block?.reason }}
+                @if (block?.action) {
+                  Doing that declines this request.
+                }
+              </p>
+              @if (block?.action; as action) {
+                <button
+                  trnBtn
+                  class="mt-4 w-full"
+                  data-testid="verify-get-keys"
+                  aria-describedby="verify-cannot-sign"
+                  [disabled]="busy()"
+                  (click)="declineAndOpen(action.flow)"
+                >
+                  {{ action.label }}
+                </button>
+              }
+            } @else {
+              <button
+                trnBtn
+                class="mt-4 w-full"
+                data-testid="verify-accept"
+                [disabled]="busy()"
+                (click)="accept()"
+              >
+                Accept
+              </button>
+            }
             <button
               trnBtn
               presentation="ghost"
@@ -376,8 +403,10 @@
               } @else if (!v.isSelfVerification) {
                 The emoji matched with
                 <strong>{{ v.otherUserId }}</strong
-                >. They are not marked as verified yet. That needs this device’s
-                own encryption setup to be complete.
+                >. They are not marked as verified yet.
+                @if (cannotSignUsers()) {
+                  That needs this device’s own encryption setup to be complete.
+                }
               } @else if (v.newSession; as session) {
                 @if (session.displayName) {
                   <bdi>{{ session.displayName }}</bdi> (<code>{{

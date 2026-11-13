@@ -23,6 +23,7 @@ import { type PresenceDetails } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
 import { relativeTimeLabel } from '../../shared/relative-time';
+import { VerifyNeedsSetupComponent } from '../../shared/verify-needs-setup.component';
 import { IdentityChangeActionsComponent } from '../../identity-change/identity-change-actions.component';
 
 const PRESENCE_LABEL = {
@@ -48,6 +49,7 @@ let nextSessionsPanelId = 0;
     TrnBadge,
     TrnButton,
     TrnIconComponent,
+    VerifyNeedsSetupComponent,
   ],
   templateUrl: './member-profile-tab.component.html',
 })
@@ -72,9 +74,13 @@ export class MemberProfileTabComponent {
   readonly showIdentityActions = input.required<boolean>();
   /** Null hides the Sessions row: no crypto, your own card, or another Account's card. */
   readonly sessions = input.required<UserSessions | null>();
+  /** This device cannot sign other users, so Verify gives way to finishing its setup. */
+  readonly verifyBlocked = input(false);
 
   readonly messageUser = output<void>();
   readonly verify = output<void>();
+  /** A trust flow is opening; the host closes so the card does not cover it. */
+  readonly setupOpened = output<void>();
   /** The clipboard refused the id; the host selects its user id handle for a manual copy. */
   readonly copyFailed = output<void>();
   /** The Sessions row opened: the moment a network read is allowed. */

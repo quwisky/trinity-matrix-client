@@ -20,7 +20,7 @@
     <trn-icon name="copy" />
     Copy ID
   </button>
-  @if (canVerify()) {
+  @if (canVerify() && !verifyBlocked()) {
     <button
       trnBtn
       variant="secondary"
@@ -34,6 +34,14 @@
   }
 </div>
 
+@if (canVerify() && verifyBlocked()) {
+  <trn-verify-needs-setup
+    class="mt-3"
+    [centered]="true"
+    (opened)="setupOpened.emit()"
+  />
+}
+
 @if (identityChange(); as change) {
   <div
     class="mt-3 flex justify-center"
@@ -43,6 +51,7 @@
       [change]="change"
       [delegateVerify]="true"
       (verifyRequested)="verify.emit()"
+      (setupOpened)="setupOpened.emit()"
     />
   </div>
 }

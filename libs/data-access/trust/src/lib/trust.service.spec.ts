@@ -567,7 +567,12 @@ describe('TrustService', () => {
       const { svc, client } = setup({ defaultKeyId: 'k' });
       svc.runProjection().subscribe();
       svc.runProjection().subscribe();
-      expect(client.on).toHaveBeenCalledTimes(5);
+      expect(client.on).toHaveBeenCalledTimes(6);
+      // A recovery or a gossiped backup key is when the signing keys land on this device.
+      expect(client.on).toHaveBeenCalledWith(
+        CryptoEvent.KeyBackupDecryptionKeyCached,
+        expect.any(Function),
+      );
     });
 
     it('coalesces a burst of crypto events into one status recompute', async () => {
@@ -604,6 +609,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,
@@ -648,6 +662,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,

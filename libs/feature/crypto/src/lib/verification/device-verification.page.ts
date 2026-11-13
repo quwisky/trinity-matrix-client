@@ -25,6 +25,7 @@ import {
   TrustUsersService,
   TrustVerificationService,
   type TrustDialogResult,
+  type VerifyBlock,
 } from '@trinity/data-access/trust';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
 import {
@@ -118,6 +119,17 @@ export class DeviceVerificationPage {
         (active.stage === 'requested' || active.stage === 'cancelled'))
     );
   });
+
+  /**
+   * This device is known not to hold its user-signing key, so it cannot sign another
+   * user's identity. Not derived from `status`, which is wrong about it in both directions.
+   */
+  readonly cannotSignUsers = computed(
+    () => this.trust.canSignUsers() === false,
+  );
+
+  /** What this device needs first: the member card's text and flow, so the two agree. */
+  readonly verifyBlock = this.trust.verifyBlock;
 
   /**
    * Matching emoji with another user finishes the flow even when this device holds no
@@ -248,6 +260,21 @@ export class DeviceVerificationPage {
   }
 
   /**
+   * Decline another user's request and open the flow that brings this device its keys.
+   * Routed, since Trust cannot ask Workspace for a dialog; it returns to where the
+   * request was answered.
+   */
+  declineAndOpen(flow: NonNullable<VerifyBlock['action']>['flow']): void {
+    const returnTo = this.asModal()
+      ? this.router.url
+      : this.route.snapshot.queryParamMap.get('returnTo');
+    this.cancelAndLeaveModal();
+    void this.router.navigate([`/encryption/${flow}`], {
+      ...(returnTo ? { queryParams: { returnTo } } : {}),
+    });
+  }
+
+  /**
    * Drop the unanswered request and go to Security settings: navigate on the routed page,
    * or close the modal asking its opener to present Settings there.
    */
@@ -266,6 +293,14 @@ export class DeviceVerificationPage {
     }
     this.cancelInFlight();
     void this.router.navigateByUrl('/settings/security', { replaceUrl: true });
+  }
+
+  private cancelAndLeaveModal(): void {
+    this.cancelInFlight();
+    if (this.asModal()) {
+      this.closed.emit();
+      this.dialogRef?.close();
+    }
   }
 
   private cancelInFlight(): void {

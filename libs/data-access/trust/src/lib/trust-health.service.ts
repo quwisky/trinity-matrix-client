@@ -10,6 +10,7 @@ import {
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { recoverTrustOperation } from './trust-operation-error';
 import { readTrustSnapshot } from './trust-snapshot';
+import { deriveVerifyBlock } from './verify-block';
 
 /**
  * Where this device stands relative to the Account's encryption setup.
@@ -30,6 +31,19 @@ export interface TrustHealthSnapshot {
    * false whenever recovery exists or the device is ready.
    */
   readonly identityElsewhere: boolean;
+  /**
+   * This device holds the private user-signing key, the one that signs another user's
+   * identity. `status` cannot stand in for it: a device verified by emoji on an Account
+   * with recovery is `ready` without the key, and one holding every key with no recovery
+   * is `needs-setup`.
+   */
+  readonly canSignUsers: boolean;
+  /**
+   * Secret storage holds the cross-signing private keys under its default key, so the
+   * recovery key can supply them. False for a default key with nothing behind it (a setup
+   * or reset that stopped early): {@link TrustService.recoverWithKey} refuses that key.
+   */
+  readonly recoveryHoldsKeys: boolean;
 }
 
 /**
@@ -67,6 +81,8 @@ export const TRUST_HEALTH_EVENTS = [
   CryptoEvent.KeysChanged,
   CryptoEvent.UserTrustStatusChanged,
   CryptoEvent.KeyBackupStatus,
+  // Recovery and secret gossip cache this key alongside the cross-signing privates.
+  CryptoEvent.KeyBackupDecryptionKeyCached,
   CryptoEvent.DevicesUpdated,
   // Restored /sync may contain old secrets until fresh account data arrives.
   ClientEvent.AccountData,
@@ -86,6 +102,15 @@ export class TrustHealthService {
   readonly thisDeviceVerified = computed(
     () => this.health().current?.thisDeviceVerified ?? null,
   );
+  /** Whether verifying another user from this device would sign them; null while unknown. */
+  readonly canSignUsers = computed(
+    () => this.health().current?.canSignUsers ?? null,
+  );
+  /** What stands where Verify would be on a device that cannot sign users; null while unknown. */
+  readonly verifyBlock = computed(() => {
+    const current = this.health().current;
+    return current ? deriveVerifyBlock(current) : null;
+  });
   /**
    * This device is verified but setup would replace the identity another device holds,
    * so recovery can only be set up there (or the identity explicitly reset).

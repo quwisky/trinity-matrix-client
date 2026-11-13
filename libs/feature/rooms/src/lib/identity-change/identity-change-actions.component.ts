@@ -9,6 +9,7 @@ import {
 import { TrnButton } from '@trinity/components/controls';
 import { IdentityChangeActionsService } from './identity-change-actions.service';
 import type { IdentityChange } from './room-identity-changes.service';
+import { VerifyNeedsSetupComponent } from '../shared/verify-needs-setup.component';
 
 /**
  * The buttons answering one person's changed identity, by what changed. Each is named with the
@@ -17,7 +18,7 @@ import type { IdentityChange } from './room-identity-changes.service';
 @Component({
   selector: 'trn-identity-change-actions',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TrnButton],
+  imports: [TrnButton, VerifyNeedsSetupComponent],
   host: { class: 'inline-flex flex-wrap gap-2' },
   template: `
     @if (change().trust === 'identity-changed') {
@@ -33,17 +34,21 @@ import type { IdentityChange } from './room-identity-changes.service';
         {{ pending() === 'acknowledge' ? 'Acknowledging…' : 'Acknowledge' }}
       </button>
     } @else {
-      <button
-        trnBtn
-        size="sm"
-        type="button"
-        [disabled]="!!pending()"
-        [attr.aria-label]="'Verify again: ' + change().name"
-        (click)="verifyAgain()"
-        data-testid="identity-verify-again"
-      >
-        {{ pending() === 'verify' ? 'Starting…' : 'Verify again' }}
-      </button>
+      @if (actions.verifyBlocked()) {
+        <trn-verify-needs-setup class="w-full" (opened)="setupOpened.emit()" />
+      } @else {
+        <button
+          trnBtn
+          size="sm"
+          type="button"
+          [disabled]="!!pending()"
+          [attr.aria-label]="'Verify again: ' + change().name"
+          (click)="verifyAgain()"
+          data-testid="identity-verify-again"
+        >
+          {{ pending() === 'verify' ? 'Starting…' : 'Verify again' }}
+        </button>
+      }
       <button
         trnBtn
         size="sm"
@@ -73,6 +78,8 @@ export class IdentityChangeActionsComponent {
   readonly verifyRequested = output<void>();
   /** Verification started here; the host can close so it isn't covered. */
   readonly verificationStarted = output<void>();
+  /** A trust flow is opening from here; the host can close so it isn't covered. */
+  readonly setupOpened = output<void>();
 
   protected readonly pending = computed(() =>
     this.actions.pending(this.change().userId),

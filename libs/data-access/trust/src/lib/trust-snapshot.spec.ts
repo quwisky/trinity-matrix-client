@@ -16,6 +16,7 @@ interface AccountState {
   defaultKeyId?: string | null;
   deviceVerified?: boolean;
   publicKeysOnDevice?: boolean;
+  keysInSecretStorage?: boolean;
   privates?: { master: boolean; selfSigning: boolean; userSigning: boolean };
 }
 
@@ -36,7 +37,7 @@ function account(state: AccountState = {}) {
     })),
     getCrossSigningStatus: vi.fn(async () => ({
       publicKeysOnDevice: state.publicKeysOnDevice ?? false,
-      privateKeysInSecretStorage: false,
+      privateKeysInSecretStorage: state.keysInSecretStorage ?? false,
       privateKeysCachedLocally: {
         masterKey: privates.master,
         selfSigningKey: privates.selfSigning,
@@ -74,7 +75,50 @@ describe('readTrustSnapshot', () => {
       keyBackupActive: true,
       thisDeviceVerified: true,
       identityElsewhere: false,
+      canSignUsers: false,
+      recoveryHoldsKeys: false,
     });
+  });
+
+  // A default key with no cross-signing secrets behind it: the recovery key is refused.
+  it('says whether the recovery key can supply the cross-signing keys', async () => {
+    const complete = account({ defaultKeyId: 'k', keysInSecretStorage: true });
+    const unfinished = account({ defaultKeyId: 'k' });
+
+    await expect(
+      readTrustSnapshot(complete.client, complete.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-recovery',
+      recoveryHoldsKeys: true,
+    });
+    await expect(
+      readTrustSnapshot(unfinished.client, unfinished.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-recovery',
+      recoveryHoldsKeys: false,
+    });
+  });
+
+  // `ready` says nothing about it: a device verified by emoji on an account with recovery
+  // is ready without the key, and one holding every key with no recovery is not ready.
+  it('can sign other users exactly when it holds the private user-signing key', async () => {
+    const ready = account({
+      crossSigningReady: true,
+      secretStorageReady: true,
+      defaultKeyId: 'k',
+    });
+    const holder = account({
+      crossSigningReady: true,
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+    });
+
+    await expect(
+      readTrustSnapshot(ready.client, ready.crypto),
+    ).resolves.toMatchObject({ status: 'ready', canSignUsers: false });
+    await expect(
+      readTrustSnapshot(holder.client, holder.crypto),
+    ).resolves.toMatchObject({ status: 'needs-setup', canSignUsers: true });
   });
 
   it('needs recovery when the account has secret storage this device has not unlocked', async () => {
@@ -96,6 +140,7 @@ describe('readTrustSnapshot', () => {
       thisDeviceVerified: false,
       identityElsewhere: true,
     });
+    expect(crypto.getCrossSigningStatus).toHaveBeenCalledOnce();
   });
 
   it('needs setup when the account has no identity at all', async () => {
@@ -247,7 +292,9 @@ describe('identityHeldElsewhere', () => {
       privates: { master: true, selfSigning: false, userSigning: true },
     });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(true);
   });
 
   it('is true when this device holds all three privates but they do not match', async () => {
@@ -256,7 +303,9 @@ describe('identityHeldElsewhere', () => {
       privates: ALL_PRIVATES,
     });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(true);
   });
 
   it('is false when this device holds the matching private keys', async () => {
@@ -265,13 +314,17 @@ describe('identityHeldElsewhere', () => {
       privates: ALL_PRIVATES,
     });
 
-    await expect(identityHeldElsewhere(crypto, true)).resolves.toBe(false);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), true),
+    ).toBe(false);
   });
 
   it('is false when the account has no published identity', async () => {
     const { crypto } = account({ privates: ALL_PRIVATES });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(false);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(false);
   });
 });
 

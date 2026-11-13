@@ -49,6 +49,8 @@ async function build(
     keyBackupActive: opts.backup ?? false,
     thisDeviceVerified: opts.verified ?? false,
     identityElsewhere: opts.identityElsewhere ?? false,
+    canSignUsers: false,
+    recoveryHoldsKeys: false,
   } as const;
   const health: TrustHealth =
     opts.availability === 'unavailable'
