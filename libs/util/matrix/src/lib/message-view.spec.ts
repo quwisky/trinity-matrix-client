@@ -21,6 +21,7 @@ import {
   renderNormalizedTextBody,
   readersFrom,
   replyPreview,
+  stripReplyFallbackText,
   trackEncryptedNonMessages,
 } from './message-view';
 import { linkifyHtml } from './message-html';
@@ -774,6 +775,33 @@ describe('isDisplayableMessage for a deleted event', () => {
       expect(event.getType()).toBe('m.reaction');
       expect(isDisplayableMessage(event)).toBe(false);
     });
+  });
+});
+
+describe('stripReplyFallbackText', () => {
+  it('strips a rich-reply fallback and the blank line after it', () => {
+    expect(
+      stripReplyFallbackText('> <@alice:hs> first\n> second\n\nthe reply'),
+    ).toBe('the reply');
+    expect(stripReplyFallbackText('> * <@alice:hs> waves\n\nhi')).toBe('hi');
+  });
+
+  it.each(['>_>', '> 5 is enough', '> a quote\n\nmy answer', '> <b> tag'])(
+    "keeps the writer's own text %j",
+    (own) => {
+      expect(stripReplyFallbackText(own)).toBe(own);
+    },
+  );
+
+  it('stays fast on a hostile body that never closes the user id', () => {
+    const hostile = `> <@${':'.repeat(60_000)}`;
+    const started = performance.now();
+    expect(stripReplyFallbackText(hostile)).toBe(hostile);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it('recognises a user id on a server with a port', () => {
+    expect(stripReplyFallbackText('> <@a:hs:8448> hi\n\nyo')).toBe('yo');
   });
 });
 
