@@ -13,6 +13,8 @@ vi.mock('electron', () => ({
   },
   protocol: { handle: vi.fn(), registerSchemesAsPrivileged: vi.fn() },
 }));
+const { probe } = vi.hoisted(() => ({ probe: vi.fn() }));
+vi.mock('./cors-probe', () => ({ probeMatrixOrigin: probe }));
 vi.mock('./window', () => ({ getMainWindow: () => mainWindowRef.current }));
 
 import {
@@ -20,7 +22,11 @@ import {
   SET_CORS_ORIGINS_CHANNEL,
   registerCorsIpc,
 } from './cors-ipc';
-import { allowedCorsOrigins, setAllowedCorsOrigins } from './cors';
+import {
+  allowedCorsOrigins,
+  installMatrixCors,
+  setAllowedCorsOrigins,
+} from './cors';
 
 registerCorsIpc();
 
@@ -35,7 +41,36 @@ const sendForeign = (channel: string, payload: unknown): void =>
 describe('CORS allowlist IPC', () => {
   beforeEach(() => {
     mainWindowRef.current = { webContents };
+    probe.mockReset().mockResolvedValue('homeserver');
     setAllowedCorsOrigins([]);
+  });
+
+  // The boundary: naming an origin is a request, and main's own probe decides.
+  it('cannot make the shim rewrite an origin whose probe fails', async () => {
+    type Handler = (
+      details: { method: string; url: string },
+      callback: (response: object) => void,
+    ) => void;
+    let handler: Handler | undefined;
+    installMatrixCors({
+      webRequest: {
+        onHeadersReceived: (_: unknown, h: Handler) => (handler = h),
+      },
+    } as unknown as Electron.Session);
+    probe.mockResolvedValue('refused');
+    const responses: object[] = [];
+    const fetched = (url: string): void =>
+      handler?.({ method: 'GET', url }, (r) => responses.push(r));
+
+    send(ALLOW_CORS_ORIGIN_CHANNEL, 'https://10.0.0.5');
+    fetched('https://10.0.0.5/admin');
+    send(SET_CORS_ORIGINS_CHANNEL, ['https://10.0.0.6']);
+    fetched('https://10.0.0.6/admin');
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(probe).toHaveBeenCalledWith('https://10.0.0.5');
+    expect(probe).toHaveBeenCalledWith('https://10.0.0.6');
+    expect(responses).toEqual([{}, {}]);
   });
 
   it('accepts an origin set from our own renderer', () => {
