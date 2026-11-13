@@ -72,7 +72,7 @@ import {
   describeMatrixRequestFailure,
   type OidcSessionBinding,
 } from '@trinity/util/matrix';
-import { runWithBusy } from '@trinity/util/ui';
+import { isImeKeydown, runWithBusy } from '@trinity/util/ui';
 import {
   CLEAR_DATA_MISTYPED_MESSAGE,
   CLEAR_DATA_RESIDUE_WARNING,
@@ -420,6 +420,11 @@ export class LoginPage {
   });
 
   /** Step 1: resolve the homeserver and discover its login flows and OIDC config. */
+  /** Enter in a field submits, but not the Enter that confirms an IME candidate, nor a held key. */
+  protected submitsOnEnter(event: Event): boolean {
+    return !isImeKeydown(event) && !(event as KeyboardEvent).repeat;
+  }
+
   discover(): void {
     this.withBusy(
       this.discovery

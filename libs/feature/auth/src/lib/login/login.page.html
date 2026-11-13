@@ -94,7 +94,7 @@
         placeholder="matrix.org"
         [formField]="homeserverForm.homeserver"
         [aria-describedby]="homeserverError() ? 'login-homeserver-error' : null"
-        (keyup.enter)="discover()"
+        (keydown.enter)="submitsOnEnter($event) && discover()"
       />
       @if (homeserverError(); as message) {
         <p
@@ -137,7 +137,7 @@
           autocapitalize="off"
           autocorrect="off"
           [formField]="credentialsForm.username"
-          (keyup.enter)="loginPassword()"
+          (keydown.enter)="submitsOnEnter($event) && loginPassword()"
         />
       </trn-field>
 
@@ -157,7 +157,7 @@
             [aria-describedby]="
               credentialsError() ? 'login-credentials-error' : null
             "
-            (keyup.enter)="loginPassword()"
+            (keydown.enter)="submitsOnEnter($event) && loginPassword()"
           />
         </trn-password-input>
         @if (credentialsError(); as message) {

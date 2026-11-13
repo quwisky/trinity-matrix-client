@@ -93,6 +93,22 @@ const logoutBox = () =>
   screen.getByTestId('reset-logout-devices').querySelector('input');
 
 describe('ResetPasswordPage', () => {
+  it('does not send on the Enter that confirms an IME candidate', async () => {
+    const page = await renderPage();
+    type('reset-email-input', 'a@b.c');
+    const input = screen.getByTestId('reset-email-input');
+
+    // WebKit's order: the confirming keydown carries keyCode 229, then a plain keyup.
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    fireEvent.keyUp(input, { key: 'Enter' });
+    expect(page.workflow.sendLink).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.keyDown(input, { key: 'Enter', repeat: true });
+    fireEvent.keyUp(input, { key: 'Enter' });
+    expect(page.workflow.sendLink).toHaveBeenCalledOnce();
+  });
+
   it('walks the happy path and returns to sign-in with the reset flag', async () => {
     const page = await renderPage();
     await toSent(page);
