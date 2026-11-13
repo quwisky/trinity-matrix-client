@@ -101,6 +101,13 @@ describe('IdentityServerService.choice', () => {
     expect(await firstValueFrom(s.choice(ALICE))).toEqual({ kind: 'off' });
   });
 
+  it('ignores a non-https account choice', async () => {
+    const s = setup({
+      accountData: { 'm.identity_server': { base_url: 'http://is.example' } },
+    });
+    expect(await firstValueFrom(s.choice(ALICE))).toEqual({ kind: 'none' });
+  });
+
   it('falls back to well-known', async () => {
     const s = setup({
       wellKnown: { 'm.identity_server': { base_url: IS } },

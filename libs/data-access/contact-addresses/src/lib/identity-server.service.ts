@@ -53,9 +53,11 @@ export class IdentityServerService {
     return this.withClient(accountId, async (client) => {
       const stored = await client.getAccountDataFromServer('m.identity_server');
       if (stored) {
-        return stored.base_url
+        if (!stored.base_url) return { kind: 'off' } as const;
+        // Account data is written by other clients and the homeserver; an http URL would send the OpenID token in clear.
+        return isHttps(stored.base_url)
           ? ({ kind: 'set', url: stored.base_url, source: 'account' } as const)
-          : ({ kind: 'off' } as const);
+          : ({ kind: 'none' } as const);
       }
       const wellKnown =
         client.getClientWellKnown()?.['m.identity_server']?.base_url;
