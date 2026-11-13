@@ -332,6 +332,31 @@ describe('mentions in content builders', () => {
     );
   });
 
+  it.each([
+    ['m.emote', 'm.emote'],
+    ['m.notice', 'm.notice'],
+    ['m.image', 'm.text'],
+    [undefined, 'm.text'],
+  ])('an edit of a %s message is sent as %s', (original, sent) => {
+    const content = editMessageContent(
+      '$m',
+      '**waves**',
+      renderMarkdown('**waves**'),
+      [],
+      original,
+    );
+
+    expect(content).toMatchObject({
+      msgtype: sent,
+      body: '* **waves**',
+      'm.new_content': {
+        msgtype: sent,
+        body: '**waves**',
+        formatted_body: expect.stringContaining('<strong>waves</strong>'),
+      },
+    });
+  });
+
   it('escapes a hostile user id in a mention-pill href (no attribute breakout)', () => {
     const evil: Mention = {
       userId: '@a"><img src=x onerror=alert(1)>:hs',

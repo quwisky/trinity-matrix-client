@@ -460,16 +460,23 @@ export function slashCommandContent(
  *
  * `m.mentions` appears both at the top level and in `m.new_content`: the nested copy is
  * effective, the top-level one stops legacy body rules firing on the `* …` fallback.
+ *
+ * `original` is the msgtype of the message being edited: an emote or a notice stays one.
  */
 export function editMessageContent(
   messageId: string,
   text: string,
   md: RenderedMarkdown,
   mentions: Mention[] = [],
+  original?: unknown,
 ) {
   const rich = md.html !== '' && (md.formatted || mentions.length > 0);
+  const msgtype =
+    original === MsgType.Emote || original === MsgType.Notice
+      ? original
+      : MsgType.Text;
   return {
-    msgtype: MsgType.Text,
+    msgtype,
     body: `* ${text}`,
     // The top-level body is `* <the whole new text>`, and legacy body-matching rules evaluate
     // it before `.m.rule.suppress_edits`. Without this block, fixing a typo in a quote
@@ -484,7 +491,7 @@ export function editMessageContent(
           formatted_body: `* ${applyMentionPills(md.html, mentions)}`,
         }
       : {}),
-    'm.new_content': textMessageContent(text, md, mentions),
+    'm.new_content': { ...textMessageContent(text, md, mentions), msgtype },
     'm.relates_to': {
       rel_type: RelationType.Replace,
       event_id: messageId,

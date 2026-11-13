@@ -68,6 +68,7 @@ function fakeEvent(o: {
   id: string;
   sender: string;
   body?: string;
+  msgtype?: string;
   ts?: number;
   type?: string;
   redacted?: boolean;
@@ -81,7 +82,7 @@ function fakeEvent(o: {
   replacement?: ReturnType<typeof fakeEdit> & Record<string, unknown>;
 }) {
   const type = o.type ?? 'm.room.message';
-  const content = { body: o.body ?? '', msgtype: 'm.text' };
+  const content = { body: o.body ?? '', msgtype: o.msgtype ?? 'm.text' };
   // A valid edit of this event in whatever parts the test left out, filled in place so
   // `replacingEvent()` keeps returning the test's own object.
   // Read on every call, so a test can attach an edit later.
@@ -1514,13 +1515,18 @@ describe('ThreadsService', () => {
   });
 
   describe('in-thread composing', () => {
-    function openedThread() {
+    function openedThread(replyMsgtype?: string) {
       const root = fakeEvent({
         id: '$root',
         sender: '@a:hs',
         body: 'root msg',
       });
-      const reply = fakeEvent({ id: '$r1', sender: '@b:hs', body: 'a reply' });
+      const reply = fakeEvent({
+        id: '$r1',
+        sender: '@b:hs',
+        body: 'a reply',
+        msgtype: replyMsgtype,
+      });
       const out = setup(
         [fakeThread({ id: '$root', rootEvent: root, events: [root, reply] })],
         [],
@@ -1660,6 +1666,20 @@ describe('ThreadsService', () => {
         (content['m.new_content'] as Record<string, unknown>)['body'],
       ).toBe('fixed text');
     });
+
+    it.each(['m.emote', 'm.notice'])(
+      'keeps an edited %s thread message that type',
+      async (msgtype) => {
+        const { svc, sent } = openedThread(msgtype);
+
+        await firstValueFrom(svc.editInThread('$r1', 'waves again'));
+
+        expect(sent[0][2]).toMatchObject({
+          msgtype,
+          'm.new_content': { msgtype, body: 'waves again' },
+        });
+      },
+    );
 
     /** The send fails with its echo in `status`, as the SDK reports it to the rejection. */
     function failingEdit(status: EventStatus) {

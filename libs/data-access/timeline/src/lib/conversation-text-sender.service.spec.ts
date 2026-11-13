@@ -31,6 +31,7 @@ function setup({
   cancelable = false,
   fetched = 'found',
   originalEdit,
+  originalMsgtype,
 }: {
   localEcho?: boolean;
   rejected?: boolean;
@@ -43,11 +44,13 @@ function setup({
   fetched?: 'found' | 'failed';
   /** An encrypted edit of the original, saying `edited text`. */
   originalEdit?: ReturnType<typeof fakeEdit>;
+  originalMsgtype?: string;
 } = {}) {
   const original = fakeEvent({
     id: '$original',
     sender: '@alice:example.org',
     body: 'original text',
+    msgtype: originalMsgtype,
     encrypted: originalEdit !== undefined,
     replacement: originalEdit && {
       ...originalEdit,
@@ -334,6 +337,27 @@ describe('MatrixConversationTextSender', () => {
     });
     expect(edit['m.new_content']).toMatchObject({ body: 'edited **text**' });
   });
+
+  it.each(['m.emote', 'm.notice'])(
+    'keeps an edited %s message that type',
+    async (originalMsgtype) => {
+      const { sender, client } = setup({ originalMsgtype });
+
+      await firstValueFrom(
+        sender.send({
+          key: KEY,
+          body: 'waves again',
+          mentions: [],
+          intent: { kind: 'edit', eventId: '$original' },
+        }).outcome,
+      );
+
+      expect(client.sendMessage.mock.calls[0][1]).toMatchObject({
+        msgtype: originalMsgtype,
+        'm.new_content': { msgtype: originalMsgtype, body: 'waves again' },
+      });
+    },
+  );
 
   it('applies a text-art command in a reply, keeping its markdown literal', async () => {
     const { sender, client } = setup();
