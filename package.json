@@ -188,7 +188,7 @@
     "@wdio/types": "10.1.0",
     "angular-eslint": "22.6.0",
     "appium": "3.9.0",
-    "astro": "7.4.7",
+    "astro": "7.4.8",
     "axe-core": "4.14.0",
     "eslint": "^10.14.0",
     "eslint-plugin-tailwindcss": "^4.2.0",
