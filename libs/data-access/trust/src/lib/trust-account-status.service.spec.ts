@@ -270,6 +270,7 @@ describe('summarizeTrust', () => {
     thisDeviceVerified: false,
     identityElsewhere: false,
     canSignUsers: false,
+    recoveryHoldsKeys: false,
     ...over,
   });
 

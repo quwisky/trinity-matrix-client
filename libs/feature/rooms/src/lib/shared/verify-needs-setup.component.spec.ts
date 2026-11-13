@@ -1,77 +1,58 @@
 import { signal } from '@angular/core';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
+import { TrustService, type VerifyBlock } from '@trinity/data-access/trust';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, of, throwError, type Observable } from 'rxjs';
+import { NEVER, defer, of, throwError, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { VerifyNeedsSetupComponent } from './verify-needs-setup.component';
 
+const ENTER_RECOVERY_KEY: VerifyBlock = {
+  reason:
+    'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
+  action: { label: 'Enter recovery key', flow: 'unlock' },
+};
+
 async function build(
-  status: TrustStatus,
-  options: { setupElsewhere?: boolean; refresh?: Observable<void> } = {},
+  block: VerifyBlock | null,
+  refreshWith?: (
+    verifyBlock: ReturnType<typeof signal<VerifyBlock | null>>,
+  ) => Observable<void>,
 ) {
   const open = vi.fn(() => of({ kind: 'presented' }));
   const opened = vi.fn();
-  const refresh = vi.fn(() => options.refresh ?? of(undefined));
+  const verifyBlock = signal(block);
+  const refresh = vi.fn(() => refreshWith?.(verifyBlock) ?? of(undefined));
   const { container } = await render(VerifyNeedsSetupComponent, {
     on: { opened },
     providers: [
       MockProvider(WorkspaceApplicationSurfaceService, { open: open as never }),
-      MockProvider(TrustService, {
-        status: signal(status),
-        recoverySetupElsewhere: signal(options.setupElsewhere ?? false),
-        refresh,
-      }),
+      MockProvider(TrustService, { verifyBlock, refresh }),
     ],
   });
   return { container, open, opened, refresh };
 }
 
+// Which text and flow belong to which device state is `deriveVerifyBlock`'s spec.
 describe('VerifyNeedsSetupComponent', () => {
-  // `ready` is the state Security settings has no action for: recovery exists, the device
-  // is verified, and the user-signing key was never fetched.
-  it.each([
-    [
-      'ready',
-      'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
-      'Enter recovery key',
-      'unlock',
-    ],
-    [
-      'needs-recovery',
-      'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
-      'Enter recovery key',
-      'unlock',
-    ],
-    [
-      'needs-verification',
-      'Verify this device before you verify people.',
-      'Verify this device',
-      'verify',
-    ],
-    [
-      'needs-setup',
-      'Set up encryption on this device to verify people.',
-      'Set up encryption',
-      'setup',
-    ],
-  ] as const)(
-    'offers the flow that brings the keys here when the status is %s',
-    async (status, reason, label, flow) => {
-      const { container, open, opened } = await build(status);
+  it('says what this device needs and opens the flow that provides it', async () => {
+    const { container, open, opened } = await build(ENTER_RECOVERY_KEY);
 
-      expect(container.textContent).toContain(reason);
-      fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(container.textContent).toContain(ENTER_RECOVERY_KEY.reason);
+    fireEvent.click(screen.getByRole('button', { name: 'Enter recovery key' }));
 
-      expect(open).toHaveBeenCalledWith({ surface: { kind: 'trust', flow } });
-      expect(opened).toHaveBeenCalledOnce();
-    },
-  );
+    expect(open).toHaveBeenCalledWith({
+      surface: { kind: 'trust', flow: 'unlock' },
+    });
+    expect(opened).toHaveBeenCalledOnce();
+  });
 
-  // The only thing this device could do there is replace the identity.
-  it('offers nothing, least of all a reset, when the keys are only on another device', async () => {
-    const { container } = await build('needs-setup', { setupElsewhere: true });
+  it('offers no button where no flow on this device would help', async () => {
+    const { container } = await build({
+      reason:
+        'Verify people from the device where you set up encryption, or set up recovery there.',
+      action: null,
+    });
 
     expect(container.textContent).toContain(
       'Verify people from the device where you set up encryption, or set up recovery there.',
@@ -81,18 +62,23 @@ describe('VerifyNeedsSetupComponent', () => {
 
   // The projected status can be stale, and the keys can still be on their way.
   it('asks nothing of the user until this device has been read again', async () => {
-    const { container, refresh } = await build('ready', { refresh: NEVER });
+    const { container, refresh } = await build(ENTER_RECOVERY_KEY, () => NEVER);
 
     expect(refresh).toHaveBeenCalledOnce();
     expect(container.textContent?.trim()).toBe('Checking this device…');
     expect(container.querySelector('button')).toBeNull();
   });
 
-  it('still says what to do when the fresh read fails', async () => {
-    await build('ready', { refresh: throwError(() => new Error('offline')) });
+  // A failed read leaves the service with no current state, so there is nothing to act on.
+  it('asks nothing of the user when the fresh read fails', async () => {
+    const { container } = await build(ENTER_RECOVERY_KEY, (verifyBlock) =>
+      defer(() => {
+        verifyBlock.set(null);
+        return throwError(() => new Error('offline'));
+      }),
+    );
 
-    expect(
-      screen.getByRole('button', { name: 'Enter recovery key' }),
-    ).toBeTruthy();
+    expect(container.textContent?.trim()).toBe('Checking this device…');
+    expect(container.querySelector('button')).toBeNull();
   });
 });

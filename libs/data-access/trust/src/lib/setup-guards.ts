@@ -108,9 +108,9 @@ type SetupIdentity = 'none' | 'unpublished' | 'held';
  * set nobody published, and setting up from there would store those in secret storage.
  *
  * The copy depends on whether this device is already verified: a device verified through
- * the other one still lacks the private keys when the Account has no 4S (matrix-js-sdk 43
- * does not request missing secrets after verification), so only that device can set up
- * recovery. The verification read only picks the sentence; if it fails, setup is still
+ * the other one still lacks the private keys when the Account has no 4S (matrix-js-sdk's
+ * JS layer never calls `requestMissingSecretsIfNeeded`; whether the Rust crypto requests
+ * them on its own is not confirmed), so only that device can set up recovery. The verification read only picks the sentence; if it fails, setup is still
  * refused, with the unverified device's copy.
  */
 export async function assertNoIdentityElsewhere(

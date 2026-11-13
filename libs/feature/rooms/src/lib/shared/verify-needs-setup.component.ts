@@ -11,65 +11,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { finalize } from 'rxjs';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
-import { TrustService, type TrustStatus } from '@trinity/data-access/trust';
-
-/** What stands where Verify would be: a reason, and the trust flow that fixes it, if any. */
-export interface VerifyBlock {
-  readonly reason: string;
-  readonly action: {
-    readonly label: string;
-    readonly flow: 'setup' | 'unlock' | 'verify';
-  } | null;
-}
-
-const ENTER_RECOVERY_KEY: VerifyBlock = {
-  reason:
-    'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
-  action: { label: 'Enter recovery key', flow: 'unlock' },
-};
-const VERIFY_THIS_DEVICE: VerifyBlock = {
-  reason: 'Verify this device before you verify people.',
-  action: { label: 'Verify this device', flow: 'verify' },
-};
-const SET_UP_ENCRYPTION: VerifyBlock = {
-  reason: 'Set up encryption on this device to verify people.',
-  action: { label: 'Set up encryption', flow: 'setup' },
-};
-// No action: the only one this device could offer is replacing the identity.
-const KEYS_ON_ANOTHER_DEVICE: VerifyBlock = {
-  reason:
-    'Verify people from the device where you set up encryption, or set up recovery there.',
-  action: null,
-};
-
-/**
- * Why a device without its user-signing key cannot verify people, and the existing flow
- * that brings the key here. With recovery (`ready` included: secret storage counts as
- * ready without the keys being on this device) that is the recovery key.
- */
-export function deriveVerifyBlock(
-  status: TrustStatus,
-  recoverySetupElsewhere: boolean,
-): VerifyBlock | null {
-  switch (status) {
-    case 'ready':
-    case 'needs-recovery':
-      return ENTER_RECOVERY_KEY;
-    case 'needs-verification':
-      return VERIFY_THIS_DEVICE;
-    case 'needs-setup':
-      return recoverySetupElsewhere
-        ? KEYS_ON_ANOTHER_DEVICE
-        : SET_UP_ENCRYPTION;
-    case 'unknown':
-      return null;
-    default: {
-      const unhandled: never = status;
-      void unhandled;
-      return null;
-    }
-  }
-}
+import { TrustService, type VerifyBlock } from '@trinity/data-access/trust';
 
 let nextId = 0;
 
@@ -123,12 +65,7 @@ export class VerifyNeedsSetupComponent {
 
   protected readonly reasonId = `verify-needs-setup-${nextId++}`;
   protected readonly block = computed(() =>
-    this.checking()
-      ? null
-      : deriveVerifyBlock(
-          this.trust.status(),
-          this.trust.recoverySetupElsewhere(),
-        ),
+    this.checking() ? null : this.trust.verifyBlock(),
   );
 
   readonly centered = input(false);
@@ -146,7 +83,7 @@ export class VerifyNeedsSetupComponent {
       .subscribe({ error: () => undefined });
   }
 
-  protected open(flow: 'setup' | 'unlock' | 'verify'): void {
+  protected open(flow: NonNullable<VerifyBlock['action']>['flow']): void {
     // Finite, and deliberately not tied to this component: its host closes on `opened`.
     this.surfaces.open({ surface: { kind: 'trust', flow } }).subscribe();
     this.opened.emit();

@@ -15,9 +15,10 @@ import type { TrustHealthSnapshot } from './trust-health.service';
  * when none are available locally or in 4S), so it must be offered verification instead.
  *
  * `identityElsewhere` carries the same local check for a device that IS verified: one
- * verified through another device on an Account without 4S never receives the private
- * keys (matrix-js-sdk 43 does not request missing secrets after verification), so it
- * reads `needs-setup` while only the holding device can set up recovery.
+ * verified through another device on an Account without 4S has not been seen to receive
+ * the private keys (matrix-js-sdk's JS layer never calls `requestMissingSecretsIfNeeded`;
+ * whether the Rust crypto requests them on its own is not confirmed), so it reads
+ * `needs-setup` while only the holding device can set up recovery.
  */
 export async function readTrustSnapshot(
   client: TrustMatrixClient,
@@ -56,6 +57,7 @@ export async function readTrustSnapshot(
     thisDeviceVerified,
     identityElsewhere,
     canSignUsers: crossSigning.privateKeysCachedLocally.userSigningKey,
+    recoveryHoldsKeys: crossSigning.privateKeysInSecretStorage,
     status,
   };
 }

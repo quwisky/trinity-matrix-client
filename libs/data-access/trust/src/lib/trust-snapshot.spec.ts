@@ -16,6 +16,7 @@ interface AccountState {
   defaultKeyId?: string | null;
   deviceVerified?: boolean;
   publicKeysOnDevice?: boolean;
+  keysInSecretStorage?: boolean;
   privates?: { master: boolean; selfSigning: boolean; userSigning: boolean };
 }
 
@@ -36,7 +37,7 @@ function account(state: AccountState = {}) {
     })),
     getCrossSigningStatus: vi.fn(async () => ({
       publicKeysOnDevice: state.publicKeysOnDevice ?? false,
-      privateKeysInSecretStorage: false,
+      privateKeysInSecretStorage: state.keysInSecretStorage ?? false,
       privateKeysCachedLocally: {
         masterKey: privates.master,
         selfSigningKey: privates.selfSigning,
@@ -75,6 +76,26 @@ describe('readTrustSnapshot', () => {
       thisDeviceVerified: true,
       identityElsewhere: false,
       canSignUsers: false,
+      recoveryHoldsKeys: false,
+    });
+  });
+
+  // A default key with no cross-signing secrets behind it: the recovery key is refused.
+  it('says whether the recovery key can supply the cross-signing keys', async () => {
+    const complete = account({ defaultKeyId: 'k', keysInSecretStorage: true });
+    const unfinished = account({ defaultKeyId: 'k' });
+
+    await expect(
+      readTrustSnapshot(complete.client, complete.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-recovery',
+      recoveryHoldsKeys: true,
+    });
+    await expect(
+      readTrustSnapshot(unfinished.client, unfinished.crypto),
+    ).resolves.toMatchObject({
+      status: 'needs-recovery',
+      recoveryHoldsKeys: false,
     });
   });
 

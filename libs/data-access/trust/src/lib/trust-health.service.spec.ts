@@ -131,4 +131,13 @@ describe('TrustHealthService', () => {
     config.reset?.();
     expect(service.canSignUsers()).toBeNull();
   });
+
+  it('says what this device needs before it can verify people, once it has been read', async () => {
+    isCrossSigningReady.mockResolvedValue(false);
+    expect(service.verifyBlock()).toBeNull();
+
+    await firstValueFrom(service.refresh(), { defaultValue: undefined });
+
+    expect(service.verifyBlock()).not.toBeNull();
+  });
 });

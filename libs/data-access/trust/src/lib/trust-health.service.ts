@@ -10,6 +10,7 @@ import {
 import type { ProjectionReconcileContext } from '@trinity/runtime/projection';
 import { recoverTrustOperation } from './trust-operation-error';
 import { readTrustSnapshot } from './trust-snapshot';
+import { deriveVerifyBlock } from './verify-block';
 
 /**
  * Where this device stands relative to the Account's encryption setup.
@@ -37,6 +38,12 @@ export interface TrustHealthSnapshot {
    * is `needs-setup`.
    */
   readonly canSignUsers: boolean;
+  /**
+   * Secret storage holds the cross-signing private keys under its default key, so the
+   * recovery key can supply them. False for a default key with nothing behind it (a setup
+   * or reset that stopped early): {@link TrustService.recoverWithKey} refuses that key.
+   */
+  readonly recoveryHoldsKeys: boolean;
 }
 
 /**
@@ -99,6 +106,11 @@ export class TrustHealthService {
   readonly canSignUsers = computed(
     () => this.health().current?.canSignUsers ?? null,
   );
+  /** What stands where Verify would be on a device that cannot sign users; null while unknown. */
+  readonly verifyBlock = computed(() => {
+    const current = this.health().current;
+    return current ? deriveVerifyBlock(current) : null;
+  });
   /**
    * This device is verified but setup would replace the identity another device holds,
    * so recovery can only be set up there (or the identity explicitly reset).

@@ -124,6 +124,7 @@ describe('DeviceConfirmationCoordinator', () => {
         thisDeviceVerified: true,
         identityElsewhere: false,
         canSignUsers: true,
+        recoveryHoldsKeys: true,
       },
       stale: null,
     });

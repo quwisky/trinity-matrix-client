@@ -2,6 +2,7 @@ import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceDetails } from '@trinity/data-access/identity';
 import {
   TrustService,
+  deriveVerifyBlock,
   type UserSessions,
   type UserTrust,
 } from '@trinity/data-access/trust';
@@ -80,8 +81,14 @@ async function build(
         open: openSurface as never,
       }),
       MockProvider(TrustService, {
-        status: signal('ready' as const),
-        recoverySetupElsewhere: signal(false),
+        verifyBlock: signal(
+          deriveVerifyBlock({
+            status: 'ready',
+            thisDeviceVerified: true,
+            identityElsewhere: false,
+            recoveryHoldsKeys: true,
+          }),
+        ),
         refresh: () => of(undefined),
       }),
       MockProvider(IdentityChangeActionsService, {
