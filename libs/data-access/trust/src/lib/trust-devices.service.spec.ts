@@ -74,6 +74,7 @@ describe('TrustDevicesService', () => {
 
   it('lists devices with verification + current flags, current first', async () => {
     const { svc } = setup();
+    svc.connect();
 
     const devices = await firstValueFrom(svc.list());
 
@@ -94,8 +95,18 @@ describe('TrustDevicesService', () => {
     expect(svc.devices()).toEqual(devices);
   });
 
+  it('answers a list asked for while detached without keeping it for the next account', async () => {
+    const { svc } = setup();
+
+    const devices = await firstValueFrom(svc.list());
+
+    expect(devices.map((d) => d.id)).toEqual(['A', 'B']);
+    expect(svc.devices()).toEqual([]);
+  });
+
   it('renames a device and patches the signal', async () => {
     const { svc, client } = setup();
+    svc.connect();
     await firstValueFrom(svc.list());
 
     await firstValueFrom(svc.rename('B', '  Phone  '));
@@ -139,6 +150,7 @@ describe('TrustDevicesService', () => {
 
   it('re-prompts and gives up after too many wrong passwords', async () => {
     const { svc, client } = setup();
+    svc.connect();
     await firstValueFrom(svc.list());
     client.deleteDevice.mockRejectedValue(uia('sess')); // always challenges
     const prompt = vi.fn().mockResolvedValue('wrong');
@@ -157,6 +169,7 @@ describe('TrustDevicesService', () => {
 
   it('aborts silently (no error) when the password prompt is cancelled', async () => {
     const { svc, client } = setup();
+    svc.connect();
     await firstValueFrom(svc.list());
     client.deleteDevice.mockRejectedValueOnce(uia('sess'));
     const prompt = vi.fn().mockResolvedValue(null);
@@ -169,6 +182,7 @@ describe('TrustDevicesService', () => {
 
   it('refuses to delete the current device (logout territory)', async () => {
     const { svc, client } = setup(); // current device is 'A'
+    svc.connect();
     await firstValueFrom(svc.list());
     const prompt = vi.fn();
 
