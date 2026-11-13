@@ -1878,6 +1878,30 @@ describe('SessionStorageService', () => {
       },
     );
 
+    it("puts the stored device's tokens back when a new device's save fails", async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(save(svc, { ...ALICE, refreshToken: 'alice-r1' }));
+      const { Preferences } = await import('@capacitor/preferences');
+      vi.spyOn(Preferences, 'set').mockRejectedValueOnce(
+        new Error('write failed'),
+      );
+
+      await expect(
+        firstValueFrom(
+          save(svc, { ...ALICE, deviceId: 'DEV1b', accessToken: 'new-token' }),
+        ),
+      ).rejects.toThrow('write failed');
+
+      const [record] = await firstValueFrom(svc.list());
+      expect(record.deviceId).toBe('DEV1');
+      expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
+        'alice-token-xyz',
+      );
+      expect(secure.store.get('matrix.refreshToken:@alice:hs')).toBe(
+        'alice-r1',
+      );
+    });
+
     it('keeps an existing key when a store key cannot be created', async () => {
       const { svc, keys } = setup();
       keys.store.set(ALICE_PREFIX, new Uint8Array(32));

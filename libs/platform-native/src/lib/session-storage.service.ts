@@ -527,6 +527,14 @@ export class SessionStorageService {
       // existing store has, including no key at all.
       await this.storeKeys.create(newPrefix);
     }
+    // A failed save leaves the record naming the old device, so its tokens must still be
+    // that device's. Unreadable ones cannot be put back.
+    const replaced = deviceChanged
+      ? await Promise.all([
+          this.secure.get(this.tokenKey(incoming.userId)),
+          this.secure.get(this.refreshTokenKey(incoming.userId)),
+        ]).catch(() => null)
+      : null;
     try {
       await this.secure.set(this.tokenKey(incoming.userId), accessToken);
       // Remove any stale refresh token when re-logging in without one, so no dead
@@ -555,6 +563,17 @@ export class SessionStorageService {
       // sign-in refuse, since a store key is never replaced.
       if (createsKey) {
         await this.storeKeys.remove(newPrefix).catch(() => undefined);
+      }
+      const [access, refresh] = replaced ?? [];
+      if (access) {
+        await this.secure
+          .set(this.tokenKey(incoming.userId), access)
+          .catch(() => undefined);
+        await (
+          refresh
+            ? this.secure.set(this.refreshTokenKey(incoming.userId), refresh)
+            : this.secure.remove(this.refreshTokenKey(incoming.userId))
+        ).catch(() => undefined);
       }
       throw error;
     }
