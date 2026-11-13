@@ -9,6 +9,7 @@ import {
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { filter, take, takeUntil } from 'rxjs';
 import { TrnSurfaceService } from '@trinity/components/overlay';
+import { IdentityService } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import { runWithBusy } from '@trinity/util/ui';
@@ -30,6 +31,7 @@ export class MemberActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly status = inject(ShellStatusService);
   private readonly rooms = inject(RoomLibraryService);
+  private readonly identity = inject(IdentityService);
   private readonly dialog = inject(TrnSurfaceService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly panels = new LazyPanelOpener(this.destroyRef, (message) =>
@@ -124,14 +126,20 @@ export class MemberActionsService {
 
   /**
    * Open (or reuse) a direct message with `userId` from `accountId` and navigate to it.
-   * Nothing happens unless `accountId` is still the active Account: a DM is created as the
-   * active Account, and must not be created as one that replaced the requester.
+   * Refused unless `accountId` is still the active Account: a DM is created as the active
+   * Account, and must not be created as one that replaced the requester. The shown Account
+   * follows the client's active one a moment later, so both are read.
    */
-  private startDirectMessage(
-    userId: string,
-    accountId = this.store.activeAccountId(),
-  ): void {
-    if (!accountId || accountId !== this.store.activeAccountId()) return;
+  private startDirectMessage(userId: string, accountId: string): void {
+    if (
+      accountId !== this.store.activeAccountId() ||
+      accountId !== this.identity.activeUserId()
+    ) {
+      this.status.showError(
+        'Message not started: you switched account while this was open.',
+      );
+      return;
+    }
     runWithBusy(this.rooms.createDirectMessage(userId), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );
@@ -146,6 +154,8 @@ export class MemberActionsService {
    * `TrnSurfaceOptions.anchor`.
    */
   openUserCard(userId: string, anchor?: HTMLElement): void {
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.dialog
       .openAndWait$<string, UserCardComponent>(UserCardComponent, {
         ariaLabel: 'User',
@@ -155,7 +165,7 @@ export class MemberActionsService {
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((messageUserId) => {
-        if (messageUserId) this.startDirectMessage(messageUserId);
+        if (messageUserId) this.startDirectMessage(messageUserId, accountId);
       });
   }
 }
