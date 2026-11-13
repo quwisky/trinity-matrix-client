@@ -15,6 +15,7 @@ import {
   type HostCapabilitySupport,
   type HostOperationOutcome,
   type HostUnavailableReason,
+  hostNegotiationRejected,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
 import {
@@ -27,6 +28,7 @@ import {
   of,
   shareReplay,
   switchMap,
+  tap,
 } from 'rxjs';
 import { MobileBadgeService } from '../mobile-badge.service';
 import { getTrinityDesktopBridge } from '../trinity-desktop-bridge';
@@ -348,6 +350,10 @@ export class ElectronHostCapabilityAdapter implements HostAdapter {
             }),
           ),
         ),
+        // A failed negotiation is not the host's answer: the next reader asks again.
+        tap((value) => {
+          if (hostNegotiationRejected(value)) this.negotiated = undefined;
+        }),
       );
     }).pipe(shareReplay({ bufferSize: 1, refCount: false })));
   }

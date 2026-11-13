@@ -275,6 +275,25 @@ describe('host adapter rejection semantics', () => {
     expect(JSON.stringify(manifest)).not.toContain(secret);
   });
 
+  it('asks Electron again after a negotiation that failed', async () => {
+    const negotiate = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('ipc failed'))
+      .mockResolvedValue({ kind: 'accepted', ...supportedManifest() });
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({ negotiate });
+    const adapter = new ElectronHostCapabilityAdapter();
+
+    await expect(firstValueFrom(adapter.support())).resolves.toMatchObject({
+      reason: 'host-rejected',
+    });
+    await expect(firstValueFrom(adapter.support())).resolves.toEqual({
+      kind: 'supported',
+    });
+    await firstValueFrom(adapter.support());
+    expect(negotiate).toHaveBeenCalledTimes(2);
+  });
+
   it('rejects a malformed accepted Electron manifest before using an operation', async () => {
     const secret = 'host response with access_token=secret';
     const negotiate = vi.fn(() =>
