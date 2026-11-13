@@ -845,7 +845,7 @@ export class ThreadsService {
     const roomEncrypted = this.threadEncryption.isEncrypted(room);
     const unencryptedShield = unencryptedShieldFor(room, roomEncrypted);
     this._threadMessages.set(
-      ordered.map((e) => {
+      ordered.flatMap((e) => {
         const id = e.getId() ?? '';
         const shown = shownSubject(e);
         const shield = unencryptedShield(e, shown) ?? shownShield(shown);
@@ -853,7 +853,7 @@ export class ThreadsService {
         const rev = `${eventRevision(client, room, e, roomEncrypted)}\x1f${shieldKey(shield)}\x1f${roomEncrypted}`;
         const cached = this.threadViewCache.get(id);
         if (cached && cached.rev === rev) {
-          return cached.view; // unchanged — keep the object so its OnPush row is untouched
+          return [cached.view]; // unchanged — keep the object so its OnPush row is untouched
         }
         const view = projectMessage(
           client,
@@ -864,13 +864,12 @@ export class ThreadsService {
           this.mediaPipeline,
         );
         if (!view) {
-          // Thread timelines contain displayable message events only. A null here means an
-          // SDK event was reclassified between filtering and projection; retain an explicit
-          // fallback rather than leaking an absent row into the signal.
-          throw new Error('Displayable thread event produced no presentation');
+          // Replies are filtered to displayable messages; the root is whatever event the
+          // thread hangs off, which may not be one, or not yet (still encrypted).
+          return [];
         }
         this.threadViewCache.set(id, { rev, view });
-        return view;
+        return [view];
       }),
     );
     // Prune replies no longer in the thread so the cache can't grow unbounded.
