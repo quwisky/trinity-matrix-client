@@ -1,3 +1,4 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { Subject, of, throwError } from 'rxjs';
@@ -6,7 +7,10 @@ import {
   TrnSurfaceService,
   TrnToastService,
 } from '@trinity/components/overlay';
-import { TimelineActionsService } from '@trinity/data-access/timeline';
+import {
+  ConversationRuntime,
+  TimelineActionsService,
+} from '@trinity/data-access/timeline';
 import { GeolocationService } from '@trinity/platform-native';
 import { LocationShareService } from './location-share.service';
 
@@ -23,6 +27,9 @@ function setup(
   const openAndWait$ =
     over.openAndWait$ ?? vi.fn(() => of({ lat: 3.5, lng: 4.5 }));
   const toastShow = vi.fn();
+  const focused = signal<{ key: { accountId: string; roomId: string } } | null>(
+    { key: { accountId: '@me:hs', roomId: '!a:hs' } },
+  );
   TestBed.configureTestingModule({
     providers: [
       LocationShareService,
@@ -31,6 +38,7 @@ function setup(
         supportsPrecise: () => over.supportsPrecise ?? true,
       }),
       MockProvider(TimelineActionsService, { sendLocation }),
+      { provide: ConversationRuntime, useValue: { focused } },
       MockProvider(TrnSurfaceService, { openAndWait$ }),
       MockProvider(TrnToastService, { show: toastShow }),
     ],
@@ -41,6 +49,7 @@ function setup(
     sendLocation,
     openAndWait$,
     toastShow,
+    focused,
   };
 }
 
@@ -88,6 +97,108 @@ describe('LocationShareService', () => {
       location$.next({ lat: 1.5, lng: 2.5 });
       location$.complete();
       expect(svc.sharing()).toBe(false); // send settled — spinner cleared
+    });
+  });
+
+  describe('the room changes before the location arrives', () => {
+    const LEFT = 'Location not shared: you left the room it was for.';
+
+    it('does not send a device position to the room opened since', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, sendLocation, toastShow, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      location$.next({ lat: 1.5, lng: 2.5 });
+      location$.complete();
+
+      expect(sendLocation).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+        LEFT,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+      expect(svc.sharing()).toBe(false);
+    });
+
+    it('does not send to the same room under another account', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, sendLocation, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@other:hs', roomId: '!a:hs' } });
+      location$.next({ lat: 1.5, lng: 2.5 });
+
+      expect(sendLocation).not.toHaveBeenCalled();
+    });
+
+    it('does not send a hand-picked point to the room opened since', () => {
+      const picked$ = new Subject<{ lat: number; lng: number } | null>();
+      const { svc, sendLocation, toastShow, focused } = setup({
+        openAndWait$: vi.fn(() => picked$),
+        supportsPrecise: false,
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      picked$.next({ lat: 3.5, lng: 4.5 });
+
+      expect(sendLocation).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+        LEFT,
+        expect.anything(),
+      );
+    });
+
+    it('ends the wait for a device position as soon as the room is left', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, toastShow, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      TestBed.tick();
+
+      // The room now open is not left with a busy Location action, nor told about a share
+      // it never asked for.
+      expect(svc.sharing()).toBe(false);
+      expect(location$.observed).toBe(false);
+      expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    it('does not pick the share up again when the room is reopened', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, sendLocation, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!b:hs' } });
+      TestBed.tick();
+      focused.set({ key: { accountId: '@me:hs', roomId: '!a:hs' } });
+      TestBed.tick();
+      location$.next({ lat: 1.5, lng: 2.5 });
+
+      expect(sendLocation).not.toHaveBeenCalled();
+    });
+
+    it('keeps waiting while the same room stays open', () => {
+      const location$ = new Subject<{ lat: number; lng: number }>();
+      const { svc, sendLocation, focused } = setup({
+        current: vi.fn(() => location$),
+      });
+
+      svc.share();
+      // A new handle for the same account and room is not a room change.
+      focused.set({ key: { accountId: '@me:hs', roomId: '!a:hs' } });
+      TestBed.tick();
+      location$.next({ lat: 1.5, lng: 2.5 });
+
+      expect(sendLocation).toHaveBeenCalledWith(1.5, 2.5);
     });
   });
 
