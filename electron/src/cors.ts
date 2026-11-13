@@ -26,15 +26,15 @@ import { APP_ORIGIN } from './scheme';
  * A response from a named origin that main has not confirmed yet is held until the probe
  * answers, so the renderer's first requests to a new homeserver cannot lose the race. An
  * origin that could not be reached is asked again when a response from it next arrives
- * (an offline start), and one that answered as something else is asked again no sooner
- * than {@link REFUSAL_RETRY_MS} later.
+ * (an offline start), and one that answered as something else (a redirect included) is
+ * asked again no sooner than {@link REFUSAL_RETRY_MS} later.
  *
  * RESIDUAL: script injected into the renderer (a sanitizer bypass on untrusted federated
  * message HTML) can read response bodies, without cookies or other credentials, from any
  * https host this machine can reach that answers `/_matrix/client/versions` like a
- * homeserver, and the `.well-known/matrix/` documents of any host that publishes a Matrix
- * client well-known. That includes such hosts on an intranet. It cannot read a host that
- * answers as neither. Unnamed and unconfirmed origins pass through with the server's own
+ * homeserver, and exactly `/.well-known/matrix/client` and `/.well-known/matrix/server`
+ * of any host that publishes a Matrix client well-known. That includes such hosts on an
+ * intranet. It cannot read a host that answers as neither. Unnamed and unconfirmed origins pass through with the server's own
  * headers, which costs nothing: the Matrix spec requires CS API and `.well-known`
  * responses to send `Access-Control-Allow-Origin: *`, so only proxies that strip it need
  * this shim at all.
@@ -72,6 +72,14 @@ const allowedOrigins = new Set<string>();
 const confirmed = new Map<string, 'homeserver' | 'well-known'>();
 const probing = new Map<string, Promise<void>>();
 const refusedAt = new Map<string, number>();
+
+// Everything the client reads from a server name that delegates. Whole paths, not a
+// prefix: `/.well-known/matrix/..%2f..%2fadmin` is another path to a server that decodes
+// before it resolves dot segments.
+const WELL_KNOWN_PATHS = [
+  '/.well-known/matrix/client',
+  '/.well-known/matrix/server',
+];
 
 const REFUSAL_RETRY_MS = 30_000;
 // Bounds how many hosts injected script can make main contact. A session signs in to a
@@ -176,7 +184,7 @@ function rewrites(url: URL): boolean {
   const kind = confirmed.get(url.origin);
   return (
     kind === 'homeserver' ||
-    (kind === 'well-known' && url.pathname.startsWith('/.well-known/matrix/'))
+    (kind === 'well-known' && WELL_KNOWN_PATHS.includes(url.pathname))
   );
 }
 

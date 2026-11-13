@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cors.ts pulls APP_ORIGIN from ./scheme, whose module load imports `electron`.
 // Stub it so the graph resolves under the node test env (protocol is only used
@@ -255,6 +255,10 @@ describe('CORS boundary (main confirms an origin is a Matrix server itself)', ()
     setAllowedCorsOrigins([]);
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // The audit's case: script in the page names an intranet host and reads it.
   it('does not rewrite an origin the renderer named when the probe refuses it', async () => {
     const intranet = 'https://10.0.0.5';
@@ -341,6 +345,28 @@ describe('CORS boundary (main confirms an origin is a Matrix server itself)', ()
     expect(probe).toHaveBeenCalledTimes(1);
   });
 
+  it('probes a refused origin again once the back-off has passed', async () => {
+    const origin = freshOrigin();
+    probe.mockResolvedValue('refused');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    allowCorsOrigin(origin);
+    await probesSettled();
+
+    now.mockReturnValue(1_029_999);
+    s.run({ method: 'GET', url: `${origin}/x` });
+    await probesSettled();
+    expect(probe).toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(1_030_000);
+    probe.mockResolvedValue('homeserver');
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+  });
+
   it('probes a confirmed origin once for the session', async () => {
     const origin = freshOrigin();
 
@@ -357,20 +383,39 @@ describe('CORS boundary (main confirms an origin is a Matrix server itself)', ()
     ).toEqual([APP_ORIGIN]);
   });
 
-  it('rewrites only the well-known documents of a host that is not itself a homeserver', async () => {
-    const origin = freshOrigin();
-    probe.mockResolvedValue('well-known');
+  describe('a host that is not itself a homeserver', () => {
+    let origin: string;
 
-    allowCorsOrigin(origin);
-    await probesSettled();
+    beforeEach(async () => {
+      origin = freshOrigin();
+      probe.mockResolvedValue('well-known');
+      allowCorsOrigin(origin);
+      await probesSettled();
+    });
 
-    expect(
-      pick(
-        s.run({ method: 'GET', url: `${origin}/.well-known/matrix/client` }),
-        ACAO_NAME,
-      ),
-    ).toEqual([APP_ORIGIN]);
-    expect(s.run({ method: 'GET', url: `${origin}/index.html` })).toEqual({});
+    it.each(['/.well-known/matrix/client', '/.well-known/matrix/server'])(
+      'rewrites %s',
+      (path) => {
+        expect(
+          pick(s.run({ method: 'GET', url: `${origin}${path}` }), ACAO_NAME),
+        ).toEqual([APP_ORIGIN]);
+      },
+    );
+
+    // A server or proxy that decodes before resolving dot segments serves another path
+    // for the first three.
+    it.each([
+      '/.well-known/matrix/..%2f..%2fadmin',
+      '/.well-known/matrix/..%5cadmin',
+      '/.well-known/matrix/..;/admin',
+      '/.well-known/matrix/client/',
+      '/.well-known/matrix/client%2f..%2f..%2fadmin',
+      '/.well-known/matrix/support',
+      '/.well-known/matrix/',
+      '/index.html',
+    ])('does not rewrite %s', (path) => {
+      expect(s.run({ method: 'GET', url: `${origin}${path}` })).toEqual({});
+    });
   });
 
   it('never allows an http origin', async () => {
@@ -393,5 +438,17 @@ describe('CORS boundary (main confirms an origin is a Matrix server itself)', ()
 
     expect(probe.mock.calls.length).toBeLessThanOrEqual(100);
     expect(probe).not.toHaveBeenCalledWith('https://scan-149.example');
+  });
+
+  it('releases a response from an origin past that share at once, untouched', () => {
+    const origin = 'https://past-the-cap.example';
+    probe.mockReturnValue(new Promise(() => undefined));
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+    allowCorsOrigin(origin);
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+
+    expect(probe).not.toHaveBeenCalled();
+    expect(out).toEqual({});
   });
 });
