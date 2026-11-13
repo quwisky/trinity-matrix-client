@@ -127,6 +127,8 @@ export class TrustUsersService {
   private readonly states = new Map<string, WritableSignal<UserTrust | null>>();
   /** Per-user read generation, so an older read cannot overwrite a newer status. */
   private readonly generations = new Map<string, number>();
+  /** Shared by every user, so a forgotten user's old read can never match a later one. */
+  private lastGeneration = 0;
   private readonly sessions = new Map<string, SessionsEntry>();
 
   private readonly onTrustChanged = (
@@ -167,7 +169,13 @@ export class TrustUsersService {
     reset: () => {
       for (const [userId, state] of this.states) {
         this.nextGeneration(userId);
+        // Forget a user only when setting null tells its readers to ask again: a signal that was
+        // already null would stay with them unread. A session list keeps its own trust signal.
+        const forget = state() !== null && !this.sessions.has(userId);
         state.set(null);
+        if (!forget) continue;
+        this.states.delete(userId);
+        this.generations.delete(userId);
       }
       for (const entry of this.sessions.values()) {
         entry.generation += 1;
@@ -182,8 +190,8 @@ export class TrustUsersService {
   }
 
   /**
-   * Reactive trust for a user; null while the projection or crypto is unavailable. The
-   * returned signal is cached per user id and reused on later calls.
+   * Reactive trust for a user; null while the projection or crypto is unavailable. Call it
+   * inside the reactive read: a signal that turned null on an Account switch is not read again.
    */
   userTrust(userId: string): Signal<UserTrust | null> {
     let state = this.states.get(userId);
@@ -388,7 +396,7 @@ export class TrustUsersService {
   }
 
   private nextGeneration(userId: string): number {
-    const next = (this.generations.get(userId) ?? 0) + 1;
+    const next = ++this.lastGeneration;
     this.generations.set(userId, next);
     return next;
   }
