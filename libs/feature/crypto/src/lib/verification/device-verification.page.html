@@ -364,11 +364,8 @@
               } @else if (!v.isSelfVerification) {
                 The emoji matched with
                 <strong>{{ v.otherUserId }}</strong
-                >.
-                @if (ownSetupUnfinished()) {
-                  They are not marked as verified yet because this device’s own
-                  encryption setup is not finished.
-                }
+                >. They are not marked as verified yet. That needs this device’s
+                own encryption setup to be complete.
               } @else if (v.newSession; as session) {
                 @if (session.displayName) {
                   <bdi>{{ session.displayName }}</bdi> (<code>{{

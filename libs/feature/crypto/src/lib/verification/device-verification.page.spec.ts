@@ -211,7 +211,7 @@ describe('DeviceVerificationPage', () => {
         within(container).getByRole('heading', { name: 'Emoji matched' }),
       ).toBeTruthy();
       expect(normalized(container)).toContain(
-        'The emoji matched with @bob:hs. They are not marked as verified yet because this device’s own encryption setup is not finished.',
+        'The emoji matched with @bob:hs. They are not marked as verified yet. That needs this device’s own encryption setup to be complete.',
       );
       expect(container.textContent).not.toContain('User verified');
       expect(container.textContent).not.toContain('You verified');
@@ -230,8 +230,6 @@ describe('DeviceVerificationPage', () => {
         name: 'Emoji matched',
       });
       expect(document.activeElement).toBe(heading);
-      // A ready device signs the identity a moment later: no setup to blame meanwhile.
-      expect(container.textContent).not.toContain('not marked as verified');
       const focus = vi.spyOn(heading, 'focus');
 
       userTrust.set('verified');

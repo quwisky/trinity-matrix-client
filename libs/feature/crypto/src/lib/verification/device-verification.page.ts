@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   computed,
+  untracked,
   effect,
   inject,
   input,
@@ -129,11 +130,10 @@ export class DeviceVerificationPage {
       active?.stage === 'done' &&
       !active.isSelfVerification &&
       !!active.otherUserId &&
-      this.users.userTrust(active.otherUserId)() === 'verified'
+      untracked(() => this.users.userTrust(active.otherUserId as string))() ===
+        'verified'
     );
   });
-  /** This device cannot sign another user's identity until its own setup is finished. */
-  readonly ownSetupUnfinished = computed(() => this.trust.status() !== 'ready');
 
   private readonly synchronizeQrUi = effect(() => {
     if (this.active()?.stage !== 'qr-shown') {
