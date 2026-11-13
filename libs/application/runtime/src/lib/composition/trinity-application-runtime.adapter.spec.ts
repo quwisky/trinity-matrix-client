@@ -1489,6 +1489,18 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
     expect(router.url).toBe('/login');
   });
 
+  it('keeps the page the user moved to when a start is retried after it was ready', async () => {
+    const { adapter, router } = setUp('/login');
+    await firstValueFrom(adapter.restoreWorkspace());
+    signedIn.set(true);
+    await router.navigateByUrl('/');
+
+    await expect(firstValueFrom(adapter.restoreWorkspace())).resolves.toEqual({
+      kind: 'ready',
+    });
+    expect(router.url).toBe('/');
+  });
+
   it('still blocks a retry whose guard throws on every Workspace route', async () => {
     const { adapter } = setUp('/');
     await firstValueFrom(adapter.restoreWorkspace());
