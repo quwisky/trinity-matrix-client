@@ -33,6 +33,7 @@ describe('NativePushLifetime', () => {
       }),
   );
   const register = vi.fn(() => of(void 0));
+  const registerNewAccounts = vi.fn(() => of(void 0));
   const retryRegistration = vi.fn(() => of(void 0));
 
   beforeEach(() => {
@@ -54,6 +55,7 @@ describe('NativePushLifetime', () => {
         MockProvider(PushService, {
           run,
           register,
+          registerNewAccounts,
           retryRegistration,
           runtimeStatus: runtimeStatus.asReadonly(),
           runtimePrerequisite: () => prerequisite,
@@ -109,6 +111,38 @@ describe('NativePushLifetime', () => {
     expect(lifetime.closed).toBe(false);
     lifetime.unsubscribe();
     vi.useRealTimers();
+  });
+
+  it('gives a second account its pusher when it becomes live after the token arrived', () => {
+    const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
+    TestBed.tick();
+    // Starting is the listener's job: its ready event registers, not the account list.
+    expect(register).not.toHaveBeenCalled();
+    runtimeStatus.set({ status: 'available', code: 'push-registration-ready' });
+    TestBed.tick();
+
+    accountIds.set(['@a:example.org', '@b:example.org']);
+    TestBed.tick();
+
+    expect(registerNewAccounts).toHaveBeenCalledOnce();
+    // The same listener is kept, and the OS is not asked again.
+    expect(register).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledOnce();
+    TestBed.tick();
+    expect(registerNewAccounts).toHaveBeenCalledOnce();
+    lifetime.unsubscribe();
+  });
+
+  it('leaves the account list alone while native push is not demanded', () => {
+    prerequisite = 'not-configured';
+    const lifetime = TestBed.inject(NativePushLifetime).run().subscribe();
+    TestBed.tick();
+
+    accountIds.set(['@a:example.org', '@b:example.org']);
+    TestBed.tick();
+
+    expect(registerNewAccounts).not.toHaveBeenCalled();
+    lifetime.unsubscribe();
   });
 
   it('settles as expected dormancy when the host turns out unable to register', () => {
