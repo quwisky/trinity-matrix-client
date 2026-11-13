@@ -23,7 +23,7 @@ vi.mock('@capacitor/core', () => ({
   },
 }));
 vi.mock('@capacitor/filesystem', () => ({
-  Filesystem: { writeFile: vi.fn(), rmdir: vi.fn() },
+  Filesystem: { writeFile: vi.fn(), rmdir: vi.fn(), stat: vi.fn() },
   Directory: { Cache: 'CACHE' },
 }));
 vi.mock('@capacitor/share', () => ({
@@ -33,6 +33,7 @@ vi.mock('@capacitor/share', () => ({
 const isNative = Capacitor.isNativePlatform as unknown as Mock;
 const writeFile = Filesystem.writeFile as unknown as Mock;
 const rmdir = Filesystem.rmdir as unknown as Mock;
+const stat = Filesystem.stat as unknown as Mock;
 const share = Share.share as unknown as Mock;
 
 /** The basename a per-share path ('trinity-shared/<token>/<name>') ends with. */
@@ -48,6 +49,7 @@ describe('FileSaveService host adapter', () => {
     isNative.mockReturnValue(false);
     writeFile.mockReset().mockResolvedValue({ uri: 'file:///cache/pic.png' });
     rmdir.mockReset().mockResolvedValue(undefined);
+    stat.mockReset().mockRejectedValue(new Error('missing'));
     share.mockReset().mockResolvedValue(undefined);
   });
 
@@ -100,8 +102,54 @@ describe('FileSaveService host adapter', () => {
     });
   });
 
+  it('has no shared files to clear on the web', async () => {
+    await build().clearShared();
+
+    expect(rmdir).not.toHaveBeenCalled();
+  });
+
   describe('native', () => {
     beforeEach(() => isNative.mockReturnValue(true));
+
+    it('deletes every shared file on request, without a new save', async () => {
+      await build().clearShared();
+
+      expect(rmdir).toHaveBeenCalledExactlyOnceWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+        recursive: true,
+      });
+    });
+
+    it('has nothing to delete when no file was ever shared', async () => {
+      rmdir.mockRejectedValue(new Error('Folder does not exist.'));
+
+      await expect(build().clearShared()).resolves.toBeUndefined();
+    });
+
+    it('rejects when the shared files are still on disk after the delete failed', async () => {
+      rmdir.mockRejectedValue(new Error('Unable to delete directory'));
+      stat.mockResolvedValue({ type: 'directory' });
+
+      await expect(build().clearShared()).rejects.toThrow(
+        'Unable to delete directory',
+      );
+      expect(stat).toHaveBeenCalledExactlyOnceWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+      });
+    });
+
+    it('still shares when the earlier shares cannot be swept', async () => {
+      rmdir.mockRejectedValue(new Error('Unable to delete directory'));
+      stat.mockResolvedValue({ type: 'directory' });
+      writeFile.mockResolvedValue({ uri: 'file:///cache/pic.png' });
+      share.mockResolvedValue({});
+
+      await expect(
+        firstValueFrom(build().save(new Blob(['x']), 'pic.png')),
+      ).resolves.toBe('saved');
+    });
 
     it('sweeps prior shares, writes to a per-share folder, then shares', async () => {
       const svc = build();

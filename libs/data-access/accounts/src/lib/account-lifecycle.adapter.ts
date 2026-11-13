@@ -1,6 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  LocalDataWipeService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import {
   Observable,
   catchError,
@@ -26,6 +29,7 @@ import {
 import {
   AccountSignOutRetryWorkflow,
   providerRevocationUnresolved,
+  sharedFilesWipe,
   remoteLogout,
   remoteLogoutScope,
   type SignOutRetryContext,
@@ -42,6 +46,7 @@ import { InstallationResetWorkflow } from './installation-reset.workflow';
 export class AccountLifecycleAdapter {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly installationReset = inject(InstallationResetWorkflow);
   private readonly signOutRetry = inject(AccountSignOutRetryWorkflow);
@@ -382,6 +387,7 @@ export class AccountLifecycleAdapter {
         // After the client stops, so no late write follows; the next start's sweep covers a failure.
         concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearSharedAccountState(attempt)),
+        concatMap(() => sharedFilesWipe(attempt, this.wipe)),
         concatMap(() =>
           attempt.capture(
             defer(() =>
@@ -414,6 +420,7 @@ export class AccountLifecycleAdapter {
         // After the client stops, so no late write follows; the next start's sweep covers a failure.
         concatMap(() => this.forgetMentionHistory(attempt, accountId)),
         tap(() => this.clearDrafts(attempt)),
+        concatMap(() => sharedFilesWipe(attempt, this.wipe)),
         concatMap(() =>
           attempt.capture(
             defer(() =>

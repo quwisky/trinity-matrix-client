@@ -1,6 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { SessionStorageService } from '@trinity/platform-native';
+import {
+  LocalDataWipeService,
+  SessionStorageService,
+} from '@trinity/platform-native';
 import type { MatrixSession } from '@trinity/util/matrix';
 import {
   Observable,
@@ -78,11 +81,35 @@ export function providerRevocationUnresolved(
   );
 }
 
+/**
+ * Delete the decrypted attachments saved for the share sheet, which may be the leaving
+ * account's. A failed delete is residue a sign-out retry repeats.
+ */
+export function sharedFilesWipe(
+  attempt: AccountCleanupAttempt<AccountSignOutOutcome>,
+  wipe: LocalDataWipeService,
+): Observable<unknown> {
+  return attempt.step(
+    defer(() => from(wipe.wipeSharedFiles())),
+    {
+      budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+      scope: 'shared-files',
+      recovery: 'retry-sign-out',
+      fallback: false,
+      onSettled: (succeeded) => {
+        if (succeeded) attempt.resolveIssue('shared-files');
+        else attempt.addIssue('shared-files', 'retry-sign-out');
+      },
+    },
+  );
+}
+
 /** Retains only the context required to retry settled, safe Account-removal residue. */
 @Injectable({ providedIn: 'root' })
 export class AccountSignOutRetryWorkflow {
   private readonly matrix = inject(MatrixClientService);
   private readonly storage = inject(SessionStorageService);
+  private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
   private readonly residue = new Map<string, SignOutRetryContext>();
 
@@ -168,6 +195,9 @@ export class AccountSignOutRetryWorkflow {
           ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
         ),
       );
+    }
+    if (retryable.has('shared-files')) {
+      operations.push(sharedFilesWipe(attempt, this.wipe));
     }
     if (retryable.has('account-registry') || retryable.has('secure-storage')) {
       operations.push(this.retryAccountRegistry(attempt, context));

@@ -144,6 +144,51 @@ it('empties the drafts held in memory once the clients have stopped, so no later
   ).toBeGreaterThan(vi.mocked(test.matrix.stop).mock.invocationCallOrder[0]);
 });
 
+it('deletes the attachments left on disk for the share sheet', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test);
+
+  await expect(
+    firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({ kind: 'ready' });
+
+  expect(test.wipe.wipeSharedFiles).toHaveBeenCalledOnce();
+});
+
+it('reports partial cleanup when the shared attachments are still on disk, and a retry deletes them', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test);
+  vi.mocked(test.wipe.wipeSharedFiles)
+    .mockResolvedValueOnce(false)
+    .mockResolvedValue(true);
+  const issues = [
+    { scope: 'shared-files', recovery: 'retry-installation-reset' },
+  ] as const;
+
+  await expect(
+    firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({ kind: 'partial-cleanup', issues });
+  // The rest of the wipe still ran.
+  expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+
+  await expect(
+    firstValueFrom(test.adapter.retryInstallationCleanup(issues)),
+  ).resolves.toEqual({ kind: 'ready' });
+  expect(test.wipe.wipeSharedFiles).toHaveBeenCalledTimes(2);
+});
+
+it('keeps the shared attachments as residue when the retry fails again', async () => {
+  const { adapter, wipe } = setup();
+  vi.mocked(wipe.wipeSharedFiles).mockResolvedValue(false);
+  const issues = [
+    { scope: 'shared-files', recovery: 'retry-installation-reset' },
+  ] as const;
+
+  await expect(
+    firstValueFrom(adapter.retryInstallationCleanup(issues)),
+  ).resolves.toEqual({ kind: 'partial-cleanup', issues });
+});
+
 it('asks for a restart when the drafts held in memory cannot be emptied', async () => {
   const test = setup();
   prepareSuccessfulReset(test);

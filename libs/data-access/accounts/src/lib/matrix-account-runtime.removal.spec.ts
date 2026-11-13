@@ -146,7 +146,7 @@ describe('MatrixAccountRuntimeAdapter', () => {
   });
 
   it('signs out one explicit Account while keeping the surviving Account active', async () => {
-    const { adapter, matrix, storage, lifecycle, active } =
+    const { adapter, matrix, storage, lifecycle, active, wipe } =
       setup('@outgoing:hs');
     const client = { logout: vi.fn(() => Promise.resolve()) };
     vi.mocked(matrix.clientFor).mockReturnValue(client as never);
@@ -181,10 +181,12 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
     expect(storage.setActive).toHaveBeenCalledWith('@survivor:hs');
     expect(lifecycle.clearDrafts).toHaveBeenCalledOnce();
+    expect(wipe.wipeSharedFiles).toHaveBeenCalledOnce();
   });
 
   it('fully clears local Account state when signing out the last Account', async () => {
-    const { adapter, matrix, storage, lifecycle, active } = setup('@last:hs');
+    const { adapter, matrix, storage, lifecycle, active, wipe } =
+      setup('@last:hs');
     vi.mocked(matrix.clientFor).mockReturnValue({
       logout: vi.fn(() => Promise.resolve()),
     } as never);
@@ -211,7 +213,41 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(lifecycle.unregisterNotifications).toHaveBeenCalledWith();
     expect(matrix.remove).toHaveBeenCalledWith('@last:hs');
     expect(lifecycle.releaseSharedCaches).toHaveBeenCalledOnce();
+    expect(wipe.wipeSharedFiles).toHaveBeenCalledOnce();
     expect(storage.clear).toHaveBeenCalledOnce();
+  });
+
+  it('reports shared attachments still on disk after sign-out, and a retry deletes them', async () => {
+    const { adapter, matrix, storage, wipe } = setup('@outgoing:hs');
+    vi.mocked(matrix.clientFor).mockReturnValue({
+      logout: vi.fn(() => Promise.resolve()),
+    } as never);
+    vi.mocked(storage.list).mockReturnValue(
+      of([
+        { userId: '@outgoing:hs', baseUrl: 'https://hs', deviceId: 'A' },
+        { userId: '@survivor:hs', baseUrl: 'https://hs', deviceId: 'B' },
+      ]),
+    );
+    vi.mocked(storage.load).mockReturnValue(of(null));
+    vi.mocked(matrix.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.remove).mockReturnValue(of(void 0));
+    vi.mocked(storage.setActive).mockReturnValue(of(void 0));
+    vi.mocked(wipe.wipeSharedFiles)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+
+    const first = await firstValueFrom(adapter.signOutAccount('@outgoing:hs'));
+    const issues = first.kind === 'partial-cleanup' ? first.issues : [];
+    expect(issues).toEqual([
+      { scope: 'shared-files', recovery: 'retry-sign-out' },
+    ]);
+    // The account itself is still removed.
+    expect(storage.remove).toHaveBeenCalledWith('@outgoing:hs');
+
+    await expect(
+      firstValueFrom(adapter.retrySignOutCleanup('@outgoing:hs', issues)),
+    ).resolves.toMatchObject({ kind: 'ready' });
+    expect(wipe.wipeSharedFiles).toHaveBeenCalledTimes(2);
   });
 
   describe('forgetting mention history on sign-out', () => {

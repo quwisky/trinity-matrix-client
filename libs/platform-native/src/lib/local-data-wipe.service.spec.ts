@@ -28,6 +28,13 @@ vi.mock('@capacitor/preferences', () => ({
   },
 }));
 
+vi.mock('@capacitor/filesystem', () => ({
+  Filesystem: { rmdir: vi.fn(), stat: vi.fn() },
+  Directory: { Cache: 'CACHE' },
+}));
+
+import { Capacitor } from '@capacitor/core';
+import { Filesystem } from '@capacitor/filesystem';
 import { LocalDataWipeService } from './local-data-wipe.service';
 import { SecureStorageService } from './secure-storage.service';
 import type { AccountRecord } from './session-storage.service';
@@ -381,6 +388,48 @@ describe('LocalDataWipeService', () => {
         ).wipeSecureStorage(),
       ).resolves.toBe(false);
       expect(clearPin).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('wipeSharedFiles', () => {
+    // The real FileSaveService on a native host: only the Filesystem plugin is faked.
+    beforeEach(() => {
+      vi.spyOn(Capacitor, 'isNativePlatform').mockReturnValue(true);
+      vi.spyOn(Capacitor, 'isPluginAvailable').mockReturnValue(true);
+      vi.mocked(Filesystem.rmdir).mockReset().mockResolvedValue();
+      vi.mocked(Filesystem.stat)
+        .mockReset()
+        .mockRejectedValue(new Error('missing'));
+    });
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('deletes the decrypted attachments left for the share sheet', async () => {
+      await expect(setup().wipeSharedFiles()).resolves.toBe(true);
+      expect(Filesystem.rmdir).toHaveBeenCalledExactlyOnceWith({
+        path: 'trinity-shared',
+        directory: 'CACHE',
+        recursive: true,
+      });
+    });
+
+    it('counts a folder that never existed as deleted', async () => {
+      vi.mocked(Filesystem.rmdir).mockRejectedValue(
+        new Error('Folder does not exist.'),
+      );
+
+      await expect(setup().wipeSharedFiles()).resolves.toBe(true);
+    });
+
+    it('reports the attachments still on disk when the delete fails', async () => {
+      vi.mocked(Filesystem.rmdir).mockRejectedValue(
+        new Error('Unable to delete directory'),
+      );
+      vi.mocked(Filesystem.stat).mockResolvedValue({
+        type: 'directory',
+      } as never);
+
+      await expect(setup().wipeSharedFiles()).resolves.toBe(false);
     });
   });
 

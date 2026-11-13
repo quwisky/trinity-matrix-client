@@ -100,7 +100,10 @@ export class InstallationResetWorkflow {
               ),
               concatMap((records) => {
                 this.clearDrafts(attempt);
-                return this.stopMentionIndex().pipe(map(() => records));
+                return this.stopMentionIndex().pipe(
+                  concatMap(() => this.wipeSharedFiles(attempt)),
+                  map(() => records),
+                );
               }),
               concatMap((records) => this.wipeIndexedDb(attempt, records)),
               concatMap(() =>
@@ -178,6 +181,9 @@ export class InstallationResetWorkflow {
           }
           if (scopes.has('service-worker')) {
             operations.push(this.wipeServiceWorker(attempt, true));
+          }
+          if (scopes.has('shared-files')) {
+            operations.push(this.wipeSharedFiles(attempt));
           }
           return operations.length === 0
             ? of(void 0)
@@ -290,6 +296,22 @@ export class InstallationResetWorkflow {
   /** Stop recording before the wipe, or a pending write would recreate the store. */
   private stopMentionIndex(): Observable<void> {
     return this.bounded(defer(() => this.lifecycle.stopMentionIndex()));
+  }
+
+  private wipeSharedFiles(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+  ): Observable<unknown> {
+    return attempt.step(
+      defer(() => from(this.wipe.wipeSharedFiles())),
+      {
+        budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.sharedFilesWipe,
+        scope: 'shared-files',
+        recovery: 'retry-installation-reset',
+        fallback: false,
+        onSettled: (succeeded) =>
+          this.recordOrResolve(attempt, 'shared-files', succeeded),
+      },
+    );
   }
 
   private bounded(source: Observable<void>): Observable<void> {

@@ -33,6 +33,14 @@ export class FileSaveService {
     );
   }
 
+  /**
+   * Delete every file handed to the share sheet. Sign-out and erase call it, as nothing
+   * else removes the last share until the next save. Rejects when the files are still there.
+   */
+  clearShared(): Promise<void> {
+    return this.nativeAvailable ? sweepShareDir() : Promise.resolve();
+  }
+
   /** Write the blob to the cache and surface the native share sheet. */
   private async saveNative(
     blob: Blob,
@@ -43,8 +51,9 @@ export class FileSaveService {
     // before that finishes, so deleting now can truncate the share (same on iOS). Each share
     // gets its own cache subfolder (so the target sees a clean filename) and earlier shares
     // are swept first: by the next save the earlier receiver has long finished reading, so
-    // plaintext never lingers and the delete can't race it.
-    await sweepShareDir();
+    // plaintext never lingers and the delete can't race it. Best-effort: a failed sweep
+    // must not block this save, and the next one repeats it.
+    await sweepShareDir().catch(() => undefined);
     const path = `${SHARE_DIR}/${uniqueToken()}/${safeName(filename)}`;
     const { uri } = await Filesystem.writeFile({
       path,
@@ -83,15 +92,22 @@ export class FileSaveService {
 const SHARE_DIR = 'trinity-shared';
 
 /**
- * Delete the cache subfolder of all previous shares (best-effort), so a former share's
- * plaintext never lingers without deleting a file the current receiver may still be reading.
+ * Delete the cache subfolder of all previous shares, so a former share's plaintext never
+ * lingers without deleting a file the current receiver may still be reading.
  */
 async function sweepShareDir(): Promise<void> {
-  await Filesystem.rmdir({
-    path: SHARE_DIR,
-    directory: Directory.Cache,
-    recursive: true,
-  }).catch(() => undefined); // missing dir on the first share — nothing to sweep
+  const folder = { path: SHARE_DIR, directory: Directory.Cache };
+  try {
+    await Filesystem.rmdir({ ...folder, recursive: true });
+  } catch (error) {
+    // The plugin's "missing folder" error differs per platform; ask instead. No folder
+    // (nothing was shared yet) means nothing is left, anything else is a failed delete.
+    const remains = await Filesystem.stat(folder).then(
+      () => true,
+      () => false,
+    );
+    if (remains) throw error;
+  }
 }
 
 /** A random, collision-free folder name so concurrent/sequential shares never clash. */

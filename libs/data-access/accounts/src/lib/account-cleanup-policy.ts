@@ -14,4 +14,5 @@ export const ACCOUNT_CLEANUP_STEP_BUDGET_MS = {
   webStorageWipe: 3_000,
   cacheStorageWipe: 3_000,
   serviceWorkerRegistrationWipe: 3_000,
+  sharedFilesWipe: 3_000,
 } as const;

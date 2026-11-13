@@ -174,7 +174,8 @@ export type AccountCleanupScope =
   | 'indexed-db'
   | 'secure-storage'
   | 'preferences'
-  | 'service-worker';
+  | 'service-worker'
+  | 'shared-files';
 
 export type AccountCleanupRecovery =
   'retry-sign-out' | 'retry-installation-reset' | 'restart-application';
