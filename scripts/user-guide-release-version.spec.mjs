@@ -1,5 +1,14 @@
 /** Stable release PRs carry the user guide to the new version; prereleases leave it alone. */
-import { readdirSync, readFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { workflow as loadWorkflow } from './workspace-sources.mjs';
 
@@ -66,6 +75,86 @@ describe('user guide release version', () => {
       expect(steps[index + 1].run).toBe('pnpm nx run docs-site:check');
       expect(workflow.jobs.build.outputs).toBeUndefined();
       expect(workflow.jobs.deploy.if).toBe("github.ref == 'refs/heads/main'");
+    });
+
+    /**
+     * Runs the step in a repository whose user guide went 0.6.0 then 0.7.0, against a
+     * `gh` that answers `release view` per version. Returns the version left checked out.
+     */
+    function guideVersion(answers) {
+      const dir = mkdtempSync(join(tmpdir(), 'docs-release-'));
+      const git = (...args) =>
+        execFileSync(
+          'git',
+          ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args],
+          { cwd: dir, stdio: 'ignore' },
+        );
+      const manifest = join(dir, 'apps/docs-users/release.json');
+      try {
+        git('init');
+        // The guide is younger than the repository, as in Trinity.
+        git('commit', '--allow-empty', '-m', 'root');
+        mkdirSync(join(dir, 'apps/docs-users'), { recursive: true });
+        for (const version of ['0.6.0', '0.7.0']) {
+          writeFileSync(manifest, JSON.stringify({ version }));
+          git('add', '.');
+          git('commit', '-m', version);
+        }
+        const cases = Object.entries(answers)
+          .map(([version, answer]) => `v${version}) ${answer};;`)
+          .join(' ');
+        writeFileSync(
+          join(dir, 'gh'),
+          `#!/bin/sh\ncase "$3" in ${cases} esac\n`,
+          { mode: 0o755 },
+        );
+        const step = workflow.jobs.build.steps.find((s) => s.id === 'release');
+        // Actions runs a `run:` step as `bash -e`.
+        const { status } = spawnSync('bash', ['-e', '-c', step.run], {
+          cwd: dir,
+          env: { PATH: `${dir}:${process.env.PATH}` },
+          timeout: 5000,
+        });
+        return { status, version: JSON.parse(readFileSync(manifest)).version };
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    const published = 'echo false';
+    // What a read-only token gets for a draft, and for a release that does not exist.
+    const hidden = 'echo "release not found" >&2; exit 1';
+
+    it('keeps the guide of a published release', () => {
+      expect(guideVersion({ '0.7.0': published })).toEqual({
+        status: 0,
+        version: '0.7.0',
+      });
+    });
+
+    it('steps back to the last published release past an unpublished one', () => {
+      expect(guideVersion({ '0.7.0': hidden, '0.6.0': published })).toEqual({
+        status: 0,
+        version: '0.6.0',
+      });
+      expect(
+        guideVersion({ '0.7.0': 'echo true', '0.6.0': published }),
+      ).toEqual({ status: 0, version: '0.6.0' });
+    });
+
+    it('fails when it cannot read a release, so an outdated guide is not deployed', () => {
+      expect(
+        guideVersion({
+          '0.7.0': 'echo "HTTP 502: Bad Gateway" >&2; exit 1',
+          '0.6.0': published,
+        }),
+      ).toEqual({ status: 1, version: '0.7.0' });
+    });
+
+    it('fails when no release in the guide history is published', () => {
+      // Greater than 0 also rules out the null of a loop that had to be killed.
+      expect(
+        guideVersion({ '0.7.0': hidden, '0.6.0': hidden }).status,
+      ).toBeGreaterThan(0);
     });
   });
 

@@ -58,7 +58,14 @@ jobs:
           ref=HEAD
           while :; do
             version=$(git show "$ref:apps/docs-users/release.json" | jq -r .version)
-            [ "$(gh release view "v$version" --json isDraft -q .isDraft 2>/dev/null)" = false ] && break
+            # A draft this read-only token cannot see reads as "release not found".
+            # Any other failure stops the deploy: stepping back on it would publish an old guide.
+            if draft=$(gh release view "v$version" --json isDraft -q .isDraft 2>&1); then
+              [ "$draft" = false ] && break
+            elif [[ "$draft" != *"release not found"* ]]; then
+              echo "::error::Could not read release v$version: $draft"
+              exit 1
+            fi
             echo "::notice::v$version is not published; building the user guide from before it."
             ref="$(git log -1 --format=%H "$ref" -- apps/docs-users/release.json)^"
           done
