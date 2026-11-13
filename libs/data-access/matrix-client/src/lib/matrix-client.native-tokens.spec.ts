@@ -614,13 +614,13 @@ describe('a phone account whose refresh token native code holds', () => {
       for (const update of updates) {
         expect(update[3]).toBeUndefined();
       }
-      // Every other write too, save, saveNew and persistForEstablishment among them, each of
-      // which would store a refresh token it is handed.
+      // Every other write too, persistForEstablishment among them, which would store a
+      // refresh token it is handed.
       const writers = Object.getOwnPropertyNames(
         SessionStorageService.prototype,
       ) as (keyof SessionStorageService)[];
       expect(writers).toEqual(
-        expect.arrayContaining(['save', 'saveNew', 'persistForEstablishment']),
+        expect.arrayContaining(['persistForEstablishment']),
       );
       for (const name of writers) {
         const method = storage[name];
@@ -630,8 +630,6 @@ describe('a phone account whose refresh token native code holds', () => {
           );
         }
       }
-      expect(storage.save).not.toHaveBeenCalled();
-      expect(storage.saveNew).not.toHaveBeenCalled();
       expect(storage.persistForEstablishment).not.toHaveBeenCalled();
     });
   });

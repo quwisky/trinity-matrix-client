@@ -1,6 +1,14 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  NEVER,
+  type Observable,
+  concatMap,
+  firstValueFrom,
+  map,
+  of,
+  throwError,
+} from 'rxjs';
 import { PushHandoffBridge } from '@trinity/capacitor-push';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -80,6 +88,20 @@ const CAROL: MatrixSession = {
   oidc: OIDC_BINDING,
 };
 
+/** Sign an account in as Account Runtime does: persist it, then make it the active one. */
+function save(
+  svc: SessionStorageService,
+  session: MatrixSession,
+): Observable<MatrixSession> {
+  return svc
+    .persistForEstablishment(session, 'upsert')
+    .pipe(
+      concatMap((stored) =>
+        svc.setActiveForEstablishment(stored.userId).pipe(map(() => stored)),
+      ),
+    );
+}
+
 /**
  * Provide the real {@link SessionStorageService} with a mocked
  * {@link SecureStorageService}. ng-mocks' auto-spies are backed by an in-memory map
@@ -147,7 +169,7 @@ describe('SessionStorageService', () => {
 
   it('keeps the token out of Preferences (secure, per-account) and records the account', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     // Token lives in secure storage under a per-account key, never in Preferences.
     expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
@@ -174,7 +196,7 @@ describe('SessionStorageService', () => {
     const { svc } = setup();
     expect(await firstValueFrom(svc.hasAccounts())).toBe(false);
 
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     expect(await firstValueFrom(svc.hasAccounts())).toBe(true);
 
@@ -197,7 +219,7 @@ describe('SessionStorageService', () => {
 
   it('round-trips save → load (active account)', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
     expect(await firstValueFrom(svc.load())).toEqual(ALICE_STORED);
   });
 
@@ -205,12 +227,12 @@ describe('SessionStorageService', () => {
     const { svc } = setup();
     // The caller starts the client with this, so it must carry the freshly-assigned
     // prefix — not the SDK default, which would collide with another account's store.
-    expect(await firstValueFrom(svc.save(ALICE))).toEqual(ALICE_STORED);
+    expect(await firstValueFrom(save(svc, ALICE))).toEqual(ALICE_STORED);
   });
 
   it('persists an Account for establishment without changing the Active Account', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     const stored = await firstValueFrom(
       svc.persistForEstablishment(BOB, 'upsert'),
@@ -228,7 +250,7 @@ describe('SessionStorageService', () => {
 
   it('preserves the atomic new-Account guard during establishment persistence', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     await expect(
       firstValueFrom(svc.persistForEstablishment(ALICE, 'new')),
@@ -238,7 +260,7 @@ describe('SessionStorageService', () => {
 
   it('commits Active placement only for an Account present in the registry', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
     await firstValueFrom(svc.persistForEstablishment(BOB, 'upsert'));
 
     await firstValueFrom(svc.setActiveForEstablishment('@bob:other'));
@@ -261,16 +283,19 @@ describe('SessionStorageService', () => {
     const deleteDatabase = vi.fn();
     vi.stubGlobal('indexedDB', { deleteDatabase });
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     await expect(
       firstValueFrom(
-        svc.saveNew({
-          ...ALICE,
-          baseUrl: 'https://malicious.example',
-          deviceId: 'ATTACKER',
-          accessToken: 'attacker-token',
-        }),
+        svc.persistForEstablishment(
+          {
+            ...ALICE,
+            baseUrl: 'https://malicious.example',
+            deviceId: 'ATTACKER',
+            accessToken: 'attacker-token',
+          },
+          'new',
+        ),
       ),
     ).rejects.toThrow(/already stored/i);
 
@@ -299,12 +324,12 @@ describe('SessionStorageService', () => {
         const deleteDatabase = vi.fn();
         vi.stubGlobal('indexedDB', { deleteDatabase });
         const { svc, secure } = setup();
-        await firstValueFrom(svc.save(ALICE));
-        await firstValueFrom(svc.save(BOB));
+        await firstValueFrom(save(svc, ALICE));
+        await firstValueFrom(save(svc, BOB));
         const registryBefore = prefs.get('matrix.accounts');
 
         for (const attempt of [
-          svc.save({ ...FROM_OTHER_SERVER, deviceId }),
+          save(svc, { ...FROM_OTHER_SERVER, deviceId }),
           svc.persistForEstablishment(
             { ...FROM_OTHER_SERVER, deviceId },
             'upsert',
@@ -328,9 +353,9 @@ describe('SessionStorageService', () => {
 
     it('names the stored account and the server it is signed in through', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
-      const error = await firstValueFrom(svc.save(FROM_OTHER_SERVER)).catch(
+      const error = await firstValueFrom(save(svc, FROM_OTHER_SERVER)).catch(
         (e: unknown) => e,
       );
 
@@ -347,10 +372,10 @@ describe('SessionStorageService', () => {
       ['an explicit default port', 'https://hs:443'],
     ])('still accepts the same server with %s', async (_label, baseUrl) => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl, accessToken: 'rotated' }),
+        save(svc, { ...ALICE, baseUrl, accessToken: 'rotated' }),
       );
 
       // The saved base URL is kept as it was written, not replaced by the new spelling.
@@ -364,10 +389,10 @@ describe('SessionStorageService', () => {
 
     it('keeps the saved base URL when the same server signs in on a new device', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl: 'https://hs/', deviceId: 'DEV2' }),
+        save(svc, { ...ALICE, baseUrl: 'https://hs/', deviceId: 'DEV2' }),
       );
 
       expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
@@ -379,11 +404,11 @@ describe('SessionStorageService', () => {
     it('treats the long and short spellings of an IPv6 host as one server', async () => {
       const { svc } = setup();
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl: 'https://[::1]:8448' }),
+        save(svc, { ...ALICE, baseUrl: 'https://[::1]:8448' }),
       );
 
       await firstValueFrom(
-        svc.save({
+        save(svc, {
           ...ALICE,
           baseUrl: 'https://[0:0:0:0:0:0:0:1]:8448',
           accessToken: 'rotated',
@@ -399,12 +424,12 @@ describe('SessionStorageService', () => {
     it('treats a saved host that only appears as user info as a different server', async () => {
       const { svc } = setup();
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl: 'https://hs.example' }),
+        save(svc, { ...ALICE, baseUrl: 'https://hs.example' }),
       );
 
       await expect(
         firstValueFrom(
-          svc.save({
+          save(svc, {
             ...ALICE,
             baseUrl: 'https://hs.example@other-host.example',
           }),
@@ -419,21 +444,21 @@ describe('SessionStorageService', () => {
       ['another host', 'https://hs.other-server.example'],
     ])('treats %s as a different server', async (_label, baseUrl) => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       await expect(
-        firstValueFrom(svc.save({ ...ALICE, baseUrl })),
+        firstValueFrom(save(svc, { ...ALICE, baseUrl })),
       ).rejects.toThrow(AccountHomeserverMismatchError);
     });
 
     it('lets a stored path-based server keep re-authenticating through a trailing slash', async () => {
       const { svc } = setup();
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl: 'https://hs/matrix' }),
+        save(svc, { ...ALICE, baseUrl: 'https://hs/matrix' }),
       );
 
       await firstValueFrom(
-        svc.save({ ...ALICE, baseUrl: 'https://hs/matrix/' }),
+        save(svc, { ...ALICE, baseUrl: 'https://hs/matrix/' }),
       );
 
       expect(await firstValueFrom(svc.list())).toHaveLength(1);
@@ -441,10 +466,10 @@ describe('SessionStorageService', () => {
 
     it('does not block a fresh sign-in after the account was removed', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       await firstValueFrom(svc.remove('@alice:hs'));
 
-      await firstValueFrom(svc.save(FROM_OTHER_SERVER));
+      await firstValueFrom(save(svc, FROM_OTHER_SERVER));
 
       expect(await firstValueFrom(svc.load('@alice:hs'))).toMatchObject({
         baseUrl: 'https://other-server.example',
@@ -459,7 +484,7 @@ describe('SessionStorageService', () => {
 
   it('assigns a fresh account a device-scoped crypto store', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
     const [record] = await firstValueFrom(svc.list());
     // Device id in the prefix: a later fresh login (new device) gets a fresh store
     // instead of reopening this one and hitting the Rust account/device mismatch.
@@ -468,8 +493,8 @@ describe('SessionStorageService', () => {
 
   it('gives two accounts DISTINCT crypto stores (no cross-account key collision)', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB));
 
     const prefixes = (await firstValueFrom(svc.list())).map(
       (a) => a.cryptoPrefix,
@@ -484,7 +509,7 @@ describe('SessionStorageService', () => {
 
   it('record() returns a stored account by id without needing its token', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
     // Drop the token (soft-logout) — record() must still resolve the account.
     await firstValueFrom(svc.invalidateToken('@alice:hs'));
 
@@ -499,7 +524,7 @@ describe('SessionStorageService', () => {
 
   it('invalidateToken drops the token but keeps the record (re-auth on same store)', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
+    await firstValueFrom(save(svc, ALICE));
 
     await firstValueFrom(svc.invalidateToken('@alice:hs'));
 
@@ -517,7 +542,7 @@ describe('SessionStorageService', () => {
   describe('OIDC token persistence', () => {
     it('stores the refresh token securely (never Preferences) and keeps expiry + oidc in the registry', async () => {
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       // The refresh token is a credential → secure storage, under its own per-account key.
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
@@ -534,7 +559,7 @@ describe('SessionStorageService', () => {
 
     it('round-trips the refresh token, expiry and oidc binding on load', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       expect(await firstValueFrom(svc.load('@carol:hs'))).toMatchObject({
         accessToken: 'carol-access',
@@ -546,7 +571,7 @@ describe('SessionStorageService', () => {
 
     it('updateTokens rotates access + refresh tokens and refreshes the expiry', async () => {
       const { svc, secure } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(
         svc.updateTokens(
@@ -573,7 +598,7 @@ describe('SessionStorageService', () => {
 
     it('updateTokens keeps the existing refresh token when the provider rotated none', async () => {
       const { svc, secure } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(
         svc.updateTokens('@carol:hs', lineage, 'new-access', undefined, 8888),
@@ -595,7 +620,7 @@ describe('SessionStorageService', () => {
       // calls this BEFORE the refresher can substitute one, so nothing upstream can
       // save it, and no restart would recover.
       const { svc, secure } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(
         svc.updateTokens('@carol:hs', lineage, 'new-access', '', 8888),
@@ -608,7 +633,7 @@ describe('SessionStorageService', () => {
 
     it('updateOidcBinding records the provider endpoints for the same sign-in', async () => {
       const { svc } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
       const pinned = {
         ...OIDC_BINDING,
         tokenEndpoint: 'https://op.example/token',
@@ -630,7 +655,7 @@ describe('SessionStorageService', () => {
         revocationEndpoint: 'https://op.example/revoke',
       };
       const { lineage } = await firstValueFrom(
-        svc.save({ ...CAROL, oidc: pinned }),
+        save(svc, { ...CAROL, oidc: pinned }),
       );
 
       await firstValueFrom(
@@ -650,7 +675,7 @@ describe('SessionStorageService', () => {
       const { svc } = setup();
       const required = { ...OIDC_BINDING, requiresIssuerConfirmation: true };
       const { lineage } = await firstValueFrom(
-        svc.save({ ...CAROL, oidc: required }),
+        save(svc, { ...CAROL, oidc: required }),
       );
 
       await firstValueFrom(
@@ -668,7 +693,7 @@ describe('SessionStorageService', () => {
 
     it('updateOidcBinding writes nothing for another provider or client', async () => {
       const { svc } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       for (const other of [
         { issuer: 'https://other.example/' },
@@ -691,8 +716,8 @@ describe('SessionStorageService', () => {
 
     it("updateOidcBinding writes nothing over a newer sign-in's binding", async () => {
       const { svc } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
-      await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(
         svc.updateOidcBinding('@carol:hs', lineage, {
@@ -740,7 +765,7 @@ describe('SessionStorageService', () => {
 
       it('mints a new lineage on every save, and a refresh keeps it', async () => {
         const { svc } = setup();
-        const first = await firstValueFrom(svc.save(CAROL));
+        const first = await firstValueFrom(save(svc, CAROL));
         expect(first.lineage).toEqual(expect.any(String));
 
         await firstValueFrom(
@@ -750,7 +775,7 @@ describe('SessionStorageService', () => {
           first.lineage,
         );
 
-        const again = await firstValueFrom(svc.save(REISSUED));
+        const again = await firstValueFrom(save(svc, REISSUED));
         expect(again.lineage).toEqual(expect.any(String));
         expect(again.lineage).not.toBe(first.lineage);
         expect((await firstValueFrom(svc.load('@carol:hs')))?.lineage).toBe(
@@ -760,8 +785,8 @@ describe('SessionStorageService', () => {
 
       it("writes nothing over a newer sign-in's tokens", async () => {
         const { svc, secure } = setup();
-        const { lineage } = await firstValueFrom(svc.save(CAROL));
-        await firstValueFrom(svc.save(REISSUED));
+        const { lineage } = await firstValueFrom(save(svc, CAROL));
+        await firstValueFrom(save(svc, REISSUED));
 
         await firstValueFrom(
           svc.updateTokens('@carol:hs', lineage, 'late', 'late-refresh', 1),
@@ -772,11 +797,11 @@ describe('SessionStorageService', () => {
 
       it('writes nothing when a new sign-in is saved while the refresh waits', async () => {
         const { svc, secure } = setup();
-        const { lineage } = await firstValueFrom(svc.save(CAROL));
+        const { lineage } = await firstValueFrom(save(svc, CAROL));
 
         // The save is queued first; the refresh's check runs in its own later turn.
         await Promise.all([
-          firstValueFrom(svc.save(REISSUED)),
+          firstValueFrom(save(svc, REISSUED)),
           firstValueFrom(
             svc.updateTokens('@carol:hs', lineage, 'late', 'late-refresh', 1),
           ),
@@ -787,7 +812,7 @@ describe('SessionStorageService', () => {
 
       it('writes nothing from a session read before lineages over a newer sign-in', async () => {
         const { svc, secure } = setup();
-        await firstValueFrom(svc.save(REISSUED));
+        await firstValueFrom(save(svc, REISSUED));
 
         await firstValueFrom(
           svc.updateTokens('@carol:hs', undefined, 'late', 'late-refresh', 1),
@@ -801,7 +826,7 @@ describe('SessionStorageService', () => {
         async (lineage) => {
           const { svc, secure } = setup();
           const { lineage: _minted, ...legacy } = await firstValueFrom(
-            svc.save(CAROL),
+            save(svc, CAROL),
           );
           const { accessToken: _a, refreshToken: _r, ...record } = legacy;
           prefs.set(
@@ -833,8 +858,8 @@ describe('SessionStorageService', () => {
       // claim: `updateTokensInternal` already bails when the record is gone (pinned by the
       // sibling no-op test), so this asserts the two mechanisms compose.
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, ALICE));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       const [cleared] = await Promise.all([
         firstValueFrom(svc.clearAll()),
@@ -859,10 +884,10 @@ describe('SessionStorageService', () => {
 
     it('a same-device re-login carries the rotated expiry + oidc (no silent staleness)', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       // Re-login on the same device with a fresh access-token window.
       await firstValueFrom(
-        svc.save({
+        save(svc, {
           ...CAROL,
           accessToken: 'reissued',
           accessTokenExpiresAt: 5555555555,
@@ -878,14 +903,14 @@ describe('SessionStorageService', () => {
 
     it('clears a stale refresh token + oidc when the account re-logs in without one', async () => {
       const { svc, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBe(
         'carol-refresh',
       );
 
       // Same account + device, but a plain (non-OIDC) login: no refresh token / binding.
       await firstValueFrom(
-        svc.save({
+        save(svc, {
           baseUrl: CAROL.baseUrl,
           userId: CAROL.userId,
           deviceId: CAROL.deviceId,
@@ -910,8 +935,8 @@ describe('SessionStorageService', () => {
         accessTokenExpiresAt: 111,
         oidc: OIDC_BINDING,
       };
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
-      await firstValueFrom(svc.save(DAVE)); // DAVE saved last → active
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
+      await firstValueFrom(save(svc, DAVE)); // DAVE saved last → active
 
       // Refresh CAROL (the non-active account, as a background refresh would).
       await firstValueFrom(
@@ -947,7 +972,7 @@ describe('SessionStorageService', () => {
 
     it('serializes a concurrent remove + token refresh so a signed-out account is not resurrected', async () => {
       const { svc, secure } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
 
       // A sign-out and a background token refresh for the SAME account race. Subscriptions
       // are created in array order, so remove is queued before the refresh.
@@ -975,36 +1000,36 @@ describe('SessionStorageService', () => {
     it('invalidateToken, remove and clear each wipe the refresh token', async () => {
       const { svc, secure } = setup();
 
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       await firstValueFrom(svc.invalidateToken('@carol:hs'));
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
 
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       await firstValueFrom(svc.remove('@carol:hs'));
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
 
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       await firstValueFrom(svc.clear());
       expect(secure.store.get('matrix.refreshToken:@carol:hs')).toBeUndefined();
     });
   });
 
-  it('holds multiple accounts and makes the latest saved one active', async () => {
+  it('holds multiple accounts and loads the one placed active last', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB));
 
     const list = await firstValueFrom(svc.list());
     expect(list.map((a) => a.userId)).toEqual(['@alice:hs', '@bob:other']);
-    // The most recent save is active; both are independently loadable.
+    // The last one placed is active; both are independently loadable.
     expect(await firstValueFrom(svc.load())).toEqual(BOB_STORED);
     expect(await firstValueFrom(svc.load('@alice:hs'))).toEqual(ALICE_STORED);
   });
 
   it('snapshots the secret-free Account inventory with its Active Account pointer', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB));
 
     const snapshot = await firstValueFrom(svc.snapshot());
 
@@ -1019,8 +1044,8 @@ describe('SessionStorageService', () => {
 
   it('a same-device re-save (token rotation) reuses the crypto store', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, { ...ALICE, accessToken: 'rotated' }));
 
     const list = await firstValueFrom(svc.list());
     expect(list).toEqual([
@@ -1041,9 +1066,9 @@ describe('SessionStorageService', () => {
 
   it('recomputes the crypto store when a re-save brings a NEW device id', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE)); // DEV1
+    await firstValueFrom(save(svc, ALICE)); // DEV1
     await firstValueFrom(
-      svc.save({ ...ALICE, deviceId: 'DEV1b', accessToken: 'rotated' }),
+      save(svc, { ...ALICE, deviceId: 'DEV1b', accessToken: 'rotated' }),
     );
 
     // A new server-issued device can't use the old device's Olm store, so the prefix
@@ -1056,11 +1081,11 @@ describe('SessionStorageService', () => {
   it('a fresh login AFTER signing an account out lands on a new store (no orphan reopen)', async () => {
     const { svc } = setup();
     // Sign in, then fully sign out that account (its record is removed)…
-    await firstValueFrom(svc.save(ALICE)); // device DEV1
+    await firstValueFrom(save(svc, ALICE)); // device DEV1
     await firstValueFrom(svc.remove('@alice:hs'));
     // …then log the SAME user back in — the server issues a NEW device id.
     await firstValueFrom(
-      svc.save({ ...ALICE, deviceId: 'DEV9', accessToken: 'fresh' }),
+      save(svc, { ...ALICE, deviceId: 'DEV9', accessToken: 'fresh' }),
     );
 
     // The new login must NOT re-derive DEV1's prefix (that store is orphaned and still
@@ -1072,8 +1097,8 @@ describe('SessionStorageService', () => {
 
   it('setActive switches which account load() returns', async () => {
     const { svc } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB)); // Bob active
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB)); // Bob active
 
     await firstValueFrom(svc.setActive('@alice:hs'));
     expect(await firstValueFrom(svc.load())).toEqual(ALICE_STORED);
@@ -1085,8 +1110,8 @@ describe('SessionStorageService', () => {
 
   it('remove drops one account + its token and repoints active; others survive', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB)); // Bob active
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB)); // Bob active
 
     await firstValueFrom(svc.remove('@bob:other'));
 
@@ -1101,8 +1126,8 @@ describe('SessionStorageService', () => {
 
   it('remove of a NON-active background account leaves the active pointer put', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB)); // Bob active
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB)); // Bob active
 
     // Remove the backgrounded, non-active account.
     await firstValueFrom(svc.remove('@alice:hs'));
@@ -1124,8 +1149,8 @@ describe('SessionStorageService', () => {
   describe('the native token vault', () => {
     it('removes the vault record when it removes an account', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save({ ...BOB, oidc: OIDC_BINDING }));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, { ...BOB, oidc: OIDC_BINDING }));
 
       await firstValueFrom(svc.remove('@bob:other'));
 
@@ -1134,15 +1159,15 @@ describe('SessionStorageService', () => {
 
     it('removes only its own records when the last account signs out, and empties the vault on a clear-all', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save({ ...ALICE, oidc: OIDC_BINDING }));
-      await firstValueFrom(svc.save({ ...BOB, oidc: OIDC_BINDING }));
+      await firstValueFrom(save(svc, { ...ALICE, oidc: OIDC_BINDING }));
+      await firstValueFrom(save(svc, { ...BOB, oidc: OIDC_BINDING }));
       await firstValueFrom(svc.remove('@alice:hs', { keepNativeTokens: true }));
 
       await firstValueFrom(svc.clear());
 
       expect(bridge.removeTokens.mock.calls).toEqual([['@bob:other']]);
 
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       bridge.removeTokens.mockClear();
       await firstValueFrom(svc.clearAll());
 
@@ -1152,7 +1177,7 @@ describe('SessionStorageService', () => {
 
     it('rejects clear() and clearAll() when the native removal is refused, after the JS tokens', async () => {
       const { svc, bridge, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
       bridge.removeAllTokens.mockReturnValue(throwError(() => new Error('no')));
 
@@ -1165,7 +1190,7 @@ describe('SessionStorageService', () => {
 
     it('clears the vault after the JS tokens and before the registry', async () => {
       const { svc, bridge, removals } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       const order: string[] = [];
       removals.mockImplementation(async (key) => {
         order.push(key);
@@ -1185,7 +1210,7 @@ describe('SessionStorageService', () => {
 
     it('removes the vault record after the JS tokens and before the registry write', async () => {
       const { svc, bridge, removals } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       const order: string[] = [];
       removals.mockImplementation(async (key) => {
         order.push(key);
@@ -1206,8 +1231,8 @@ describe('SessionStorageService', () => {
 
     it('keeps the vault record when told to, for a revocation still to run', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, BOB));
 
       await firstValueFrom(svc.remove('@alice:hs', { keepNativeTokens: true }));
       await firstValueFrom(svc.clear({ keepNativeTokens: true }));
@@ -1218,7 +1243,7 @@ describe('SessionStorageService', () => {
 
     it('removes a kept vault record later unless the account is stored with a binding', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       await firstValueFrom(svc.removeNativeTokens('@carol:hs'));
       expect(bridge.removeTokens).not.toHaveBeenCalled();
 
@@ -1226,14 +1251,14 @@ describe('SessionStorageService', () => {
       await firstValueFrom(svc.removeNativeTokens('@carol:hs'));
       expect(bridge.removeTokens.mock.calls).toEqual([['@carol:hs']]);
 
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       await firstValueFrom(svc.removeNativeTokens('@alice:hs'));
       expect(bridge.removeTokens).toHaveBeenCalledTimes(2);
     });
 
     it('rejects invalidateToken when the native removal is refused, after the JS removals settled', async () => {
       const { svc, bridge, secure } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
 
       await expect(
@@ -1246,10 +1271,10 @@ describe('SessionStorageService', () => {
 
     it('keeps the vault record when a sign-in on a new device replaces an OAuth record', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(
-        svc.save({
+        save(svc, {
           ...ALICE,
           userId: CAROL.userId,
           baseUrl: CAROL.baseUrl,
@@ -1264,13 +1289,13 @@ describe('SessionStorageService', () => {
       vi.useFakeTimers();
       try {
         const { svc, bridge } = setup();
-        await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(save(svc, CAROL));
         bridge.removeTokens.mockReturnValueOnce(NEVER);
 
         const stuck = firstValueFrom(svc.remove('@carol:hs')).catch(
           (error: unknown) => error,
         );
-        const next = firstValueFrom(svc.save(BOB));
+        const next = firstValueFrom(save(svc, BOB));
         await vi.advanceTimersByTimeAsync(4999);
         expect(await Promise.race([stuck, 'pending'])).toBe('pending');
         await vi.advanceTimersByTimeAsync(1);
@@ -1293,7 +1318,7 @@ describe('SessionStorageService', () => {
 
       it('a record left by an offline sign-out is swept at the next start', async () => {
         const { svc, bridge } = nativeSetup();
-        await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(save(svc, CAROL));
         await firstValueFrom(svc.clear({ keepNativeTokens: true }));
 
         await firstValueFrom(svc.sweepNativeTokens());
@@ -1303,8 +1328,8 @@ describe('SessionStorageService', () => {
 
       it('keeps only accounts stored with an OIDC binding', async () => {
         const { svc, bridge } = nativeSetup();
-        await firstValueFrom(svc.save(ALICE));
-        await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(save(svc, ALICE));
+        await firstValueFrom(save(svc, CAROL));
 
         await firstValueFrom(svc.sweepNativeTokens());
 
@@ -1343,9 +1368,9 @@ describe('SessionStorageService', () => {
       it('lists a sign-in saved while the sweep waits its turn', async () => {
         const { svc, bridge } = nativeSetup();
 
-        const save = firstValueFrom(svc.save(CAROL));
+        const saved = firstValueFrom(save(svc, CAROL));
         const sweep = firstValueFrom(svc.sweepNativeTokens());
-        await Promise.all([save, sweep]);
+        await Promise.all([saved, sweep]);
 
         expect(bridge.removeTokensExcept).toHaveBeenCalledExactlyOnceWith([
           '@carol:hs',
@@ -1372,7 +1397,7 @@ describe('SessionStorageService', () => {
         ],
       ])('%s makes no native call', async (_name, act) => {
         const { svc, bridge } = setup();
-        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(save(svc, ALICE));
 
         await firstValueFrom(act(svc), { defaultValue: undefined });
 
@@ -1390,7 +1415,7 @@ describe('SessionStorageService', () => {
         vi.useFakeTimers();
         try {
           const { svc, bridge } = setup();
-          await firstValueFrom(svc.save(ALICE));
+          await firstValueFrom(save(svc, ALICE));
           bridge.removeTokens.mockReturnValue(NEVER);
 
           const settled = vi.fn();
@@ -1410,8 +1435,8 @@ describe('SessionStorageService', () => {
 
       it('a clear removes only the OAuth accounts of a mixed registry', async () => {
         const { svc, bridge } = setup();
-        await firstValueFrom(svc.save(ALICE));
-        await firstValueFrom(svc.save(CAROL));
+        await firstValueFrom(save(svc, ALICE));
+        await firstValueFrom(save(svc, CAROL));
 
         await firstValueFrom(svc.clear());
 
@@ -1454,7 +1479,7 @@ describe('SessionStorageService', () => {
 
     it('still empties the whole vault on a clear-all of password accounts', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       await firstValueFrom(svc.clearAll());
 
@@ -1463,7 +1488,7 @@ describe('SessionStorageService', () => {
 
     it('stores the new sign-in before it removes the old one from the vault', async () => {
       const { svc, bridge } = setup();
-      const { lineage: first } = await firstValueFrom(svc.save(CAROL));
+      const { lineage: first } = await firstValueFrom(save(svc, CAROL));
       let storedAtRemoval: string | undefined;
       bridge.removeTokens.mockImplementation(() => {
         const { accounts } = JSON.parse(
@@ -1474,7 +1499,7 @@ describe('SessionStorageService', () => {
       });
 
       const { lineage: second } = await firstValueFrom(
-        svc.save({ ...CAROL, refreshToken: undefined }),
+        save(svc, { ...CAROL, refreshToken: undefined }),
       );
 
       expect(second).not.toBe(first);
@@ -1483,7 +1508,7 @@ describe('SessionStorageService', () => {
 
     it('removes the vault record on a soft logout and keeps the registry entry', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       await firstValueFrom(svc.invalidateToken('@carol:hs'));
 
@@ -1493,10 +1518,10 @@ describe('SessionStorageService', () => {
 
     it('removes the vault record on a sign-in without a refresh token, and a refused removal does not fail it', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       bridge.removeTokens.mockReturnValue(throwError(() => new Error('no')));
 
-      await firstValueFrom(svc.save({ ...CAROL, refreshToken: undefined }));
+      await firstValueFrom(save(svc, { ...CAROL, refreshToken: undefined }));
 
       expect(bridge.removeTokens).toHaveBeenCalledExactlyOnceWith('@carol:hs');
       expect((await firstValueFrom(svc.load()))?.accessToken).toBe(
@@ -1506,17 +1531,17 @@ describe('SessionStorageService', () => {
 
     it('leaves the vault alone on a sign-in with a refresh token or over a password record', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(CAROL));
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, CAROL));
+      await firstValueFrom(save(svc, CAROL));
 
       expect(bridge.removeTokens).not.toHaveBeenCalled();
     });
 
     it('rejects remove() when the native removal is refused, so the residue is retried', async () => {
       const { svc, bridge } = setup();
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       bridge.removeTokens.mockReturnValueOnce(
         throwError(() => new Error('no')),
       );
@@ -1532,7 +1557,7 @@ describe('SessionStorageService', () => {
 
     it('drops the refresh token copy only for the stored lineage', async () => {
       const { svc, secure } = setup();
-      const { lineage } = await firstValueFrom(svc.save(CAROL));
+      const { lineage } = await firstValueFrom(save(svc, CAROL));
       const key = 'matrix.refreshToken:@carol:hs';
 
       await firstValueFrom(svc.dropRefreshToken('@carol:hs', 'older'));
@@ -1547,7 +1572,7 @@ describe('SessionStorageService', () => {
     it('changes none of the JS removals off native, where the bridge is inert', async () => {
       const { svc, removals } = setup({});
       expect(TestBed.inject(PushHandoffBridge).available).toBe(false);
-      await firstValueFrom(svc.save(CAROL));
+      await firstValueFrom(save(svc, CAROL));
       removals.mockClear();
 
       await firstValueFrom(svc.remove('@carol:hs'));
@@ -1561,8 +1586,8 @@ describe('SessionStorageService', () => {
 
   it('clear removes every account and token', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB));
 
     await firstValueFrom(svc.clear());
 
@@ -1575,8 +1600,8 @@ describe('SessionStorageService', () => {
 
   it('clear also retires leftover legacy single-slot residue (interrupted migration)', async () => {
     const { svc, secure } = setup();
-    await firstValueFrom(svc.save(ALICE));
-    await firstValueFrom(svc.save(BOB));
+    await firstValueFrom(save(svc, ALICE));
+    await firstValueFrom(save(svc, BOB));
     // An interrupted migration left the legacy single-slot keys behind, coexisting
     // with the new registry.
     prefs.set(
@@ -1658,7 +1683,7 @@ describe('SessionStorageService', () => {
 
     // Same device (soft-logout re-auth / token rotation): assigning a prefix would
     // orphan the account's existing default-prefixed Olm store and force re-verification.
-    await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+    await firstValueFrom(save(svc, { ...ALICE, accessToken: 'rotated' }));
     const [record] = await firstValueFrom(svc.list());
     expect(record.cryptoPrefix).toBeUndefined();
   });
@@ -1670,7 +1695,7 @@ describe('SessionStorageService', () => {
     // A genuinely new device can't reuse the legacy default store (bound to the old
     // device), so it must get a fresh device-scoped store — re-verification is
     // unavoidable for the new device, but login succeeds instead of throwing.
-    await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+    await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
     const [record] = await firstValueFrom(svc.list());
     expect(record.cryptoPrefix).toBe('trinity-crypto:@alice:hs:DEV1b');
   });
@@ -1686,8 +1711,8 @@ describe('SessionStorageService', () => {
     it('deletes the old device store when a re-save brings a new device id', async () => {
       const deleteDatabase = stubIndexedDb();
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE)); // DEV1 → trinity-crypto:@alice:hs:DEV1
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, ALICE)); // DEV1 → trinity-crypto:@alice:hs:DEV1
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
 
       // The superseded DEV1 store (both its IndexedDB databases) is reclaimed so it
       // doesn't leak — the account already moved to its DEV1b store.
@@ -1702,14 +1727,14 @@ describe('SessionStorageService', () => {
     it('clears the old store only when the new device signs in', async () => {
       const deleteDatabase = stubIndexedDb();
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       // A server-ended session: its token is dropped, and a same-device sign-in changes nothing.
       await firstValueFrom(svc.invalidateToken(ALICE.userId));
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       await firstValueFrom(svc.invalidateToken(ALICE.userId));
       expect(deleteDatabase).not.toHaveBeenCalled();
 
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
 
       expect(deleteDatabase).toHaveBeenCalledWith(
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto',
@@ -1723,7 +1748,7 @@ describe('SessionStorageService', () => {
       const { svc, secure, keys } = setup();
       await migrateLegacyAlice(svc, secure);
 
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
 
       const [record] = await firstValueFrom(svc.list());
       expect(record.cryptoStoreKeyed).toBe(true);
@@ -1735,8 +1760,8 @@ describe('SessionStorageService', () => {
     it('leaves the store untouched on a same-device re-save (token rotation)', async () => {
       const deleteDatabase = stubIndexedDb();
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, { ...ALICE, accessToken: 'rotated' }));
 
       expect(deleteDatabase).not.toHaveBeenCalled();
     });
@@ -1744,7 +1769,7 @@ describe('SessionStorageService', () => {
     it('does not delete anything for a brand-new account (no prior store)', async () => {
       const deleteDatabase = stubIndexedDb();
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       expect(deleteDatabase).not.toHaveBeenCalled();
     });
@@ -1756,11 +1781,11 @@ describe('SessionStorageService', () => {
         }),
       });
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       // A reclaim that throws must never fail the re-login it rides along with.
       const stored = await firstValueFrom(
-        svc.save({ ...ALICE, deviceId: 'DEV1b' }),
+        save(svc, { ...ALICE, deviceId: 'DEV1b' }),
       );
       expect(stored.cryptoPrefix).toBe('trinity-crypto:@alice:hs:DEV1b');
     });
@@ -1769,7 +1794,7 @@ describe('SessionStorageService', () => {
       const deleteDatabase = stubIndexedDb();
       const { svc, secure } = setup();
       await migrateLegacyAlice(svc, secure); // DEV1, no prefix → SDK default store
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
 
       expect(deleteDatabase).toHaveBeenCalledWith(
         'matrix-js-sdk::matrix-sdk-crypto',
@@ -1794,7 +1819,7 @@ describe('SessionStorageService', () => {
     it('creates a key named by the new store, and records that the store is keyed', async () => {
       const { svc, keys } = setup();
 
-      const stored = await firstValueFrom(svc.save(ALICE));
+      const stored = await firstValueFrom(save(svc, ALICE));
 
       expect(keys.store.get(ALICE_PREFIX)).toHaveLength(32);
       expect(stored.cryptoStoreKeyed).toBe(true);
@@ -1806,12 +1831,12 @@ describe('SessionStorageService', () => {
       const deleteDatabase = vi.fn();
       vi.stubGlobal('indexedDB', { deleteDatabase });
       const { svc, keys, secure } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       const aliceKey = keys.store.get(ALICE_PREFIX);
 
       await expect(
         firstValueFrom(
-          svc.save({
+          save(svc, {
             baseUrl: 'https://hs',
             userId: '@alice',
             deviceId: 'hs:DEV1',
@@ -1843,10 +1868,10 @@ describe('SessionStorageService', () => {
           vi.spyOn(Preferences, 'set').mockRejectedValueOnce(once);
         }
 
-        await expect(firstValueFrom(svc.save(ALICE))).rejects.toBe(once);
+        await expect(firstValueFrom(save(svc, ALICE))).rejects.toBe(once);
         expect(keys.store.has(ALICE_PREFIX)).toBe(false);
 
-        await expect(firstValueFrom(svc.save(ALICE))).resolves.toEqual(
+        await expect(firstValueFrom(save(svc, ALICE))).resolves.toEqual(
           ALICE_STORED,
         );
         expect(keys.store.has(ALICE_PREFIX)).toBe(true);
@@ -1858,7 +1883,7 @@ describe('SessionStorageService', () => {
       keys.store.set(ALICE_PREFIX, new Uint8Array(32));
       const existing = keys.store.get(ALICE_PREFIX);
 
-      await expect(firstValueFrom(svc.save(ALICE))).rejects.toThrow();
+      await expect(firstValueFrom(save(svc, ALICE))).rejects.toThrow();
 
       expect(keys.remove).not.toHaveBeenCalled();
       expect(keys.store.get(ALICE_PREFIX)).toBe(existing);
@@ -1866,10 +1891,10 @@ describe('SessionStorageService', () => {
 
     it('reuses the key on a same-device re-login instead of making a new one', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       const first = keys.store.get(ALICE_PREFIX);
 
-      await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+      await firstValueFrom(save(svc, { ...ALICE, accessToken: 'rotated' }));
 
       expect(keys.create).toHaveBeenCalledOnce();
       expect(keys.store.get(ALICE_PREFIX)).toBe(first);
@@ -1877,7 +1902,7 @@ describe('SessionStorageService', () => {
 
     it('gives a new device its own key and deletes the old store key after the registry moves on', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       keys.remove.mockImplementation(async (id) => {
         // The registry already points at the new store when the old key goes.
         const [record] = await firstValueFrom(svc.list());
@@ -1885,7 +1910,7 @@ describe('SessionStorageService', () => {
         keys.store.delete(id);
       });
 
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
 
       expect(keys.store.has('trinity-crypto:@alice:hs:DEV1b')).toBe(true);
       expect(keys.store.has(ALICE_PREFIX)).toBe(false);
@@ -1894,8 +1919,8 @@ describe('SessionStorageService', () => {
     it('gives each account its own key', async () => {
       const { svc, keys } = setup();
 
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, BOB));
 
       expect(keys.store.get(ALICE_PREFIX)).not.toEqual(
         keys.store.get('trinity-crypto:@bob:other:DEV2'),
@@ -1906,7 +1931,7 @@ describe('SessionStorageService', () => {
       const { svc, keys } = setup();
       keys.create.mockRejectedValueOnce(new Error('keychain unavailable'));
 
-      await expect(firstValueFrom(svc.save(ALICE))).rejects.toThrow();
+      await expect(firstValueFrom(save(svc, ALICE))).rejects.toThrow();
 
       // Registering the account without its key would let a restart open the new
       // store unencrypted.
@@ -1916,14 +1941,14 @@ describe('SessionStorageService', () => {
     it('keeps the stored device and its tokens when the new device key cannot be stored', async () => {
       const { svc, secure, keys } = setup();
       await firstValueFrom(
-        svc.save({ ...ALICE, refreshToken: 'alice-refresh' }),
+        save(svc, { ...ALICE, refreshToken: 'alice-refresh' }),
       );
       const [before] = await firstValueFrom(svc.list());
       keys.create.mockRejectedValueOnce(new Error('keychain unavailable'));
 
       await expect(
         firstValueFrom(
-          svc.save({ ...ALICE, deviceId: 'DEV1b', accessToken: 'new-token' }),
+          save(svc, { ...ALICE, deviceId: 'DEV1b', accessToken: 'new-token' }),
         ),
       ).rejects.toThrow('keychain unavailable');
 
@@ -1941,7 +1966,7 @@ describe('SessionStorageService', () => {
       const { svc, secure, keys } = setup();
       await migrateLegacyAlice(svc, secure);
 
-      await firstValueFrom(svc.save({ ...ALICE, accessToken: 'rotated' }));
+      await firstValueFrom(save(svc, { ...ALICE, accessToken: 'rotated' }));
 
       expect(keys.create).not.toHaveBeenCalled();
       const [record] = await firstValueFrom(svc.list());
@@ -1950,7 +1975,7 @@ describe('SessionStorageService', () => {
 
     it('keeps the key when a soft logout drops the token, so re-auth reopens the store', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
 
       await firstValueFrom(svc.invalidateToken('@alice:hs'));
 
@@ -1959,8 +1984,8 @@ describe('SessionStorageService', () => {
 
     it('deletes the key on remove only after the registry forgets the account', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, BOB));
       const seenAtRemoval: string[][] = [];
       keys.remove.mockImplementation(async (id) => {
         seenAtRemoval.push(registeredIds());
@@ -1976,7 +2001,7 @@ describe('SessionStorageService', () => {
 
     it('still removes the account when deleting its key fails', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       keys.remove.mockRejectedValue(new Error('keychain unavailable'));
 
       await firstValueFrom(svc.remove('@alice:hs'));
@@ -1986,8 +2011,8 @@ describe('SessionStorageService', () => {
 
     it('deletes every account key on clear and clearAll, after the registry is gone', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save(ALICE));
-      await firstValueFrom(svc.save(BOB));
+      await firstValueFrom(save(svc, ALICE));
+      await firstValueFrom(save(svc, BOB));
       const seenAtRemoval: string[][] = [];
       keys.remove.mockImplementation(async (id) => {
         seenAtRemoval.push(registeredIds());
@@ -1997,14 +2022,14 @@ describe('SessionStorageService', () => {
       expect(keys.store.size).toBe(0);
       expect(seenAtRemoval).toEqual([[], []]);
 
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       await firstValueFrom(svc.clearAll());
       expect(keys.store.size).toBe(0);
     });
 
     it('the orphan sweep deletes the key of an orphaned store and keeps a live one', async () => {
       const { svc, keys } = setup();
-      await firstValueFrom(svc.save({ ...ALICE, deviceId: 'DEV1b' }));
+      await firstValueFrom(save(svc, { ...ALICE, deviceId: 'DEV1b' }));
       // A key left behind with its old-device store, e.g. by a crash mid re-login.
       keys.store.set(ALICE_PREFIX, new Uint8Array(32));
       keys.store.set('trinity-crypto:@ghost:hs:GDEV', new Uint8Array(32));
@@ -2040,7 +2065,7 @@ describe('SessionStorageService', () => {
 
       it('keeps the device while its store key still reads back', async () => {
         const { svc } = setup();
-        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(save(svc, ALICE));
         const record = await firstValueFrom(svc.record('@alice:hs'));
 
         expect(
@@ -2050,7 +2075,7 @@ describe('SessionStorageService', () => {
 
       it('gives up the device when the store key is missing, so sign-in makes a new one', async () => {
         const { svc, keys } = setup();
-        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(save(svc, ALICE));
         keys.read.mockResolvedValue({ kind: 'missing' });
         const record = await firstValueFrom(svc.record('@alice:hs'));
 
@@ -2061,7 +2086,7 @@ describe('SessionStorageService', () => {
 
       it('keeps the device while the keychain is unavailable, so its store is never replaced', async () => {
         const { svc, keys } = setup();
-        await firstValueFrom(svc.save(ALICE));
+        await firstValueFrom(save(svc, ALICE));
         keys.read.mockResolvedValue({ kind: 'unavailable' });
         const record = await firstValueFrom(svc.record('@alice:hs'));
 
@@ -2085,7 +2110,7 @@ describe('SessionStorageService', () => {
 
     it('deletes a crypto store no signed-in account owns (a pre-fix orphan)', async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE)); // registers @alice, device-scoped store
+      await firstValueFrom(save(svc, ALICE)); // registers @alice, device-scoped store
       const deleteDatabase = stubIndexedDbWith([
         'trinity-crypto:@ghost:hs::matrix-sdk-crypto',
         'trinity-crypto:@ghost:hs::matrix-sdk-crypto-meta',
@@ -2103,7 +2128,7 @@ describe('SessionStorageService', () => {
 
     it("never deletes a signed-in account's own crypto store", async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE)); // trinity-crypto:@alice:hs:DEV1
+      await firstValueFrom(save(svc, ALICE)); // trinity-crypto:@alice:hs:DEV1
       const deleteDatabase = stubIndexedDbWith([
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto',
         'trinity-crypto:@alice:hs:DEV1::matrix-sdk-crypto-meta',
@@ -2146,7 +2171,7 @@ describe('SessionStorageService', () => {
       // A cold start is exactly when nothing holds a connection, so this is where that
       // residue gets reclaimed — and sync stores were previously never swept at all.
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       const deleteDatabase = stubIndexedDbWith([
         'matrix-js-sdk:trinity-sync:@ghost:hs',
       ]);
@@ -2160,7 +2185,7 @@ describe('SessionStorageService', () => {
 
     it("never deletes a signed-in account's own sync store", async () => {
       const { svc } = setup();
-      await firstValueFrom(svc.save(ALICE));
+      await firstValueFrom(save(svc, ALICE));
       const deleteDatabase = stubIndexedDbWith([
         'matrix-js-sdk:trinity-sync:@alice:hs',
       ]);

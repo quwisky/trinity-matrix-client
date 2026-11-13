@@ -426,15 +426,6 @@ describe('AuthService', () => {
       const loginRequest = vi.fn().mockResolvedValue(loginRes);
       createClientMock.mockReturnValue({ loginRequest } as never);
       const matrix = TestBed.inject(MatrixClientService);
-      const storage = TestBed.inject(SessionStorageService);
-      vi.mocked(storage.save).mockReturnValue(
-        of({
-          baseUrl: 'https://hs',
-          userId: '@me:hs',
-          deviceId: 'EXISTING_DEV',
-          accessToken: 'tok',
-        }),
-      );
       vi.mocked(matrix.add).mockReturnValue(of(undefined));
 
       await firstValueFrom(
@@ -933,7 +924,7 @@ describe('AuthService', () => {
         ),
       ).rejects.toThrow(ReauthAccountMismatchError);
 
-      expect(storage.save).not.toHaveBeenCalled();
+      expect(storage.persistForEstablishment).not.toHaveBeenCalled();
       // The grant is unusable and its tokens are live: hand them back rather than
       // leaving a session the user cannot see or reach.
       expect(oidc.revokeTokens).toHaveBeenCalledWith(
@@ -1095,7 +1086,7 @@ describe('AuthService', () => {
       expect(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
       ).not.toHaveBeenCalled();
-      expect(storage.save).not.toHaveBeenCalled();
+      expect(storage.persistForEstablishment).not.toHaveBeenCalled();
       expect(
         TestBed.inject(OidcClientService).revokeTokens,
       ).toHaveBeenCalledWith(

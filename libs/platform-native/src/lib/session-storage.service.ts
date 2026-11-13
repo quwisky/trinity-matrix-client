@@ -109,7 +109,7 @@ export class SessionStorageService {
 
   /**
    * Serializes registry read-modify-write cycles. The OIDC token refresher calls
-   * {@link updateTokens} concurrently with user-driven `save`/`remove`/`clear`; without
+   * {@link updateTokens} concurrently with user-driven `persistForEstablishment`/`remove`/`clear`; without
    * this chain, overlapping cycles on the shared `matrix.accounts` blob lose an update
    * (a refresh after a logout would resurrect the signed-out account). Every mutation
    * must run through this chain so each sees the prior one's committed result. Reads
@@ -128,42 +128,19 @@ export class SessionStorageService {
   }
 
   /**
-   * Persist a session and make it the active account (add or replace). Resolves the
-   * stored session, carrying the crypto-store prefix it resolved to, so the caller
-   * doesn't fall back to the SDK default (which would collide with another account's
-   * crypto store).
-   */
-  save(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() =>
-      from(this.serialize(() => this.upsert(session, 'upsert', 'activate'))),
-    );
-  }
-
-  /**
-   * Persist a newly created account only when its MXID is absent from the registry.
-   * Check and write share one serialized turn, so registration can't overwrite an
-   * existing account's token, device binding or crypto-store prefix.
-   */
-  saveNew(session: MatrixSession): Observable<MatrixSession> {
-    return defer(() =>
-      from(this.serialize(() => this.upsert(session, 'new', 'activate'))),
-    );
-  }
-
-  /**
    * Persist authenticated material without moving the Active Account pointer.
    * Account Runtime commits that pointer only after the live Matrix runtime is ready.
+   * Resolves the stored session, carrying the crypto-store prefix it resolved to, so the
+   * caller doesn't fall back to the SDK default (which would collide with another
+   * account's crypto store). With `new`, check and write share one serialized turn, so a
+   * registration can't overwrite an existing account's token, device binding or prefix.
    */
   persistForEstablishment(
     session: MatrixSession,
     constraint: AccountPersistenceConstraint,
   ): Observable<MatrixSession> {
     return defer(() =>
-      from(
-        this.serialize(() =>
-          this.upsert(session, constraint, 'preserve-active'),
-        ),
-      ),
+      from(this.serialize(() => this.upsert(session, constraint))),
     );
   }
 
@@ -482,7 +459,6 @@ export class SessionStorageService {
   private async upsert(
     session: MatrixSession,
     constraint: AccountPersistenceConstraint,
-    activation: 'activate' | 'preserve-active',
   ): Promise<MatrixSession> {
     const { accessToken, refreshToken, ...incoming } = session;
     const registry = await this.readRegistry();
@@ -543,9 +519,6 @@ export class SessionStorageService {
       ...registry.accounts.filter((a) => a.userId !== incoming.userId),
       record,
     ];
-    if (activation === 'activate') {
-      registry.activeUserId = incoming.userId;
-    }
     const createsKey = !existing || deviceChanged;
     if (createsKey) {
       // A new store's key is written BEFORE the tokens and the registry: a keyed record

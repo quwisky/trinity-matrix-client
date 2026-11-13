@@ -79,7 +79,7 @@ export function setup(...clients: ReturnType<typeof fakeClient>[]) {
   // Default: no key reads back (the tests that open keyed stores say otherwise).
   vi.mocked(storeKeys.read).mockResolvedValue({ kind: 'missing' });
   // Default: no persisted session (mirrors the original hand-rolled stub); the
-  // save/clear observables aren't exercised by these paths.
+  // write and clear observables aren't exercised by these paths.
   vi.mocked(storage.load).mockReturnValue(of(null));
   // A wipe of a non-live account reads its registry record for the crypto prefix.
   vi.mocked(storage.record).mockReturnValue(of(null));
