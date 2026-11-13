@@ -990,13 +990,54 @@ describe('resetRecovery when another account becomes active', () => {
     expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
   });
 
-  it('names the account being reset to every password prompt', async () => {
-    const { svc } = setup();
+  it('names the account being reset to every password prompt, also after a switch', async () => {
+    const { svc, crypto, activeUserId } = setup();
     const prompt = vi.fn().mockResolvedValue('pw');
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        activeUserId.set('@b:hs');
+        // The replayed password is rejected, so the user is asked again over B's screen.
+        await opts.authUploadDeviceSigningKeys?.(
+          vi
+            .fn()
+            .mockRejectedValueOnce(uiaError('upload'))
+            .mockRejectedValueOnce(uiaError('upload'))
+            .mockResolvedValueOnce(undefined),
+        );
+      },
+    );
 
     await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
 
-    expect(prompt).toHaveBeenCalledWith('@me:hs', false);
+    // Before anything changed the prompt may close on a switch; afterwards it must not.
+    expect(prompt.mock.calls).toEqual([
+      ['@me:hs', true],
+      ['@me:hs', false],
+    ]);
+  });
+
+  it('does not ask again after a wrong password once the switch has landed', async () => {
+    const { svc, crypto, secretStorage, client, activeUserId } = setup({
+      defaultKeyId: 'old-key',
+    });
+    const prompt = vi.fn().mockResolvedValue('wrong');
+    client.deleteMultipleDevices.mockImplementation(
+      async (_devices: string[], auth?: unknown) => {
+        if (auth) {
+          activeUserId.set('@b:hs');
+        }
+        throw uiaError('probe');
+      },
+    );
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).rejects.toMatchObject(SWITCHED);
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(client.deleteMultipleDevices).toHaveBeenCalledTimes(2);
+    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
   });
 
   // Past the pre-auth the old identity is parked and rotated: refusing there would

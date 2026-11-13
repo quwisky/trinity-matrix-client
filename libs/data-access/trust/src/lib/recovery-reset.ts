@@ -13,6 +13,14 @@ import {
 } from '@trinity/util/matrix';
 
 /**
+ * Asks for the Account's password. `closeOnSwitch` is true only for the pre-auth prompt,
+ * the one that can stop for free once another Account is on screen.
+ */
+export type ResetPasswordPrompt = (
+  closeOnSwitch: boolean,
+) => Promise<string | null>;
+
+/**
  * How long any one of the reset's single homeserver round-trips may wait — an
  * account-data write, or the dehydrated-device delete.
  */
@@ -132,7 +140,7 @@ export interface RecoveryResetContext {
  */
 export async function runRecoveryReset(
   ctx: RecoveryResetContext,
-  promptPassword: PasswordPrompt,
+  promptPassword: ResetPasswordPrompt,
 ): Promise<string> {
   const { crypto, client, storage, userId } = ctx;
 
@@ -251,7 +259,7 @@ export function encodedRecoveryKey(key: GeneratedSecretStorageKey): string {
  */
 async function preAuthenticate(
   ctx: RecoveryResetContext,
-  promptPassword: PasswordPrompt,
+  promptPassword: ResetPasswordPrompt,
 ): Promise<string | null> {
   const requireRequested = (): void => {
     if (!ctx.stillRequested()) {
@@ -263,7 +271,7 @@ async function preAuthenticate(
       (auth) => ctx.client.deleteMultipleDevices([], auth ?? undefined),
       async () => {
         requireRequested();
-        const password = await promptPassword();
+        const password = await promptPassword(true);
         requireRequested();
         return password;
       },
@@ -280,12 +288,12 @@ async function preAuthenticate(
 /** A prompt that answers once from `accepted`, then defers to the user. */
 function replayAccepted(
   accepted: string | null,
-  promptPassword: PasswordPrompt,
+  promptPassword: ResetPasswordPrompt,
 ): PasswordPrompt {
   let replay = accepted;
   return async () => {
     if (replay === null) {
-      return promptPassword();
+      return promptPassword(false);
     }
     const password = replay;
     replay = null; // a rejected replay must reach the user, not loop

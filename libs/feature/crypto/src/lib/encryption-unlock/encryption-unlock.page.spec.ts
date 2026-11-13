@@ -460,32 +460,118 @@ describe('EncryptionUnlockPage', () => {
       expect(withdrawn).toBe(true);
     });
 
-    it('resets the account the screen was opened for, and names it in the password prompt', async () => {
-      const { fixture, crypto, prompt } = await renderPage({ typed: 'RESET' });
+    it('resets the account the screen was opened for, and names it in a password prompt that outlives a switch', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
 
       fixture.componentInstance.resetRecovery();
-
       expect(crypto.resetRecovery).toHaveBeenCalledWith(
         '@me:hs',
         expect.any(Function),
       );
+      // The reset is under way when the switch lands; its key upload then asks again.
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
       const askPassword = vi.mocked(crypto.resetRecovery).mock.calls[0][1];
-      await askPassword('@alice:example.org', false);
+      await askPassword('@me:hs', false);
+
       expect(prompt.mock.calls[1][0].message).toBe(
-        'Enter the password for @alice:example.org to reset your identity.',
+        'Enter the password for @me:hs to reset your identity.',
       );
+      // Cancelling here would abandon a reset part-way, so a switch must not close it.
+      expect(prompt.mock.calls[1][0].closeWhen).toBeUndefined();
     });
 
-    it('asks for the provider link of the account that was refused', async () => {
-      const { fixture, crypto } = await renderPage({
+    it('closes the first password prompt when another account becomes active', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
         typed: 'RESET',
-        reset: throwError(providerActionRequired),
+        reset: new Observable<string>(() => undefined),
+      });
+      fixture.componentInstance.resetRecovery();
+      prompt.mockReturnValue(new Subject<string | null>());
+      void vi.mocked(crypto.resetRecovery).mock.calls[0][1]('@me:hs', true);
+      let withdrawn = false;
+      (prompt.mock.calls[1][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+      fixture.detectChanges();
+      expect(withdrawn).toBe(false);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('asks for the provider link of the account that was refused, not the one now on screen', async () => {
+      const reset = new Subject<string>();
+      const { fixture, crypto, activeAccountId } = await renderPage({
+        typed: 'RESET',
+        reset,
       });
 
       fixture.componentInstance.resetRecovery();
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      reset.error(providerActionRequired());
       await flush();
 
-      expect(crypto.providerResetLink).toHaveBeenCalledWith('@me:hs');
+      expect(crypto.providerResetLink).toHaveBeenCalledExactlyOnceWith(
+        '@me:hs',
+      );
+    });
+
+    it('stays open and refuses another reset once a reset ended after the switch', async () => {
+      const reset = new Subject<string>();
+      const { fixture, crypto, prompt, dialogRef, activeAccountId } =
+        await renderPage({ asModal: true, typed: 'RESET', reset });
+      fixture.componentInstance.resetRecovery();
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      reset.error(
+        new TrustOperationError(
+          'reset-recovery',
+          'stale-state',
+          'none',
+          'Nothing was reset: you switched account while this was open.',
+        ),
+      );
+      await flush();
+      fixture.detectChanges();
+
+      // The dialog is what tells the user their reset did not happen.
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(screen.getByTestId('unlock-error').textContent).toContain(
+        'Nothing was reset: you switched account while this was open.',
+      );
+
+      fixture.componentInstance.resetRecovery();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(crypto.resetRecovery).toHaveBeenCalledOnce();
+    });
+
+    it('works again once the original account is back on screen', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        recover: of(undefined),
+        typed: null,
+      });
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+      expect(prompt).not.toHaveBeenCalled();
+
+      activeAccountId.set('@me:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(crypto.recoverWithKey).toHaveBeenCalledWith('my-key');
     });
 
     it('warns about the cost before doing it', async () => {

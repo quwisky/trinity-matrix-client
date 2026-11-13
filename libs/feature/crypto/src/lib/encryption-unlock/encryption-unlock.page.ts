@@ -281,7 +281,10 @@ export class EncryptionUnlockPage {
     this.resetting.set(true);
     this.error.set(null);
     this.crypto
-      .resetRecovery(accountId, resetPasswordPrompt(this.alert))
+      .resetRecovery(
+        accountId,
+        resetPasswordPrompt(this.alert, this.switchedAccount$),
+      )
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => {

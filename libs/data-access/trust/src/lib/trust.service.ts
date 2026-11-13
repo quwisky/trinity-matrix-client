@@ -279,7 +279,7 @@ export class TrustService {
             stillRequested,
             refreshStatus: () => this.healthRuntime.reconcile(),
           },
-          () => promptPassword(accountId, false),
+          (closeOnSwitch) => promptPassword(accountId, closeOnSwitch),
         ),
       );
     }).pipe(

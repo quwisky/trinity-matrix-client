@@ -60,12 +60,15 @@ export function confirmResetIntent(
 
 /**
  * Password prompt for the reset's UIA stages. It names the Account being reset, because it
- * can still be open after another Account came on screen.
+ * can still be open after another Account came on screen. `switchedAccount` closes it as
+ * cancelled only while the reset has changed nothing; later a cancel would abandon the
+ * reset part-way, so the prompt stays open.
  */
 export function resetPasswordPrompt(
   alert: TrnAlertService,
+  switchedAccount: Observable<unknown>,
 ): AccountPasswordPrompt {
-  return (accountId) =>
+  return (accountId, closeOnSwitch) =>
     firstValueFrom(
       alert.prompt$({
         header: 'Confirm your password',
@@ -73,6 +76,7 @@ export function resetPasswordPrompt(
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
+        ...(closeOnSwitch ? { closeWhen: switchedAccount } : {}),
       }),
     );
 }
