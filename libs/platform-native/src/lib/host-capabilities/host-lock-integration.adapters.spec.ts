@@ -1,10 +1,13 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  HOST_CAPABILITY_NEGOTIATOR,
   HOST_OPERATIONS,
   HostCapabilitiesService,
+  unavailableHostManifest,
+  type HostCapabilityManifest,
 } from '@trinity/runtime/host';
 import { desktopBridgeFixture } from '@trinity/testing';
-import { firstValueFrom, of, take, toArray } from 'rxjs';
+import { firstValueFrom, of, take, toArray, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ElectronLockIntegrationAdapter } from './host-lock-integration.adapters';
 
@@ -14,7 +17,25 @@ describe('ElectronLockIntegrationAdapter', () => {
     TestBed.resetTestingModule();
   });
 
-  function setup(granted: boolean) {
+  function manifest(granted: boolean): HostCapabilityManifest {
+    return {
+      protocolVersion: 1,
+      operations: Object.fromEntries(
+        HOST_OPERATIONS.map((operation) => [
+          operation,
+          operation === 'lock-integration' && granted
+            ? { kind: 'supported' }
+            : { kind: 'unavailable', reason: 'not-supported' },
+        ]),
+      ) as HostCapabilityManifest['operations'],
+    };
+  }
+
+  function setup(
+    granted: boolean,
+    negotiate: () => Observable<HostCapabilityManifest> = () =>
+      of(manifest(granted)),
+  ) {
     const unsubscribe = vi.fn();
     let emit: (request: 'menu' | 'system-locked' | 'suspended') => void = () =>
       undefined;
@@ -36,21 +57,8 @@ describe('ElectronLockIntegrationAdapter', () => {
       providers: [
         ElectronLockIntegrationAdapter,
         {
-          provide: HostCapabilitiesService,
-          useValue: {
-            manifest: () =>
-              of({
-                protocolVersion: 1,
-                operations: Object.fromEntries(
-                  HOST_OPERATIONS.map((operation) => [
-                    operation,
-                    operation === 'lock-integration' && granted
-                      ? { kind: 'supported' }
-                      : { kind: 'unavailable', reason: 'not-supported' },
-                  ]),
-                ),
-              }),
-          },
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: negotiate },
         },
       ],
     });
@@ -108,5 +116,45 @@ describe('ElectronLockIntegrationAdapter', () => {
       ),
     ).resolves.toEqual({ kind: 'unavailable', reason: 'not-supported' });
     expect(lockIntegration.setState).not.toHaveBeenCalled();
+  });
+
+  function failingOnce() {
+    return vi
+      .fn<() => Observable<HostCapabilityManifest>>()
+      .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')))
+      .mockReturnValue(of(manifest(true)));
+  }
+
+  it('delivers requests once a failed negotiation is retried', async () => {
+    const negotiate = failingOnce();
+    const { adapter, lockIntegration, emit } = setup(true, negotiate);
+    const seen: string[] = [];
+    const subscription = adapter.requests.subscribe((request) =>
+      seen.push(request),
+    );
+    expect(lockIntegration.subscribeRequests).not.toHaveBeenCalled();
+
+    // Startup's Retry.
+    await firstValueFrom(TestBed.inject(HostCapabilitiesService).manifest());
+    emit('menu');
+
+    expect(seen).toEqual(['menu']);
+    expect(lockIntegration.subscribeRequests).toHaveBeenCalledOnce();
+    expect(negotiate).toHaveBeenCalledTimes(2);
+    subscription.unsubscribe();
+  });
+
+  it('sends the state once a failed negotiation is retried', async () => {
+    const negotiate = failingOnce();
+    const { adapter, lockIntegration } = setup(true, negotiate);
+    const state = { enabled: true, locked: false, accelerator: null };
+    adapter.setState(state).subscribe();
+    expect(lockIntegration.setState).not.toHaveBeenCalled();
+
+    // Startup's Retry.
+    await firstValueFrom(TestBed.inject(HostCapabilitiesService).manifest());
+
+    expect(lockIntegration.setState).toHaveBeenCalledExactlyOnceWith(state);
+    expect(negotiate).toHaveBeenCalledTimes(2);
   });
 });

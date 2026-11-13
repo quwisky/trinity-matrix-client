@@ -3,12 +3,14 @@ import { TestBed } from '@angular/core/testing';
 import { SwUpdate } from '@angular/service-worker';
 import {
   HOST_AUTHENTICATION_HANDOFF_OPERATION,
+  HOST_CAPABILITY_NEGOTIATOR,
   HOST_LIFECYCLE_OPERATION,
   HostAuthenticationHandoffService,
   HostCapabilitiesService,
   HostDeepLinksService,
   HostLifecycleService,
   unavailableHostManifest,
+  type HostCapabilityManifest,
 } from '@trinity/runtime/host';
 import {
   desktopBridgeFixture,
@@ -389,31 +391,58 @@ describe('file, lifecycle and update host operation contracts', () => {
       delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     });
 
-    function configure(lifecycle: 'supported' | 'unavailable') {
+    function lifecycleManifest(
+      lifecycle: 'supported' | 'unavailable',
+    ): HostCapabilityManifest {
       const value = manifest();
+      return {
+        ...value,
+        operations: {
+          ...value.operations,
+          lifecycle:
+            lifecycle === 'supported'
+              ? { kind: 'supported' as const }
+              : {
+                  kind: 'unavailable' as const,
+                  reason: 'not-implemented' as const,
+                },
+        },
+      };
+    }
+
+    function configure(
+      lifecycle: 'supported' | 'unavailable',
+      negotiate = () => of(lifecycleManifest(lifecycle)),
+    ) {
       TestBed.configureTestingModule({
         providers: [
           hostOperationProviders(),
-          MockProvider(HostCapabilitiesService, {
-            manifest: () =>
-              of({
-                ...value,
-                operations: {
-                  ...value.operations,
-                  lifecycle:
-                    lifecycle === 'supported'
-                      ? { kind: 'supported' as const }
-                      : {
-                          kind: 'unavailable' as const,
-                          reason: 'not-implemented' as const,
-                        },
-                },
-              }),
-          }),
+          {
+            provide: HOST_CAPABILITY_NEGOTIATOR,
+            useValue: { manifest: negotiate },
+          },
         ],
       });
       return TestBed.inject(HostLifecycleService);
     }
+
+    it('reports visibility once a failed negotiation is retried', async () => {
+      const negotiate = vi
+        .fn(() => of(lifecycleManifest('supported')))
+        .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+      const seen: string[] = [];
+      const subscription = configure('supported', negotiate).events.subscribe(
+        (event) => seen.push(event.kind),
+      );
+
+      // Startup's Retry.
+      await firstValueFrom(TestBed.inject(HostCapabilitiesService).manifest());
+      visibility.emit('hidden');
+      subscription.unsubscribe();
+
+      expect(seen).toEqual(['background']);
+      expect(negotiate).toHaveBeenCalledTimes(2);
+    });
 
     it('selects the Electron lifecycle adapter', () => {
       configure('supported');

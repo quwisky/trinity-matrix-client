@@ -91,6 +91,7 @@ import {
   HostCapabilitiesService,
   HostDeepLinksService,
   HostUpdatesService,
+  unavailableHostManifest,
   type HostCapabilityManifest,
   type HostOperationOutcome,
 } from '@trinity/runtime/host';
@@ -551,6 +552,22 @@ describe('TrinityApplicationRuntimeAdapter', () => {
     hostManifest.next({ protocolVersion: 1, operations });
     hostManifest.complete();
     await expect(negotiation).resolves.toEqual({ kind: 'ready' });
+  });
+
+  it('blocks with a retry when the host rejected the whole negotiation', async () => {
+    const negotiation = firstValueFrom(adapter.negotiateHost());
+    hostManifest.next(
+      unavailableHostManifest('host-rejected', {
+        code: 'electron-negotiation-failed',
+      }),
+    );
+    hostManifest.complete();
+
+    await expect(negotiation).resolves.toEqual({
+      kind: 'blocked',
+      recovery: 'retry-startup',
+      diagnostic: { code: 'host-negotiation-failed' },
+    });
   });
 
   it('blocks when the required host contract cannot be established', async () => {

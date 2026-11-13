@@ -317,3 +317,13 @@ export function unavailableHostManifest(
     },
   };
 }
+
+/** The negotiation itself failed, so the manifest says nothing about what the host can do. */
+export function hostNegotiationRejected(
+  manifest: HostCapabilityManifest,
+): boolean {
+  return Object.values(manifest.operations).every(
+    (support) =>
+      support.kind === 'unavailable' && support.reason === 'host-rejected',
+  );
+}

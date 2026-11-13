@@ -10,11 +10,12 @@ import { provideTrnIcons } from '@trinity/components/foundations';
 import { desktopBridgeFixture, render } from '@trinity/testing';
 import {
   HOST_CAPABILITY_NEGOTIATOR,
+  HostCapabilitiesService,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
 import { AppearanceEffects } from '@trinity/application/appearance';
 import { BUG_REPORT_LAUNCHER } from '@trinity/platform-native';
-import { Subject, throwError } from 'rxjs';
+import { Subject, firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TitleBarComponent } from './title-bar.component';
 
@@ -241,6 +242,52 @@ describe('TitleBarComponent', () => {
 
     expect(screen.getByTestId('title-bar-title')).toBeTruthy();
     expect(setOverlayColors).not.toHaveBeenCalled();
+  });
+
+  it('sends the colours once a failed negotiation is retried', async () => {
+    const setOverlayColors = vi.fn();
+    const root = document.documentElement;
+    root.style.setProperty('--trinity-surface-app', 'rgb(18, 18, 20)');
+    root.style.setProperty('--trinity-text', 'rgb(219, 222, 225)');
+    (globalThis as BridgeHost).trinityDesktop = desktopBridgeFixture({
+      capabilities: { titleBar: { mode: 'row', setOverlayColors } },
+    });
+    const negotiate = vi
+      .fn(() => of(unavailableHostManifest('not-supported')))
+      .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+    const { fixture } = await render(TitleBarComponent, {
+      providers: [
+        provideTrnIcons(),
+        {
+          provide: AppearanceEffects,
+          useValue: { resolved: signal(undefined) },
+        },
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: negotiate },
+        },
+        {
+          provide: WORKSPACE_SYSTEM_STATUS,
+          useValue: {
+            hasProblems: signal(false),
+            bannerSlot: signal(null),
+            bannerSlotReserved: signal(false),
+            bannerPrompt: signal(null),
+            show: vi.fn(),
+          },
+        },
+      ],
+    });
+    await fixture.whenStable();
+    expect(setOverlayColors).not.toHaveBeenCalled();
+
+    // Startup's Retry.
+    await firstValueFrom(
+      fixture.debugElement.injector.get(HostCapabilitiesService).manifest(),
+    );
+
+    await waitFor(() => expect(setOverlayColors).toHaveBeenCalledTimes(1));
+    expect(negotiate).toHaveBeenCalledTimes(2);
   });
 
   it.each(['linux', 'darwin'])(

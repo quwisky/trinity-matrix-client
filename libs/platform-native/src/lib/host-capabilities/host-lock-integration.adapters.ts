@@ -2,6 +2,7 @@ import { Injectable, Provider, inject } from '@angular/core';
 import {
   HOST_LOCK_INTEGRATION_OPERATION,
   HostCapabilitiesService,
+  type HostCapabilityManifest,
   type HostLockIntegrationOperation,
   type HostLockRequest,
   type HostLockState,
@@ -21,6 +22,10 @@ type LockBridge = NonNullable<
   >['capabilities']['lockIntegration']
 >;
 
+function lockGranted(manifest: HostCapabilityManifest): boolean {
+  return manifest.operations['lock-integration'].kind === 'supported';
+}
+
 /** Electron's part of App lock: menu item, OS lock and sleep, and the show hold. */
 @Injectable({ providedIn: 'root' })
 export class ElectronLockIntegrationAdapter implements HostLockIntegrationOperation {
@@ -28,28 +33,31 @@ export class ElectronLockIntegrationAdapter implements HostLockIntegrationOperat
 
   private readonly granted: Observable<boolean> = defer(() =>
     this.capabilities.manifest(),
-  ).pipe(
-    take(1),
-    map(
-      (manifest) =>
-        manifest.operations['lock-integration'].kind === 'supported',
-    ),
-  );
+  ).pipe(take(1), map(lockGranted));
 
-  readonly requests: Observable<HostLockRequest> = this.granted.pipe(
-    switchMap((granted) => {
-      const bridge = getTrinityDesktopBridge()?.capabilities.lockIntegration;
-      return granted && bridge
-        ? new Observable<HostLockRequest>((subscriber) =>
-            bridge.subscribeRequests((request) => subscriber.next(request)),
-          )
-        : EMPTY;
-    }),
-    share(),
-  );
+  // Requests and state are read before startup negotiates, so a failed negotiation must not end them.
+  private readonly grantedOnceAnswered: Observable<boolean> = defer(() =>
+    this.capabilities.answered(),
+  ).pipe(map(lockGranted));
+
+  readonly requests: Observable<HostLockRequest> =
+    this.grantedOnceAnswered.pipe(
+      switchMap((granted) => {
+        const bridge = getTrinityDesktopBridge()?.capabilities.lockIntegration;
+        return granted && bridge
+          ? new Observable<HostLockRequest>((subscriber) =>
+              bridge.subscribeRequests((request) => subscriber.next(request)),
+            )
+          : EMPTY;
+      }),
+      share(),
+    );
 
   setState(state: HostLockState): Observable<HostOperationOutcome> {
-    return this.send((bridge) => bridge.setState({ ...state }));
+    return this.send(
+      (bridge) => bridge.setState({ ...state }),
+      this.grantedOnceAnswered,
+    );
   }
 
   coverPainted(): Observable<HostOperationOutcome> {
@@ -58,8 +66,9 @@ export class ElectronLockIntegrationAdapter implements HostLockIntegrationOperat
 
   private send(
     command: (bridge: LockBridge) => void,
+    granted = this.granted,
   ): Observable<HostOperationOutcome> {
-    return this.granted.pipe(
+    return granted.pipe(
       map((granted): HostOperationOutcome => {
         const bridge = getTrinityDesktopBridge()?.capabilities.lockIntegration;
         if (!granted || !bridge) return NOT_SUPPORTED;

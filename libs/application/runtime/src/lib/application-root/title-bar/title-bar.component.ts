@@ -75,8 +75,8 @@ export class TitleBarComponent {
       this.titleBar.setActive(false);
     });
     // The overlay operation is granted by startup negotiation; colours sent before it are
-    // dropped, so send once it settles. A failed negotiation keeps the default colours.
-    firstValueFrom(inject(HostCapabilitiesService).manifest())
+    // dropped, so send once the host answers. Until then the default colours stay.
+    firstValueFrom(inject(HostCapabilitiesService).answered())
       .then(() => !destroyed && this.sendOverlayColors())
       .catch(() => undefined);
   }

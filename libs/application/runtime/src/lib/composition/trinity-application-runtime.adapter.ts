@@ -36,6 +36,7 @@ import {
 } from '@trinity/platform-native';
 import {
   HostCapabilitiesService,
+  hostNegotiationRejected,
   type HostCapabilityManifest,
 } from '@trinity/runtime/host';
 import type {
@@ -90,6 +91,12 @@ const ready = (
  */
 const SAVED_APPEARANCE_BUDGET_MS = 500;
 
+const hostNegotiationFailed = {
+  kind: 'blocked',
+  recovery: 'retry-startup',
+  diagnostic: { code: 'host-negotiation-failed' },
+} as const satisfies ApplicationStartupStageOutcome;
+
 const navigationFailed = {
   kind: 'blocked',
   recovery: 'retry-startup',
@@ -138,6 +145,8 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   negotiateHost(): Observable<ApplicationStartupStageOutcome> {
     return this.host.manifest().pipe(
       map((manifest) => {
+        // Going on would store secrets without the keychain the host never got to offer.
+        if (hostNegotiationRejected(manifest)) return hostNegotiationFailed;
         this.manifest = manifest;
         const protocolMismatch = Object.values(manifest.operations).some(
           (support) =>
@@ -147,13 +156,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
         this.reportHostContract(protocolMismatch);
         return ready();
       }),
-      catchError(() =>
-        of({
-          kind: 'blocked',
-          recovery: 'retry-startup',
-          diagnostic: { code: 'host-negotiation-failed' },
-        } as const),
-      ),
+      catchError(() => of(hostNegotiationFailed)),
     );
   }
 
