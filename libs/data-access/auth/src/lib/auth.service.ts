@@ -634,9 +634,33 @@ export class AuthService implements QrSignInCompletion {
                 outcome.failure === 'unprotected-storage-declined')))
         ) {
           this.signOutNewDevice(baseUrl, response);
+        } else if (device.isNew && outcome.kind === 'failed') {
+          this.signOutUnsavedDevice(baseUrl, response);
         }
       }),
     );
+  }
+
+  /**
+   * Sign a new device out unless a record saved for it will restore it on the next launch:
+   * a retry of the sign-in would create another device. Detached and best-effort.
+   */
+  private signOutUnsavedDevice(
+    baseUrl: string,
+    response: AuthenticatedSessionResponse,
+  ): void {
+    this.storage
+      .record(response.user_id)
+      .pipe(take(1))
+      .subscribe({
+        next: (record) => {
+          if (record?.deviceId !== response.device_id) {
+            this.signOutNewDevice(baseUrl, response);
+          }
+        },
+        // A failed read proves nothing: keep the session rather than strand a saved record.
+        error: () => undefined,
+      });
   }
 
   /**

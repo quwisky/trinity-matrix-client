@@ -1445,6 +1445,7 @@ describe('AuthService', () => {
         | { kind: 'failed'; failure: 'account-already-stored' }
         | { kind: 'failed'; failure: 'unprotected-storage-declined' }
         | { kind: 'failed'; failure: 'transient-network' }
+        | { kind: 'failed'; failure: 'local-state-unavailable' }
         | { kind: 'transition-in-progress' },
     ) =>
       vi
@@ -1601,8 +1602,28 @@ describe('AuthService', () => {
       expect(logout).toHaveBeenCalledWith(true);
     });
 
+    it('signs out a new session whose save failed', async () => {
+      refuse({ kind: 'failed', failure: 'local-state-unavailable' });
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of(null),
+      );
+
+      await firstValueFrom(
+        auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
+      );
+
+      expect(createClientMock).toHaveBeenLastCalledWith({
+        baseUrl: 'https://hs',
+        accessToken: 'new-tok',
+      });
+      expect(logout).toHaveBeenCalledWith(true);
+    });
+
     it('keeps a new session that was saved, whatever went wrong after', async () => {
       refuse({ kind: 'failed', failure: 'transient-network' });
+      vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+        of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'NEW' }),
+      );
 
       await firstValueFrom(
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
