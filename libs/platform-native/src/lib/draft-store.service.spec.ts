@@ -191,6 +191,23 @@ describe('DraftStoreService', () => {
       expect(set).not.toHaveBeenCalled();
     });
 
+    it('removes the stored drafts only after a write already on its way has landed', async () => {
+      let landed = (): void => undefined;
+      set.mockReturnValue(new Promise<void>((resolve) => (landed = resolve)));
+      const svc = service();
+      svc.set('!a:hs', 'half a message');
+      await vi.advanceTimersByTimeAsync(400);
+      expect(set).toHaveBeenCalledOnce();
+
+      svc.clearAll();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(remove).not.toHaveBeenCalled();
+
+      landed();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(remove).toHaveBeenCalledWith({ key: KEY });
+    });
+
     it('survives a Preferences.remove that does not return a promise', () => {
       remove.mockReturnValue(undefined); // a torn-down module hands this back
       const svc = service();

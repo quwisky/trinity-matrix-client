@@ -252,10 +252,17 @@ export class DraftStoreService implements OnDestroy {
   clearAll(): void {
     this.cancelPending();
     this.drafts = new Map();
+    // A write already on its way could land after the removal and put the drafts back,
+    // so the removal waits for it. With none, it stays synchronous for a page about to go.
+    const inFlight = this.writing;
     // Wrapped as in persist(): a `.catch` on a non-promise throws synchronously. The
     // Preferences copy goes too, in case a move to the iOS file never finished.
     for (const store of new Set([this.persistence, preferencesPersistence])) {
-      void Promise.resolve(store.remove()).catch(() => undefined);
+      void (
+        inFlight
+          ? inFlight.then(() => store.remove())
+          : Promise.resolve(store.remove())
+      ).catch(() => undefined);
     }
   }
 
