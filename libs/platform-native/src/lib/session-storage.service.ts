@@ -564,16 +564,16 @@ export class SessionStorageService {
       if (createsKey) {
         await this.storeKeys.remove(newPrefix).catch(() => undefined);
       }
-      const [access, refresh] = replaced ?? [];
-      if (access) {
-        await this.secure
-          .set(this.tokenKey(incoming.userId), access)
+      if (replaced) {
+        // A signed-out record had no tokens: put that back too. The refresh half follows
+        // only a restored access half, so the pair stays one device's.
+        const restore = (key: string, value: string | null): Promise<void> =>
+          value ? this.secure.set(key, value) : this.secure.remove(key);
+        await restore(this.tokenKey(incoming.userId), replaced[0])
+          .then(() =>
+            restore(this.refreshTokenKey(incoming.userId), replaced[1]),
+          )
           .catch(() => undefined);
-        await (
-          refresh
-            ? this.secure.set(this.refreshTokenKey(incoming.userId), refresh)
-            : this.secure.remove(this.refreshTokenKey(incoming.userId))
-        ).catch(() => undefined);
       }
       throw error;
     }
