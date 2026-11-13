@@ -283,7 +283,7 @@ describe('AppLockLifecycleBinding', () => {
     expect(lockNow).toHaveBeenCalledOnce();
   });
 
-  it('does not start the away timer while Trinity’s own system UI is open', () => {
+  it('does not lock on return from a short time away with Trinity’s own system UI open', () => {
     const { lifecycle, systemUiActive, lockNow, advance } = setup({
       lockAfter: 'immediately',
     });
@@ -292,6 +292,71 @@ describe('AppLockLifecycleBinding', () => {
     advance(120_000);
     lifecycle.next({ kind: 'active' });
     expect(lockNow).not.toHaveBeenCalled();
+  });
+
+  it('never locks while away with Trinity’s own system UI open, only on return', () => {
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
+      lockAfter: 'immediately',
+    });
+    systemUiActive.set(true);
+    lifecycle.next({ kind: 'background' });
+    advance(3 * 60 * 60_000);
+    expect(lockNow).not.toHaveBeenCalled();
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).toHaveBeenCalledOnce();
+  });
+
+  it('locks on return once the time away with its own system UI open passes the delay plus five minutes', () => {
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
+      lockAfter: '15m',
+    });
+    systemUiActive.set(true);
+    lifecycle.next({ kind: 'background' });
+    advance(20 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).not.toHaveBeenCalled();
+
+    lifecycle.next({ kind: 'background' });
+    advance(20 * 60_000 + 1);
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).toHaveBeenCalledOnce();
+  });
+
+  it('does not add up separate short trips with its own system UI open', () => {
+    const { lifecycle, systemUiActive, lockNow, advance } = setup({
+      lockAfter: 'immediately',
+    });
+    systemUiActive.set(true);
+    lifecycle.next({ kind: 'background' });
+    advance(4 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    lifecycle.next({ kind: 'background' });
+    advance(4 * 60_000);
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).not.toHaveBeenCalled();
+  });
+
+  it('locks on return when the clock went backwards while away with its own system UI open', () => {
+    const { lifecycle, systemUiActive, lockNow, skipClock } = setup();
+    systemUiActive.set(true);
+    lifecycle.next({ kind: 'background' });
+    skipClock(-1);
+    lifecycle.next({ kind: 'active' });
+    expect(lockNow).toHaveBeenCalledOnce();
+  });
+
+  it('locks on focus hours after Trinity’s own system UI stopped a running away timer', () => {
+    const { systemUiActive, lockNow, advance } = setup({
+      desktop: true,
+    });
+    window.dispatchEvent(new Event('blur'));
+    advance(50_000);
+    systemUiActive.set(true);
+    TestBed.tick();
+    advance(3 * 60 * 60_000);
+    expect(lockNow).not.toHaveBeenCalled();
+    window.dispatchEvent(new Event('focus'));
+    expect(lockNow).toHaveBeenCalledOnce();
   });
 
   it('stops a running away timer when Trinity’s own system UI opens', () => {
@@ -966,7 +1031,7 @@ describe('AppLockLifecycleBinding', () => {
       native.camera.takePhoto.mockReturnValue(
         new Promise((_, reject) => (cancel = reject)),
       );
-      const { lifecycle, lockNow, advance } = setup({
+      const { lifecycle, lockNow, advance, status, locked } = setup({
         lockAfter: 'immediately',
         systemUi: 'real',
       });
@@ -980,6 +1045,14 @@ describe('AppLockLifecycleBinding', () => {
       advance(120_000);
       lifecycle.next({ kind: 'active' });
       expect(lockNow).not.toHaveBeenCalled();
+      // Hours in the background with the camera still open do lock on return.
+      lifecycle.next({ kind: 'background' });
+      advance(3 * 60 * 60_000);
+      lifecycle.next({ kind: 'active' });
+      expect(lockNow).toHaveBeenCalledOnce();
+      lockNow.mockClear();
+      status.set('unlocked');
+      locked.set(false);
       // Closing the camera ends the count: the next time away locks at once again.
       cancel({ code: 'OS-PLUG-CAMR-0006' });
       await vi.advanceTimersByTimeAsync(0);

@@ -274,9 +274,11 @@ lock the screen.
 Touch ID or your fingerprint first, or for your passcode on a phone with no face or fingerprint
 set up (the prompt also offers your passcode or screen lock); then for a Trinity PIN. If your
 phone has no screen lock, the PIN is the only way to unlock; Settings suggests setting one.
-**Immediately** locks as soon as you leave the app. Time in Trinity's own camera, photo picker,
-share sheet or browser doesn't count as away, even if you leave Trinity from there: the timer
-starts once that view closes.
+**Immediately** locks as soon as you leave the app. A short time in Trinity's own camera, photo
+picker, share sheet or browser doesn't count as away: the timer starts once that view closes.
+If one of them stays open for more than your chosen time plus five minutes, whether you are
+still using it or have left Trinity from there, Trinity locks when you come back. Anything you
+picked or recorded is kept and appears after you unlock.
 
 While App lock is on, the app switcher on iPhone and iPad shows Trinity's start screen instead
 of your conversations. On iPad, the start screen may also show over Trinity in Split View or Slide Over while you use
