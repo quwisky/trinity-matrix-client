@@ -233,8 +233,8 @@ export class SecuritySectionComponent {
           if (outcome.kind === 'cancelled') return;
           this.toast.show(
             outcome.kind === 'completed'
-              ? 'Room keys exported.'
-              : 'Could not export your room keys.',
+              ? `Room keys exported for ${account}.`
+              : `Could not export the room keys for ${account}.`,
             {
               duration: outcome.kind === 'completed' ? 3000 : 4000,
               variant: outcome.kind === 'completed' ? 'success' : 'danger',
@@ -242,7 +242,7 @@ export class SecuritySectionComponent {
           );
         },
         error: () => {
-          this.toast.show('Could not export your room keys.', {
+          this.toast.show(`Could not export the room keys for ${account}.`, {
             duration: 4000,
             variant: 'danger',
           });
@@ -299,16 +299,17 @@ export class SecuritySectionComponent {
       )
       .subscribe({
         next: () => {
-          this.toast.show('Room keys imported.', {
+          this.toast.show(`Room keys imported for ${account}.`, {
             duration: 3000,
             variant: 'success',
           });
         },
         error: (err: unknown) => {
+          // Named, since the answer can arrive after another Account became the shown one.
           this.toast.show(
-            err instanceof Error
-              ? err.message
-              : 'Could not import the room keys.',
+            `Room keys not imported for ${account}: ${
+              err instanceof Error ? err.message : 'the file could not be read.'
+            }`,
             { duration: 4000, variant: 'danger' },
           );
         },

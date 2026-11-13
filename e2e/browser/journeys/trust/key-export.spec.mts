@@ -46,7 +46,9 @@ test.describe('Encrypted key export', () => {
     await page.getByTestId('alert-confirm').click();
     const inputFile = await downloadPromise.then((download) => download.path());
     await expect(
-      page.getByLabel('Notifications alt+T').getByText('Room keys exported.'),
+      page
+        .getByLabel('Notifications alt+T')
+        .getByText('Room keys exported for @'),
     ).toBeVisible({
       timeout: 20_000,
     });
@@ -60,7 +62,9 @@ test.describe('Encrypted key export', () => {
     await page.getByTestId('alert-confirm').click();
 
     await expect(
-      page.getByLabel('Notifications alt+T').getByText('Room keys imported.'),
+      page
+        .getByLabel('Notifications alt+T')
+        .getByText('Room keys imported for @'),
     ).toBeVisible({
       timeout: 20_000,
     });

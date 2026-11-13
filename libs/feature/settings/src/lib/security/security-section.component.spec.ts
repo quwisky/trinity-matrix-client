@@ -534,7 +534,7 @@ describe('SecuritySectionComponent', () => {
     const [{ bytes }] = fileSave.mock.calls[0] as [{ bytes: Blob }];
     await expect(bytes.text()).resolves.toBe('ARMORED');
     expect(toastShow).toHaveBeenCalledWith(
-      'Room keys exported.',
+      'Room keys exported for @alice:example.org.',
       expect.objectContaining({ variant: 'success' }),
     );
   });
@@ -548,7 +548,7 @@ describe('SecuritySectionComponent', () => {
     await cmp.exportKeys();
 
     expect(toastShow).toHaveBeenCalledWith(
-      'Could not export your room keys.',
+      'Could not export the room keys for @alice:example.org.',
       expect.objectContaining({ variant: 'danger' }),
     );
   });
@@ -616,7 +616,7 @@ describe('SecuritySectionComponent', () => {
       expect(importRoomKeys).toHaveBeenCalledWith('ARMORED-FILE', 'pw'),
     );
     expect(toastShow).toHaveBeenCalledWith(
-      'Room keys imported.',
+      'Room keys imported for @alice:example.org.',
       expect.objectContaining({ variant: 'success' }),
     );
   });
@@ -755,6 +755,29 @@ describe('SecuritySectionComponent', () => {
         NOT_IMPORTED,
         expect.objectContaining({ variant: 'danger' }),
       );
+    });
+
+    it('does not import the file into the new account when the switch comes while the file is read', async () => {
+      const { cmp, importRoomKeys, toastShow, activeUserId } = await build();
+      let read: (armored: string) => void = () => undefined;
+      const file = {
+        text: vi.fn(() => new Promise<string>((resolve) => (read = resolve))),
+      };
+
+      cmp.onKeyFile({
+        target: { files: [file], value: '' },
+      } as unknown as Event);
+      await vi.waitFor(() => expect(file.text).toHaveBeenCalled());
+      activeUserId.set('@bob:example.org');
+      read('ARMORED-FILE');
+
+      await vi.waitFor(() =>
+        expect(toastShow).toHaveBeenCalledWith(
+          NOT_IMPORTED,
+          expect.objectContaining({ variant: 'danger' }),
+        ),
+      );
+      expect(importRoomKeys).not.toHaveBeenCalled();
     });
 
     it('does not ask for a passphrase when the switch came while the file was being chosen', async () => {
