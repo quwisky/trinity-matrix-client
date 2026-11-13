@@ -4,6 +4,7 @@ import { MockProvider } from 'ng-mocks';
 import { Subject, firstValueFrom, lastValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RegistrationService } from './registration.service';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 import {
@@ -60,6 +61,7 @@ describe('RegistrationService', () => {
   /** The record saved on this device for `@new:hs`, as the account runtime left it. */
   let savedRecord: AccountRecord | null;
   let interactiveAuthLog: ReturnType<typeof vi.spyOn>;
+  const lookUp = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -67,9 +69,13 @@ describe('RegistrationService', () => {
       .spyOn(console, 'debug')
       .mockImplementation(() => {});
     savedRecord = null;
+    lookUp.mockReturnValue(
+      of({ domain: 'other-server', baseUrl: 'https://other-server' }),
+    );
     TestBed.configureTestingModule({
       providers: [
         RegistrationService,
+        { provide: AUTHENTICATION_HOMESERVER_DISCOVERY, useValue: { lookUp } },
         MockProvider(SessionStorageService, {
           record: vi.fn(() => of(savedRecord)),
         }),
@@ -584,6 +590,112 @@ describe('RegistrationService', () => {
     expect(service.error()).toMatch(/identity.*did not match/i);
     expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
     expect(registerRequest).toHaveBeenCalledOnce();
+  });
+
+  it('accepts an account on the server name the entered base URL belongs to', async () => {
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      user_id: '@new:example.org',
+    });
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await lastValueFrom(
+      service.begin(
+        'https://matrix.example.org',
+        'new',
+        'password',
+        'matrix.example.org',
+      ),
+      { defaultValue: undefined },
+    );
+
+    expect(service.error()).toBeNull();
+    expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
+  });
+
+  it('lets a registration whose server could not be confirmed be retried', async () => {
+    lookUp.mockReturnValue(throwError(() => new Error('offline')));
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      user_id: '@new:example.org',
+    });
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(service.stage()).toEqual({
+      kind: 'session-error',
+      userId: '@new:example.org',
+      retryable: true,
+    });
+    expect(service.error()).toMatch(
+      /couldn't confirm that @new:example\.org belongs to this server/,
+    );
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+  });
+
+  it('accepts an account whose server names the entered base URL', async () => {
+    lookUp.mockReturnValue(
+      of({ domain: 'example.org', baseUrl: 'https://hs' }),
+    );
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      user_id: '@new:example.org',
+    });
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await lastValueFrom(service.begin('https://hs', 'new', 'password', 'hs'), {
+      defaultValue: undefined,
+    });
+
+    expect(lookUp).toHaveBeenCalledExactlyOnceWith('@new:example.org');
+    expect(service.error()).toBeNull();
+    expect(accounts.establishAuthenticatedAccount).toHaveBeenCalledOnce();
+  });
+
+  it('signs the created session out when left while its server is being confirmed', async () => {
+    const found = new Subject<{ domain: string; baseUrl: string }>();
+    lookUp.mockReturnValue(found);
+    const logout = vi.fn().mockResolvedValue({});
+    const registerRequest = vi.fn().mockResolvedValue({
+      ...registered,
+      user_id: '@new:example.org',
+    });
+    createClientMock.mockReturnValue(
+      client({ registerRequest, logout }) as never,
+    );
+    service.begin('https://hs', 'new', 'password', 'hs').subscribe();
+    await vi.waitFor(() => expect(lookUp).toHaveBeenCalled());
+
+    service.cancel();
+
+    expect(createClientMock).toHaveBeenLastCalledWith({
+      baseUrl: 'https://hs',
+      accessToken: 'access',
+    });
+    expect(logout).toHaveBeenCalledExactlyOnceWith(true);
+    found.next({ domain: 'example.org', baseUrl: 'https://hs' });
+    expect(accounts.establishAuthenticatedAccount).not.toHaveBeenCalled();
+  });
+
+  it('keeps the session when left while it is being saved', async () => {
+    const saving = new Subject<never>();
+    const logout = vi.fn().mockResolvedValue({});
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(
+      client({ registerRequest, logout }) as never,
+    );
+    vi.mocked(accounts.establishAuthenticatedAccount).mockReturnValue(saving);
+    service.begin('https://hs', 'new', 'password', 'hs').subscribe();
+    await vi.waitFor(() =>
+      expect(accounts.establishAuthenticatedAccount).toHaveBeenCalled(),
+    );
+
+    service.cancel();
+
+    expect(logout).not.toHaveBeenCalled();
   });
 
   it('rejects a registration response whose device id is not usable', async () => {
