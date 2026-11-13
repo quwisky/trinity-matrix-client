@@ -809,7 +809,7 @@ export class TrustVerificationService {
         operation,
         'not-ready',
         'review-security-settings',
-        'Finish this device’s encryption setup before verifying other people.',
+        'This device can’t verify other people yet.',
       );
     }
   }

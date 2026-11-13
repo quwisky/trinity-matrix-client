@@ -142,10 +142,30 @@
               </p>
             }
             @if (!v.isSelfVerification && cannotSignUsers()) {
-              <p class="mt-4" data-testid="verify-cannot-sign" role="note">
-                This device can’t verify other people yet. Decline, then open
-                their profile to see what this device needs.
+              @let block = verifyBlock();
+              <p
+                id="verify-cannot-sign"
+                class="mt-4"
+                data-testid="verify-cannot-sign"
+                role="note"
+              >
+                This device can’t verify other people yet. {{ block?.reason }}
+                @if (block?.action) {
+                  Doing that declines this request.
+                }
               </p>
+              @if (block?.action; as action) {
+                <button
+                  trnBtn
+                  class="mt-4 w-full"
+                  data-testid="verify-get-keys"
+                  aria-describedby="verify-cannot-sign"
+                  [disabled]="busy()"
+                  (click)="declineAndOpen(action.flow)"
+                >
+                  {{ action.label }}
+                </button>
+              }
             } @else {
               <button
                 trnBtn
