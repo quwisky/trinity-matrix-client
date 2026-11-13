@@ -45,7 +45,7 @@ describe('probeMatrixOrigin', () => {
   });
 
   it('asks without credentials, without following redirects, in a cookie-less session', async () => {
-    serve({ [VERSIONS]: () => json({ versions: [] }) });
+    serve({ [VERSIONS]: () => json({ versions: ['v1.11'] }) });
 
     await probeMatrixOrigin(HS);
 
@@ -62,6 +62,30 @@ describe('probeMatrixOrigin', () => {
     await expect(probeMatrixOrigin(HS)).resolves.toBe('refused');
   });
 
+  it('accepts a homeserver without waiting for a well-known that hangs', async () => {
+    serve({
+      [VERSIONS]: () => json({ versions: ['v1.11'] }),
+      [WELL_KNOWN]: () => new Promise<Response>(() => undefined),
+    });
+
+    await expect(probeMatrixOrigin(HS)).resolves.toBe('homeserver');
+  });
+
+  it('accepts the historical version form', async () => {
+    serve({ [VERSIONS]: () => json({ versions: ['r0.6.1'] }) });
+
+    await expect(probeMatrixOrigin(HS)).resolves.toBe('homeserver');
+  });
+
+  it.each([[[]], [['grafana', 9]], [['1.11']], [[' v1.11']]])(
+    'refuses a versions array with no Matrix spec version: %j',
+    async (versions) => {
+      serve({ [VERSIONS]: () => json({ versions }) });
+
+      await expect(probeMatrixOrigin(HS)).resolves.toBe('refused');
+    },
+  );
+
   it('refuses a body that is not JSON', async () => {
     serve({ [VERSIONS]: () => new Response('<html>intranet wiki</html>') });
 
@@ -77,19 +101,13 @@ describe('probeMatrixOrigin', () => {
     await expect(probeMatrixOrigin(HS)).resolves.toBe('refused');
   });
 
-  it('refuses a redirect instead of following it', async () => {
+  // Electron fails a `redirect: 'manual'` fetch on a 3xx: it never returns the response.
+  it('refuses a host that redirects, so it is not asked again on every response', async () => {
     serve({
-      [VERSIONS]: () =>
-        new Response(null, {
-          status: 302,
-          headers: { location: 'https://elsewhere.example/versions' },
-        }),
+      [VERSIONS]: () => Promise.reject(new Error('Redirect was cancelled')),
     });
 
     await expect(probeMatrixOrigin(HS)).resolves.toBe('refused');
-    expect(fetchMock.mock.calls.map(([url]) => url)).not.toContain(
-      'https://elsewhere.example/versions',
-    );
   });
 
   it('refuses a response that was redirected anyway', async () => {

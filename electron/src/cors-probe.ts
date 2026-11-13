@@ -23,8 +23,6 @@ async function fetchJson(url: string): Promise<unknown> {
       .fromPartition('trinity-cors-probe')
       .fetch(url, {
         credentials: 'omit',
-        // Electron rejects a manual redirect rather than returning the 3xx, so a
-        // redirecting host reads as unreachable: never confirmed either way.
         redirect: 'manual',
         cache: 'no-store',
         signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -52,10 +50,18 @@ async function fetchJson(url: string): Promise<unknown> {
     } catch {
       return null;
     }
-  } catch {
-    return UNREACHABLE;
+  } catch (error) {
+    // Electron fails a manual redirect ("Redirect was cancelled") instead of returning
+    // the 3xx, and the host did answer. Should the wording change, a redirecting host
+    // reads as unreachable again: still never confirmed, only asked more often.
+    return error instanceof Error && /redirect/i.test(error.message)
+      ? null
+      : UNREACHABLE;
   }
 }
+
+// "Values will take the form `vX.Y` or `rX.Y.Z` in historical cases" (client-server API).
+const SPEC_VERSION = /^(v\d+\.\d+|r\d+\.\d+\.\d+)$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -68,13 +74,20 @@ export async function probeMatrixOrigin(origin: string): Promise<ProbeResult> {
   if (!origin.startsWith('https://')) {
     return 'refused';
   }
-  const [versions, wellKnown] = await Promise.all([
-    fetchJson(`${origin}/_matrix/client/versions`),
-    fetchJson(`${origin}/.well-known/matrix/client`),
-  ]);
-  if (isRecord(versions) && Array.isArray(versions['versions'])) {
+  const versionsAnswer = fetchJson(`${origin}/_matrix/client/versions`);
+  const wellKnownAnswer = fetchJson(`${origin}/.well-known/matrix/client`);
+  // Both are asked at once, but a homeserver does not wait for its well-known.
+  const versions = await versionsAnswer;
+  if (
+    isRecord(versions) &&
+    Array.isArray(versions['versions']) &&
+    versions['versions'].some(
+      (version) => typeof version === 'string' && SPEC_VERSION.test(version),
+    )
+  ) {
     return 'homeserver';
   }
+  const wellKnown = await wellKnownAnswer;
   const homeserver = isRecord(wellKnown) ? wellKnown['m.homeserver'] : null;
   if (isRecord(homeserver) && typeof homeserver['base_url'] === 'string') {
     return 'well-known';
