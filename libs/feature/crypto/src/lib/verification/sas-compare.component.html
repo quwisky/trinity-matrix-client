@@ -1,11 +1,13 @@
-<ul class="emoji" aria-label="Compare these emoji with your other device">
-  @for (e of emoji(); track $index) {
-    <li class="emoji__item">
-      <span class="emoji__glyph" aria-hidden="true">{{ e.glyph }}</span>
-      <span class="emoji__name">{{ e.name }}</span>
-    </li>
-  }
-</ul>
+@if (emoji().length) {
+  <ul class="emoji" aria-label="Compare these emoji with your other device">
+    @for (e of emoji(); track $index) {
+      <li class="emoji__item">
+        <span class="emoji__glyph" aria-hidden="true">{{ e.glyph }}</span>
+        <span class="emoji__name">{{ e.name }}</span>
+      </li>
+    }
+  </ul>
+}
 
 @if (confirmed()) {
   <div
@@ -17,12 +19,17 @@
     <trn-spinner />
     <p class="hint">Waiting for the other device to confirm the emoji match…</p>
   </div>
-} @else {
+} @else if (emoji().length) {
   <p class="hint">Do these emoji match the ones shown on your other device?</p>
+} @else {
+  <p class="hint" data-testid="sas-no-emoji" role="status">
+    The other app cannot compare emoji, so this verification cannot be completed
+    here.
+  </p>
 }
 
 <div class="actions">
-  @if (!confirmed()) {
+  @if (!confirmed() && emoji().length) {
     <button
       trnBtn
       class="w-full"

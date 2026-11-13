@@ -75,4 +75,22 @@ describe('SasCompareComponent', () => {
     expect(container.querySelectorAll('.emoji__item').length).toBe(2);
     expect(container.textContent).toContain('Cancel');
   });
+
+  // Decimals-only clients yield no emoji; there is nothing here to compare, so there is
+  // no answer to give.
+  it('offers only Cancel when there are no emoji to compare', async () => {
+    const { container } = await render(SasCompareComponent, {
+      inputs: { emoji: [] },
+    });
+
+    expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
+    expect(container.querySelector('[data-testid="sas-mismatch"]')).toBeNull();
+    expect(container.querySelector('.emoji')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="sas-no-emoji"]')?.textContent,
+    ).toContain(
+      'The other app cannot compare emoji, so this verification cannot be completed here.',
+    );
+    expect(container.textContent).toContain('Cancel');
+  });
 });
