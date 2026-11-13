@@ -14,7 +14,7 @@ import { Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import { IdentityChangeActionsService } from './identity-change-actions.service';
 
-const BOB = { userId: '@bob:hs', name: 'Bob' };
+const BOB = { accountId: '@me:hs', userId: '@bob:hs', name: 'Bob' };
 
 describe('IdentityChangeActionsService', () => {
   let acknowledgeIdentity: Mock;
@@ -104,6 +104,41 @@ describe('IdentityChangeActionsService', () => {
       expect.objectContaining({ variant: 'danger' }),
     );
     expect(service().pending('@bob:hs')).toBeNull();
+  });
+
+  describe('once both the client and the shown account are another one, before the row is gone', () => {
+    beforeEach(() => {
+      clientAccountId.set('@other:hs');
+      shownAccountId.set('@other:hs');
+    });
+
+    it('does not start verification, or a DM, as the new account', () => {
+      const started = vi.fn();
+      service().verifyAgain(BOB, started);
+
+      expect(startUserVerification).not.toHaveBeenCalled();
+      expect(started).not.toHaveBeenCalled();
+      expect(show).toHaveBeenCalledWith(
+        'Verification not started: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
+
+    it('does not accept or withdraw as the new account', () => {
+      service().acknowledge(BOB);
+      service().withdraw(BOB);
+
+      expect(acknowledgeIdentity).not.toHaveBeenCalled();
+      expect(withdrawVerification).not.toHaveBeenCalled();
+      expect(show).toHaveBeenCalledWith(
+        'Identity not accepted: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+      expect(show).toHaveBeenCalledWith(
+        'Verification not withdrawn: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
   });
 
   describe('once the client has switched account, before the shown one follows', () => {

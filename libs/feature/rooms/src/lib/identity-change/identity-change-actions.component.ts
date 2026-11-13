@@ -66,7 +66,9 @@ export class IdentityChangeActionsComponent {
   protected readonly actions = inject(IdentityChangeActionsService);
 
   readonly change =
-    input.required<Pick<IdentityChange, 'userId' | 'name' | 'trust'>>();
+    input.required<
+      Pick<IdentityChange, 'accountId' | 'userId' | 'name' | 'trust'>
+    >();
   /** The host starts verification itself (the member card), via {@link verifyRequested}. */
   readonly delegateVerify = input(false);
 

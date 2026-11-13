@@ -234,6 +234,11 @@ export class MemberInfoComponent {
     return untracked(() => this.trustUsers.userTrust(userId))();
   });
 
+  /** The Account {@link trust} is the view of, so a changed identity is answered only as it. */
+  readonly trustAccountId = computed(
+    () => this.commandAccountId() ?? this.identity.activeUserId(),
+  );
+
   /** Whose sessions the card may show: on the same terms as {@link trust}, and never your own. */
   private readonly sessionsUserId = computed(() => {
     const active = this.identity.activeUserId();

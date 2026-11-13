@@ -10,8 +10,12 @@ import {
 } from '@trinity/data-access/trust';
 import { finalize, type Observable } from 'rxjs';
 
-/** Who an identity action is for: the id it acts on and the name its failure toast uses. */
+/**
+ * Who an identity action is for: the Account they were listed for, the id it acts on and the
+ * name its failure toast uses.
+ */
 export interface IdentityChangeTarget {
+  readonly accountId: string;
   readonly userId: string;
   readonly name: string;
 }
@@ -45,7 +49,7 @@ export class IdentityChangeActionsService {
   /** Accept a changed identity as theirs. */
   acknowledge(target: IdentityChangeTarget): void {
     this.run(
-      target.userId,
+      target,
       'acknowledge',
       () => this.trust.acknowledgeIdentity(target.userId),
       `Couldn't accept ${target.name}'s new identity.`,
@@ -56,7 +60,7 @@ export class IdentityChangeActionsService {
   /** Stop requiring a previously verified person to be verified. */
   withdraw(target: IdentityChangeTarget): void {
     this.run(
-      target.userId,
+      target,
       'withdraw',
       () => this.trust.withdrawVerification(target.userId),
       `Couldn't withdraw verification for ${target.name}.`,
@@ -70,7 +74,7 @@ export class IdentityChangeActionsService {
    */
   verifyAgain(target: IdentityChangeTarget, started?: () => void): void {
     this.run(
-      target.userId,
+      target,
       'verify',
       () =>
         this.verification.startUserVerification(
@@ -84,7 +88,7 @@ export class IdentityChangeActionsService {
   }
 
   private run(
-    userId: string,
+    { accountId, userId }: IdentityChangeTarget,
     kind: IdentityChangeAction,
     action: () => Observable<unknown>,
     failure: string | null,
@@ -92,9 +96,13 @@ export class IdentityChangeActionsService {
     succeeded?: () => void,
   ): void {
     if (this.pending(userId)) return;
-    // The person is listed for the shown Account and the action runs as the client's active
-    // one, which changes a moment earlier: while they differ it would run as the wrong one.
-    if (this.workspace.activeAccountId() !== this.identity.activeUserId()) {
+    // The action runs as the client's active Account, resolved when `action` is subscribed
+    // below, in this same tick. The row can outlive a switch by a render, with both the shown
+    // and the active Account already another one, so it must be the row's own Account.
+    if (
+      accountId !== this.workspace.activeAccountId() ||
+      accountId !== this.identity.activeUserId()
+    ) {
       this.toast.show(`${refusal}: you switched account while this was open.`, {
         duration: 4000,
         variant: 'danger',
