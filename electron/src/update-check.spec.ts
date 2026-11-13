@@ -189,6 +189,17 @@ describe('checkForUpdates', () => {
     respond([release('v0.2.1')]);
     await checkForUpdates({ manual: true });
     expect(mocks.notifications).toHaveLength(0);
+    expect(mocks.showMessageBox).toHaveBeenCalledOnce();
+  });
+
+  it('answers a manual check for a release the automatic check already announced', async () => {
+    respond([release('v0.2.1')]);
+    await checkForUpdates({ manual: false });
+    expect(mocks.showMessageBox).not.toHaveBeenCalled();
+
+    respond([release('v0.2.1')]);
+    await checkForUpdates({ manual: true });
+
     expect(mocks.showMessageBox).toHaveBeenCalledWith(
       expect.objectContaining({
         message: 'Trinity 0.2.1 is available',
