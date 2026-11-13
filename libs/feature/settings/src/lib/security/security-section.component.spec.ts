@@ -519,7 +519,10 @@ describe('SecuritySectionComponent', () => {
 
     await cmp.exportKeys();
 
-    expect(prompt).toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith(
+      expect.objectContaining({ placeholder: 'Repeat passphrase' }),
+    );
     expect(exportRoomKeys).toHaveBeenCalledWith('pw');
     expect(fileSave).toHaveBeenCalledWith({
       bytes: expect.any(Blob),
@@ -556,6 +559,40 @@ describe('SecuritySectionComponent', () => {
     expect(fileSave).toHaveBeenCalledOnce();
     expect(toastShow).not.toHaveBeenCalled();
     expect(cmp.busy()).toBe(false);
+  });
+
+  it('does not export when the repeated passphrase differs', async () => {
+    const prompt = vi
+      .fn()
+      .mockReturnValueOnce(of('pw'))
+      .mockReturnValue(of('pe'));
+    const { cmp, exportRoomKeys, fileSave, toastShow } = await build(
+      {},
+      { prompt },
+    );
+
+    await cmp.exportKeys();
+
+    expect(exportRoomKeys).not.toHaveBeenCalled();
+    expect(fileSave).not.toHaveBeenCalled();
+    expect(toastShow).toHaveBeenCalledWith(
+      'Passphrases don’t match.',
+      expect.objectContaining({ variant: 'danger' }),
+    );
+    expect(cmp.busy()).toBe(false);
+  });
+
+  it('does not export when the repeat prompt is cancelled', async () => {
+    const prompt = vi
+      .fn()
+      .mockReturnValueOnce(of('pw'))
+      .mockReturnValue(of(null));
+    const { cmp, exportRoomKeys, toastShow } = await build({}, { prompt });
+
+    await cmp.exportKeys();
+
+    expect(exportRoomKeys).not.toHaveBeenCalled();
+    expect(toastShow).not.toHaveBeenCalled();
   });
 
   it('does not export when the passphrase prompt is cancelled', async () => {
