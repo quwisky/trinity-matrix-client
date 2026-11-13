@@ -17,7 +17,7 @@ import {
   type UserTrust,
   type VerificationView,
 } from '@trinity/data-access/trust';
-import { of, Subject } from 'rxjs';
+import { config, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { DeviceVerificationPage } from './device-verification.page';
 
@@ -823,6 +823,28 @@ describe('DeviceVerificationPage', () => {
       expect(svc.accept).not.toHaveBeenCalled();
       expect(svc.dismiss).toHaveBeenCalledOnce();
       expect(close).toHaveBeenCalled();
+    });
+
+    it('closes without a stray error when the decline cannot be sent', async () => {
+      const unhandled = vi.fn();
+      config.onUnhandledError = unhandled;
+      try {
+        const { svc, container, close } = await renderPage(requested(), {
+          asModal: true,
+        });
+        vi.mocked(svc.cancel).mockReturnValue(
+          throwError(() => new Error('offline')),
+        );
+
+        fireEvent.click(button(container, 'Not me'));
+        await new Promise((resolve) => setTimeout(resolve));
+
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(svc.dismiss).toHaveBeenCalledOnce();
+        expect(close).toHaveBeenCalled();
+      } finally {
+        config.onUnhandledError = null;
+      }
     });
 
     it('accepts the request when "It was me" is chosen', async () => {
