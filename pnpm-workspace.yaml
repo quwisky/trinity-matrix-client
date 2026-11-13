@@ -53,8 +53,3 @@ patchedDependencies:
   matrix-js-sdk@45.0.0: patches/matrix-js-sdk@45.0.0.patch
   matrix-widget-api@1.20.0: patches/matrix-widget-api@1.20.0.patch
   pagefind@1.5.2: patches/pagefind@1.5.2.patch
-minimumReleaseAgeExclude:
-  # Renovate security update: @angular/common@22.1.5
-  - '@angular/common@22.1.5'
-  # Renovate security update: vitest@4.1.11
-  - vitest@4.1.11
