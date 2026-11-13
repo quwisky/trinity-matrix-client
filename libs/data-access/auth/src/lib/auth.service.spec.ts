@@ -1116,6 +1116,22 @@ describe('AuthService', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it('revokes the tokens when saving the account throws', async () => {
+      const failure = new Error('secure store rejected');
+      vi.mocked(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).mockReturnValue(throwError(() => failure));
+
+      await expect(complete()).rejects.toBe(failure);
+
+      expect(
+        TestBed.inject(OidcClientService).revokeTokens,
+      ).toHaveBeenCalledExactlyOnceWith('https://hs', pinned, {
+        accessToken: 'qr-atok',
+        refreshToken: 'qr-rtok',
+      });
+    });
+
     it('fails when the account runtime does not start the account', async () => {
       vi.mocked(
         TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
@@ -1629,6 +1645,96 @@ describe('AuthService', () => {
         auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
       );
 
+      expect(logout).not.toHaveBeenCalled();
+    });
+
+    describe('a save that throws', () => {
+      const failure = new Error('secure store rejected');
+      beforeEach(() => {
+        vi.mocked(
+          TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+        ).mockReturnValue(throwError(() => failure));
+      });
+
+      it('signs out the new session and passes the error on', async () => {
+        vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+          of(null),
+        );
+
+        await expect(
+          firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+        ).rejects.toBe(failure);
+
+        expect(createClientMock).toHaveBeenLastCalledWith({
+          baseUrl: 'https://hs',
+          accessToken: 'new-tok',
+        });
+        expect(logout).toHaveBeenCalledExactlyOnceWith(true);
+      });
+
+      it('keeps a new session that was saved before the error', async () => {
+        const record = vi.mocked(TestBed.inject(SessionStorageService).record);
+        record.mockReturnValue(of(null));
+        vi.mocked(
+          TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+        ).mockImplementation(() => {
+          record.mockReturnValue(
+            of({ baseUrl: 'https://hs', userId: '@me:hs', deviceId: 'NEW' }),
+          );
+          return throwError(() => failure);
+        });
+
+        await expect(
+          firstValueFrom(auth.loginWithPassword('https://hs', '@me:hs', 'pw')),
+        ).rejects.toBe(failure);
+
+        expect(logout).not.toHaveBeenCalled();
+      });
+
+      it('keeps a re-authenticated device signed in', async () => {
+        vi.mocked(TestBed.inject(SessionStorageService).record).mockReturnValue(
+          of(null),
+        );
+
+        await expect(
+          firstValueFrom(
+            auth.loginWithPassword(
+              'https://hs',
+              '@me:hs',
+              'pw',
+              'add',
+              'NEW',
+              '@me:hs',
+            ),
+          ),
+        ).rejects.toBe(failure);
+
+        expect(logout).not.toHaveBeenCalled();
+      });
+    });
+
+    it('keeps a new session whose save failed when its record cannot be read', async () => {
+      const record = vi.mocked(TestBed.inject(SessionStorageService).record);
+      record.mockReturnValue(of(null));
+      vi.mocked(
+        TestBed.inject(AccountRuntimeService).establishAuthenticatedAccount,
+      ).mockImplementation(() => {
+        record.mockReturnValue(
+          throwError(() => new Error('registry unreadable')),
+        );
+        return of({
+          kind: 'failed',
+          failure: 'local-state-unavailable',
+          accountId: '@me:hs',
+          placement: 'active',
+        } as AccountEstablishmentOutcome);
+      });
+
+      await firstValueFrom(
+        auth.loginWithPassword('https://hs', '@me:hs', 'pw'),
+      );
+
+      expect(record).toHaveBeenCalledTimes(3);
       expect(logout).not.toHaveBeenCalled();
     });
 

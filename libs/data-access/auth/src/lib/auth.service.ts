@@ -614,10 +614,17 @@ export class AuthService implements QrSignInCompletion {
               expectedUserId,
             ).pipe(
               switchMap(() =>
-                this.accounts.establishAuthenticatedAccount(
-                  command.grant,
-                  command.intent,
-                ),
+                this.accounts
+                  .establishAuthenticatedAccount(command.grant, command.intent)
+                  .pipe(
+                    // A save that throws reports no outcome for the check below.
+                    catchError((error: unknown) => {
+                      if (device.isNew) {
+                        this.signOutUnsavedDevice(baseUrl, response);
+                      }
+                      return throwError(() => error);
+                    }),
+                  ),
               ),
             );
           }),
