@@ -32,9 +32,12 @@ describe('Land back-merge workflow', () => {
     });
   });
 
-  it('lands one back-merge at a time', () => {
+  it('lands one back-merge at a time and drops none that waits', () => {
+    // Every CI completion on any branch starts a run in this group. Without `queue: max`
+    // the group holds one pending run, so a third completion would cancel a waiting landing.
     expect(workflow.concurrency).toEqual({
       group: 'land-back-merge',
+      queue: 'max',
       'cancel-in-progress': false,
     });
   });

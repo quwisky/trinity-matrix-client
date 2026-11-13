@@ -645,7 +645,10 @@ push after CI passes. Whenever `CI` completes on a `back-merge/**` branch of thi
 whatever its conclusion, [`land-back-merge.yml`](../../.github/workflows/land-back-merge.yml)
 runs [`scripts/land-back-merge.mjs`](../../scripts/land-back-merge.mjs) with the release App
 token, which pushes the branch's head to `main` as a fast-forward, never forced. GitHub then
-marks the PR merged. The script refuses, and pushes nothing, unless:
+marks the PR merged. Every `CI` completion on any branch starts a run of the workflow (the
+branch filter only skips its job), so its concurrency group sets `queue: max`: a landing that
+waits behind another run is not cancelled by the next completion. The script refuses, and
+pushes nothing, unless:
 
 - the branch is still at the commit that CI run tested;
 - `release/X.Y.x` exists on `origin` and the `vX.Y.Z` tag is on it, as `release.yml`'s verify
