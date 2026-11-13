@@ -241,7 +241,8 @@ describe('container host configuration', () => {
     const read = (file) => readFileSync(join(workspaceRoot, file), 'utf8');
     const routes = [
       ...read('apps/trinity/src/app/app.routes.ts').matchAll(
-        /^ {4}path: '([^'*]+)'/gm,
+        // A route with a parameter needs a glob rewrite written by hand, not this literal one.
+        /^ {4}path: '([^'*:]+)'/gm,
       ),
     ].map((match) => `/${match[1]}`);
     const config = read('container/sws.toml');
