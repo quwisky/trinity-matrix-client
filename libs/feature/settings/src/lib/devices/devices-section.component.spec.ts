@@ -198,7 +198,7 @@ describe('DevicesSectionComponent', () => {
     expect(del).toHaveBeenCalledWith('@me:hs', 'B', expect.any(Function));
   });
 
-  it('renames as the account whose device it is, even after another becomes active', async () => {
+  it('asks to rename for the account the dialog was opened for, which the service refuses after a switch', async () => {
     const name = new Subject<string | null>();
     alertPrompt.mockReturnValue(name);
     const { fixture } = await renderSection();
@@ -210,7 +210,7 @@ describe('DevicesSectionComponent', () => {
     expect(rename).toHaveBeenCalledWith('@me:hs', 'B', 'Tablet');
   });
 
-  it('signs out as the account whose device it is, even after another becomes active', async () => {
+  it('asks to sign out for the account the confirmation was opened for, which the service refuses after a switch', async () => {
     const confirmed = new Subject<boolean>();
     alertConfirm.mockReturnValue(confirmed);
     const { fixture } = await renderSection();
@@ -220,6 +220,60 @@ describe('DevicesSectionComponent', () => {
     confirmed.next(true);
 
     expect(del).toHaveBeenCalledWith('@me:hs', 'B', expect.any(Function));
+  });
+
+  /** Whether the alert opened with `opts` is withdrawn by the next account switch. */
+  function closesOnSwitch(
+    fixture: ComponentFixture<unknown>,
+    opts: { closeWhen?: Observable<unknown> },
+  ): boolean {
+    let closed = false;
+    const sub = opts.closeWhen?.subscribe(() => (closed = true));
+    fixture.detectChanges();
+    expect(closed).toBe(false); // still the account it was opened for
+    activeUserId.set('@other:hs');
+    fixture.detectChanges();
+    sub?.unsubscribe();
+    return closed;
+  }
+
+  it('closes the rename prompt when another account becomes active', async () => {
+    alertPrompt.mockReturnValue(new Subject<string | null>());
+    const { fixture } = await renderSection();
+
+    fixture.componentInstance.rename(OTHER);
+
+    expect(closesOnSwitch(fixture, alertPrompt.mock.calls[0][0])).toBe(true);
+  });
+
+  it('closes the sign-out confirmation when another account becomes active', async () => {
+    alertConfirm.mockReturnValue(new Subject<boolean>());
+    const { fixture } = await renderSection();
+
+    fixture.componentInstance.remove(OTHER);
+
+    expect(closesOnSwitch(fixture, alertConfirm.mock.calls[0][0])).toBe(true);
+  });
+
+  it('names the account in the sign-out password prompt and closes it when another becomes active', async () => {
+    alertPrompt.mockReturnValue(new Subject<string | null>());
+    del.mockImplementationOnce(((
+      _account: string,
+      _id: string,
+      prompt: () => Promise<string | null>,
+    ) => {
+      void prompt();
+      return new Subject<void>();
+    }) as never);
+    const { fixture } = await renderSection();
+
+    fixture.componentInstance.remove(OTHER);
+
+    const opts = alertPrompt.mock.calls[0][0];
+    expect(opts.message).toBe(
+      'Enter the password for @me:hs to sign out this device.',
+    );
+    expect(closesOnSwitch(fixture, opts)).toBe(true);
   });
 
   it('does not sign out a device when the confirm is cancelled', async () => {

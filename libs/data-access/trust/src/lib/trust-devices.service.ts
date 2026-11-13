@@ -305,10 +305,13 @@ export class TrustDevicesService {
     try {
       await runPasswordUia(
         (auth) => client.deleteDevice(deviceId, auth ?? undefined),
-        () => {
-          // The prompt does not name its Account, so it is only shown over that Account.
+        async () => {
           this.pinned(accountId, 'delete-device', 'Device not signed out');
-          return promptPassword();
+          const password = await promptPassword();
+          // The prompt can outlive a switch: a password typed over another Account's
+          // screen is dropped here, unsent.
+          this.pinned(accountId, 'delete-device', 'Device not signed out');
+          return password;
         },
         accountId,
       );

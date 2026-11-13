@@ -18,7 +18,7 @@ import {
   type QrDeviceLinker,
 } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
@@ -30,7 +30,7 @@ import {
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, type Observable } from 'rxjs';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
@@ -69,6 +69,7 @@ export class DevicesSectionComponent {
   private readonly qrSignIn = inject(QrSignInService);
   private readonly trust = inject(TrustService);
   private readonly activeAccountId = inject(MatrixClientService).activeUserId;
+  private readonly activeAccount$ = toObservable(this.activeAccountId);
   private readonly destroyRef = inject(DestroyRef);
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -219,6 +220,7 @@ export class DevicesSectionComponent {
         confirmText: 'Save',
         value: device.displayName,
         maxLength: 100,
+        closeWhen: this.switchedFrom(accountId),
       })
       .pipe(
         filter((name): name is string => name !== null),
@@ -240,6 +242,7 @@ export class DevicesSectionComponent {
         message: `“${device.displayName}” will be signed out and lose access to your account.`,
         confirmText: 'Sign out',
         variant: 'danger',
+        closeWhen: this.switchedFrom(accountId),
       })
       .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.applyRemove(accountId, device.id));
@@ -282,7 +285,9 @@ export class DevicesSectionComponent {
 
   private applyRemove(accountId: string, id: string): void {
     runWithBusy(
-      this.devicesSvc.delete(accountId, id, () => this.promptPassword()),
+      this.devicesSvc.delete(accountId, id, () =>
+        this.promptPassword(accountId),
+      ),
       {
         busy: this.busy,
         error: this.error,
@@ -291,18 +296,27 @@ export class DevicesSectionComponent {
     ).subscribe();
   }
 
-  /** Ask for the account password during a delete UIA (null = cancelled). */
-  private promptPassword(): Promise<string | null> {
+  /**
+   * Ask for the password of `accountId` during a delete UIA (null = cancelled). The prompt
+   * names that Account and closes when another one comes on screen.
+   */
+  private promptPassword(accountId: string): Promise<string | null> {
     // Matrix UIA owns this callback and requires a Promise. Keep the conversion at that
     // boundary while the Settings-facing command stays a cold finite Observable.
     return firstValueFrom(
       this.alert.prompt$({
         header: 'Confirm your password',
-        message: 'Signing out a device requires your account password.',
+        message: `Enter the password for ${accountId} to sign out this device.`,
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
+        closeWhen: this.switchedFrom(accountId),
       }),
     );
+  }
+
+  /** Emits once `accountId` is no longer on screen, to close a dialog opened for it. */
+  private switchedFrom(accountId: string): Observable<unknown> {
+    return this.activeAccount$.pipe(filter((active) => active !== accountId));
   }
 }

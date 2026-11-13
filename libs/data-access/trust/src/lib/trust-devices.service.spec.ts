@@ -415,6 +415,32 @@ describe('TrustDevicesService', () => {
       expect(clientB.deleteDevice).not.toHaveBeenCalled();
     });
 
+    it('discards a password typed after another account became active while the prompt was open', async () => {
+      const { svc, client, matrix } = setup();
+      client.deleteDevice.mockRejectedValue(uia('sess1'));
+      let answer!: (password: string | null) => void;
+      const prompt = vi.fn(
+        () =>
+          new Promise<string | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+
+      const deleted = firstValueFrom(svc.delete('@me:hs', 'B', prompt));
+      await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+      const clientB = switchToB(matrix);
+      answer('password-of-b');
+
+      await expect(deleted).rejects.toMatchObject({
+        message:
+          'Device not signed out: you switched account while this was open.',
+      });
+      // Only the probe: the typed password reached neither homeserver.
+      expect(client.deleteDevice).toHaveBeenCalledTimes(1);
+      expect(client.deleteDevice).toHaveBeenCalledWith('B', undefined);
+      expect(clientB.deleteDevice).not.toHaveBeenCalled();
+    });
+
     it('keeps the new account’s device list when the old account’s rename answers late', async () => {
       const { svc, client, matrix } = setup();
       svc.connect();
