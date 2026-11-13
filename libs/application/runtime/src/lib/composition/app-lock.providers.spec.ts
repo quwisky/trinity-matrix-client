@@ -11,11 +11,13 @@ import {
   NOTIFICATION_TEXT,
   NotificationPolicy,
 } from '@trinity/data-access/notifications';
+import { provideHostCapabilities } from '@trinity/platform-native';
 import {
   HOST_CAPABILITY_NEGOTIATOR,
   HostCapabilitiesService,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
+import { desktopBridgeFixture } from '@trinity/testing';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { CONVERSATION_ATTENTION } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
@@ -301,6 +303,108 @@ describe('notification text port', () => {
     expect(port.mode()).toBe('always-hide');
     mode.set('hide-on-lock-screen');
     expect(port.mode()).toBe('hide-on-lock-screen');
+  });
+});
+
+describe('App lock on a desktop whose first host negotiation fails', () => {
+  afterEach(() => {
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    TestBed.resetTestingModule();
+  });
+
+  /** The real service and Electron adapters; the retried negotiation grants user presence. */
+  async function start(options: {
+    setting: 'unreadable' | 'off';
+    pinSet: boolean;
+  }) {
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({
+        negotiate: vi
+          .fn(async () => ({
+            kind: 'accepted',
+            protocolVersion: 1,
+            operations: {
+              ...unavailableHostManifest('not-supported').operations,
+              'user-presence': { kind: 'supported' },
+            },
+          }))
+          .mockRejectedValueOnce(new Error('main is not ready')),
+        capabilities: {
+          userPresence: {
+            support: async () => ({
+              system: { kind: 'unavailable', reason: 'not-supported' },
+              pin: {
+                kind: 'available',
+                set: options.pinSet,
+                nextAttemptAt: null,
+              },
+            }),
+          } as never,
+        },
+      });
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () =>
+              of(
+                options.setting === 'unreadable'
+                  ? { kind: 'unavailable', diagnostic: { code: 'io' } }
+                  : { kind: 'missing' },
+              ),
+            write: () => NEVER,
+          },
+        },
+        provideHostCapabilities(),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+      ],
+    });
+    await TestBed.inject(ApplicationInitStatus).donePromise;
+    const appLock = TestBed.inject(AppLockService);
+    const retryNegotiation = async (): Promise<void> => {
+      await firstValueFrom(TestBed.inject(HostCapabilitiesService).manifest());
+      await new Promise((resolve) => setTimeout(resolve));
+    };
+    return { appLock, retryNegotiation };
+  }
+
+  it('locks when the setting cannot be read either, and stays locked once the host shows a PIN', async () => {
+    const { appLock, retryNegotiation } = await start({
+      setting: 'unreadable',
+      pinSet: true,
+    });
+    expect(appLock.status()).toBe('locked');
+
+    await retryNegotiation();
+
+    expect(appLock.status()).toBe('locked');
+    expect(appLock.pinState()).toBe('ready');
+  });
+
+  it('releases that lock once the host shows no PIN was ever set', async () => {
+    const { appLock, retryNegotiation } = await start({
+      setting: 'unreadable',
+      pinSet: false,
+    });
+    expect(appLock.status()).toBe('locked');
+
+    await retryNegotiation();
+
+    expect(appLock.status()).toBe('off');
+  });
+
+  it('never locks someone whose readable setting says App lock is off', async () => {
+    const { appLock, retryNegotiation } = await start({
+      setting: 'off',
+      pinSet: false,
+    });
+    expect(appLock.status()).toBe('off');
+
+    await retryNegotiation();
+
+    expect(appLock.status()).toBe('off');
   });
 });
 

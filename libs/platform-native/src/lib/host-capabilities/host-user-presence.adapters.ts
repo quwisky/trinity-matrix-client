@@ -22,6 +22,7 @@ import {
   type HostSystemPresence,
   type HostUserPresenceOperation,
   type HostUserPresenceSupport,
+  hostNegotiationRejected,
 } from '@trinity/runtime/host';
 import {
   Observable,
@@ -43,6 +44,11 @@ import {
   parsePresenceOutcome,
   parseUserPresenceSupport,
 } from './host-user-presence.electron-response';
+
+const PIN_UNREADABLE: HostUserPresenceSupport = {
+  system: NO_USER_PRESENCE.system,
+  pin: PIN_STORE_UNREADABLE,
+};
 
 const notSupported = (): HostOperationOutcome => ({
   kind: 'unavailable',
@@ -269,30 +275,36 @@ export class CapacitorUserPresenceAdapter implements HostUserPresenceOperation {
 export class ElectronUserPresenceAdapter implements HostUserPresenceOperation {
   private readonly capabilities = inject(HostCapabilitiesService);
 
-  private readonly granted: Observable<boolean> = defer(() =>
-    this.capabilities.manifest(),
+  /** `unknown`: the negotiation failed, which says nothing about what the shell keeps. */
+  private readonly grant: Observable<'granted' | 'none' | 'unknown'> = defer(
+    () => this.capabilities.manifest(),
   ).pipe(
     take(1),
-    map(
-      (manifest) => manifest.operations['user-presence'].kind === 'supported',
-    ),
+    map((manifest) => {
+      if (hostNegotiationRejected(manifest)) return 'unknown';
+      return manifest.operations['user-presence'].kind === 'supported'
+        ? 'granted'
+        : 'none';
+    }),
+  );
+
+  private readonly granted: Observable<boolean> = this.grant.pipe(
+    map((grant) => grant === 'granted'),
   );
 
   support(): Observable<HostUserPresenceSupport> {
-    return this.granted.pipe(
-      switchMap((granted) => {
+    return this.grant.pipe(
+      switchMap((grant) => {
+        // A shell that never answered may keep a PIN: fail closed, like a failed call below.
+        if (grant === 'unknown') return of(PIN_UNREADABLE);
+        const granted = grant === 'granted';
         const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
         // Without the granted operation the shell has no PIN store. With it, a failed
         // call says nothing about the store, so the PIN half fails closed as on mobile.
         return granted && bridge
           ? defer(() => bridge.support()).pipe(
               map(parseUserPresenceSupport),
-              catchError(() =>
-                of<HostUserPresenceSupport>({
-                  system: NO_USER_PRESENCE.system,
-                  pin: PIN_STORE_UNREADABLE,
-                }),
-              ),
+              catchError(() => of(PIN_UNREADABLE)),
             )
           : of(NO_USER_PRESENCE);
       }),
@@ -351,10 +363,15 @@ export class ElectronUserPresenceAdapter implements HostUserPresenceOperation {
     );
   }
 
-  /** Without the granted operation there is no shell PIN, so nothing to clear. */
+  /**
+   * Without the granted operation there is no shell PIN, so nothing to clear. A failed
+   * negotiation is not that: a PIN may be there, and the full reset must hear it stayed.
+   */
   clearPin(): Observable<HostOperationOutcome> {
-    return this.granted.pipe(
-      switchMap((granted) => {
+    return this.grant.pipe(
+      switchMap((grant) => {
+        if (grant === 'unknown') return of(PIN_CLEAR_FAILED);
+        const granted = grant === 'granted';
         const bridge = getTrinityDesktopBridge()?.capabilities.userPresence;
         return granted && bridge
           ? from(bridge.clearPin()).pipe(

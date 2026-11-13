@@ -20,6 +20,7 @@ vi.mock('@capacitor/preferences', () => ({
     clear: async () => {
       prefs.clear();
     },
+    keys: async () => ({ keys: [...prefs.keys()] }),
   },
 }));
 
@@ -219,6 +220,16 @@ describe('LocalDataWipeService', () => {
       expect(prefs.size).toBe(0);
     });
 
+    it('can leave the account registry, and only that, for an erase that still needs its names', async () => {
+      prefs.set('trinity.app-lock', 'on');
+      prefs.set('matrix.accounts', '{"accounts":[]}');
+      prefs.set('secure.matrix.accessToken:@alice:hs', 'leftover');
+
+      await expect(setup().wipePreferences(true)).resolves.toBe(true);
+
+      expect([...prefs.keys()]).toEqual(['matrix.accounts']);
+    });
+
     it('reports a Preferences backend that rejects', async () => {
       const { Preferences } = await import('@capacitor/preferences');
       vi.spyOn(Preferences, 'clear').mockRejectedValueOnce(
@@ -245,6 +256,22 @@ describe('LocalDataWipeService', () => {
 
       expect(session.clear).toHaveBeenCalled();
       expect(local.clear).toHaveBeenCalled();
+    });
+
+    it('can leave the account registry, and only that, in local storage', async () => {
+      // Where the registry is held back, Preferences is this local storage.
+      localStorage.setItem('CapacitorStorage.matrix.accounts', '{}');
+      localStorage.setItem('CapacitorStorage.trinity.app-lock', 'on');
+      localStorage.setItem('unprefixed', 'x');
+      sessionStorage.setItem('oidc.codeVerifier', 'SECRET');
+
+      await expect(setup().wipeWebStorage(true)).resolves.toBe(true);
+
+      expect(Object.keys(localStorage)).toEqual([
+        'CapacitorStorage.matrix.accounts',
+      ]);
+      expect(sessionStorage.length).toBe(0);
+      localStorage.clear();
     });
 
     it('reports a context where touching web storage throws', async () => {

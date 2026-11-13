@@ -55,6 +55,18 @@ export class AccountHomeserverMismatchError extends Error {
 interface AccountRegistry {
   activeUserId: string | null;
   accounts: AccountRecord[];
+  /**
+   * An erase started removing these accounts' secrets and did not finish. Their stores are
+   * gone, so the registry only names what the next erase must remove: no account is
+   * restored from it and no sign-in is saved into it.
+   */
+  erasing?: true;
+}
+
+class InterruptedEraseError extends Error {
+  constructor() {
+    super('An erase of this device was started and has not finished.');
+  }
 }
 
 /** Secret-free persisted Account inventory consumed by Account Runtime. */
@@ -84,7 +96,8 @@ function hasNoVaultRecord(record: AccountRecord | undefined): boolean {
   return record !== undefined && !record.oidc;
 }
 
-const ACCOUNTS_KEY = 'matrix.accounts';
+/** The Preferences entry holding the account registry. */
+export const ACCOUNTS_KEY = 'matrix.accounts';
 /** Secure-storage key prefixes; the full key is the prefix plus the user id. */
 const TOKEN_KEY_PREFIX = 'matrix.accessToken:';
 const REFRESH_TOKEN_KEY_PREFIX = 'matrix.refreshToken:';
@@ -181,22 +194,26 @@ export class SessionStorageService {
     return defer(() =>
       from(
         Preferences.get({ key: ACCOUNTS_KEY }).then(
-          ({ value }) =>
-            !!value &&
-            (JSON.parse(value) as AccountRegistry).accounts.length > 0,
+          ({ value }) => !!value && parseRegistry(value).accounts.length > 0,
         ),
       ),
     );
   }
 
-  /** Read the Account inventory and Active Account pointer in one consistent snapshot. */
+  /**
+   * Read the Account inventory and Active Account pointer in one consistent snapshot.
+   * Rejects for the registry of an unfinished erase, so a start restores nothing from it.
+   */
   snapshot(): Observable<AccountRegistrySnapshot> {
     return defer(() =>
       from(
-        this.readRegistry().then((registry) => ({
-          activeAccountId: registry.activeUserId,
-          accounts: registry.accounts,
-        })),
+        this.readRegistry().then((registry) => {
+          if (registry.erasing) throw new InterruptedEraseError();
+          return {
+            activeAccountId: registry.activeUserId,
+            accounts: registry.accounts,
+          };
+        }),
       ),
     );
   }
@@ -465,6 +482,7 @@ export class SessionStorageService {
   ): Promise<MatrixSession> {
     const { accessToken, refreshToken, ...incoming } = session;
     const registry = await this.readRegistry();
+    if (registry.erasing) throw new InterruptedEraseError();
     const existing = registry.accounts.find(
       (a) => a.userId === incoming.userId,
     );
@@ -786,10 +804,21 @@ export class SessionStorageService {
     options?: NativeTokenRetention,
   ): Promise<readonly AccountRecord[]> {
     const registry = await this.readRegistry();
+    const erase = vault === 'everything';
+    if (erase && registry.accounts.length > 0 && !registry.erasing) {
+      // Before any removal: whatever a failure below leaves must not restore an account.
+      registry.erasing = true;
+      await this.writeRegistry(registry);
+    }
     const removals: Promise<void>[] = [];
     for (const account of registry.accounts) {
       removals.push(this.secure.remove(this.tokenKey(account.userId)));
       removals.push(this.secure.remove(this.refreshTokenKey(account.userId)));
+      // An erase removes the store keys while the registry still names them: where
+      // secrets go by name only, a key left behind could never be found again.
+      if (erase && account.cryptoStoreKeyed && account.cryptoPrefix) {
+        removals.push(this.storeKeys.remove(account.cryptoPrefix));
+      }
     }
     await Promise.all(removals);
     if (vault === 'everything') {
@@ -807,9 +836,11 @@ export class SessionStorageService {
     // Retire any legacy single-slot residue too.
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     await this.secure.remove(LEGACY_TOKEN_KEY);
-    await Promise.all(
-      registry.accounts.map((account) => this.removeStoreKey(account)),
-    );
+    if (!erase) {
+      await Promise.all(
+        registry.accounts.map((account) => this.removeStoreKey(account)),
+      );
+    }
     return registry.accounts;
   }
 
@@ -827,7 +858,7 @@ export class SessionStorageService {
   private async readRegistry(): Promise<AccountRegistry> {
     const { value } = await Preferences.get({ key: ACCOUNTS_KEY });
     if (value) {
-      return JSON.parse(value) as AccountRegistry;
+      return parseRegistry(value);
     }
     return this.migrateLegacy();
   }
@@ -865,6 +896,34 @@ export class SessionStorageService {
     await Preferences.remove({ key: LEGACY_SESSION_KEY });
     return registry;
   }
+}
+
+/**
+ * Parse the stored registry. Throws for anything that is not one, valid JSON of another
+ * shape included: every reader then sees corrupt local state, which the erase can remove.
+ */
+function parseRegistry(value: string): AccountRegistry {
+  const parsed = JSON.parse(value) as Partial<AccountRegistry> | null;
+  const accounts = parsed?.accounts;
+  if (!Array.isArray(accounts) || !accounts.every(isAccountRecord)) {
+    throw new Error('The stored account registry is not a registry.');
+  }
+  return {
+    ...parsed,
+    accounts,
+    activeUserId:
+      typeof parsed?.activeUserId === 'string' ? parsed.activeUserId : null,
+  };
+}
+
+function isAccountRecord(value: unknown): value is AccountRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const { userId, baseUrl, deviceId } = value as Partial<AccountRecord>;
+  return (
+    typeof userId === 'string' &&
+    typeof baseUrl === 'string' &&
+    typeof deviceId === 'string'
+  );
 }
 
 /**

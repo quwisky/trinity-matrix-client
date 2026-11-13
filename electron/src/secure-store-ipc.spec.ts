@@ -78,6 +78,19 @@ describe('secure store IPC on the async safeStorage api', () => {
     await expect(call('read', 'token')).resolves.toEqual({ kind: 'absent' });
   });
 
+  it('rejects a delete that could not read the store, so nothing reads it as done', async () => {
+    // A directory in the file's place: any read fails with something other than ENOENT.
+    fs.mkdirSync(path.join(userData.current, 'trinity-secure-store.json'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    await expect(call('delete', 'token')).rejects.toThrow('nothing deleted');
+    warn.mockRestore();
+  });
+
+  it('resolves a delete of a key that was never stored', async () => {
+    await expect(call('delete', 'token')).resolves.toBeUndefined();
+  });
+
   it('reports unavailable encryption and writes nothing', async () => {
     encryption.available = false;
 

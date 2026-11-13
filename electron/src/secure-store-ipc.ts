@@ -79,7 +79,10 @@ export function registerSecureStoreIpc(): void {
       ) {
         return;
       }
-      await secureStoreDelete(secureStoreFile(), rawKey);
+      // Rejects: a delete that removed nothing must not read as done.
+      if (!(await secureStoreDelete(secureStoreFile(), rawKey))) {
+        throw new Error('secure-store: nothing deleted');
+      }
     },
   );
 }
