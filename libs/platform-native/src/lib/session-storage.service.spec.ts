@@ -138,6 +138,12 @@ function setup(options: { nativeBridge?: boolean } = { nativeBridge: true }) {
   vi.mocked(secure.get).mockImplementation(
     async (key) => store.get(key) ?? null,
   );
+  vi.mocked(secure.read).mockImplementation(async (key) => {
+    const value = store.get(key);
+    return value === undefined
+      ? { kind: 'absent' }
+      : { kind: 'present', value };
+  });
   vi.mocked(secure.set).mockImplementation(async (key, value) => {
     store.set(key, value);
   });
@@ -1919,6 +1925,31 @@ describe('SessionStorageService', () => {
 
       expect(secure.store.has('matrix.accessToken:@alice:hs')).toBe(false);
       expect(secure.store.has('matrix.refreshToken:@alice:hs')).toBe(false);
+    });
+
+    it("keeps tokens it could not read when a new device's save fails", async () => {
+      const { svc, secure } = setup();
+      await firstValueFrom(save(svc, { ...ALICE, refreshToken: 'alice-r1' }));
+      const secureStorage = TestBed.inject(SecureStorageService);
+      // A locked keychain answers "nothing" on a plain get and "unavailable" on a read.
+      vi.spyOn(secureStorage, 'get').mockResolvedValue(null);
+      vi.spyOn(secureStorage, 'read').mockResolvedValue({
+        kind: 'unavailable',
+      });
+      vi.spyOn(secureStorage, 'set').mockRejectedValue(new Error('locked'));
+
+      await expect(
+        firstValueFrom(
+          save(svc, { ...ALICE, deviceId: 'DEV1b', accessToken: 'new-token' }),
+        ),
+      ).rejects.toThrow('locked');
+
+      expect(secure.store.get('matrix.accessToken:@alice:hs')).toBe(
+        'alice-token-xyz',
+      );
+      expect(secure.store.get('matrix.refreshToken:@alice:hs')).toBe(
+        'alice-r1',
+      );
     });
 
     it('keeps an existing key when a store key cannot be created', async () => {

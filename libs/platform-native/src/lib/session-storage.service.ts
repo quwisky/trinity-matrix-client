@@ -19,7 +19,10 @@ import {
   syncStoreIndexedDbName,
   trimTrailing,
 } from '@trinity/util/matrix';
-import { SecureStorageService } from './secure-storage.service';
+import {
+  type SecureStorageRead,
+  SecureStorageService,
+} from './secure-storage.service';
 import { CryptoStoreKeyService } from './crypto-store-key.service';
 
 /**
@@ -531,9 +534,13 @@ export class SessionStorageService {
     // that device's. Unreadable ones cannot be put back.
     const replaced = deviceChanged
       ? await Promise.all([
-          this.secure.get(this.tokenKey(incoming.userId)),
-          this.secure.get(this.refreshTokenKey(incoming.userId)),
-        ]).catch(() => null)
+          this.secure.read(this.tokenKey(incoming.userId)),
+          this.secure.read(this.refreshTokenKey(incoming.userId)),
+        ])
+          .then((halves) =>
+            halves.some((half) => half.kind === 'unavailable') ? null : halves,
+          )
+          .catch(() => null)
       : null;
     try {
       await this.secure.set(this.tokenKey(incoming.userId), accessToken);
@@ -567,8 +574,10 @@ export class SessionStorageService {
       if (replaced) {
         // A signed-out record had no tokens: put that back too. The refresh half follows
         // only a restored access half, so the pair stays one device's.
-        const restore = (key: string, value: string | null): Promise<void> =>
-          value ? this.secure.set(key, value) : this.secure.remove(key);
+        const restore = (key: string, was: SecureStorageRead): Promise<void> =>
+          was.kind === 'present'
+            ? this.secure.set(key, was.value)
+            : this.secure.remove(key);
         await restore(this.tokenKey(incoming.userId), replaced[0])
           .then(() =>
             restore(this.refreshTokenKey(incoming.userId), replaced[1]),
