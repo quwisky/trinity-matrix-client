@@ -41,7 +41,7 @@
           [attr.aria-describedby]="
             usernameError ? 'registration-username-error' : null
           "
-          (keyup.enter)="createAccount()"
+          (keydown.enter)="submitsOnEnter($event) && createAccount()"
         />
         @if (usernameError) {
           <p
@@ -106,7 +106,7 @@
                 ? 'registration-confirm-password-error'
                 : null
             "
-            (keyup.enter)="createAccount()"
+            (keydown.enter)="submitsOnEnter($event) && createAccount()"
           />
         </trn-password-input>
         @if (confirmPasswordError) {
@@ -159,7 +159,7 @@
               [attr.aria-describedby]="
                 emailError ? 'registration-email-error' : null
               "
-              (keyup.enter)="provideEmail()"
+              (keydown.enter)="submitsOnEnter($event) && provideEmail()"
             />
             @if (emailError) {
               <p
@@ -255,7 +255,7 @@
               [attr.aria-describedby]="
                 tokenError ? 'registration-token-error' : null
               "
-              (keyup.enter)="submitToken()"
+              (keydown.enter)="submitsOnEnter($event) && submitToken()"
             />
             @if (tokenError) {
               <p

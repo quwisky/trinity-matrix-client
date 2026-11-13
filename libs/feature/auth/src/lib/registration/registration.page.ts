@@ -37,7 +37,7 @@ import {
 } from '@trinity/data-access/auth';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { serverNameOfInput } from '@trinity/util/matrix';
-import { shownError } from '@trinity/util/ui';
+import { isImeKeydown, shownError } from '@trinity/util/ui';
 
 @Component({
   selector: 'trn-registration',
@@ -140,6 +140,11 @@ export class RegistrationPage implements OnDestroy {
 
   ngOnDestroy(): void {
     this.registration.cancel();
+  }
+
+  /** Enter in a field submits, but not the Enter that confirms an IME candidate, nor a held key. */
+  protected submitsOnEnter(event: Event): boolean {
+    return !isImeKeydown(event) && !(event as KeyboardEvent).repeat;
   }
 
   /** Submit the fixed account credentials and keep the subscription through every UIA stage. */
