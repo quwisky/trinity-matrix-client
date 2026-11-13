@@ -170,6 +170,32 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('@mallory:evil.example');
   });
 
+  // A decimals-only peer leaves nothing to compare; the focused heading must say so,
+  // and nothing may ask the user to "confirm".
+  it('says in the heading that there is nothing to compare when the other app sent no emoji', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'sas-shown',
+          isSelfVerification: false,
+          otherUserId: '@bob:hs',
+          emoji: null,
+        }),
+      ),
+    );
+
+    expect(container.querySelector('h2')?.textContent).toContain(
+      'Can’t compare here',
+    );
+    expect(container.textContent).toContain(
+      'The other app cannot compare emoji, so this verification cannot be completed here.',
+    );
+    expect(container.textContent).not.toContain('Compare the emoji');
+    expect(container.textContent).not.toContain('Only confirm');
+    expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
+    expect(button(container, 'Cancel')).toBeTruthy();
+  });
+
   it('still labels a self-verification as your own session', async () => {
     const { container } = await renderPage(
       signal(view({ stage: 'requested', incoming: true })),

@@ -86,11 +86,7 @@ describe('SasCompareComponent', () => {
     expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
     expect(container.querySelector('[data-testid="sas-mismatch"]')).toBeNull();
     expect(container.querySelector('.emoji')).toBeNull();
-    expect(
-      container.querySelector('[data-testid="sas-no-emoji"]')?.textContent,
-    ).toContain(
-      'The other app cannot compare emoji, so this verification cannot be completed here.',
-    );
-    expect(container.textContent).toContain('Cancel');
+    // The host page's heading says why; this component only withholds the answer.
+    expect(container.textContent?.trim()).toBe('Cancel');
   });
 });
