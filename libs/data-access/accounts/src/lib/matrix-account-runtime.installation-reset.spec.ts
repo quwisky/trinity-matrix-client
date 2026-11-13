@@ -303,49 +303,201 @@ it('reports key-value and service-worker residue by typed safe scope', async () 
   });
 });
 
-describe('secure storage that cannot be reached (a desktop whose host negotiation is failing)', () => {
+describe('a registry clear that fails', () => {
   const RECORD = { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' };
-  const unreachable = () => throwError(() => new Error('secure-store'));
-  const RESIDUE = [
-    { scope: 'secure-storage', recovery: 'retry-installation-reset' },
-    { scope: 'account-registry', recovery: 'retry-installation-reset' },
-    { scope: 'preferences', recovery: 'retry-installation-reset' },
-  ] as const;
+  const failing = () => throwError(() => new Error('secure-store'));
+  const REGISTRY = {
+    scope: 'account-registry',
+    recovery: 'retry-installation-reset',
+  } as const;
+  const PREFERENCES = {
+    scope: 'preferences',
+    recovery: 'retry-installation-reset',
+  } as const;
 
-  it('reports the erase as incomplete and keeps the registry that names the keychain entries', async () => {
+  function desktopKeychain(records: AccountRecord[]): AdapterTest {
     const test = setup();
-    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
-    vi.mocked(test.storage.load).mockReturnValue(unreachable());
-    vi.mocked(test.storage.clearAll).mockReturnValue(unreachable());
-    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(false);
+    prepareSuccessfulReset(test, records);
+    vi.mocked(test.wipe.secretsRemovedByNameOnly).mockResolvedValue(true);
+    return test;
+  }
+
+  it('keeps the registry that names the desktop keychain entries, and finishes once they are removed', async () => {
+    const test = desktopKeychain([RECORD] as AccountRecord[]);
+    vi.mocked(test.storage.clearAll).mockReturnValue(failing());
 
     await expect(
       firstValueFrom(test.adapter.resetInstallation()),
-    ).resolves.toEqual({ kind: 'partial-cleanup', issues: RESIDUE });
-    // On desktop and web the registry is a Preferences entry.
-    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
-    expect(test.wipe.wipeWebStorage).not.toHaveBeenCalled();
-  });
-
-  it('keeps the registry on a retry that still cannot reach it, and finishes once it can', async () => {
-    const test = setup();
-    vi.mocked(test.storage.clearAll).mockReturnValue(unreachable());
-    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(false);
-
-    await expect(
-      firstValueFrom(test.adapter.retryInstallationCleanup(RESIDUE)),
     ).resolves.toEqual({
       kind: 'partial-cleanup',
-      issues: expect.arrayContaining([...RESIDUE]),
+      issues: [REGISTRY, PREFERENCES],
+    });
+    // The registry is a Preferences entry.
+    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+    expect(test.wipe.wipeWebStorage).not.toHaveBeenCalled();
+
+    await expect(
+      firstValueFrom(
+        test.adapter.retryInstallationCleanup([REGISTRY, PREFERENCES]),
+      ),
+    ).resolves.toEqual({
+      kind: 'partial-cleanup',
+      issues: [REGISTRY, PREFERENCES],
     });
     expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
 
     vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
-    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(true);
     await expect(
-      firstValueFrom(test.adapter.retryInstallationCleanup(RESIDUE)),
+      firstValueFrom(
+        test.adapter.retryInstallationCleanup([REGISTRY, PREFERENCES]),
+      ),
     ).resolves.toEqual({ kind: 'ready' });
     expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+  });
+
+  it('wipes a registry that cannot be read, so the retry finishes', async () => {
+    const test = desktopKeychain([]);
+    // A corrupt registry entry: every read of it throws until Preferences is wiped.
+    let corrupt = true;
+    const read = () => defer(() => (corrupt ? failing() : of([])));
+    vi.mocked(test.storage.list).mockReturnValue(read());
+    vi.mocked(test.storage.clearAll).mockReturnValue(read());
+    vi.mocked(test.wipe.wipePreferences).mockImplementation(async () => {
+      corrupt = false;
+      return true;
+    });
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'partial-cleanup', issues: [REGISTRY] });
+    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup([REGISTRY])),
+    ).resolves.toEqual({ kind: 'ready' });
+  });
+
+  it('wipes a registry a retry finds unreadable', async () => {
+    const test = desktopKeychain([]);
+    vi.mocked(test.storage.list).mockReturnValue(failing());
+    vi.mocked(test.storage.clearAll).mockReturnValue(failing());
+
+    await firstValueFrom(
+      test.adapter.retryInstallationCleanup([REGISTRY, PREFERENCES]),
+    );
+
+    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+  });
+
+  it('still wipes Preferences where the secrets are not found through the registry (web, mobile, a desktop without a keyring)', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
+    vi.mocked(test.storage.clearAll).mockReturnValue(failing());
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'partial-cleanup', issues: [REGISTRY] });
+    // On web and a keyring-less desktop the tokens are Preferences entries themselves.
+    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+    expect(test.wipe.wipeWebStorage).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the registry while its clear is still running past its budget', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = desktopKeychain([RECORD] as AccountRecord[]);
+      const clearing = new Subject<AccountRecord[]>();
+      vi.mocked(test.storage.clearAll).mockReturnValue(clearing);
+      const outcomes: InstallationResetOutcome[] = [];
+
+      test.adapter
+        .resetInstallation()
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+      );
+      await vi.runAllTimersAsync();
+      clearing.error(new Error('keyring prompt dismissed'));
+      await vi.runAllTimersAsync();
+
+      expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'partial-cleanup',
+        issues: expect.arrayContaining([REGISTRY, PREFERENCES]),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a desktop whose host has not answered, so its keychain cannot be reached', () => {
+  const RECORD = { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' };
+  const REFUSED = [
+    { scope: 'secure-storage', recovery: 'retry-installation-reset' },
+  ] as const;
+
+  it('refuses the erase before anything is deleted, and erases in full on the next try', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
+    vi.mocked(test.wipe.keychainAwaitingHost).mockResolvedValue(true);
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'partial-cleanup', issues: REFUSED });
+    expect(test.lifecycle.forgetPushHandoff).not.toHaveBeenCalled();
+    expect(test.matrix.signOutAll).not.toHaveBeenCalled();
+    expect(test.matrix.stop).not.toHaveBeenCalled();
+    expect(test.wipe.beginIndexedDbWipe).not.toHaveBeenCalled();
+    expect(test.storage.clearAll).not.toHaveBeenCalled();
+    expect(test.wipe.wipeSecureStorage).not.toHaveBeenCalled();
+    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+
+    // Still unanswered: the retry is refused the same way.
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup(REFUSED)),
+    ).resolves.toEqual({ kind: 'partial-cleanup', issues: REFUSED });
+    expect(test.wipe.beginIndexedDbWipe).not.toHaveBeenCalled();
+
+    vi.mocked(test.wipe.keychainAwaitingHost).mockResolvedValue(false);
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup(REFUSED)),
+    ).resolves.toEqual({ kind: 'ready' });
+    expect(test.matrix.signOutAll).toHaveBeenCalledOnce();
+    expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce();
+    expect(test.storage.clearAll).toHaveBeenCalledOnce();
+    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+  });
+
+  it('erases anyway when the check itself fails', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test);
+    vi.mocked(test.wipe.keychainAwaitingHost).mockRejectedValue(
+      new Error('bridge gone'),
+    );
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'ready' });
+  });
+});
+
+it('asks for a restart when a password session could not be read to sign it out', async () => {
+  const test = setup();
+  prepareSuccessfulReset(test, [
+    { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' },
+  ] as AccountRecord[]);
+  vi.mocked(test.storage.load).mockReturnValue(
+    throwError(() => new Error('secure read failed')),
+  );
+  vi.mocked(test.matrix.clientFor).mockReturnValue(null);
+
+  // A retry in this page repeats no server sign-out; only a restart's full erase does.
+  await expect(
+    firstValueFrom(test.adapter.resetInstallation()),
+  ).resolves.toEqual({
+    kind: 'partial-cleanup',
+    issues: [{ scope: 'matrix-session', recovery: 'restart-application' }],
   });
 });
 

@@ -4,9 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   HOST_CAPABILITY_NEGOTIATOR,
   HostCapabilitiesService,
+  type HostCapabilityManifest,
+  type HostCapabilityNegotiator,
   unavailableHostManifest,
 } from '@trinity/runtime/host';
-import { firstValueFrom, of } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of } from 'rxjs';
 import { SecureStorageService } from './secure-storage.service';
 import { desktopBridgeFixture } from '@trinity/testing';
 
@@ -56,6 +58,15 @@ vi.mock('@aparajita/capacitor-secure-storage', () => ({
     },
   },
 }));
+
+function deferredValue<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => (resolve = done));
+  return { promise, resolve };
+}
 
 describe('SecureStorageService', () => {
   beforeEach(() => {
@@ -445,6 +456,129 @@ describe('SecureStorageService', () => {
     } finally {
       delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     }
+  });
+
+  describe('a desktop whose host negotiation has not succeeded', () => {
+    afterEach(() => {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    });
+
+    function desktop(
+      isAvailable: () => Promise<boolean>,
+      manifest: HostCapabilityNegotiator['manifest'],
+    ): { s: SecureStorageService; host: HostCapabilitiesService } {
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            secureStore: {
+              isAvailable: vi.fn(isAvailable),
+              get: vi.fn().mockResolvedValue('tok'),
+              read: vi.fn(async () => ({ kind: 'absent' })),
+              set: vi.fn().mockResolvedValue(true),
+              delete: vi.fn().mockResolvedValue(undefined),
+            },
+          },
+        });
+      TestBed.configureTestingModule({
+        providers: [
+          SecureStorageService,
+          { provide: HOST_CAPABILITY_NEGOTIATOR, useValue: { manifest } },
+        ],
+      });
+      return {
+        s: TestBed.inject(SecureStorageService),
+        host: TestBed.inject(HostCapabilitiesService),
+      };
+    }
+
+    it('rejects while the first negotiation is still in flight, then uses the keychain', async () => {
+      // The preload answers "not available" until a negotiation grants the store.
+      let granted = false;
+      const answer = new Subject<HostCapabilityManifest>();
+      const { s, host } = desktop(
+        async () => granted,
+        () => answer,
+      );
+      const negotiated = firstValueFrom(host.manifest());
+
+      await expect(s.get('accessToken')).rejects.toThrow();
+      await expect(s.set('accessToken', 'new')).rejects.toThrow();
+      expect(await s.read('accessToken')).toEqual({ kind: 'unavailable' });
+      expect(await s.removesByNameOnly()).toBe(false);
+      expect(prefs.size).toBe(0);
+
+      granted = true;
+      answer.next(unavailableHostManifest('not-supported'));
+      await negotiated;
+
+      expect(await s.get('accessToken')).toBe('tok');
+      expect(await s.isSecure()).toBe(true);
+      expect(await s.removesByNameOnly()).toBe(true);
+    });
+
+    it('still falls back, with its warning signal, on a desktop the host says has no keyring', async () => {
+      const { s, host } = desktop(
+        async () => false,
+        () => of(unavailableHostManifest('not-supported')),
+      );
+      await firstValueFrom(host.manifest());
+
+      await s.set('accessToken', 'tok');
+
+      expect(prefs.get('secure.accessToken')).toBe('tok');
+      expect(await s.withoutKeychain()).toBe(true);
+      expect(await s.removesByNameOnly()).toBe(false);
+      expect(await s.awaitingHost()).toBe(false);
+    });
+
+    it('does not take a "not available" asked before the host answered as the host’s answer', async () => {
+      const probe = deferredValue<boolean>();
+      const negotiate = vi
+        .fn(() => of(unavailableHostManifest('not-supported')))
+        .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+      const { s, host } = desktop(() => probe.promise, negotiate);
+      await firstValueFrom(host.manifest());
+
+      const read = s.get('accessToken');
+      // The retry answers while the probe sent during the failure is still out.
+      await firstValueFrom(host.manifest());
+      probe.resolve(false);
+
+      await expect(read).rejects.toThrow();
+      expect(prefs.size).toBe(0);
+    });
+
+    it('reports the keychain as awaiting the host, asking the host again first', async () => {
+      const negotiate = vi
+        .fn(() => of(unavailableHostManifest('not-supported')))
+        .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')))
+        .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+      const { s, host } = desktop(async () => true, negotiate);
+      await firstValueFrom(host.manifest());
+
+      expect(await s.awaitingHost()).toBe(true);
+      expect(await s.awaitingHost()).toBe(false);
+      expect(negotiate).toHaveBeenCalledTimes(3);
+    });
+
+    it('stops waiting for a host that does not answer', async () => {
+      vi.useFakeTimers();
+      try {
+        const { s } = desktop(
+          async () => false,
+          () => NEVER,
+        );
+        const awaiting = s.awaitingHost();
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(await awaiting).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('is never awaiting a host off desktop', async () => {
+      expect(await service().awaitingHost()).toBe(false);
+    });
   });
 
   describe('clearAll', () => {

@@ -6,6 +6,7 @@ import {
   SecureStorage,
 } from '@aparajita/capacitor-secure-storage';
 import { HostCapabilitiesService } from '@trinity/runtime/host';
+import { firstValueFrom, timeout } from 'rxjs';
 import {
   getTrinityDesktopBridge,
   type TrinityDesktopBridge,
@@ -30,6 +31,8 @@ export type SecureStorageRead =
 export type UnprotectedStorageAcknowledgement = 'consented' | 'notified';
 
 const UNPROTECTED_ACK_KEY = 'trinity.secure-storage.unprotected';
+
+const HOST_ANSWER_BUDGET_MS = 3000;
 
 const ABSENT: SecureStorageRead = { kind: 'absent' };
 const UNAVAILABLE: SecureStorageRead = { kind: 'unavailable' };
@@ -267,6 +270,34 @@ export class SecureStorageService {
   }
 
   /**
+   * Whether this desktop's keychain is out of reach because its host has not answered a
+   * negotiation. Asks the host again first, for a bounded time, so a caller's own retry
+   * also retries the handshake. Never true off desktop or once the host has answered.
+   */
+  async awaitingHost(): Promise<boolean> {
+    if (!getTrinityDesktopBridge()) return false;
+    if (!this.host.negotiationAnswered) {
+      await firstValueFrom(
+        this.host.manifest().pipe(timeout(HOST_ANSWER_BUDGET_MS)),
+      ).catch(() => undefined);
+    }
+    return !this.host.negotiationAnswered;
+  }
+
+  /**
+   * Whether secrets here can be removed only by name: the desktop keychain, which has no
+   * sweep and keeps nothing in Preferences. Then the account registry naming them must
+   * outlive a removal that failed. False when the backend cannot be selected.
+   */
+  async removesByNameOnly(): Promise<boolean> {
+    try {
+      return (await this.resolve()).kind === 'electron';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * The chosen backend, selected once. A REJECTED selection must not be memoized, or every
    * later call would reject for the page lifetime. The reachable case is a desktop startup
    * race: `createWindow()` loads the renderer before `registerSecureStoreIpc()` is
@@ -276,8 +307,9 @@ export class SecureStorageService {
    * Deliberately NOT swallowed into the web fallback: on a device that has a keychain, a
    * transient IPC failure would latch a plaintext token store for the whole session.
    *
-   * A failed desktop negotiation rejects the same way. The shell grants no operation then
-   * and answers "not available", which says nothing about the keychain.
+   * A desktop whose negotiation has not succeeded rejects the same way, in flight or failed.
+   * The shell grants no operation until then and answers "not available", which says nothing
+   * about the keychain.
    */
   private resolve(): Promise<SecureStorageBackend> {
     return (this.backend ??= this.select().catch((err: unknown) => {
@@ -289,14 +321,14 @@ export class SecureStorageService {
   private async select(): Promise<SecureStorageBackend> {
     const bridge = getTrinityDesktopBridge();
     const electronStore = bridge?.capabilities.secureStore;
-    // Read before the probe too: its "not available" may predate a retry that just answered.
-    const unanswered = this.host.negotiationFailed;
+    // Read before the probe: its "not available" may predate the answer.
+    const answered = this.host.negotiationAnswered;
     if (electronStore && (await electronStore.isAvailable())) {
       const backend = createElectronBackend(electronStore);
       await moveUnprotectedSecrets(backend);
       return backend;
     }
-    if (bridge && (unanswered || this.host.negotiationFailed)) {
+    if (bridge && !answered) {
       throw new Error('secure-store: the host negotiation has not succeeded');
     }
     if (

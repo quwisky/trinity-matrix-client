@@ -13,17 +13,30 @@ import {
   type AppLockPinState,
   type UnlockOutcome,
 } from '@trinity/data-access/app-lock';
-import { AppRestartService } from '@trinity/platform-native';
+import { AppearanceEffects } from '@trinity/application/appearance';
+import {
+  AppRestartService,
+  provideHostCapabilities,
+} from '@trinity/platform-native';
+import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { TitleBarState } from '@trinity/application/workspace';
 import {
   HostLockIntegrationService,
   HostSystemUiService,
   type HostUserPresenceSupport,
+  unavailableHostManifest,
 } from '@trinity/runtime/host';
-import { fireEvent, render, screen, TIMERS_AND_DATE } from '@trinity/testing';
+import {
+  desktopBridgeFixture,
+  fireEvent,
+  render,
+  screen,
+  TIMERS_AND_DATE,
+} from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { Subject, of, type Observable } from 'rxjs';
+import { NEVER, Subject, of, type Observable } from 'rxjs';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { appLockProviders } from '../../composition/app-lock.providers';
 import { AppLockDialogGate } from '../../composition/app-lock-dialog.gate';
 import { AppLockLifecycleBinding } from '../../composition/app-lock-lifecycle.binding';
 import { AppLockCoverComponent } from './app-lock-cover.component';
@@ -1392,5 +1405,75 @@ describe('AppLockCoverComponent', () => {
         screen.getAllByRole('button').map((b) => b.textContent?.trim()),
       ).toEqual(['Erase all data on this device']);
     });
+  });
+});
+
+describe('the cover on a desktop whose first host negotiation failed', () => {
+  afterEach(() => {
+    delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+  });
+
+  it('retries the handshake from Retry and then asks for the PIN', async () => {
+    // The real App lock service and Electron adapters over a shell that answers the retry.
+    let mainReady = false;
+    const negotiate = vi.fn(async () => {
+      if (!mainReady) throw new Error('main is not ready');
+      return {
+        kind: 'accepted',
+        protocolVersion: 1,
+        operations: {
+          ...unavailableHostManifest('not-supported').operations,
+          'user-presence': { kind: 'supported' },
+        },
+      };
+    });
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({
+        negotiate,
+        capabilities: {
+          userPresence: {
+            support: async () => PIN_ONLY,
+          } as never,
+        },
+      });
+    await render(AppLockCoverComponent, {
+      providers: [
+        provideTrnIcons(),
+        appLockProviders(),
+        provideHostCapabilities(),
+        {
+          provide: PREFERENCE_STORAGE_ADAPTER,
+          useValue: {
+            read: () => of({ kind: 'unavailable', diagnostic: { code: 'io' } }),
+            write: () => NEVER,
+          },
+        },
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+        MockProvider(AppLockLifecycleBinding, { visits: NEVER }),
+        MockProvider(AppLockDialogGate, { coverShown: () => undefined }),
+        MockProvider(TitleBarState, { active: signal(false).asReadonly() }),
+        MockProvider(HostLockIntegrationService, {
+          coverPainted: () => of({ kind: 'completed' as const }),
+        }),
+        MockProvider(HostSystemUiService, {
+          active: signal(false).asReadonly(),
+        }),
+        MockProvider(AccountRuntimeService),
+        MockProvider(AppRestartService),
+      ],
+    });
+    await tick();
+
+    expect(screen.getByText('Can’t read your PIN')).toBeTruthy();
+    expect(screen.queryByLabelText('Trinity PIN')).toBeNull();
+    const asked = negotiate.mock.calls.length;
+
+    mainReady = true;
+    await click(screen.getByTestId('app-lock-retry'));
+    await tick();
+
+    expect(negotiate).toHaveBeenCalledTimes(asked + 1);
+    expect(pinField()).toBeTruthy();
+    expect(screen.queryByTestId('app-lock-retry')).toBeNull();
   });
 });

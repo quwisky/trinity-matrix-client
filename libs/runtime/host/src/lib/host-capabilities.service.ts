@@ -32,16 +32,18 @@ export class HostCapabilitiesService {
 
   private readonly recoveries = new Subject<HostCapabilityManifest>();
   private failed = false;
+  private succeeded = false;
 
   /** The host's answer each time one follows a failed negotiation, for readers that settled on the failure. */
   readonly recovered = this.recoveries.asObservable();
 
   /**
-   * The last negotiation failed as a whole, so nothing is known about the host yet. False
-   * before the first one answers.
+   * The host has answered a negotiation that did not fail as a whole, so what it lacks is
+   * known to be lacking. False before the first answer and while the last one failed; true
+   * where no host negotiates.
    */
-  get negotiationFailed(): boolean {
-    return this.failed;
+  get negotiationAnswered(): boolean {
+    return !this.negotiator || this.succeeded;
   }
 
   manifest(): Observable<HostCapabilityManifest> {
@@ -57,6 +59,7 @@ export class HostCapabilitiesService {
             tap((manifest) => {
               const recovered = this.failed;
               this.failed = hostNegotiationRejected(manifest);
+              this.succeeded = !this.failed;
               if (recovered && !this.failed) this.recoveries.next(manifest);
             }),
           )

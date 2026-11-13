@@ -160,6 +160,19 @@ export class LocalDataWipeService {
     return secrets && pin;
   }
 
+  /**
+   * Whether an erase must not start yet: a desktop whose host has not answered cannot reach
+   * its keychain, and an erase without it would delete the stores those secrets open.
+   */
+  keychainAwaitingHost(): Promise<boolean> {
+    return this.secure.awaitingHost();
+  }
+
+  /** Whether only the account registry can name the secrets to remove (the desktop keychain). */
+  secretsRemovedByNameOnly(): Promise<boolean> {
+    return this.secure.removesByNameOnly();
+  }
+
   /** Delete the decrypted attachments left in the native cache for the share sheet. */
   wipeSharedFiles(): Promise<boolean> {
     return attemptAsync(() => this.files.clearShared());
