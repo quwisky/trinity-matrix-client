@@ -16,8 +16,10 @@ on:
         type: boolean
         default: false
 
+# release.yml's group and queue: a cut waits behind a release in flight and is never replaced.
 concurrency:
   group: release
+  queue: max
   cancel-in-progress: false
 
 permissions:

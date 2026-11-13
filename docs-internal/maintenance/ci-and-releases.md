@@ -1108,9 +1108,17 @@ cask still conflicts, so it always needs the re-dispatch above.
 
 Release runs share one concurrency group and never cancel each other: an
 incomplete draft is worse than a slower package run, and two runs must not upload
-to the same draft at once. A push queued behind a running release waits; a newer
-push replaces an older queued one, which loses nothing because each run reads the
-branch as it is. A manual dispatch re-packages an existing tag;
+to the same draft at once. `release.yml` and `release-stable.yml` set `queue: max`,
+so every push, dispatch and cut queued behind a running release waits its turn
+(GitHub starts them roughly in arrival order, without guaranteeing it). Without it a group holds one pending run and a newer one replaces it: a push
+to `main` would drop a queued `release/X.Y.x` run, and that stable release would
+never be tagged, drafted or back-merged. The queue holds 100 runs; a run cancelled
+beyond that is a push to re-run or a dispatch to repeat. A stable release therefore
+waits for a `main` prerelease in flight, including its `sign-mac` approval.
+A push to a release branch runs that branch's own copy of the workflow, so a
+`release/X.Y.x` cut before this change keeps the single pending slot until the
+change is backported to it.
+A manual dispatch re-packages an existing tag;
 it is not a way to bypass the tag-format, version or ancestry checks. It rebuilds
 the tagged source, so a source or manifest correction needs a new release.
 

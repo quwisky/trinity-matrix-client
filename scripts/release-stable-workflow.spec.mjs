@@ -18,6 +18,7 @@ describe('Release stable workflow', () => {
     expect(dry_run).toMatchObject({ type: 'boolean', default: false });
     expect(workflow.concurrency).toEqual({
       group: 'release',
+      queue: 'max',
       'cancel-in-progress': false,
     });
     expect(workflow.permissions).toEqual({ contents: 'read' });

@@ -21,11 +21,14 @@ on:
         description: 'Existing vX.Y.Z or vX.Y.Z-next.N tag to package'
         required: true
 
-# One group for every release run. Never cancel mid-flight: a half-uploaded draft is
-# worse than a slow one, and a push and a dispatch for the same tag must not both
-# --clobber one draft. A newer queued push replaces an older one, losing nothing.
+# One group for every release run, shared with release-stable.yml. Never cancel mid-flight:
+# a half-uploaded draft is worse than a slow one, and a push and a dispatch for the same tag
+# must not both --clobber one draft. queue: max keeps every waiting run: without it a group
+# holds one pending run, so a push to main would replace a queued release/X.Y.x run,
+# re-package or cut, and that stable release would never be tagged.
 concurrency:
   group: release
+  queue: max
   cancel-in-progress: false
 
 permissions:
@@ -571,8 +574,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.verify.outputs.tag }}
         run: |
-          state=$(gh release view "$TAG" --json isDraft -q .isDraft 2>/dev/null || echo missing)
+          # A failed lookup stops the step here: only a release read as a draft is replaced.
+          state=$(gh release view "$TAG" --json isDraft -q .isDraft)
           case "$state" in
+            true)
+              gh release upload "$TAG" artifacts/* --clobber
+              ;;
             false)
               # --clobber DELETES the existing assets before uploading. On a published
               # release that silently swaps what people already have — and electron-builder
@@ -581,7 +588,8 @@ jobs:
               exit 1
               ;;
             *)
-              gh release upload "$TAG" artifacts/* --clobber
+              echo "::error::Could not tell whether $TAG is a draft ('$state'); nothing was uploaded."
+              exit 1
               ;;
           esac
 
