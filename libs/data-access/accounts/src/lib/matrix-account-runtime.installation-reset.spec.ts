@@ -303,6 +303,52 @@ it('reports key-value and service-worker residue by typed safe scope', async () 
   });
 });
 
+describe('secure storage that cannot be reached (a desktop whose host negotiation is failing)', () => {
+  const RECORD = { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' };
+  const unreachable = () => throwError(() => new Error('secure-store'));
+  const RESIDUE = [
+    { scope: 'secure-storage', recovery: 'retry-installation-reset' },
+    { scope: 'account-registry', recovery: 'retry-installation-reset' },
+    { scope: 'preferences', recovery: 'retry-installation-reset' },
+  ] as const;
+
+  it('reports the erase as incomplete and keeps the registry that names the keychain entries', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
+    vi.mocked(test.storage.load).mockReturnValue(unreachable());
+    vi.mocked(test.storage.clearAll).mockReturnValue(unreachable());
+    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(false);
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'partial-cleanup', issues: RESIDUE });
+    // On desktop and web the registry is a Preferences entry.
+    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+    expect(test.wipe.wipeWebStorage).not.toHaveBeenCalled();
+  });
+
+  it('keeps the registry on a retry that still cannot reach it, and finishes once it can', async () => {
+    const test = setup();
+    vi.mocked(test.storage.clearAll).mockReturnValue(unreachable());
+    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(false);
+
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup(RESIDUE)),
+    ).resolves.toEqual({
+      kind: 'partial-cleanup',
+      issues: expect.arrayContaining([...RESIDUE]),
+    });
+    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+
+    vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
+    vi.mocked(test.wipe.wipeSecureStorage).mockResolvedValue(true);
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup(RESIDUE)),
+    ).resolves.toEqual({ kind: 'ready' });
+    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+  });
+});
+
 it('keeps provider residue but clears a superseded secure-read failure', async () => {
   const { adapter, matrix, storage, wipe, lifecycle } = setup();
   vi.mocked(storage.list).mockReturnValue(

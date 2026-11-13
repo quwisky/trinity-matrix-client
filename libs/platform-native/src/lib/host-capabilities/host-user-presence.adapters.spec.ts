@@ -347,7 +347,7 @@ describe('ElectronUserPresenceAdapter', () => {
   });
 
   function adapter(
-    granted: boolean,
+    granted: boolean | 'negotiation-failed',
     userPresence: {
       support: () => Promise<unknown>;
       verify: () => Promise<unknown>;
@@ -370,9 +370,11 @@ describe('ElectronUserPresenceAdapter', () => {
                 operations: Object.fromEntries(
                   HOST_OPERATIONS.map((operation) => [
                     operation,
-                    operation === 'user-presence' && granted
-                      ? { kind: 'supported' }
-                      : { kind: 'unavailable', reason: 'not-supported' },
+                    granted === 'negotiation-failed'
+                      ? { kind: 'unavailable', reason: 'host-rejected' }
+                      : operation === 'user-presence' && granted
+                        ? { kind: 'supported' }
+                        : { kind: 'unavailable', reason: 'not-supported' },
                   ]),
                 ),
               }),
@@ -408,6 +410,33 @@ describe('ElectronUserPresenceAdapter', () => {
       pin: { kind: 'unavailable', reason: 'not-supported' },
     });
     expect(support).not.toHaveBeenCalled();
+  });
+
+  it('reads a failed negotiation as an unreadable PIN store, not "no PIN store"', async () => {
+    const support = vi.fn();
+    await expect(
+      firstValueFrom(
+        adapter('negotiation-failed', { support, verify: vi.fn() }).support(),
+      ),
+    ).resolves.toEqual({
+      system: { kind: 'unavailable', reason: 'not-supported' },
+      pin: { kind: 'unavailable', reason: 'secure-storage-unavailable' },
+    });
+    expect(support).not.toHaveBeenCalled();
+  });
+
+  it('reports the PIN as not cleared while the negotiation is failing, so the full reset sees it', async () => {
+    const clearPin = vi.fn();
+    const presence = adapter('negotiation-failed', {
+      support: vi.fn(),
+      verify: vi.fn(),
+      clearPin,
+    });
+    await expect(firstValueFrom(presence.clearPin())).resolves.toEqual({
+      kind: 'rejected',
+      diagnostic: { code: 'pin-clear-failed' },
+    });
+    expect(clearPin).not.toHaveBeenCalled();
   });
 
   it('reads a failing support call as an unreadable PIN store, not "no PIN"', async () => {

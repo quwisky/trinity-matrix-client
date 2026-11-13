@@ -16,6 +16,8 @@ The protocol-versioned host manifest covers authentication handoff, deep links, 
 
 A negotiation that fails as a whole (every operation `host-rejected`) is not an answer. The Electron adapter does not keep it, and startup stops with Retry. A reader that starts before startup negotiates and lives on after it (lock requests, lifecycle events, the title bar colours) uses `HostCapabilitiesService.answered()`, which waits through such a failure for the answer the Retry gets and never asks again itself. A reader that already settled on the failure listens to `recovered` (App lock re-reads presence support). `not-supported` and `protocol-mismatch` are answers and stay final.
 
+While the negotiation is failing, nothing reads "no grant" as "the host has none". `SecureStorageService` rejects instead of choosing the unprotected web store, and chooses again on the next call. The Electron user-presence adapter reports the PIN store as unreadable, so an App lock whose setting cannot be read either locks, and its `clearPin()` reports a failure. The full reset then reports what it could not erase and leaves Preferences in place, because the account registry there is the only map to the keychain entries.
+
 Unsupported and disabled behavior is an expected state. Do not infer support from the user agent, a global object, screen size, or the presence of one unrelated plugin.
 
 ## Keep operations narrow {#narrow-operations}

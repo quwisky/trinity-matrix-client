@@ -1,6 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { Capacitor } from '@capacitor/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  HOST_CAPABILITY_NEGOTIATOR,
+  HostCapabilitiesService,
+  unavailableHostManifest,
+} from '@trinity/runtime/host';
+import { firstValueFrom, of } from 'rxjs';
 import { SecureStorageService } from './secure-storage.service';
 import { desktopBridgeFixture } from '@trinity/testing';
 
@@ -386,6 +392,56 @@ describe('SecureStorageService', () => {
       expect(await s.get('accessToken')).toBe('tok');
       expect(await s.isSecure()).toBe(true);
       expect(isAvailable).toHaveBeenCalledTimes(2); // re-probed, not replayed
+    } finally {
+      delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+    }
+  });
+
+  it('rejects instead of latching the unprotected store while the desktop negotiation is failing', async () => {
+    // The preload answers "not available" for an ungranted store, as during a failed
+    // negotiation; the keychain itself is fine and holds the token.
+    let granted = false;
+    const store = {
+      isAvailable: vi.fn(async () => granted),
+      get: vi.fn(async () => (granted ? 'tok' : null)),
+      read: vi.fn(async () => ({ kind: 'absent' })),
+      set: vi.fn(async () => granted),
+      delete: vi.fn().mockResolvedValue(undefined),
+    };
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({ capabilities: { secureStore: store } });
+    const negotiate = vi
+      .fn(() => {
+        granted = true;
+        return of(unavailableHostManifest('not-supported'));
+      })
+      .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+    TestBed.configureTestingModule({
+      providers: [
+        SecureStorageService,
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: negotiate },
+        },
+      ],
+    });
+    const host = TestBed.inject(HostCapabilitiesService);
+    const s = TestBed.inject(SecureStorageService);
+    try {
+      await firstValueFrom(host.manifest());
+
+      await expect(s.get('accessToken')).rejects.toThrow();
+      await expect(s.set('accessToken', 'new')).rejects.toThrow();
+      await expect(s.remove('accessToken')).rejects.toThrow();
+      await expect(s.clearAll()).rejects.toThrow();
+      expect(await s.read('accessToken')).toEqual({ kind: 'unavailable' });
+      expect(prefs.size).toBe(0);
+
+      await firstValueFrom(host.manifest());
+
+      expect(await s.get('accessToken')).toBe('tok');
+      expect(await s.isSecure()).toBe(true);
+      expect(await s.withoutKeychain()).toBe(false);
     } finally {
       delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
     }

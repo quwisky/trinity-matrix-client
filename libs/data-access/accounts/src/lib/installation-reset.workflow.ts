@@ -421,21 +421,33 @@ export class InstallationResetWorkflow {
     }
     if (selected.preferences) {
       operations.push(
-        this.wipePair(
-          attempt,
-          'preferences',
-          [
-            {
-              run: () => this.wipe.wipePreferences(),
-              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
-            },
-            {
-              run: () => this.wipe.wipeWebStorage(),
-              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
-            },
-          ],
-          resolve,
-        ),
+        defer(() => {
+          // The registry is a Preferences entry and the only map to the secure entries a
+          // failed clear left behind: wiping it would strand them beyond any later erase.
+          if (
+            attempt
+              .settledIssues()
+              .some(({ scope }) => scope === 'account-registry')
+          ) {
+            attempt.addIssue('preferences', 'retry-installation-reset');
+            return of(void 0);
+          }
+          return this.wipePair(
+            attempt,
+            'preferences',
+            [
+              {
+                run: () => this.wipe.wipePreferences(),
+                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
+              },
+              {
+                run: () => this.wipe.wipeWebStorage(),
+                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
+              },
+            ],
+            resolve,
+          );
+        }),
       );
     }
     return operations.length === 0

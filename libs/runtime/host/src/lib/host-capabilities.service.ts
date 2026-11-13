@@ -36,6 +36,14 @@ export class HostCapabilitiesService {
   /** The host's answer each time one follows a failed negotiation, for readers that settled on the failure. */
   readonly recovered = this.recoveries.asObservable();
 
+  /**
+   * The last negotiation failed as a whole, so nothing is known about the host yet. False
+   * before the first one answers.
+   */
+  get negotiationFailed(): boolean {
+    return this.failed;
+  }
+
   manifest(): Observable<HostCapabilityManifest> {
     return defer(() =>
       this.negotiator

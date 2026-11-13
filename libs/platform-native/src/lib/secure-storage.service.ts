@@ -1,10 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Capacitor } from '@capacitor/core';
 import { Preferences } from '@capacitor/preferences';
 import {
   KeychainAccess,
   SecureStorage,
 } from '@aparajita/capacitor-secure-storage';
+import { HostCapabilitiesService } from '@trinity/runtime/host';
 import {
   getTrinityDesktopBridge,
   type TrinityDesktopBridge,
@@ -170,6 +171,7 @@ function createNativeBackend(): SecureStorageBackend {
  */
 @Injectable({ providedIn: 'root' })
 export class SecureStorageService {
+  private readonly host = inject(HostCapabilitiesService);
   private backend?: Promise<SecureStorageBackend>;
 
   get(key: string): Promise<string | null> {
@@ -273,6 +275,9 @@ export class SecureStorageService {
    *
    * Deliberately NOT swallowed into the web fallback: on a device that has a keychain, a
    * transient IPC failure would latch a plaintext token store for the whole session.
+   *
+   * A failed desktop negotiation rejects the same way. The shell grants no operation then
+   * and answers "not available", which says nothing about the keychain.
    */
   private resolve(): Promise<SecureStorageBackend> {
     return (this.backend ??= this.select().catch((err: unknown) => {
@@ -284,10 +289,15 @@ export class SecureStorageService {
   private async select(): Promise<SecureStorageBackend> {
     const bridge = getTrinityDesktopBridge();
     const electronStore = bridge?.capabilities.secureStore;
+    // Read before the probe too: its "not available" may predate a retry that just answered.
+    const unanswered = this.host.negotiationFailed;
     if (electronStore && (await electronStore.isAvailable())) {
       const backend = createElectronBackend(electronStore);
       await moveUnprotectedSecrets(backend);
       return backend;
+    }
+    if (bridge && (unanswered || this.host.negotiationFailed)) {
+      throw new Error('secure-store: the host negotiation has not succeeded');
     }
     if (
       Capacitor.isNativePlatform() &&

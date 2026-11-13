@@ -64,7 +64,7 @@ export function appLockProviders(): EnvironmentProviders {
     provideAppInitializer(() => {
       const appLock = inject(AppLockService);
       const appearance = inject(AppearanceEffects);
-      // Hydration can read presence support during a failed negotiation, as "none".
+      // Hydration can read presence support during a failed negotiation, as unreadable.
       inject(HostCapabilitiesService)
         .recovered.pipe(
           switchMap(() => appLock.refreshSupport()),
