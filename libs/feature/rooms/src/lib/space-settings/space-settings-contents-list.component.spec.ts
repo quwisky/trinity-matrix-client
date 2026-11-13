@@ -288,7 +288,7 @@ describe('SpaceSettingsContentsListComponent', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
   });
 
-  it('retains a rejected move and recomputes its destination when retried', async () => {
+  it('retains a rejected move and aims its retry at the same destination', async () => {
     const moveChildBefore = vi
       .fn()
       .mockReturnValueOnce(throwError(() => new Error('rate limited')))
@@ -304,6 +304,29 @@ describe('SpaceSettingsContentsListComponent', () => {
       TARGET,
       '!b:hs',
       null,
+      INITIAL.map(({ id }) => id),
+    );
+  });
+
+  it('aims a retried move at its first destination after a part-way failure reordered the list', async () => {
+    const moveChildBefore = vi
+      .fn()
+      .mockReturnValueOnce(throwError(() => new Error('rate limited')))
+      .mockReturnValueOnce(of(receipt({ ...INITIAL[0], order: 'moved' })));
+    const { cmp, setItems } = await build({ moveChildBefore });
+    const moved = INITIAL[0].id;
+
+    cmp.move(moved, 'down');
+    const firstDestination: unknown = moveChildBefore.mock.calls[0][2];
+    // The writes that landed already show the room one place down.
+    await setItems([INITIAL[1], INITIAL[0], ...INITIAL.slice(2)]);
+    cmp.retry();
+
+    expect(moveChildBefore).toHaveBeenNthCalledWith(
+      2,
+      TARGET,
+      moved,
+      firstDestination,
       INITIAL.map(({ id }) => id),
     );
   });

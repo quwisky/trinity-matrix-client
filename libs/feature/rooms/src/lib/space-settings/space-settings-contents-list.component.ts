@@ -36,6 +36,15 @@ type CurationIntent =
       readonly kind: 'move';
       readonly childId: string;
       readonly direction: 'up' | 'down';
+      /**
+       * Where the move was aimed and the order it was aimed in, kept for a retry: a move
+       * that failed part-way has already changed the list, and "down" from there is a
+       * second move.
+       */
+      readonly target?: {
+        readonly before: string | null;
+        readonly order: readonly string[];
+      };
     };
 
 interface CurationFailure {
@@ -158,6 +167,7 @@ export class SpaceSettingsContentsListComponent {
     if (!item) return;
 
     let action: Observable<SpaceChildWriteReceipt>;
+    let retryIntent: CurationIntent = intent;
     if (intent.kind === 'suggested') {
       this.pendingSuggestedState.update((current) =>
         new Map(current).set(intent.childId, intent.suggested),
@@ -168,13 +178,19 @@ export class SpaceSettingsContentsListComponent {
         intent.suggested,
       );
     } else {
-      const before = this.beforeChildId(intent.childId, intent.direction);
+      const before =
+        intent.target?.before ??
+        (intent.target
+          ? null
+          : this.beforeChildId(intent.childId, intent.direction));
       if (before === undefined) return;
+      const order = intent.target?.order ?? this.items().map(({ id }) => id);
+      retryIntent = { ...intent, target: { before, order } };
       action = this.contents.moveChildBefore(
         this.target(),
         intent.childId,
         before,
-        this.items().map(({ id }) => id),
+        order,
       );
     }
 
@@ -193,7 +209,7 @@ export class SpaceSettingsContentsListComponent {
           this.echoReceipt = null;
           this.dropPendingSuggested(intent.childId);
           this.failureState.set({
-            intent,
+            intent: retryIntent,
             message: failureMessage(item.name, intent, error),
           });
         },
