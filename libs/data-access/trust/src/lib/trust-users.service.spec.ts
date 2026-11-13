@@ -242,6 +242,85 @@ describe('TrustUsersService', () => {
     lifetime.unsubscribe();
   });
 
+  describe('after an account switch', () => {
+    const switchTo = (
+      matrix: MatrixClientService,
+      client: ReturnType<typeof fakeClient>,
+    ): void => {
+      ngMocks.stubMember(matrix, 'instance', client as unknown as MatrixClient);
+      activeUserId.set('@b:hs');
+      TestBed.inject(ApplicationRef).tick();
+    };
+
+    it('does not re-read the people only the previous account looked at', async () => {
+      const { svc, matrix } = setup(fakeClient(async () => status(true, true)));
+      const lifetime = svc.runProjection().subscribe();
+      const before = svc.userTrust(ALICE);
+      await settle();
+      expect(before()).toBe('verified');
+
+      const clientB = fakeClient(async () => status(false, false));
+      switchTo(matrix, clientB);
+      await settle();
+
+      expect(before()).toBeNull();
+      expect(clientB.getUserVerificationStatus).not.toHaveBeenCalled();
+
+      const after = svc.userTrust(ALICE);
+      await settle();
+      expect(after()).toBe('unverified');
+      lifetime.unsubscribe();
+    });
+
+    it('keeps following a person whose sessions are still on show', async () => {
+      const { svc, matrix } = setup(fakeClient(async () => status(true, true)));
+      const lifetime = svc.runProjection().subscribe();
+      const sessions = svc.userSessions(ALICE);
+      const release = svc.retainUserSessions(ALICE);
+      await settle();
+
+      switchTo(
+        matrix,
+        fakeClient(async () => status(true, true), true, {
+          devices: async () => deviceMap(ALICE, [PHONE]),
+        }),
+      );
+      await settle();
+
+      expect(sessions()?.kind).toBe('checked');
+      release();
+      lifetime.unsubscribe();
+    });
+
+    it("never shows the previous account's late answer as the new account's", async () => {
+      let answerA: (next: Status) => void = () => undefined;
+      const clientA = fakeClient(async () => status(false, true, true));
+      const { svc, matrix } = setup(clientA);
+      const lifetime = svc.runProjection().subscribe();
+      svc.userTrust(ALICE);
+      await settle();
+      clientA.getUserVerificationStatus.mockImplementation(
+        () => new Promise<Status>((resolve) => (answerA = resolve)),
+      );
+      const done = firstValueFrom(svc.acknowledgeIdentity(ALICE), {
+        defaultValue: undefined,
+      });
+      await settle();
+
+      const clientB = fakeClient(async () => status(false, false));
+      switchTo(matrix, clientB);
+      const after = svc.userTrust(ALICE);
+      await settle();
+      trustHandler(clientB)(ALICE, status(false, false));
+      answerA(status(true, true));
+      await done;
+      await settle();
+
+      expect(after()).toBe('unverified');
+      lifetime.unsubscribe();
+    });
+  });
+
   it('is null when no projection is running', async () => {
     const { svc } = setup(fakeClient(async () => status(true, true)));
     const trust = svc.userTrust(ALICE);
@@ -1119,7 +1198,7 @@ describe('TrustUsersService', () => {
       );
       const { svc, matrix } = setup(clientA);
       const lifetime = svc.runProjection().subscribe();
-      const trust = svc.userTrust(ALICE);
+      svc.userTrust(ALICE);
       await settle();
       const done = firstValueFrom(svc.acknowledgeIdentity(ALICE), {
         defaultValue: undefined,
@@ -1133,6 +1212,7 @@ describe('TrustUsersService', () => {
       );
       activeUserId.set('@b:hs');
       TestBed.inject(ApplicationRef).tick();
+      const trust = svc.userTrust(ALICE);
       await settle();
       expect(trust()).toBe('unverified');
 
