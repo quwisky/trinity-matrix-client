@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { compareVersions } from './back-merge.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'apps/trinity/src/app/release-notes.ts');
@@ -21,7 +22,9 @@ const SECTION_KEYS = {
   Reverted: 'reverted',
 };
 
-const VERSION = /^(\d+)\.(\d+)\.(\d+)(?:-next\.(\d+))?$/;
+// Same grammar as back-merge.mjs, whose comparer rejects anything else.
+const VERSION =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-next\.(0|[1-9]\d*))?$/;
 
 /** Cut the PR/commit/closes links (all after the first ` ([`) and the scope prefix, then capitalise. */
 function cleanEntry(text) {
@@ -67,19 +70,6 @@ export function releaseLine(version) {
   const match = VERSION.exec(version);
   if (!match) return null;
   return match[4] === undefined ? 'stable' : 'next';
-}
-
-/** SemVer order for the accepted forms: a prerelease sorts below its release. */
-function compareVersions(a, b) {
-  const [pa, pb] = [VERSION.exec(a), VERSION.exec(b)];
-  for (let i = 1; i <= 3; i++) {
-    if (pa[i] !== pb[i]) return Number(pa[i]) - Number(pb[i]);
-  }
-  const [na, nb] = [pa[4], pb[4]];
-  if (na === undefined || nb === undefined) {
-    return (na === undefined) - (nb === undefined);
-  }
-  return Number(na) - Number(nb);
 }
 
 /** The newest `cap` releases on the current version's line, up to the current version. */
