@@ -103,6 +103,9 @@ const MAX_EMPTY_THREAD_PAGES = 20;
  * child. Message relations and staged media use the shared Conversation adapters, so no
  * second public action facade can drift from the room path.
  */
+/** How far ahead of this device's clock a reply's server time may be and still order by it. */
+const FUTURE_TIMESTAMP_TOLERANCE_MS = 5 * 60_000;
+
 @Injectable()
 export class ThreadsService {
   private readonly mediaPipeline = inject(MediaPipeline);
@@ -926,7 +929,18 @@ export class ThreadsService {
       return true;
     });
     const confirmed = replies.filter((event) => !event.status);
-    confirmed.sort((a, b) => a.getTs() - b.getTs());
+    // A reply dated ahead of this device's clock would sort last for good: every later reply
+    // would render above it, and the read receipt would stay on it. It takes the time of
+    // the reply before it in the timeline instead, which keeps it where it arrived.
+    const latestPlausible = Date.now() + FUTURE_TIMESTAMP_TOLERANCE_MS;
+    const sortTime = new Map<MatrixEvent, number>();
+    let previous = 0;
+    for (const event of confirmed) {
+      const ts = event.getTs();
+      previous = ts <= latestPlausible ? ts : previous;
+      sortTime.set(event, previous);
+    }
+    confirmed.sort((a, b) => (sortTime.get(a) ?? 0) - (sortTime.get(b) ?? 0));
     const unconfirmed = replies.filter((event) => event.status);
     const root =
       thread?.rootEvent ??
