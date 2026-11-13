@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   computed,
+  untracked,
   effect,
   inject,
   input,
@@ -21,6 +22,7 @@ import { Observable } from 'rxjs';
 import {
   MANAGE_IDENTITY,
   TrustService,
+  TrustUsersService,
   TrustVerificationService,
   type TrustDialogResult,
 } from '@trinity/data-access/trust';
@@ -60,6 +62,7 @@ import { SasCompareComponent } from './sas-compare.component';
 export class DeviceVerificationPage {
   private readonly verification = inject(TrustVerificationService);
   private readonly trust = inject(TrustService);
+  private readonly users = inject(TrustUsersService);
   private readonly qrCode = inject(QrCodeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -113,6 +116,22 @@ export class DeviceVerificationPage {
       (active.isSelfVerification &&
         !active.incoming &&
         (active.stage === 'requested' || active.stage === 'cancelled'))
+    );
+  });
+
+  /**
+   * Matching emoji with another user finishes the flow even when this device holds no
+   * user-signing key and so signed nothing. Only their trust status says they are verified,
+   * and it can arrive a moment after `done`.
+   */
+  readonly otherUserVerified = computed(() => {
+    const active = this.active();
+    return (
+      active?.stage === 'done' &&
+      !active.isSelfVerification &&
+      !!active.otherUserId &&
+      untracked(() => this.users.userTrust(active.otherUserId as string))() ===
+        'verified'
     );
   });
 
