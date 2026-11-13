@@ -207,6 +207,11 @@ export class DevicesSectionComponent {
   /** Prompt for a new display name, then rename. */
   rename(device: DeviceInfo): void {
     this.error.set(null); // don't carry a stale error into a fresh action
+    // Pinned now: the dialog outlives an Account switch, and the device is this Account's.
+    const accountId = this.activeAccountId();
+    if (!accountId) {
+      return;
+    }
     this.alert
       .prompt$({
         header: 'Rename device',
@@ -219,12 +224,16 @@ export class DevicesSectionComponent {
         filter((name): name is string => name !== null),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((name) => this.applyRename(device.id, name));
+      .subscribe((name) => this.applyRename(accountId, device.id, name));
   }
 
   /** Confirm, then sign the device out (password UIA handled by the service). */
   remove(device: DeviceInfo): void {
     this.error.set(null);
+    const accountId = this.activeAccountId();
+    if (!accountId) {
+      return;
+    }
     this.alert
       .confirm$({
         header: 'Sign out device',
@@ -233,7 +242,7 @@ export class DevicesSectionComponent {
         variant: 'danger',
       })
       .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.applyRemove(device.id));
+      .subscribe(() => this.applyRemove(accountId, device.id));
   }
 
   /**
@@ -260,20 +269,20 @@ export class DevicesSectionComponent {
       .subscribe();
   }
 
-  private applyRename(id: string, name: string): void {
+  private applyRename(accountId: string, id: string, name: string): void {
     if (!name.trim()) {
       return;
     }
-    runWithBusy(this.devicesSvc.rename(id, name), {
+    runWithBusy(this.devicesSvc.rename(accountId, id, name), {
       busy: this.busy,
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe();
   }
 
-  private applyRemove(id: string): void {
+  private applyRemove(accountId: string, id: string): void {
     runWithBusy(
-      this.devicesSvc.delete(id, () => this.promptPassword()),
+      this.devicesSvc.delete(accountId, id, () => this.promptPassword()),
       {
         busy: this.busy,
         error: this.error,

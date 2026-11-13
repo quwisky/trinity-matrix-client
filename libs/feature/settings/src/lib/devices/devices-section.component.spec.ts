@@ -19,7 +19,7 @@ import {
 import { fireEvent, render, screen, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { TrustService } from '@trinity/data-access/trust';
-import { Observable, of, throwError } from 'rxjs';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
   TrustDevicesService,
@@ -174,7 +174,7 @@ describe('DevicesSectionComponent', () => {
     await fixture.componentInstance.rename(OTHER);
 
     expect(alertPrompt).toHaveBeenCalled();
-    expect(rename).toHaveBeenCalledWith('B', 'Tablet');
+    expect(rename).toHaveBeenCalledWith('@me:hs', 'B', 'Tablet');
   });
 
   it('does not rename when the prompt is cancelled', async () => {
@@ -195,7 +195,31 @@ describe('DevicesSectionComponent', () => {
     expect(alertConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ variant: 'danger' }),
     );
-    expect(del).toHaveBeenCalledWith('B', expect.any(Function));
+    expect(del).toHaveBeenCalledWith('@me:hs', 'B', expect.any(Function));
+  });
+
+  it('renames as the account whose device it is, even after another becomes active', async () => {
+    const name = new Subject<string | null>();
+    alertPrompt.mockReturnValue(name);
+    const { fixture } = await renderSection();
+
+    fixture.componentInstance.rename(OTHER);
+    activeUserId.set('@other:hs');
+    name.next('Tablet');
+
+    expect(rename).toHaveBeenCalledWith('@me:hs', 'B', 'Tablet');
+  });
+
+  it('signs out as the account whose device it is, even after another becomes active', async () => {
+    const confirmed = new Subject<boolean>();
+    alertConfirm.mockReturnValue(confirmed);
+    const { fixture } = await renderSection();
+
+    fixture.componentInstance.remove(OTHER);
+    activeUserId.set('@other:hs');
+    confirmed.next(true);
+
+    expect(del).toHaveBeenCalledWith('@me:hs', 'B', expect.any(Function));
   });
 
   it('does not sign out a device when the confirm is cancelled', async () => {
