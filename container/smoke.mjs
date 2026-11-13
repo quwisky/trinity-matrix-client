@@ -209,6 +209,7 @@ async function assertHttpContract(baseURL, indexBytes, wasmBytes) {
   for (const path of [
     '/login',
     '/register',
+    '/reset-password',
     '/sso-callback',
     '/rooms',
     '/settings',
@@ -230,6 +231,7 @@ async function assertHttpContract(baseURL, indexBytes, wasmBytes) {
     '/encryption/setup',
     '/encryption/unlock',
     '/encryption/verify',
+    '/encryption/confirm',
   ]) {
     const response = await assertResponse(`${baseURL}${path}`, 200, path, {
       headers: security,
