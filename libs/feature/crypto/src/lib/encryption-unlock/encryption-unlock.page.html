@@ -55,8 +55,13 @@
     } @else {
       <h2 class="heading">Enter your recovery key</h2>
       <p class="lead">
-        This device isn’t trusted yet. Enter the recovery key you saved when you
-        set up encryption to unlock your encrypted messages here.
+        @if (alreadyVerified) {
+          This device was verified by another device, so it doesn’t have all the
+          keys. Enter your recovery key once to fetch them.
+        } @else {
+          This device isn’t trusted yet. Enter the recovery key you saved when
+          you set up encryption to unlock your encrypted messages here.
+        }
       </p>
 
       <trn-field class="mt-4">

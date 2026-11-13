@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { NEVER, of, throwError } from 'rxjs';
+import { NEVER, Subject, of, throwError } from 'rxjs';
 import { fireEvent, render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -39,6 +39,7 @@ describe('AccountSectionComponent', () => {
   async function renderSection(
     api: AccountServerApi | null = { kind: 'legacy' },
   ) {
+    const activeUserId = signal('@alice:example.org');
     const result = await render(AccountSectionComponent, {
       providers: [
         // Read on construction, so it must be stubbed before render.
@@ -46,7 +47,7 @@ describe('AccountSectionComponent', () => {
           accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
         MockProvider(MatrixClientService, {
-          activeUserId: signal('@alice:example.org').asReadonly(),
+          activeUserId: activeUserId.asReadonly(),
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
@@ -75,6 +76,7 @@ describe('AccountSectionComponent', () => {
       auth,
       toast,
       externalBrowser,
+      activeUserId,
     };
   }
 
@@ -260,9 +262,96 @@ describe('AccountSectionComponent', () => {
     expect(cmp.form.currentPassword().touched()).toBe(false);
     expect(cmp.error()).toBeNull();
     expect(toast.show).toHaveBeenCalledWith(
-      'Password changed.',
+      'Password changed for @alice:example.org.',
       expect.objectContaining({ variant: 'success' }),
     );
+  });
+
+  /** Alice's change is sent and still unanswered when Bob becomes the shown account. */
+  async function switchWhileChanging() {
+    const section = await renderSection();
+    const change = new Subject<void>();
+    vi.mocked(section.auth.changePassword).mockReturnValue(change);
+    fill(section.cmp, {
+      currentPassword: 'alice-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+    section.cmp.submit();
+
+    section.activeUserId.set('@bob:example.org');
+    TestBed.tick();
+    fill(section.cmp, {
+      currentPassword: 'bob-pw',
+      newPassword: 'bob-new-secret-pw',
+      confirmPassword: 'bob-new-secret-pw',
+    });
+    return { ...section, change };
+  }
+
+  it('names the account whose password changed and keeps what was typed for the account now shown', async () => {
+    const { cmp, toast, change } = await switchWhileChanging();
+
+    change.next();
+    change.complete();
+
+    expect(cmp.form.currentPassword().value()).toBe('bob-pw');
+    expect(cmp.form.newPassword().value()).toBe('bob-new-secret-pw');
+    expect(toast.show).toHaveBeenCalledWith(
+      'Password changed for @alice:example.org.',
+      expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('reports a failed change for another account in a toast, not under the form now shown', async () => {
+    const { cmp, toast, change } = await switchWhileChanging();
+
+    change.error(new Error('Your current password is incorrect.'));
+
+    expect(cmp.error()).toBeNull();
+    expect(toast.show).toHaveBeenCalledWith(
+      'Password not changed for @alice:example.org: Your current password is incorrect.',
+      expect.objectContaining({ variant: 'danger' }),
+    );
+    expect(cmp.form.currentPassword().value()).toBe('bob-pw');
+  });
+
+  it('tells a password manager which account the form is for', async () => {
+    const { activeUserId, fixture } = await renderSection();
+    const username = () =>
+      fixture.nativeElement.querySelector(
+        'input[autocomplete="username"]',
+      ) as HTMLInputElement;
+
+    expect(username().value).toBe('@alice:example.org');
+    expect(username().readOnly).toBe(true);
+
+    activeUserId.set('@bob:example.org');
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(username().value).toBe('@bob:example.org');
+  });
+
+  it('forgets a password typed for one account when another becomes active', async () => {
+    const { cmp, auth, activeUserId } = await renderSection();
+    fill(cmp, {
+      currentPassword: 'alice-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+    cmp.form().markAsTouched();
+
+    // A notification click switches account under the open Settings dialog.
+    activeUserId.set('@bob:example.org');
+    cmp.submit();
+
+    expect(auth.changePassword).not.toHaveBeenCalled();
+    expect(cmp.form.currentPassword().value()).toBe('');
+
+    TestBed.tick();
+    expect(cmp.form.currentPassword().touched()).toBe(false);
+    expect(cmp.error()).toBeNull();
   });
 
   it('refuses a mismatched confirmation without calling the service', async () => {

@@ -99,6 +99,7 @@
         [member]="member()"
         [isSelf]="isSelf()"
         [trust]="trust()"
+        [trustAccountId]="trustAccountId()"
         [presence]="presenceDetails()"
         [globalName]="globalName()"
         [showIdentityActions]="showIdentityActions()"
@@ -107,7 +108,9 @@
         (sessionsClosed)="closeSessions()"
         (sessionsRetried)="loadSessions()"
         (messageUser)="message()"
+        [verifyBlocked]="identityActions.verifyBlocked()"
         (verify)="verify()"
+        (setupOpened)="close()"
         (copyFailed)="selectUserId()"
       />
 

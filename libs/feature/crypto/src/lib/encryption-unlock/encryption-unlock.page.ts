@@ -59,6 +59,13 @@ const BUSY_REASON = 'Wait for this step to finish';
 const SWITCHED_ACCOUNT = 'you switched account while this was open.';
 
 /**
+ * A verified device is refused the keys: the service's advice to verify this device is
+ * already done, and would leave the reset as the only way on it names.
+ */
+const NO_KEYS_IN_RECOVERY =
+  'This account’s recovery can’t give this device the keys it is missing. Verify people from the device where you set up encryption, or finish setting up recovery there.';
+
+/**
  * New-device unlock. The account already has secret storage; the user enters their
  * recovery key to trust this device ({@link TrustService.recoverWithKey} imports the
  * cross-signing secrets and enables key backup). Key-only: setup provisions a random
@@ -171,13 +178,22 @@ export class EncryptionUnlockPage {
       resetting && previous ? previous.value : live,
   }).asReadonly();
 
+  /**
+   * This device arrived already verified, so the key only fetches the keys a device
+   * verified by another one never received. Read once: a successful unlock verifies the
+   * device, and the copy must not change under the person as it does.
+   */
+  protected readonly alreadyVerified =
+    this.crypto.thisDeviceVerified() === true;
+
   readonly title = computed(() => {
     if (this.newRecoveryKey()) {
       return 'Identity reset';
     }
-    return this.identityWithoutRecovery()
-      ? 'Reset your identity'
-      : 'Verify this device';
+    if (this.identityWithoutRecovery()) {
+      return 'Reset your identity';
+    }
+    return this.alreadyVerified ? 'Enter recovery key' : 'Verify this device';
   });
 
   /**
@@ -404,10 +420,19 @@ export class EncryptionUnlockPage {
   }
 
   private withBusy<T>(source: Observable<T>): Observable<T> {
-    return runWithBusy(source, {
-      busy: this.busy,
-      error: this.error,
-      destroyRef: this.destroyRef,
-    });
+    return runWithBusy(
+      source,
+      { busy: this.busy, error: this.error, destroyRef: this.destroyRef },
+      {
+        formatError: (error) =>
+          this.alreadyVerified &&
+          error instanceof TrustOperationError &&
+          error.kind === 'recovery-not-configured'
+            ? NO_KEYS_IN_RECOVERY
+            : error instanceof Error
+              ? error.message
+              : String(error),
+      },
+    );
   }
 }

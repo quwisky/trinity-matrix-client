@@ -2,7 +2,14 @@ import { ApplicationRef, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { MockProvider, ngMocks } from 'ng-mocks';
-import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  firstValueFrom,
+  of,
+  throwError,
+  defer,
+} from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CryptoEvent,
@@ -28,7 +35,10 @@ function fakeSas(
   ],
 ) {
   return {
-    sas: { emoji },
+    sas: { emoji } as {
+      emoji?: [string, string][];
+      decimal?: [number, number, number];
+    },
     confirm: vi.fn().mockResolvedValue(undefined),
     mismatch: vi.fn(),
     cancel: vi.fn(),
@@ -114,9 +124,16 @@ function setup(
     thisDeviceVerified?: boolean | null;
     /** What the device list answers with. */
     devices?: Observable<DeviceInfo[]>;
+    /** Whether this device holds the private user-signing key. */
+    userSigningKey?: boolean;
   } = {},
 ) {
   const crypto = {
+    getCrossSigningStatus: vi.fn(async () => ({
+      privateKeysCachedLocally: {
+        userSigningKey: opts.userSigningKey ?? true,
+      },
+    })),
     userHasCrossSigningKeys: vi.fn().mockResolvedValue(true),
     requestOwnUserVerification: vi.fn(),
     requestVerificationDM: vi.fn(),
@@ -158,6 +175,7 @@ function setup(
     matrix,
     thisDeviceVerified,
     list,
+    health: TestBed.inject(TrustHealthService),
   };
 }
 
@@ -228,6 +246,65 @@ describe('TrustVerificationService', () => {
     );
     expect(svc.active()?.otherUserId).toBe('@bob:hs');
     expect(svc.active()?.isSelfVerification).toBe(false);
+  });
+
+  // Without the private user-signing key the emoji flow runs to "done" and signs nobody.
+  it('refuses to start verifying another user from a device that cannot sign users', async () => {
+    const { svc, crypto } = setup({ userSigningKey: false });
+    const directRoom = vi.fn(() => of('!dm:hs'));
+
+    await expect(
+      firstValueFrom(svc.startUserVerification('@bob:hs', defer(directRoom))),
+    ).rejects.toMatchObject({
+      operation: 'start-verification',
+      kind: 'not-ready',
+      recovery: 'review-security-settings',
+    });
+    expect(directRoom).not.toHaveBeenCalled();
+    expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
+    expect(svc.active()).toBeNull();
+  });
+
+  it('refuses to accept another user’s request on a device that cannot sign users', async () => {
+    const { svc, client } = setup({ userSigningKey: false });
+    svc.runProjection().subscribe();
+    const req = fakeRequest({
+      otherUserId: '@bob:hs',
+      isSelfVerification: false,
+    });
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    await expect(firstValueFrom(svc.accept())).rejects.toMatchObject({
+      operation: 'accept-verification',
+      kind: 'not-ready',
+      recovery: 'review-security-settings',
+    });
+    expect(req.accept).not.toHaveBeenCalled();
+    // Still shown, so the user can decline it or finish setup: never dropped.
+    expect(svc.active()).toMatchObject({ stage: 'requested', incoming: true });
+  });
+
+  // This is how a device without the keys gets them.
+  it('still accepts and starts self-verification on a device that cannot sign users', async () => {
+    const { svc, client, crypto, health } = setup({ userSigningKey: false });
+    svc.runProjection().subscribe();
+    const req = fakeRequest({ isSelfVerification: true });
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    await firstValueFrom(svc.accept());
+    expect(req.accept).toHaveBeenCalledOnce();
+
+    req.setPhase(VerificationPhase.Done);
+    expect(health.reconcile).toHaveBeenCalledOnce();
+
+    svc.dismiss();
+    crypto.requestOwnUserVerification.mockResolvedValue(
+      fakeRequest({ initiatedByMe: true }),
+    );
+    await firstValueFrom(svc.startSelfVerification(), {
+      defaultValue: undefined,
+    });
+    expect(svc.active()?.isSelfVerification).toBe(true);
   });
 
   it('waits for the counterpart identity before sending and presenting verification', async () => {
@@ -359,6 +436,8 @@ describe('TrustVerificationService', () => {
       svc.startUserVerification('@bob:hs', directRoom),
     ).catch((error: unknown) => error);
 
+    // The direct room is asked for only once this device is known to hold its signing key.
+    await vi.waitFor(() => expect(directRoom.observed).toBe(true));
     expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
     ngMocks.stubMember(matrix, 'instance', {
       ...client,
@@ -370,6 +449,83 @@ describe('TrustVerificationService', () => {
     expect(crypto.userHasCrossSigningKeys).not.toHaveBeenCalled();
     expect(crypto.requestVerificationDM).not.toHaveBeenCalled();
     expect(svc.active()).toBeNull();
+  });
+
+  // The DM is created from whichever Account is active when it is subscribed, so an
+  // Account replaced during the key check must stop the start before that.
+  it('does not ask for the direct room when the Account changes during the key check', async () => {
+    const { svc, crypto, client, matrix } = setup();
+    let answer!: () => void;
+    crypto.getCrossSigningStatus.mockReturnValue(
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({ privateKeysCachedLocally: { userSigningKey: true } });
+      }),
+    );
+    const directRoom = new Subject<string>();
+    const outcome = firstValueFrom(
+      svc.startUserVerification('@bob:hs', directRoom),
+    ).catch((error: unknown) => error);
+    await vi.waitFor(() =>
+      expect(crypto.getCrossSigningStatus).toHaveBeenCalled(),
+    );
+
+    ngMocks.stubMember(matrix, 'instance', {
+      ...client,
+    } as unknown as MatrixClient);
+    answer();
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
+    expect(directRoom.observed).toBe(false);
+  });
+
+  it('does not accept a request that was replaced during the key check', async () => {
+    const { svc, crypto, client } = setup();
+    svc.runProjection().subscribe();
+    const req = fakeRequest({
+      otherUserId: '@bob:hs',
+      isSelfVerification: false,
+    });
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    let answer!: () => void;
+    crypto.getCrossSigningStatus.mockReturnValue(
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({ privateKeysCachedLocally: { userSigningKey: true } });
+      }),
+    );
+    const outcome = firstValueFrom(svc.accept()).catch(
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() =>
+      expect(crypto.getCrossSigningStatus).toHaveBeenCalled(),
+    );
+
+    svc.dismiss();
+    answer();
+
+    await expect(outcome).resolves.toMatchObject({
+      operation: 'accept-verification',
+      kind: 'stale-state',
+    });
+    expect(req.accept).not.toHaveBeenCalled();
+  });
+
+  // The projected key status only follows health events, so a request from another user
+  // is the moment to read it again: a stale "cannot sign" would hide Accept.
+  it('re-reads this device’s health when another user’s request arrives', () => {
+    const { svc, client, health } = setup();
+    svc.runProjection().subscribe();
+
+    client.emit(CryptoEvent.VerificationRequestReceived, fakeRequest());
+    expect(health.reconcile).not.toHaveBeenCalled();
+    svc.dismiss();
+
+    client.emit(
+      CryptoEvent.VerificationRequestReceived,
+      fakeRequest({ otherUserId: '@bob:hs', isSelfVerification: false }),
+    );
+    expect(health.reconcile).toHaveBeenCalledOnce();
   });
 
   it.each(['unsubscribe', 'session end', 'Account replacement'])(
@@ -819,6 +975,30 @@ describe('TrustVerificationService', () => {
       kind: 'server-failure',
       recovery: 'retry',
     });
+    expect(svc.active()?.sasConfirmed).toBe(false);
+  });
+
+  // A client that offers decimals but not emoji yields a SAS with no emoji. This app shows
+  // no decimals, so a confirmation would vouch for a comparison nobody made.
+  it('refuses to confirm a SAS that has no emoji to compare', async () => {
+    const { svc, client } = setup();
+    svc.runProjection().subscribe();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    const sas = fakeSas();
+    sas.sas = { decimal: [1111, 2222, 3333] };
+    verifier.showSas(sas);
+    expect(svc.active()?.emoji).toBeNull();
+
+    await expect(firstValueFrom(svc.confirmSas())).rejects.toMatchObject({
+      operation: 'confirm-verification',
+      kind: 'unsupported',
+      recovery: 'none',
+    });
+    expect(sas.confirm).not.toHaveBeenCalled();
     expect(svc.active()?.sasConfirmed).toBe(false);
   });
 

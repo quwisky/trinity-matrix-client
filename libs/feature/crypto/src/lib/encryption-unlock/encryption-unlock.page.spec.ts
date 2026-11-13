@@ -42,6 +42,8 @@ interface RenderOptions {
   requestedAccountId?: string;
   /** The Account the opener named: `account` query param on the routed page. */
   account?: string | null;
+  /** This device is already verified, so the key is only fetching its missing keys. */
+  verified?: boolean;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -61,6 +63,7 @@ async function renderPage(options: RenderOptions = {}) {
     active = '@me:hs',
     requestedAccountId,
     account = null,
+    verified = false,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
@@ -83,6 +86,7 @@ async function renderPage(options: RenderOptions = {}) {
         status: liveStatus.asReadonly(),
         recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
         activeAccountId: activeAccountId.asReadonly(),
+        thisDeviceVerified: signal(verified),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
@@ -1100,6 +1104,56 @@ describe('EncryptionUnlockPage', () => {
 
       expect(fixture.componentInstance.error()).toContain('identity provider');
       expect(fixture.componentInstance.busy()).toBe(false);
+    });
+  });
+
+  // A device verified by another one is trusted but lacks its signing keys; telling it
+  // "this device isn’t trusted yet" would be false.
+  it('says the key fetches missing keys on a device that is already verified', async () => {
+    const { fixture, container } = await renderPage({
+      status: 'ready',
+      verified: true,
+    });
+
+    expect(fixture.componentInstance.title()).toBe('Enter recovery key');
+    const text = (container.textContent ?? '').replace(/\s+/g, ' ');
+    expect(text).toContain(
+      'This device was verified by another device, so it doesn’t have all the keys. Enter your recovery key once to fetch them.',
+    );
+    expect(text).not.toContain('isn’t trusted yet');
+  });
+
+  describe('a recovery that does not hold the keys', () => {
+    const refused = () =>
+      throwError(
+        () =>
+          new TrustOperationError(
+            'recover',
+            'recovery-not-configured',
+            'verify-another-device',
+            'That recovery key is correct, but this account’s recovery was never finished and can’t verify this device. Verify this device with another device instead, or reset your identity if you can’t.',
+          ),
+      );
+
+    async function submitKey(verified: boolean): Promise<string> {
+      const { fixture } = await renderPage({ recover: refused(), verified });
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('EsTx key');
+      fixture.componentInstance.unlock();
+      fixture.detectChanges();
+      return screen.getByTestId('unlock-error').textContent?.trim() ?? '';
+    }
+
+    // Already verified: "verify this device" is done, and a reset must not be the only exit named.
+    it('tells a verified device where the keys are instead of naming a reset', async () => {
+      expect(await submitKey(true)).toBe(
+        'This account’s recovery can’t give this device the keys it is missing. Verify people from the device where you set up encryption, or finish setting up recovery there.',
+      );
+    });
+
+    it('keeps the advice to verify for a device that is not verified', async () => {
+      expect(await submitKey(false)).toContain(
+        'Verify this device with another device instead',
+      );
     });
   });
 });

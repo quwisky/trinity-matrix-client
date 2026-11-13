@@ -141,15 +141,42 @@
                 person or on a call you already trust.
               </p>
             }
-            <button
-              trnBtn
-              class="mt-4 w-full"
-              data-testid="verify-accept"
-              [disabled]="busy()"
-              (click)="accept()"
-            >
-              Accept
-            </button>
+            @if (!v.isSelfVerification && cannotSignUsers()) {
+              @let block = verifyBlock();
+              <p
+                id="verify-cannot-sign"
+                class="mt-4"
+                data-testid="verify-cannot-sign"
+                role="note"
+              >
+                This device can’t verify other people yet. {{ block?.reason }}
+                @if (block?.action) {
+                  Doing that declines this request.
+                }
+              </p>
+              @if (block?.action; as action) {
+                <button
+                  trnBtn
+                  class="mt-4 w-full"
+                  data-testid="verify-get-keys"
+                  aria-describedby="verify-cannot-sign"
+                  [disabled]="busy()"
+                  (click)="declineAndOpen(action.flow)"
+                >
+                  {{ action.label }}
+                </button>
+              }
+            } @else {
+              <button
+                trnBtn
+                class="mt-4 w-full"
+                data-testid="verify-accept"
+                [disabled]="busy()"
+                (click)="accept()"
+              >
+                Accept
+              </button>
+            }
             <button
               trnBtn
               presentation="ghost"
@@ -319,21 +346,33 @@
           </div>
         }
         @case ('sas-shown') {
-          <h2 #stageHeading class="heading" tabindex="-1">Compare the emoji</h2>
-          @if (!v.isSelfVerification) {
-            <!-- This is the moment trust is granted, so it is the moment that must
-                 name the counterparty — "They match" here cross-signs THIS user. -->
-            <p class="text-muted-foreground">
-              With
-              <strong data-testid="verify-sas-other-user">{{
-                v.otherUserId
-              }}</strong>
-              . Only confirm if you are comparing these with them directly.
+          @if (!v.emoji?.length) {
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Can’t compare here
+            </h2>
+            <p class="text-muted-foreground" data-testid="sas-no-emoji">
+              The other app cannot compare emoji, so this verification cannot be
+              completed here.
             </p>
-          } @else if (v.newSession) {
-            <p class="text-muted-foreground">
-              Compare with the screen of the device you just signed in on.
-            </p>
+          } @else {
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Compare the emoji
+            </h2>
+            @if (!v.isSelfVerification) {
+              <!-- This is the moment trust is granted, so it is the moment that must
+                   name the counterparty — "They match" here cross-signs THIS user. -->
+              <p class="text-muted-foreground">
+                With
+                <strong data-testid="verify-sas-other-user">{{
+                  v.otherUserId
+                }}</strong>
+                . Only confirm if you are comparing these with them directly.
+              </p>
+            } @else if (v.newSession) {
+              <p class="text-muted-foreground">
+                Compare with the screen of the device you just signed in on.
+              </p>
+            }
           }
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
@@ -364,8 +403,10 @@
               } @else if (!v.isSelfVerification) {
                 The emoji matched with
                 <strong>{{ v.otherUserId }}</strong
-                >. They are not marked as verified yet. That needs this device’s
-                own encryption setup to be complete.
+                >. They are not marked as verified yet.
+                @if (cannotSignUsers()) {
+                  That needs this device’s own encryption setup to be complete.
+                }
               } @else if (v.newSession; as session) {
                 @if (session.displayName) {
                   <bdi>{{ session.displayName }}</bdi> (<code>{{

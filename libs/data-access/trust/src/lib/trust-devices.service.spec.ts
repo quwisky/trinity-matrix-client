@@ -53,7 +53,7 @@ function fakeClient(overrides: Record<string, unknown> = {}) {
 const activeUserId = signal<string | null>(null);
 
 function setup(clientOverrides: Record<string, unknown> = {}) {
-  activeUserId.set(null);
+  activeUserId.set('@me:hs');
   const client = fakeClient(clientOverrides);
   TestBed.configureTestingModule({
     providers: [
@@ -61,6 +61,8 @@ function setup(clientOverrides: Record<string, unknown> = {}) {
       MockProvider(MatrixClientService, {
         isInitialized: true,
         instance: client as unknown as MatrixClient,
+        clientFor: (id: string) =>
+          id === '@me:hs' ? (client as unknown as MatrixClient) : null,
         activeUserId: activeUserId.asReadonly(),
       }),
     ],
@@ -109,7 +111,7 @@ describe('TrustDevicesService', () => {
     svc.connect();
     await firstValueFrom(svc.list());
 
-    await firstValueFrom(svc.rename('B', '  Phone  '));
+    await firstValueFrom(svc.rename('@me:hs', 'B', '  Phone  '));
 
     expect(client.setDeviceDetails).toHaveBeenCalledWith('B', {
       display_name: 'Phone',
@@ -121,7 +123,7 @@ describe('TrustDevicesService', () => {
     const { svc, client } = setup();
     await firstValueFrom(svc.list());
 
-    await firstValueFrom(svc.delete('B', vi.fn()));
+    await firstValueFrom(svc.delete('@me:hs', 'B', vi.fn()));
 
     expect(client.deleteDevice).toHaveBeenCalledTimes(1);
     expect(svc.devices().find((d) => d.id === 'B')).toBeUndefined();
@@ -135,7 +137,7 @@ describe('TrustDevicesService', () => {
       .mockResolvedValueOnce({}); // with auth → success
     const prompt = vi.fn().mockResolvedValue('hunter2');
 
-    await firstValueFrom(svc.delete('B', prompt));
+    await firstValueFrom(svc.delete('@me:hs', 'B', prompt));
 
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(client.deleteDevice).toHaveBeenCalledTimes(2);
@@ -155,13 +157,13 @@ describe('TrustDevicesService', () => {
     client.deleteDevice.mockRejectedValue(uia('sess')); // always challenges
     const prompt = vi.fn().mockResolvedValue('wrong');
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
-      {
-        operation: 'delete-device',
-        kind: 'permission-denied',
-        recovery: 'retry',
-      },
-    );
+    await expect(
+      firstValueFrom(svc.delete('@me:hs', 'B', prompt)),
+    ).rejects.toMatchObject({
+      operation: 'delete-device',
+      kind: 'permission-denied',
+      recovery: 'retry',
+    });
     expect(prompt).toHaveBeenCalledTimes(3);
     // The device stays in the list since deletion never succeeded.
     expect(svc.devices().find((d) => d.id === 'B')).toBeDefined();
@@ -175,7 +177,7 @@ describe('TrustDevicesService', () => {
     const prompt = vi.fn().mockResolvedValue(null);
 
     await expect(
-      firstValueFrom(svc.delete('B', prompt)),
+      firstValueFrom(svc.delete('@me:hs', 'B', prompt)),
     ).resolves.toBeUndefined();
     expect(svc.devices().find((d) => d.id === 'B')).toBeDefined(); // not removed
   });
@@ -186,9 +188,9 @@ describe('TrustDevicesService', () => {
     await firstValueFrom(svc.list());
     const prompt = vi.fn();
 
-    await expect(firstValueFrom(svc.delete('A', prompt))).rejects.toThrow(
-      /remove this account/i,
-    );
+    await expect(
+      firstValueFrom(svc.delete('@me:hs', 'A', prompt)),
+    ).rejects.toThrow(/remove this account/i);
     expect(client.deleteDevice).not.toHaveBeenCalled();
     expect(prompt).not.toHaveBeenCalled();
     expect(svc.devices().find((d) => d.id === 'A')).toBeDefined();
@@ -235,13 +237,13 @@ describe('TrustDevicesService', () => {
     client.deleteDevice.mockRejectedValueOnce(new Error('network down'));
     const prompt = vi.fn();
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
-      {
-        operation: 'delete-device',
-        kind: 'server-failure',
-        recovery: 'retry',
-      },
-    );
+    await expect(
+      firstValueFrom(svc.delete('@me:hs', 'B', prompt)),
+    ).rejects.toMatchObject({
+      operation: 'delete-device',
+      kind: 'server-failure',
+      recovery: 'retry',
+    });
     expect(prompt).not.toHaveBeenCalled();
   });
 
@@ -256,13 +258,13 @@ describe('TrustDevicesService', () => {
     );
     const prompt = vi.fn();
 
-    await expect(firstValueFrom(svc.delete('B', prompt))).rejects.toMatchObject(
-      {
-        operation: 'delete-device',
-        kind: 'provider-action-required',
-        recovery: 'open-provider',
-      },
-    );
+    await expect(
+      firstValueFrom(svc.delete('@me:hs', 'B', prompt)),
+    ).rejects.toMatchObject({
+      operation: 'delete-device',
+      kind: 'provider-action-required',
+      recovery: 'open-provider',
+    });
     expect(prompt).not.toHaveBeenCalled();
   });
 
@@ -310,7 +312,7 @@ describe('TrustDevicesService', () => {
     );
     handler(['@me:hs']); // starts the slow reload
 
-    await firstValueFrom(svc.delete('B', vi.fn())); // removes B (bumps generation)
+    await firstValueFrom(svc.delete('@me:hs', 'B', vi.fn())); // removes B (bumps generation)
     expect(svc.devices().some((d) => d.id === 'B')).toBe(false);
 
     release({
@@ -341,6 +343,132 @@ describe('TrustDevicesService', () => {
 
     expect(client.off).toHaveBeenCalled(); // detached from A
     expect(clientB.on).toHaveBeenCalled(); // attached to B
+  });
+
+  describe('when another account becomes active', () => {
+    /** Make `@b:hs` the active account, as a notification click or deep link does. */
+    function switchToB(matrix: MatrixClientService) {
+      const clientB = fakeClient({ getUserId: vi.fn(() => '@b:hs') });
+      ngMocks.stubMember(
+        matrix,
+        'instance',
+        clientB as unknown as MatrixClient,
+      );
+      activeUserId.set('@b:hs');
+      return clientB;
+    }
+
+    it('does not rename the device on the account active since the prompt opened', async () => {
+      const { svc, client, matrix } = setup();
+      const clientB = switchToB(matrix);
+
+      await expect(
+        firstValueFrom(svc.rename('@me:hs', 'B', 'Phone')),
+      ).rejects.toMatchObject({
+        message:
+          'Device not renamed: you switched account while this was open.',
+      });
+
+      expect(clientB.setDeviceDetails).not.toHaveBeenCalled();
+      expect(client.setDeviceDetails).not.toHaveBeenCalled();
+    });
+
+    it('does not sign the device out, or ask for a password, on the account active since the confirmation opened', async () => {
+      const { svc, client, matrix } = setup();
+      const clientB = switchToB(matrix);
+      clientB.deleteDevice.mockRejectedValue(uia('sessB'));
+      const prompt = vi.fn().mockResolvedValue('hunter2');
+
+      await expect(
+        firstValueFrom(svc.delete('@me:hs', 'B', prompt)),
+      ).rejects.toMatchObject({
+        message:
+          'Device not signed out: you switched account while this was open.',
+      });
+
+      expect(clientB.deleteDevice).not.toHaveBeenCalled();
+      expect(client.deleteDevice).not.toHaveBeenCalled();
+      expect(prompt).not.toHaveBeenCalled();
+    });
+
+    it('does not ask for a password once the account it is for is no longer shown', async () => {
+      const { svc, client, matrix } = setup();
+      let challenge!: (err: MatrixError) => void;
+      client.deleteDevice.mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          challenge = reject;
+        }),
+      );
+      const prompt = vi.fn().mockResolvedValue('hunter2');
+
+      const deleted = firstValueFrom(svc.delete('@me:hs', 'B', prompt));
+      await Promise.resolve();
+      const clientB = switchToB(matrix);
+      challenge(uia('sess1'));
+
+      await expect(deleted).rejects.toMatchObject({
+        message:
+          'Device not signed out: you switched account while this was open.',
+      });
+      expect(prompt).not.toHaveBeenCalled();
+      expect(client.deleteDevice).toHaveBeenCalledTimes(1);
+      expect(clientB.deleteDevice).not.toHaveBeenCalled();
+    });
+
+    it('discards a password typed after another account became active while the prompt was open', async () => {
+      const { svc, client, matrix } = setup();
+      client.deleteDevice.mockRejectedValue(uia('sess1'));
+      let answer!: (password: string | null) => void;
+      const prompt = vi.fn(
+        () =>
+          new Promise<string | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+
+      const deleted = firstValueFrom(svc.delete('@me:hs', 'B', prompt));
+      await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+      const clientB = switchToB(matrix);
+      answer('password-of-b');
+
+      await expect(deleted).rejects.toMatchObject({
+        message:
+          'Device not signed out: you switched account while this was open.',
+      });
+      // Only the probe: the typed password reached neither homeserver.
+      expect(client.deleteDevice).toHaveBeenCalledTimes(1);
+      expect(client.deleteDevice).toHaveBeenCalledWith('B', undefined);
+      expect(clientB.deleteDevice).not.toHaveBeenCalled();
+    });
+
+    it('keeps the new account’s device list when the old account’s rename answers late', async () => {
+      const { svc, client, matrix } = setup();
+      svc.connect();
+      TestBed.inject(ApplicationRef).tick();
+      await firstValueFrom(svc.list());
+      let renamed!: (value: object) => void;
+      client.setDeviceDetails.mockReturnValueOnce(
+        new Promise((resolve) => {
+          renamed = resolve;
+        }),
+      );
+      const rename = firstValueFrom(svc.rename('@me:hs', 'B', 'Phone'));
+
+      const clientB = switchToB(matrix);
+      let listed!: (value: { devices: unknown[] }) => void;
+      clientB.getDevices.mockReturnValueOnce(
+        new Promise((resolve) => {
+          listed = resolve;
+        }),
+      );
+      TestBed.inject(ApplicationRef).tick(); // the switch starts B's load
+      renamed({});
+      await rename;
+      listed({ devices: [{ device_id: 'Z', display_name: 'B’s tablet' }] });
+      await new Promise((resolve) => setTimeout(resolve));
+
+      expect(svc.devices().map((d) => d.id)).toEqual(['Z']);
+    });
   });
 
   const ALL = { masterKey: true, selfSigningKey: true, userSigningKey: true };

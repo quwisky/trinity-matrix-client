@@ -36,6 +36,8 @@ function snapshot(
     keyBackupActive: false,
     thisDeviceVerified: false,
     identityElsewhere: false,
+    canSignUsers: false,
+    recoveryHoldsKeys: false,
     ...overrides,
   };
 }

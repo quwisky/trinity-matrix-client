@@ -1671,6 +1671,31 @@ describe('WorkspaceNavigationService', () => {
       });
     });
 
+    it('never creates the direct Conversation as an Account that became active underneath', async () => {
+      const dm = '!dm:example.org';
+      const h = harness({
+        routeAccountId: ALICE,
+        rooms: { [ALICE]: [ROOM, dm], [BOB]: [ROOM] },
+      });
+      const createdAs: (string | null)[] = [];
+      h.rooms.createDirectMessage.mockImplementation(() => {
+        createdAs.push(h.activeAccountId());
+        return of(dm);
+      });
+      // A notification click switched the client; the shown Account has not followed yet.
+      h.activeAccountId.set(BOB);
+
+      await firstValueFrom(
+        h.service.navigate({
+          kind: 'person',
+          accountId: ALICE,
+          userId: '@person:example.org',
+        }),
+      );
+
+      expect(createdAs).not.toContain(BOB);
+    });
+
     it('prepares an exact Account before creating and opening a direct Conversation', async () => {
       const dm = '!dm:example.org';
       const h = harness({

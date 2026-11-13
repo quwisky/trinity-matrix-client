@@ -44,6 +44,8 @@ export class InstallationResetWorkflow {
   private readonly storage = inject(SessionStorageService);
   private readonly wipe = inject(LocalDataWipeService);
   private readonly lifecycle = inject(ACCOUNT_LIFECYCLE_PORT);
+  /** The last reset deleted nothing, so the retry that follows it is a whole reset. */
+  private refused = false;
 
   reset(): Observable<InstallationResetOutcome> {
     return defer(() =>
@@ -54,86 +56,107 @@ export class InstallationResetWorkflow {
           pending,
         }),
         (attempt) =>
-          // Empties the push handoff before anything can invalidate the tokens it holds.
-          attempt
-            .capture(
-              this.lifecycle.forgetPushHandoff(),
-              'notifications',
-              'restart-application',
-              ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
-            )
-            .pipe(
-              concatMap(() =>
-                attempt.step(
-                  this.storage.list().pipe(
-                    catchError(() => {
-                      attempt.addIssue(
-                        'account-registry',
-                        'retry-installation-reset',
-                      );
-                      return of([]);
-                    }),
-                  ),
-                  {
-                    budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
-                    scope: 'account-registry',
-                    recovery: 'retry-installation-reset',
-                    waitAfterBudget: true,
-                  },
-                ),
-              ),
-              concatMap((records) => this.readSessions(attempt, records)),
-              concatMap(({ records, sessions }) =>
-                this.courtesySignOut(attempt, sessions).pipe(
-                  map(() => records),
-                ),
-              ),
-              concatMap((records) =>
-                attempt
-                  .capture(
-                    this.matrix.stop(),
-                    'matrix-session',
-                    'restart-application',
-                    ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
-                  )
-                  .pipe(map(() => records)),
-              ),
-              concatMap((records) => {
-                this.clearDrafts(attempt);
-                return this.stopMentionIndex().pipe(
-                  concatMap(() => this.wipeSharedFiles(attempt)),
-                  map(() => records),
-                );
-              }),
-              concatMap((records) => this.wipeIndexedDb(attempt, records)),
-              concatMap(() =>
-                attempt.capture(
-                  this.storage.clearAll().pipe(
-                    catchError((error: unknown) => {
-                      attempt.addIssue(
-                        'secure-storage',
-                        'retry-installation-reset',
-                      );
-                      throw error;
-                    }),
-                  ),
-                  'account-registry',
-                  'retry-installation-reset',
-                  ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
-                  () => attempt.resolveIssue('account-registry'),
-                ),
-              ),
-              concatMap(() =>
-                this.wipeKeyValueStores(attempt, {
-                  secureStorage: true,
-                  preferences: true,
-                }),
-              ),
-              concatMap(() => this.wipeServiceWorker(attempt)),
-            ),
+          defer(() => from(this.wipe.keychainAwaitingHost())).pipe(
+            catchError(() => of(false)),
+            concatMap((awaitingHost) => {
+              this.refused = awaitingHost;
+              if (!awaitingHost) return this.erase(attempt);
+              // Before anything is deleted: the stores would go and their accounts stay.
+              attempt.addIssue('secure-storage', 'retry-installation-reset');
+              return of(void 0);
+            }),
+          ),
         (attempt) => this.terminal(attempt),
         (attempt) => this.unexpected(attempt),
       ),
+    );
+  }
+
+  private erase(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+  ): Observable<unknown> {
+    return (
+      // Empties the push handoff before anything can invalidate the tokens it holds.
+      attempt
+        .capture(
+          this.lifecycle.forgetPushHandoff(),
+          'notifications',
+          'restart-application',
+          ACCOUNT_CLEANUP_STEP_BUDGET_MS.notificationUnregister,
+        )
+        .pipe(
+          concatMap(() =>
+            attempt.step(
+              this.storage.list().pipe(
+                catchError(() => {
+                  attempt.addIssue(
+                    'account-registry',
+                    'retry-installation-reset',
+                  );
+                  return of([]);
+                }),
+              ),
+              {
+                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+                scope: 'account-registry',
+                recovery: 'retry-installation-reset',
+                waitAfterBudget: true,
+              },
+            ),
+          ),
+          concatMap((records) => this.readSessions(attempt, records)),
+          concatMap(({ records, sessions }) =>
+            this.courtesySignOut(attempt, sessions).pipe(map(() => records)),
+          ),
+          concatMap((records) =>
+            attempt
+              .capture(
+                this.matrix.stop(),
+                'matrix-session',
+                'restart-application',
+                ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixStop,
+              )
+              .pipe(map(() => records)),
+          ),
+          concatMap((records) => {
+            this.clearDrafts(attempt);
+            return this.stopMentionIndex().pipe(
+              concatMap(() => this.wipeSharedFiles(attempt)),
+              map(() => records),
+            );
+          }),
+          concatMap((records) =>
+            this.wipeIndexedDb(attempt, records).pipe(map(() => records)),
+          ),
+          concatMap((records) =>
+            attempt
+              .capture(
+                this.storage.clearAll().pipe(
+                  catchError((error: unknown) => {
+                    attempt.addIssue(
+                      'secure-storage',
+                      'retry-installation-reset',
+                    );
+                    throw error;
+                  }),
+                ),
+                'account-registry',
+                'retry-installation-reset',
+                ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+                () => attempt.resolveIssue('account-registry'),
+              )
+              .pipe(map(() => records)),
+          ),
+          concatMap((records) =>
+            this.wipeKeyValueStores(
+              attempt,
+              { secureStorage: true, preferences: true },
+              false,
+              records,
+            ),
+          ),
+          concatMap(() => this.wipeServiceWorker(attempt)),
+        )
     );
   }
 
@@ -142,56 +165,58 @@ export class InstallationResetWorkflow {
     issues: readonly AccountCleanupIssue[],
   ): Observable<InstallationResetOutcome> {
     return defer(() =>
-      runDetachedCleanupAttempt<InstallationResetOutcome>(
-        (settled, pending) => ({
-          kind: 'uncertain-cleanup',
-          issues: settled,
-          pending,
-        }),
-        (attempt) => {
-          for (const issue of issues) {
-            attempt.addIssue(issue.scope, issue.recovery);
-          }
-          const scopes = new Set(issues.map(({ scope }) => scope));
-          const operations: Observable<unknown>[] = [];
-          if (scopes.has('account-registry')) {
-            operations.push(
-              attempt.step(this.storage.clearAll(), {
-                budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
-                scope: 'account-registry',
-                recovery: 'retry-installation-reset',
-                onSettled: () => attempt.resolveIssue('account-registry'),
-              }),
-            );
-          }
-          if (scopes.has('indexed-db')) {
-            operations.push(this.retryIndexedDb(attempt));
-          }
-          if (scopes.has('secure-storage') || scopes.has('preferences')) {
-            operations.push(
-              this.wipeKeyValueStores(
-                attempt,
-                {
-                  secureStorage: scopes.has('secure-storage'),
-                  preferences: scopes.has('preferences'),
-                },
-                true,
-              ),
-            );
-          }
-          if (scopes.has('service-worker')) {
-            operations.push(this.wipeServiceWorker(attempt, true));
-          }
-          if (scopes.has('shared-files')) {
-            operations.push(this.wipeSharedFiles(attempt));
-          }
-          return operations.length === 0
-            ? of(void 0)
-            : from(operations).pipe(concatMap((operation) => operation));
-        },
-        (attempt) => this.terminal(attempt),
-        (attempt) => this.unexpected(attempt),
-      ),
+      this.refused
+        ? this.reset()
+        : runDetachedCleanupAttempt<InstallationResetOutcome>(
+            (settled, pending) => ({
+              kind: 'uncertain-cleanup',
+              issues: settled,
+              pending,
+            }),
+            (attempt) => {
+              for (const issue of issues) {
+                attempt.addIssue(issue.scope, issue.recovery);
+              }
+              const scopes = new Set(issues.map(({ scope }) => scope));
+              const operations: Observable<unknown>[] = [];
+              if (scopes.has('account-registry')) {
+                operations.push(
+                  attempt.step(this.storage.clearAll(), {
+                    budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+                    scope: 'account-registry',
+                    recovery: 'retry-installation-reset',
+                    onSettled: () => attempt.resolveIssue('account-registry'),
+                  }),
+                );
+              }
+              if (scopes.has('indexed-db')) {
+                operations.push(this.retryIndexedDb(attempt));
+              }
+              if (scopes.has('secure-storage') || scopes.has('preferences')) {
+                operations.push(
+                  this.wipeKeyValueStores(
+                    attempt,
+                    {
+                      secureStorage: scopes.has('secure-storage'),
+                      preferences: scopes.has('preferences'),
+                    },
+                    true,
+                  ),
+                );
+              }
+              if (scopes.has('service-worker')) {
+                operations.push(this.wipeServiceWorker(attempt, true));
+              }
+              if (scopes.has('shared-files')) {
+                operations.push(this.wipeSharedFiles(attempt));
+              }
+              return operations.length === 0
+                ? of(void 0)
+                : from(operations).pipe(concatMap((operation) => operation));
+            },
+            (attempt) => this.terminal(attempt),
+            (attempt) => this.unexpected(attempt),
+          ),
     );
   }
 
@@ -210,12 +235,22 @@ export class InstallationResetWorkflow {
         // A re-auth target's tokens are already gone.
         const providerExpected =
           record.oidc && !signedOut.includes(record.userId);
+        // No retry repeats a server effect and the token goes with the erase, so a password
+        // session nothing could read stays signed in at its server: recorded, so the erase
+        // does not report it done. A live client is signed out without the read.
+        const logoutExpected =
+          !record.oidc &&
+          !signedOut.includes(record.userId) &&
+          !this.matrix.clientFor(record.userId);
         return attempt.step(
           this.storage.load(record.userId).pipe(
             catchError(() => {
               attempt.addIssue('secure-storage', 'retry-installation-reset');
               if (providerExpected) {
                 attempt.addIssue('provider-session', 'restart-application');
+              }
+              if (logoutExpected) {
+                attempt.addIssue('matrix-session', 'restart-application');
               }
               return of(null);
             }),
@@ -228,6 +263,9 @@ export class InstallationResetWorkflow {
             onTimeout: () => {
               if (providerExpected) {
                 attempt.addIssue('provider-session', 'restart-application');
+              }
+              if (logoutExpected) {
+                attempt.addIssue('matrix-session', 'restart-application');
               }
             },
             onSettled: (session) => {
@@ -400,6 +438,7 @@ export class InstallationResetWorkflow {
       readonly preferences: boolean;
     },
     resolve = false,
+    records?: readonly AccountRecord[],
   ): Observable<unknown> {
     const operations: Observable<unknown>[] = [];
     // Secure storage first: on web its keys are Preferences entries under a `secure.`
@@ -421,20 +460,28 @@ export class InstallationResetWorkflow {
     }
     if (selected.preferences) {
       operations.push(
-        this.wipePair(
-          attempt,
-          'preferences',
-          [
-            {
-              run: () => this.wipe.wipePreferences(),
-              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
-            },
-            {
-              run: () => this.wipe.wipeWebStorage(),
-              budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
-            },
-          ],
-          resolve,
+        this.keepsRegistry(attempt, records).pipe(
+          concatMap((keep) => {
+            // The registry entry stays, so the scope stays open: the retry decides again.
+            if (keep) {
+              attempt.addIssue('preferences', 'retry-installation-reset');
+            }
+            return this.wipePair(
+              attempt,
+              'preferences',
+              [
+                {
+                  run: () => this.wipe.wipePreferences(keep),
+                  budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
+                },
+                {
+                  run: () => this.wipe.wipeWebStorage(keep),
+                  budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
+                },
+              ],
+              resolve && !keep,
+            );
+          }),
         ),
       );
     }
@@ -444,6 +491,46 @@ export class InstallationResetWorkflow {
           concatMap((operation) => operation),
           reduce(() => undefined, undefined),
         );
+  }
+
+  /**
+   * Whether the Preferences wipe must leave the registry entry for a registry clear that
+   * failed or is still running. Only on the desktop keychain, where the registry (a
+   * Preferences entry) is the one map to the entries left: wiping it would strand them
+   * beyond any later erase. The rest of Preferences goes either way, the App lock setting
+   * with the data it protected. Elsewhere the wipe or the sweep reaches the secrets without
+   * the registry. A registry that cannot be read or names nothing is no map, so it is never
+   * kept. `records` is what this attempt read; a retry reads again.
+   */
+  private keepsRegistry(
+    attempt: AccountCleanupAttempt<InstallationResetOutcome>,
+    records?: readonly AccountRecord[],
+  ): Observable<boolean> {
+    return defer(() => {
+      const running = attempt.pendingScopes().includes('account-registry');
+      const failed = attempt
+        .settledIssues()
+        .some(({ scope }) => scope === 'account-registry');
+      if (!running && !failed) return of(false);
+      return from(this.wipe.secretsRemovedByNameOnly()).pipe(
+        concatMap((byNameOnly) => {
+          if (!byNameOnly) return of(false);
+          if (records) return of(records.length > 0);
+          // The clear still running holds the registry; a read would queue behind it.
+          if (running) return of(true);
+          return this.storage.list().pipe(map((read) => read.length > 0));
+        }),
+      );
+    }).pipe(
+      take(1),
+      // Unknown in time wipes: the erase must always be able to finish.
+      timeout({
+        first: ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead,
+        with: () => of(false),
+      }),
+      catchError(() => of(false)),
+      defaultIfEmpty(false),
+    );
   }
 
   private wipeServiceWorker(

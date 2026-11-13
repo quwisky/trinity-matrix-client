@@ -23,6 +23,7 @@ import { type PresenceDetails } from '@trinity/data-access/identity';
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
 import { relativeTimeLabel } from '../../shared/relative-time';
+import { VerifyNeedsSetupComponent } from '../../shared/verify-needs-setup.component';
 import { IdentityChangeActionsComponent } from '../../identity-change/identity-change-actions.component';
 
 const PRESENCE_LABEL = {
@@ -48,6 +49,7 @@ let nextSessionsPanelId = 0;
     TrnBadge,
     TrnButton,
     TrnIconComponent,
+    VerifyNeedsSetupComponent,
   ],
   templateUrl: './member-profile-tab.component.html',
 })
@@ -66,15 +68,21 @@ export class MemberProfileTabComponent {
   readonly member = input.required<MemberSummary>();
   readonly isSelf = input.required<boolean>();
   readonly trust = input.required<UserTrust | null>();
+  /** The Account {@link trust} is the view of. */
+  readonly trustAccountId = input.required<string | null>();
   readonly presence = input.required<PresenceDetails | null>();
   /** Null unless the person's global display name differs from their name in this room. */
   readonly globalName = input.required<string | null>();
   readonly showIdentityActions = input.required<boolean>();
   /** Null hides the Sessions row: no crypto, your own card, or another Account's card. */
   readonly sessions = input.required<UserSessions | null>();
+  /** This device cannot sign other users, so Verify gives way to finishing its setup. */
+  readonly verifyBlocked = input(false);
 
   readonly messageUser = output<void>();
   readonly verify = output<void>();
+  /** A trust flow is opening; the host closes so the card does not cover it. */
+  readonly setupOpened = output<void>();
   /** The clipboard refused the id; the host selects its user id handle for a manual copy. */
   readonly copyFailed = output<void>();
   /** The Sessions row opened: the moment a network read is allowed. */
@@ -122,9 +130,11 @@ export class MemberProfileTabComponent {
   /** A changed identity to answer in place of plain Verify, or null. */
   readonly identityChange = computed(() => {
     const trust = this.trust();
-    if (this.isSelf() || !this.showIdentityActions()) return null;
+    const accountId = this.trustAccountId();
+    if (this.isSelf() || !this.showIdentityActions() || !accountId) return null;
     return trust === 'identity-changed' || trust === 'verified-identity-changed'
       ? {
+          accountId,
           userId: this.member().userId,
           name: this.member().roomDisplayName,
           trust,

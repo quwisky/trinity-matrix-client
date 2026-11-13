@@ -18,7 +18,7 @@ import {
   type QrDeviceLinker,
 } from '@trinity/data-access/auth';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnBadge } from '@trinity/components/generic-content';
 import { TrnButton } from '@trinity/components/controls';
@@ -30,7 +30,7 @@ import {
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, merge, Subject, type Observable } from 'rxjs';
 import {
   TrnAlertService,
   TrnSettingsGroupComponent,
@@ -69,7 +69,9 @@ export class DevicesSectionComponent {
   private readonly qrSignIn = inject(QrSignInService);
   private readonly trust = inject(TrustService);
   private readonly activeAccountId = inject(MatrixClientService).activeUserId;
+  private readonly activeAccount$ = toObservable(this.activeAccountId);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly left$ = new Subject<void>();
   private readonly injector = inject(Injector);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly linkButton =
@@ -122,6 +124,7 @@ export class DevicesSectionComponent {
     // signs a device out), and detach on destroy.
     this.devicesSvc.connect();
     this.destroyRef.onDestroy(() => this.devicesSvc.disconnect());
+    this.destroyRef.onDestroy(() => this.left$.next());
     // Closing the panel cancels its flow: a link never outlives its account or this
     // device's ability to share the keys.
     effect(() => {
@@ -207,6 +210,11 @@ export class DevicesSectionComponent {
   /** Prompt for a new display name, then rename. */
   rename(device: DeviceInfo): void {
     this.error.set(null); // don't carry a stale error into a fresh action
+    // Pinned now: the dialog outlives an Account switch, and the device is this Account's.
+    const accountId = this.activeAccountId();
+    if (!accountId) {
+      return;
+    }
     this.alert
       .prompt$({
         header: 'Rename device',
@@ -214,26 +222,32 @@ export class DevicesSectionComponent {
         confirmText: 'Save',
         value: device.displayName,
         maxLength: 100,
+        closeWhen: this.switchedFrom(accountId),
       })
       .pipe(
         filter((name): name is string => name !== null),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((name) => this.applyRename(device.id, name));
+      .subscribe((name) => this.applyRename(accountId, device.id, name));
   }
 
   /** Confirm, then sign the device out (password UIA handled by the service). */
   remove(device: DeviceInfo): void {
     this.error.set(null);
+    const accountId = this.activeAccountId();
+    if (!accountId) {
+      return;
+    }
     this.alert
       .confirm$({
         header: 'Sign out device',
         message: `“${device.displayName}” will be signed out and lose access to your account.`,
         confirmText: 'Sign out',
         variant: 'danger',
+        closeWhen: this.switchedFrom(accountId),
       })
       .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => this.applyRemove(device.id));
+      .subscribe(() => this.applyRemove(accountId, device.id));
   }
 
   /**
@@ -260,20 +274,22 @@ export class DevicesSectionComponent {
       .subscribe();
   }
 
-  private applyRename(id: string, name: string): void {
+  private applyRename(accountId: string, id: string, name: string): void {
     if (!name.trim()) {
       return;
     }
-    runWithBusy(this.devicesSvc.rename(id, name), {
+    runWithBusy(this.devicesSvc.rename(accountId, id, name), {
       busy: this.busy,
       error: this.error,
       destroyRef: this.destroyRef,
     }).subscribe();
   }
 
-  private applyRemove(id: string): void {
+  private applyRemove(accountId: string, id: string): void {
     runWithBusy(
-      this.devicesSvc.delete(id, () => this.promptPassword()),
+      this.devicesSvc.delete(accountId, id, () =>
+        this.promptPassword(accountId),
+      ),
       {
         busy: this.busy,
         error: this.error,
@@ -282,18 +298,34 @@ export class DevicesSectionComponent {
     ).subscribe();
   }
 
-  /** Ask for the account password during a delete UIA (null = cancelled). */
-  private promptPassword(): Promise<string | null> {
+  /**
+   * Ask for the password of `accountId` during a delete UIA (null = cancelled). The prompt
+   * names that Account and closes when another one comes on screen.
+   */
+  private promptPassword(accountId: string): Promise<string | null> {
     // Matrix UIA owns this callback and requires a Promise. Keep the conversion at that
     // boundary while the Settings-facing command stays a cold finite Observable.
     return firstValueFrom(
       this.alert.prompt$({
         header: 'Confirm your password',
-        message: 'Signing out a device requires your account password.',
+        message: `Enter the password for ${accountId} to sign out this device.`,
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
+        closeWhen: this.switchedFrom(accountId),
       }),
+    );
+  }
+
+  /**
+   * Emits once `accountId` is no longer on screen, to close a dialog opened for it. On a
+   * phone this section is a routed page: a switch navigates away and destroys it, which
+   * would otherwise leave its prompt open over the other Account's room.
+   */
+  private switchedFrom(accountId: string): Observable<unknown> {
+    return merge(
+      this.activeAccount$.pipe(filter((active) => active !== accountId)),
+      this.left$,
     );
   }
 }

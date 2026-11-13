@@ -308,14 +308,12 @@ describe('secure store writes over an unreadable file', () => {
     warn.mockRestore();
   });
 
-  it('delete leaves an unparseable file where it is', async () => {
+  it('delete empties an unparseable file, whose entries nothing could name or open again', async () => {
     const { io, files } = makeIo();
     files.set(FILE, 'garbage');
-    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    expect(await secureStoreDelete(FILE, 'a', io)).toBe(false);
-    expect([...files.entries()]).toEqual([[FILE, 'garbage']]);
-    vi.mocked(console.warn).mockRestore();
+    expect(await secureStoreDelete(FILE, 'a', io)).toBe(true);
+    expect([...files.entries()]).toEqual([[FILE, '{}']]);
   });
 
   it('delete reports a removed or absent key as done', async () => {

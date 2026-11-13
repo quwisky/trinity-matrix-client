@@ -20,6 +20,7 @@ const change = (
   name: string,
   trust: IdentityChange['trust'],
 ): IdentityChange => ({
+  accountId: KEY.accountId,
   userId: `@${name.toLowerCase()}:hs`,
   name,
   initial: name[0] ?? '?',
@@ -75,7 +76,11 @@ describe('identity change banner and review', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /^Acknowledge/ }));
     expect(acknowledge).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: '@bob:hs', name: 'Bob' }),
+      expect.objectContaining({
+        accountId: '@me:hs',
+        userId: '@bob:hs',
+        name: 'Bob',
+      }),
     );
   });
 

@@ -315,7 +315,10 @@ export function secureStoreSet(
 
 /**
  * Remove `key` from the store. Needs no `safeStorage`: deletion never touches the OS
- * keyring. Returns `false`, writing nothing, when the store file cannot be read right now.
+ * keyring. Returns `false`, writing nothing, when the store file cannot be read right now:
+ * the entry may still be there. A file that is not a JSON map is emptied instead: nothing
+ * could name or open its entries again, and a delete that refused it for good would leave
+ * an erase unable to finish.
  */
 export function secureStoreDelete(
   filePath: string,
@@ -323,16 +326,18 @@ export function secureStoreDelete(
   io: SecureStoreIo = defaultIo,
 ): Promise<boolean> {
   return serial(filePath, async () => {
-    const data = readSecureStoreStrict(filePath, io);
-    if (data === null) {
+    const file = readStoreFile(filePath, io);
+    if (file.kind === 'unreadable') {
       console.warn(
         '[secure-store] could not read the store file; nothing deleted',
       );
       return false;
     }
-    if (key in data) {
-      delete data[key];
-      writeSecureStore(filePath, data, io);
+    if (file.kind === 'corrupt') {
+      writeSecureStore(filePath, {}, io);
+    } else if (key in file.data) {
+      delete file.data[key];
+      writeSecureStore(filePath, file.data, io);
     }
     return true;
   });

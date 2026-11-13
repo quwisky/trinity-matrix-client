@@ -8,13 +8,19 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
 import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrustService } from '@trinity/data-access/trust';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { HostFileExportService } from '@trinity/runtime/host';
 import {
+  type MonoTypeOperatorFunction,
+  type Observable,
   catchError,
   filter,
   finalize,
@@ -65,7 +71,11 @@ export class SecuritySectionComponent {
   private readonly files = inject(HostFileExportService);
   private readonly secure = inject(SecureStorageService);
   private readonly storagePersistence = inject(StoragePersistenceService);
+  private readonly accountId = this.matrix.activeUserId;
+  private readonly accountId$ = toObservable(this.accountId);
   private destroyed = false;
+  /** The Account shown when the key file chooser was opened. */
+  private keyFileAccount: string | null = null;
 
   /** True when this section is mounted inside the web/Electron settings modal. */
   readonly inSettingsDialog = input(false);
@@ -157,6 +167,16 @@ export class SecuritySectionComponent {
 
   /** Export this device's room keys to a passphrase-encrypted file. */
   exportKeys(): void {
+    const account = this.accountId();
+    if (!account) {
+      return;
+    }
+    const pin = this.pinTo(
+      account,
+      'Keys not exported: you switched account while this was open.',
+    );
+    // The file is named for its Account; ":" is not allowed in a file name everywhere.
+    const owner = account.replace(/^@/, '').replace(/[^\w.-]/g, '_');
     this.alert
       .prompt$({
         header: 'Export room keys',
@@ -166,8 +186,10 @@ export class SecuritySectionComponent {
         inputLabel: 'Passphrase',
         inputType: 'password',
         confirmText: 'Export',
+        closeWhen: pin.switched,
       })
       .pipe(
+        pin.whileShown(),
         filter((passphrase): passphrase is string => Boolean(passphrase)),
         // The input is masked and a mistyped passphrase makes a file nobody can open.
         switchMap((passphrase) =>
@@ -180,8 +202,10 @@ export class SecuritySectionComponent {
               inputType: 'password',
               required: true,
               confirmText: 'Export',
+              closeWhen: pin.switched,
             })
             .pipe(
+              pin.whileShown(),
               filter((repeated): repeated is string => Boolean(repeated)),
               filter((repeated) => {
                 const matches = repeated === passphrase;
@@ -197,10 +221,11 @@ export class SecuritySectionComponent {
         ),
         tap(() => this.busy.set(true)),
         switchMap((passphrase) => this.crypto.exportRoomKeys(passphrase)),
+        pin.whileShown(),
         switchMap((armored) =>
           this.files.save({
             bytes: new Blob([armored], { type: 'text/plain' }),
-            filename: 'trinity-room-keys.txt',
+            filename: `trinity-room-keys-${owner}.txt`,
           }),
         ),
         finalize(() => this.busy.set(false)),
@@ -211,8 +236,8 @@ export class SecuritySectionComponent {
           if (outcome.kind === 'cancelled') return;
           this.toast.show(
             outcome.kind === 'completed'
-              ? 'Room keys exported.'
-              : 'Could not export your room keys.',
+              ? `Room keys exported for ${account}.`
+              : `Could not export the room keys for ${account}.`,
             {
               duration: outcome.kind === 'completed' ? 3000 : 4000,
               variant: outcome.kind === 'completed' ? 'success' : 'danger',
@@ -220,7 +245,7 @@ export class SecuritySectionComponent {
           );
         },
         error: () => {
-          this.toast.show('Could not export your room keys.', {
+          this.toast.show(`Could not export the room keys for ${account}.`, {
             duration: 4000,
             variant: 'danger',
           });
@@ -230,6 +255,7 @@ export class SecuritySectionComponent {
 
   /** Open the file picker to import keys from a previously-exported file. */
   pickKeyFile(): void {
+    this.keyFileAccount = this.accountId();
     this.fileInput()?.nativeElement.click();
   }
 
@@ -238,22 +264,35 @@ export class SecuritySectionComponent {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // allow re-picking the same file
-    if (!file) {
+    // The file was chosen for the Account shown when its chooser opened.
+    const account = this.keyFileAccount ?? this.accountId();
+    this.keyFileAccount = null;
+    if (!file || !account) {
       return;
     }
-    this.alert
-      .prompt$({
-        header: 'Import room keys',
-        message: 'Enter the passphrase this file was exported with.',
-        placeholder: 'Passphrase',
-        inputType: 'password',
-        confirmText: 'Import',
-      })
+    const pin = this.pinTo(
+      account,
+      'Keys not imported: you switched account while this was open.',
+    );
+    of(null)
       .pipe(
+        pin.whileShown(),
+        switchMap(() =>
+          this.alert.prompt$({
+            header: 'Import room keys',
+            message: 'Enter the passphrase this file was exported with.',
+            placeholder: 'Passphrase',
+            inputType: 'password',
+            confirmText: 'Import',
+            closeWhen: pin.switched,
+          }),
+        ),
+        pin.whileShown(),
         filter((passphrase): passphrase is string => Boolean(passphrase)),
         switchMap((passphrase) =>
           from(file.text()).pipe(map((armored) => ({ armored, passphrase }))),
         ),
+        pin.whileShown(),
         tap(() => this.busy.set(true)),
         switchMap(({ armored, passphrase }) =>
           this.crypto.importRoomKeys(armored, passphrase),
@@ -263,19 +302,45 @@ export class SecuritySectionComponent {
       )
       .subscribe({
         next: () => {
-          this.toast.show('Room keys imported.', {
+          this.toast.show(`Room keys imported for ${account}.`, {
             duration: 3000,
             variant: 'success',
           });
         },
         error: (err: unknown) => {
+          // Named, since the answer can arrive after another Account became the shown one.
           this.toast.show(
-            err instanceof Error
-              ? err.message
-              : 'Could not import the room keys.',
+            `Room keys not imported for ${account}: ${
+              err instanceof Error ? err.message : 'the file could not be read.'
+            }`,
             { duration: 4000, variant: 'danger' },
           );
         },
       });
+  }
+
+  /**
+   * Ties a key action to the Account it was started for. The dialog and its prompts outlive
+   * an Account switch, and the keys go to or come from whichever Account is active when the
+   * action runs: `whileShown` stops the action with `refusal` once that is another Account.
+   */
+  private pinTo(
+    account: string,
+    refusal: string,
+  ): {
+    switched: Observable<unknown>;
+    whileShown: <T>() => MonoTypeOperatorFunction<T>;
+  } {
+    return {
+      switched: this.accountId$.pipe(filter((id) => id !== account)),
+      whileShown: () =>
+        filter(() => {
+          const shown = this.accountId() === account;
+          if (!shown) {
+            this.toast.show(refusal, { duration: 4000, variant: 'danger' });
+          }
+          return shown;
+        }),
+    };
   }
 }

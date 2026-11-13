@@ -57,6 +57,7 @@ import {
   TrustVerificationService,
 } from '@trinity/data-access/trust';
 import { AvatarComponent } from '@trinity/components/generic-content';
+import { IdentityChangeActionsService } from '../identity-change/identity-change-actions.service';
 import { MemberProfileTabComponent } from './member-profile-tab/member-profile-tab.component';
 import { MemberManageTabComponent } from './member-manage-tab/member-manage-tab.component';
 
@@ -157,6 +158,7 @@ export class MemberInfoComponent {
   private readonly commonRoomsService = inject(RoomsInCommonService);
   private readonly workspace = inject(WorkspaceNavigationService);
   private readonly destroyRef = inject(DestroyRef);
+  protected readonly identityActions = inject(IdentityChangeActionsService);
   private readonly userIdHandle =
     viewChild<ElementRef<HTMLElement>>('userIdHandle');
   /** Hides the Manage tab when its panel would be empty. */
@@ -233,6 +235,11 @@ export class MemberInfoComponent {
     // untracked: the service may settle its signal synchronously, which a computed forbids.
     return untracked(() => this.trustUsers.userTrust(userId))();
   });
+
+  /** The Account {@link trust} is the view of, so a changed identity is answered only as it. */
+  readonly trustAccountId = computed(
+    () => this.commandAccountId() ?? this.identity.activeUserId(),
+  );
 
   /** Whose sessions the card may show: on the same terms as {@link trust}, and never your own. */
   private readonly sessionsUserId = computed(() => {

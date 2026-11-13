@@ -16,6 +16,7 @@ import {
   type TrustStatus,
   type UserTrust,
   type VerificationView,
+  type VerifyBlock,
 } from '@trinity/data-access/trust';
 import { config, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -47,6 +48,8 @@ async function renderPage(
     status?: TrustStatus;
     canOpenSecuritySettings?: boolean;
     userTrust?: WritableSignal<UserTrust | null>;
+    canSignUsers?: boolean | null;
+    verifyBlock?: VerifyBlock | null;
   } = {},
 ) {
   const {
@@ -55,6 +58,8 @@ async function renderPage(
     status = 'ready',
     canOpenSecuritySettings,
     userTrust = signal<UserTrust | null>(null),
+    canSignUsers = true,
+    verifyBlock = null,
   } = options;
   const close = vi.fn();
   const result = await render(DeviceVerificationPage, {
@@ -66,7 +71,11 @@ async function renderPage(
     },
     providers: [
       MockProvider(TrustVerificationService, { active }),
-      MockProvider(TrustService, { status: signal(status) }),
+      MockProvider(TrustService, {
+        status: signal(status),
+        canSignUsers: signal(canSignUsers),
+        verifyBlock: signal(verifyBlock),
+      }),
       MockProvider(TrustUsersService, { userTrust: () => userTrust }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
@@ -75,7 +84,7 @@ async function renderPage(
         ),
         openCamera: vi.fn().mockRejectedValue(new Error('camera unavailable')),
       }),
-      MockProvider(Router),
+      MockProvider(Router, { url: '/rooms/!room:hs' }),
       MockProvider(ActivatedRoute, {
         snapshot: {
           queryParamMap: {
@@ -116,6 +125,17 @@ function normalized(host: HTMLElement): string {
   return (host.textContent ?? '').replace(/\s+/g, ' ');
 }
 
+const ENTER_RECOVERY_KEY: VerifyBlock = {
+  reason:
+    'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
+  action: { label: 'Enter recovery key', flow: 'unlock' },
+};
+const KEYS_ELSEWHERE: VerifyBlock = {
+  reason:
+    'Verify people from the device where you set up encryption, or set up recovery there.',
+  action: null,
+};
+
 describe('DeviceVerificationPage', () => {
   it('offers to start when nothing is in flight', async () => {
     const { svc, container } = await renderPage(signal(null));
@@ -123,6 +143,101 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'Start verification'));
 
     expect(svc.startSelfVerification).toHaveBeenCalledOnce();
+  });
+
+  // Accepting would run the emoji flow to "done" and sign nobody.
+  it('does not offer to accept another user’s request on a device that cannot sign users', async () => {
+    const { svc, container } = await renderPage(
+      signal(
+        view({
+          stage: 'requested',
+          incoming: true,
+          isSelfVerification: false,
+          otherUserId: '@bob:hs',
+        }),
+      ),
+      { canSignUsers: false, verifyBlock: KEYS_ELSEWHERE },
+    );
+
+    expect(container.querySelector('[data-testid="verify-accept"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="verify-other-user"]')?.textContent,
+    ).toContain('@bob:hs');
+    // The same sentence the member card shows for this state, and nothing to press but Decline.
+    expect(
+      normalized(
+        container.querySelector(
+          '[data-testid="verify-cannot-sign"]',
+        ) as HTMLElement,
+      ).trim(),
+    ).toBe(
+      'This device can’t verify other people yet. Verify people from the device where you set up encryption, or set up recovery there.',
+    );
+    expect(
+      container.querySelector('[data-testid="verify-get-keys"]'),
+    ).toBeNull();
+
+    fireEvent.click(button(container, 'Decline'));
+
+    expect(svc.cancel).toHaveBeenCalledOnce();
+    expect(svc.accept).not.toHaveBeenCalled();
+  });
+
+  // The profile shows the card only for some trust states, so the way on is offered here.
+  it.each([
+    ['as a dialog', true, { returnTo: '/rooms/!room:hs' }],
+    ['as a routed page', false, { returnTo: '/rooms/back' }],
+  ])(
+    'declines another user’s request and opens the flow this device needs, %s',
+    async (_name, asModal, queryParams) => {
+      const { svc, container, router, close } = await renderPage(
+        signal(
+          view({
+            stage: 'requested',
+            incoming: true,
+            isSelfVerification: false,
+            otherUserId: '@bob:hs',
+          }),
+        ),
+        {
+          asModal,
+          returnTo: '/rooms/back',
+          canSignUsers: false,
+          verifyBlock: ENTER_RECOVERY_KEY,
+        },
+      );
+
+      expect(
+        normalized(
+          container.querySelector(
+            '[data-testid="verify-cannot-sign"]',
+          ) as HTMLElement,
+        ).trim(),
+      ).toBe(
+        'This device can’t verify other people yet. This device doesn’t have all its keys yet. Enter your recovery key to verify people. Doing that declines this request.',
+      );
+
+      fireEvent.click(button(container, 'Enter recovery key'));
+
+      expect(svc.accept).not.toHaveBeenCalled();
+      expect(svc.cancel).toHaveBeenCalledOnce();
+      expect(svc.dismiss).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledTimes(asModal ? 1 : 0);
+      expect(router.navigate).toHaveBeenCalledWith(['/encryption/unlock'], {
+        queryParams,
+      });
+    },
+  );
+
+  it('still offers to accept a request from another of the user’s own sessions on such a device', async () => {
+    const { svc, container } = await renderPage(
+      signal(view({ stage: 'requested', incoming: true })),
+      { canSignUsers: false },
+    );
+
+    fireEvent.click(button(container, 'Accept'));
+
+    expect(svc.accept).toHaveBeenCalledOnce();
   });
 
   it('accepts an incoming request', async () => {
@@ -170,6 +285,32 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('@mallory:evil.example');
   });
 
+  // A decimals-only peer leaves nothing to compare; the focused heading must say so,
+  // and nothing may ask the user to "confirm".
+  it('says in the heading that there is nothing to compare when the other app sent no emoji', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'sas-shown',
+          isSelfVerification: false,
+          otherUserId: '@bob:hs',
+          emoji: null,
+        }),
+      ),
+    );
+
+    expect(container.querySelector('h2')?.textContent).toContain(
+      'Can’t compare here',
+    );
+    expect(container.textContent).toContain(
+      'The other app cannot compare emoji, so this verification cannot be completed here.',
+    );
+    expect(container.textContent).not.toContain('Compare the emoji');
+    expect(container.textContent).not.toContain('Only confirm');
+    expect(container.querySelector('[data-testid="sas-match"]')).toBeNull();
+    expect(button(container, 'Cancel')).toBeTruthy();
+  });
+
   it('still labels a self-verification as your own session', async () => {
     const { container } = await renderPage(
       signal(view({ stage: 'requested', incoming: true })),
@@ -203,7 +344,9 @@ describe('DeviceVerificationPage', () => {
 
     it('does not claim the user is verified when this device could not sign their identity', async () => {
       const { container } = await renderPage(signal(done), {
-        status: 'needs-verification',
+        // `ready` on purpose: the status does not say whether this device can sign users.
+        status: 'ready',
+        canSignUsers: false,
         userTrust: signal<UserTrust | null>('unverified'),
       });
 
@@ -218,6 +361,19 @@ describe('DeviceVerificationPage', () => {
       expect(container.textContent).not.toContain(
         'This session is now trusted',
       );
+    });
+
+    it('does not blame setup while a device that can sign waits for their trust status', async () => {
+      const { container } = await renderPage(signal(done), {
+        status: 'needs-setup',
+        canSignUsers: true,
+        userTrust: signal<UserTrust | null>('unverified'),
+      });
+
+      expect(normalized(container)).toContain(
+        'The emoji matched with @bob:hs. They are not marked as verified yet.',
+      );
+      expect(container.textContent).not.toContain('encryption setup');
     });
 
     it('follows the trust status when it arrives after the flow is done, without moving focus again', async () => {

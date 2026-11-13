@@ -15,21 +15,28 @@ import type { TrustHealthSnapshot } from './trust-health.service';
  * when none are available locally or in 4S), so it must be offered verification instead.
  *
  * `identityElsewhere` carries the same local check for a device that IS verified: one
- * verified through another device on an Account without 4S never receives the private
- * keys (matrix-js-sdk 43 does not request missing secrets after verification), so it
- * reads `needs-setup` while only the holding device can set up recovery.
+ * verified through another device on an Account without 4S has not been seen to receive
+ * the private keys (matrix-js-sdk's JS layer never calls `requestMissingSecretsIfNeeded`;
+ * whether the Rust crypto requests them on its own is not confirmed), so it reads
+ * `needs-setup` while only the holding device can set up recovery.
  */
 export async function readTrustSnapshot(
   client: TrustMatrixClient,
   crypto: TrustCryptoApi,
 ): Promise<TrustHealthSnapshot> {
-  const [crossSigningReady, secretStorageReady, backupVersion, defaultKeyId] =
-    await Promise.all([
-      crypto.isCrossSigningReady(),
-      crypto.isSecretStorageReady(),
-      crypto.getActiveSessionBackupVersion(),
-      client.secretStorage.getDefaultKeyId(),
-    ]);
+  const [
+    crossSigningReady,
+    secretStorageReady,
+    backupVersion,
+    defaultKeyId,
+    crossSigning,
+  ] = await Promise.all([
+    crypto.isCrossSigningReady(),
+    crypto.isSecretStorageReady(),
+    crypto.getActiveSessionBackupVersion(),
+    client.secretStorage.getDefaultKeyId(),
+    crypto.getCrossSigningStatus(),
+  ]);
   const thisDeviceVerified = await readThisDeviceVerified(client, crypto);
   const ready = crossSigningReady && secretStorageReady;
   // Only asked where there is no recovery: with secret storage the privates are
@@ -37,7 +44,7 @@ export async function readTrustSnapshot(
   const identityElsewhere =
     !ready &&
     !defaultKeyId &&
-    (await identityHeldElsewhere(crypto, crossSigningReady));
+    identityHeldElsewhere(crossSigning, crossSigningReady);
   const status: TrustHealthSnapshot['status'] = ready
     ? 'ready'
     : defaultKeyId
@@ -49,6 +56,8 @@ export async function readTrustSnapshot(
     keyBackupActive: backupVersion !== null,
     thisDeviceVerified,
     identityElsewhere,
+    canSignUsers: crossSigning.privateKeysCachedLocally.userSigningKey,
+    recoveryHoldsKeys: crossSigning.privateKeysInSecretStorage,
     status,
   };
 }
@@ -93,14 +102,13 @@ export async function readThisDeviceVerified(
  * hold. A purely local read: right after sign-in the own identity may not have been
  * downloaded yet, so destructive callers must also ask the server (see `TrustService.setUp`).
  *
- * `crossSigningReady` is this device's `isCrossSigningReady()`, passed in because the
- * snapshot has already read it.
+ * `status` and `crossSigningReady` are this device's `getCrossSigningStatus()` and
+ * `isCrossSigningReady()`, passed in because the snapshot has already read them.
  */
-export async function identityHeldElsewhere(
-  crypto: Pick<TrustCryptoApi, 'getCrossSigningStatus'>,
+export function identityHeldElsewhere(
+  status: Awaited<ReturnType<TrustCryptoApi['getCrossSigningStatus']>>,
   crossSigningReady: boolean,
-): Promise<boolean> {
-  const status = await crypto.getCrossSigningStatus();
+): boolean {
   return (
     status.publicKeysOnDevice &&
     !holdsCrossSigningIdentity(status, crossSigningReady)

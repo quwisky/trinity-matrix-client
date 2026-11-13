@@ -36,6 +36,8 @@ function coherent(snapshot: Partial<TrustHealthSnapshot>): TrustHealth {
       keyBackupActive: false,
       thisDeviceVerified: false,
       identityElsewhere: false,
+      canSignUsers: false,
+      recoveryHoldsKeys: false,
       ...snapshot,
     },
     stale: null,
