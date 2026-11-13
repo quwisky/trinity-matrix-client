@@ -58,6 +58,9 @@ const CROSS_SIGNING_RESET_ACTION = 'org.matrix.cross_signing_reset';
 const PARTIAL_SETUP_MESSAGE =
   'Encryption setup didn’t finish. Save this recovery key now, because your account may already use it. Then try again to finish setting up key backup.';
 
+const INCOMPLETE_RECOVERY_MESSAGE =
+  'That recovery key is correct, but this account’s recovery was never finished and can’t verify this device. Verify this device with another device instead, or reset your identity if you can’t.';
+
 /**
  * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
  * bootstraps cross-signing, secret storage (4S) and key backup, exposes readiness as
@@ -373,6 +376,27 @@ export class TrustService {
               'invalid-secret',
               'reenter-secret',
               'That recovery key is incorrect.',
+            );
+          }
+          // With the keys neither here nor in 4S (a setup or reset that stopped after
+          // writing the default key), bootstrapCrossSigning creates new ones and uploads
+          // them over the account's identity. Checked before the key is cached, so a
+          // refusal leaves nothing to clear.
+          const { privateKeysInSecretStorage, privateKeysCachedLocally: held } =
+            await crypto.getCrossSigningStatus().catch((error: unknown) => {
+              privateKey.fill(0);
+              throw error;
+            });
+          if (
+            !privateKeysInSecretStorage &&
+            !(held.masterKey && held.selfSigningKey && held.userSigningKey)
+          ) {
+            privateKey.fill(0);
+            throw new TrustOperationError(
+              'recover',
+              'recovery-not-configured',
+              'verify-another-device',
+              INCOMPLETE_RECOVERY_MESSAGE,
             );
           }
 
