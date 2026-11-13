@@ -138,6 +138,21 @@ describe('RegistrationService', () => {
     });
   });
 
+  it('does not ask for a refresh token, which only an OAuth session can use', async () => {
+    // The SDK refreshes through an OAuth client only; with the flag a homeserver may issue
+    // an expiring token, and the new account would be signed out when it expires.
+    const registerRequest = vi.fn().mockResolvedValue(registered);
+    createClientMock.mockReturnValue(client({ registerRequest }) as never);
+
+    await firstValueFrom(
+      service.begin('https://hs', '@New:hs', 'password', 'hs', 'replace'),
+    );
+
+    expect(registerRequest.mock.calls[0][0]).not.toHaveProperty(
+      'refresh_token',
+    );
+  });
+
   it('lets InteractiveAuth complete a dummy stage and establishes the session', async () => {
     const registerRequest = vi
       .fn()
