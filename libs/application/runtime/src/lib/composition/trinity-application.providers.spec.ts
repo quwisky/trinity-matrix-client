@@ -31,11 +31,9 @@ import {
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { TrnDialogRef } from '@trinity/components/overlay';
+import loglevel from 'loglevel';
 import { MockProvider } from 'ng-mocks';
-import {
-  configureMatrixSdkLogging,
-  matrixSdkLogLevel,
-} from '@trinity/data-access/matrix-client';
+import { configureMatrixSdkLogging } from '@trinity/data-access/matrix-client';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { NEVER, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -170,10 +168,14 @@ describe('Trinity application provider composition', () => {
       ],
     });
 
+    // matrix-js-sdk's root logger, which the SDK leaves at debug.
+    const sdkLogger = loglevel.getLogger('matrix');
+    sdkLogger.setLevel('debug', false);
+
     try {
       TestBed.inject(EnvironmentInjector);
 
-      expect(matrixSdkLogLevel()).toBe('warn');
+      expect(sdkLogger.getLevel()).toBe(loglevel.levels.WARN);
     } finally {
       configureMatrixSdkLogging('debug');
     }
