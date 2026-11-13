@@ -198,6 +198,26 @@ describe('MessageSearchComponent', () => {
     expect(changes).toEqual(['typed']);
   });
 
+  it('highlights the match where lowercasing changes the snippet length', async () => {
+    const { c } = await build(loaded(), { query: 'toplantı' });
+
+    expect(c.highlight('İstanbul Toplantı (a+b)')).toEqual([
+      { text: 'İstanbul ', match: false },
+      { text: 'Toplantı', match: true },
+      { text: ' (a+b)', match: false },
+    ]);
+  });
+
+  it('highlights a query with regular-expression characters literally', async () => {
+    const { c } = await build(loaded(), { query: '(a+b)' });
+
+    expect(c.highlight('sum (a+b) aab')).toEqual([
+      { text: 'sum ', match: false },
+      { text: '(a+b)', match: true },
+      { text: ' aab', match: false },
+    ]);
+  });
+
   it('renders the loaded-timeline matches as result rows', async () => {
     const { container } = await build(
       loaded({ hits: [hit({ eventId: '$1' }), hit({ eventId: '$2' })] }),
