@@ -930,15 +930,16 @@ export class ThreadsService {
     });
     const confirmed = replies.filter((event) => !event.status);
     // A reply dated ahead of this device's clock would sort last for good: every later reply
-    // would render above it, and the read receipt would stay on it. It takes the time of
-    // the reply before it in the timeline instead, which keeps it where it arrived.
+    // would render above it, and the read receipt would stay on it. It takes the latest
+    // believable time seen before it in the timeline instead, which keeps it where it
+    // arrived without dragging an out-of-order neighbour down with it.
     const latestPlausible = Date.now() + FUTURE_TIMESTAMP_TOLERANCE_MS;
     const sortTime = new Map<MatrixEvent, number>();
-    let previous = 0;
+    let latestSeen = 0;
     for (const event of confirmed) {
       const ts = event.getTs();
-      previous = ts <= latestPlausible ? ts : previous;
-      sortTime.set(event, previous);
+      if (ts <= latestPlausible) latestSeen = Math.max(latestSeen, ts);
+      sortTime.set(event, ts <= latestPlausible ? ts : latestSeen);
     }
     confirmed.sort((a, b) => (sortTime.get(a) ?? 0) - (sortTime.get(b) ?? 0));
     const unconfirmed = replies.filter((event) => event.status);
