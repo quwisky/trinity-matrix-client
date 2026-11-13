@@ -685,9 +685,13 @@ describe('RoomsPage room / DM / invite actions', () => {
     await vi.waitFor(() =>
       expect(shell.store.activeAccountId()).toBe('@other:hs'),
     );
+    const showError = vi.spyOn(TestBed.inject(ShellStatusService), 'showError');
     name.next('general');
 
     expect(createRoom).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      'Room not created: you switched account while this was open.',
+    );
   });
 
   it('does not create a room for an empty name', async () => {
@@ -720,10 +724,14 @@ describe('RoomsPage room / DM / invite actions', () => {
     await vi.waitFor(() =>
       expect(shell.store.activeAccountId()).toBe('@other:hs'),
     );
+    const showError = vi.spyOn(TestBed.inject(ShellStatusService), 'showError');
     picked.next('@bob:hs');
     await settleWorkspace();
 
     expect(createDirectMessage).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalledWith(
+      'Message not started: you switched account while this was open.',
+    );
   });
 
   it('does not start a DM when the picker is cancelled', async () => {

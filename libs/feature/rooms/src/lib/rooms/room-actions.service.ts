@@ -1,3 +1,4 @@
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { DestroyRef, Injectable, inject, type Type } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { PublicRoomsService } from '@trinity/data-access/discovery';
@@ -67,6 +68,7 @@ export class RoomActionsService {
   private readonly nav = inject(RoomShellNavigationService);
   private readonly routing = inject(AccountRoutingService);
   private readonly status = inject(ShellStatusService);
+  private readonly matrix = inject(MatrixClientService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly roomReadiness = inject(RoomReadinessService);
   private readonly spaces = inject(SpacesService);
@@ -333,7 +335,12 @@ export class RoomActionsService {
       .pipe(
         filter((userId): userId is string => Boolean(userId)),
         switchMap((userId) => {
-          if (accountId !== this.store.activeAccountId()) return EMPTY;
+          if (!this.stillActive(accountId)) {
+            void this.status.showError(
+              'Message not started: you switched account while this was open.',
+            );
+            return EMPTY;
+          }
           return runWithBusy(
             this.rooms.createDirectMessage(userId),
             this.status,
@@ -368,9 +375,25 @@ export class RoomActionsService {
     }
     // The room is created as the active Account, so one that replaced the requester while the
     // prompt was open must not get it.
-    if (accountId !== this.store.activeAccountId()) return;
+    if (!this.stillActive(accountId)) {
+      void this.status.showError(
+        'Room not created: you switched account while this was open.',
+      );
+      return;
+    }
     runWithBusy(this.rooms.createRoom({ name }), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
+    );
+  }
+
+  /**
+   * Whether actions still run as `accountId`. The shown Account follows the client's active
+   * one a moment later, so a switch that has started is caught by reading both.
+   */
+  private stillActive(accountId: string): boolean {
+    return (
+      accountId === this.store.activeAccountId() &&
+      accountId === this.matrix.activeUserId()
     );
   }
 
