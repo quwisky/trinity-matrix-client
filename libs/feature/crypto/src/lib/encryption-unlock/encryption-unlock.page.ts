@@ -86,14 +86,6 @@ export class EncryptionUnlockPage {
   private readonly builtFor =
     this.route.snapshot.queryParamMap.get('account') ||
     this.crypto.activeAccountId();
-  /**
-   * The Account this screen was opened for. The screen outlives an Account switch (a
-   * notification click, a deep link), and nothing it does may reach the Account that
-   * replaced this one.
-   */
-  private readonly accountId = computed(
-    () => this.requestedAccountId() ?? this.builtFor,
-  );
   private readonly switchedAccount$ = toObservable(
     this.crypto.activeAccountId,
   ).pipe(filter((active) => active !== this.accountId()));
@@ -195,6 +187,15 @@ export class EncryptionUnlockPage {
    * code is loaded first), when another Account may already be on screen.
    */
   readonly requestedAccountId = input<string | null>(null);
+
+  /**
+   * The Account this screen was opened for. The screen outlives an Account switch (a
+   * notification click, a deep link), and nothing it does may reach the Account that
+   * replaced this one. Shown next to a new recovery key, which can outlive the switch too.
+   */
+  readonly accountId = computed(
+    () => this.requestedAccountId() ?? this.builtFor,
+  );
 
   constructor() {
     this.switchedAccount$.pipe(takeUntilDestroyed()).subscribe(() => {

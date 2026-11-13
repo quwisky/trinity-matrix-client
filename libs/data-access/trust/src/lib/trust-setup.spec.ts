@@ -699,12 +699,11 @@ describe('setUp failures', () => {
     expect(keys.unfinishedSetupKey).toBeNull();
   });
 
-  it('names the account being set up to the password prompt, even after a switch', async () => {
-    const { svc, crypto, activeUserId } = setup();
+  it('names the account being set up to the password prompt', async () => {
+    const { svc, crypto } = setup();
     const prompt = vi.fn().mockResolvedValue('s3cret');
     crypto.bootstrapCrossSigning.mockImplementation(
       async (opts: BootstrapCrossSigningOpts) => {
-        activeUserId.set('@b:hs');
         await opts.authUploadDeviceSigningKeys?.(
           vi
             .fn()
@@ -716,6 +715,84 @@ describe('setUp failures', () => {
 
     await firstValueFrom(svc.setUp(prompt));
 
-    expect(prompt).toHaveBeenCalledWith('@me:hs');
+    expect(prompt).toHaveBeenCalledWith('@me:hs', true);
+  });
+});
+
+describe('setUp when another account becomes active', () => {
+  const SWITCHED = {
+    operation: 'setup',
+    kind: 'stale-state',
+    message: 'Nothing was set up: you switched account while this was open.',
+  };
+
+  it('does not ask for a password once the switch lands before the prompt', async () => {
+    const { svc, crypto, activeUserId } = setup();
+    const prompt = vi.fn().mockResolvedValue('s3cret');
+    const upload = vi.fn().mockRejectedValueOnce(uiaError('sess1'));
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        activeUserId.set('@b:hs');
+        await opts.authUploadDeviceSigningKeys?.(upload);
+      },
+    );
+
+    await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject(
+      SWITCHED,
+    );
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+  });
+
+  it('discards a password typed after the switch, unsent', async () => {
+    const { svc, crypto, activeUserId } = setup();
+    let answer!: (password: string | null) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const upload = vi.fn().mockRejectedValueOnce(uiaError('sess1'));
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        await opts.authUploadDeviceSigningKeys?.(upload);
+      },
+    );
+
+    const setUp = firstValueFrom(svc.setUp(prompt));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    activeUserId.set('@b:hs');
+    answer('password-of-b');
+
+    await expect(setUp).rejects.toMatchObject(SWITCHED);
+    // Only the unauthenticated probe: the typed password was never sent.
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledWith(null);
+    expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+  });
+
+  it('does not ask again after a wrong password once the switch has landed', async () => {
+    const { svc, crypto, activeUserId } = setup();
+    const prompt = vi.fn().mockResolvedValue('wrong');
+    const upload = vi.fn(async (auth: unknown) => {
+      if (auth) {
+        activeUserId.set('@b:hs');
+      }
+      throw uiaError('sess1');
+    });
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        await opts.authUploadDeviceSigningKeys?.(upload);
+      },
+    );
+
+    await expect(firstValueFrom(svc.setUp(prompt))).rejects.toMatchObject(
+      SWITCHED,
+    );
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(upload).toHaveBeenCalledTimes(2);
   });
 });

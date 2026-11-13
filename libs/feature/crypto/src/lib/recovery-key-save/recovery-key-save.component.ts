@@ -31,6 +31,8 @@ import { RecoveryKeyDisplayComponent } from '../recovery-key-display/recovery-ke
 export class RecoveryKeySaveComponent {
   readonly recoveryKey = input.required<string>();
   readonly heading = input.required<string>();
+  /** Whose key this is. The surface can sit over another Account's screen after a switch. */
+  readonly account = input<string | null>(null);
   readonly intro = input<string | null>(null);
   readonly warning = input.required<string>();
   readonly confirmLabel = input.required<string>();

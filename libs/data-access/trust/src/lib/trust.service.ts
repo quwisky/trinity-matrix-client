@@ -58,12 +58,21 @@ const PARTIAL_SETUP_MESSAGE =
 const INCOMPLETE_RECOVERY_MESSAGE =
   'That recovery key is correct, but this account’s recovery was never finished and can’t verify this device. Verify this device with another device instead, or reset your identity if you can’t.';
 
+const SETUP_WITHDRAWN_MESSAGE =
+  'Nothing was set up: you switched account while this was open.';
+
 /**
  * Asks for the password of `accountId`, the Account the operation captured when it started
  * (null = cancelled). The prompt must name that Account: it can outlive an Account switch.
+ *
+ * `closeOnSwitch` is true while the operation has changed nothing: its answer is dropped
+ * unsent once another Account is on screen, so the prompt should close as cancelled then.
+ * When false the operation is under way and a cancel would abandon it part-way: the prompt
+ * stays open.
  */
 export type AccountPasswordPrompt = (
   accountId: string,
+  closeOnSwitch: boolean,
 ) => Promise<string | null>;
 
 /**
@@ -165,11 +174,26 @@ export class TrustService {
             // default key in place the SDK stores secrets only through this callback cache.
             holder?.set(found.ownKeyId, recoveryKey.privateKey);
           }
+          // Nothing is uploaded until this prompt is answered, so stopping is free: it is
+          // not shown once another Account is on screen, and a password typed over that
+          // Account's screen is dropped unsent.
+          const requireOnScreen = (): void => {
+            if (userId !== this.cryptoPort.activeAccountId()) {
+              throw new TrustOperationError(
+                'setup',
+                'stale-state',
+                'none',
+                SETUP_WITHDRAWN_MESSAGE,
+              );
+            }
+          };
           await crypto.bootstrapCrossSigning({
-            authUploadDeviceSigningKeys: this.passwordUia(
-              () => promptPassword(userId),
-              userId,
-            ),
+            authUploadDeviceSigningKeys: this.passwordUia(async () => {
+              requireOnScreen();
+              const password = await promptPassword(userId, true);
+              requireOnScreen();
+              return password;
+            }, userId),
             // Keys this device made and never uploaded: bootstrapping without this does
             // nothing, so the 4S set up next would hold keys no server has. The server has
             // no identity, so new keys replace nothing.
@@ -255,7 +279,7 @@ export class TrustService {
             stillRequested,
             refreshStatus: () => this.healthRuntime.reconcile(),
           },
-          () => promptPassword(accountId),
+          () => promptPassword(accountId, false),
         ),
       );
     }).pipe(

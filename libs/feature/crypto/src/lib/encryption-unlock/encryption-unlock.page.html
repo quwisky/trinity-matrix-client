@@ -19,6 +19,7 @@
     <!-- Post-reset: this key is the only copy for the account's new identity. -->
     <trn-recovery-key-save
       [recoveryKey]="key"
+      [account]="accountId()"
       heading="Save your new recovery key"
       warning="We’ll only show this key once. Without it, you can’t recover your message history on another device."
       confirmLabel="Done"

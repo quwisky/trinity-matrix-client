@@ -996,7 +996,7 @@ describe('resetRecovery when another account becomes active', () => {
 
     await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
 
-    expect(prompt).toHaveBeenCalledWith('@me:hs');
+    expect(prompt).toHaveBeenCalledWith('@me:hs', false);
   });
 
   // Past the pre-auth the old identity is parked and rotated: refusing there would
@@ -1022,6 +1022,6 @@ describe('resetRecovery when another account becomes active', () => {
     ).resolves.toBe('EsTRecoveryKey');
 
     expect(prompt).toHaveBeenCalledTimes(1);
-    expect(prompt).toHaveBeenCalledWith('@me:hs');
+    expect(prompt).toHaveBeenCalledWith('@me:hs', false);
   });
 });

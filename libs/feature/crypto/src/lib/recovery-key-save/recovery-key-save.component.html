@@ -1,5 +1,11 @@
 <h2 #savedHeading tabindex="-1" class="heading">{{ heading() }}</h2>
 
+@if (account(); as owner) {
+  <p class="font-medium" data-testid="recovery-key-account">
+    This recovery key is for {{ owner }}.
+  </p>
+}
+
 @if (intro(); as lead) {
   <p class="text-muted-foreground">{{ lead }}</p>
 }

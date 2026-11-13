@@ -6,6 +6,7 @@
       @if (recoveryKey(); as key) {
         <trn-recovery-key-save
           [recoveryKey]="key"
+          [account]="accountId"
           heading="Save your recovery key"
           intro="This key restores your encrypted messages on a new device. Store it somewhere safe, like a password manager."
           warning="We’ll only show this key once. Without it, you can’t recover your message history."

@@ -252,6 +252,10 @@ describe('EncryptionUnlockPage', () => {
 
       expect(dialogRef.close).not.toHaveBeenCalled();
       expect(fixture.componentInstance.newRecoveryKey()).toBe('EsTBrandNew');
+      // The key now sits over another Account's screen, so it says whose it is.
+      expect(
+        screen.getByTestId('recovery-key-account').textContent?.trim(),
+      ).toBe('This recovery key is for @me:hs.');
     });
 
     it('keeps the dialog open while a reset is running', async () => {
@@ -466,7 +470,7 @@ describe('EncryptionUnlockPage', () => {
         expect.any(Function),
       );
       const askPassword = vi.mocked(crypto.resetRecovery).mock.calls[0][1];
-      await askPassword('@alice:example.org');
+      await askPassword('@alice:example.org', false);
       expect(prompt.mock.calls[1][0].message).toBe(
         'Enter the password for @alice:example.org to reset your identity.',
       );
