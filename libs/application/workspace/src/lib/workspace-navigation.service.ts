@@ -466,8 +466,11 @@ export class WorkspaceNavigationService {
   private navigatePerson(
     intent: Extract<WorkspaceNavigationIntent, { readonly kind: 'person' }>,
   ): Observable<WorkspaceNavigationOutcome> {
+    // The DM is created as the client's active Account, which changes a moment before the
+    // shown one, so both must already be the chosen Account to skip the switch.
+    const runsAs = () => this.accounts.activeAccountId() === intent.accountId;
     const prepare =
-      this.activeAccountId() === intent.accountId
+      this.activeAccountId() === intent.accountId && runsAs()
         ? of({ kind: 'ready', change: 'unchanged' } as const)
         : this.navigate({
             kind: 'account',
@@ -481,21 +484,26 @@ export class WorkspaceNavigationService {
       switchMap((outcome) =>
         outcome.kind === 'unavailable'
           ? of(outcome)
-          : this.rooms.createDirectMessage(intent.userId).pipe(
-              switchMap((roomId) =>
-                this.roomReadiness.waitForRoom(intent.accountId, roomId).pipe(
-                  switchMap(() =>
-                    this.navigate({
-                      kind: 'room',
-                      accountId: intent.accountId,
-                      roomId,
-                      scope: { kind: 'home' },
-                      origin: 'global-search',
-                    }),
+          : !runsAs()
+            ? of({
+                kind: 'unavailable',
+                reason: 'account-transition-failed',
+              } as const)
+            : this.rooms.createDirectMessage(intent.userId).pipe(
+                switchMap((roomId) =>
+                  this.roomReadiness.waitForRoom(intent.accountId, roomId).pipe(
+                    switchMap(() =>
+                      this.navigate({
+                        kind: 'room',
+                        accountId: intent.accountId,
+                        roomId,
+                        scope: { kind: 'home' },
+                        origin: 'global-search',
+                      }),
+                    ),
                   ),
                 ),
               ),
-            ),
       ),
     );
   }
