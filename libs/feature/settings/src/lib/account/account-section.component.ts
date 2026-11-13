@@ -229,15 +229,30 @@ export class AccountSectionComponent {
       this.error.set(this.firstError() ?? INCOMPLETE);
       return;
     }
+    // The answer can arrive after another Account became the shown one: it is reported by
+    // name, and that Account's form and error line are left alone.
+    const account = this.accountId();
+    const shown = () => this.accountId() === account;
     runWithBusy(this.auth.changePassword(currentPassword, newPassword), {
       busy: this.saving,
       error: this.error,
       destroyRef: this.destroyRef,
+      presentError: () => {
+        if (!shown()) {
+          this.toast.show(
+            `Password not changed for ${account}: ${this.error()}`,
+            { duration: 4000, variant: 'danger' },
+          );
+          this.error.set(null);
+        }
+      },
     }).subscribe(() => {
-      // reset(value), not a bare model set: it clears touched/dirty across the tree too, so
-      // three required fields aren't left empty-and-touched, a primed error state.
-      this.form().reset({ ...EMPTY_PASSWORDS });
-      this.toast.show('Password changed.', {
+      if (shown()) {
+        // reset(value), not a bare model set: it clears touched/dirty across the tree too, so
+        // three required fields aren't left empty-and-touched, a primed error state.
+        this.form().reset({ ...EMPTY_PASSWORDS });
+      }
+      this.toast.show(`Password changed for ${account}.`, {
         duration: 3000,
         variant: 'success',
       });

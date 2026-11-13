@@ -43,6 +43,14 @@
     </trn-settings-row>
   } @else if (serverApi()?.kind === 'legacy') {
     <form [formRoot]="form" (submit)="submit()">
+      <!-- Not shown: it tells a password manager whose password this form changes. -->
+      <input
+        hidden
+        type="text"
+        autocomplete="username"
+        readonly
+        [value]="accountId() ?? ''"
+      />
       <trn-settings-row label="Current password" for="current-password">
         <trn-password-input class="w-56 max-w-full">
           <input
