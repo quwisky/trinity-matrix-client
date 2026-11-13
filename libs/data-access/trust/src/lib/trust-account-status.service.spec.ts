@@ -269,6 +269,7 @@ describe('summarizeTrust', () => {
     keyBackupActive: false,
     thisDeviceVerified: false,
     identityElsewhere: false,
+    canSignUsers: false,
     ...over,
   });
 

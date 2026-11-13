@@ -74,7 +74,30 @@ describe('readTrustSnapshot', () => {
       keyBackupActive: true,
       thisDeviceVerified: true,
       identityElsewhere: false,
+      canSignUsers: false,
     });
+  });
+
+  // `ready` says nothing about it: a device verified by emoji on an account with recovery
+  // is ready without the key, and one holding every key with no recovery is not ready.
+  it('can sign other users exactly when it holds the private user-signing key', async () => {
+    const ready = account({
+      crossSigningReady: true,
+      secretStorageReady: true,
+      defaultKeyId: 'k',
+    });
+    const holder = account({
+      crossSigningReady: true,
+      publicKeysOnDevice: true,
+      privates: ALL_PRIVATES,
+    });
+
+    await expect(
+      readTrustSnapshot(ready.client, ready.crypto),
+    ).resolves.toMatchObject({ status: 'ready', canSignUsers: false });
+    await expect(
+      readTrustSnapshot(holder.client, holder.crypto),
+    ).resolves.toMatchObject({ status: 'needs-setup', canSignUsers: true });
   });
 
   it('needs recovery when the account has secret storage this device has not unlocked', async () => {

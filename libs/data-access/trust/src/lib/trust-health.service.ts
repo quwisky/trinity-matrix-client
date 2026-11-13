@@ -30,6 +30,13 @@ export interface TrustHealthSnapshot {
    * false whenever recovery exists or the device is ready.
    */
   readonly identityElsewhere: boolean;
+  /**
+   * This device holds the private user-signing key, the one that signs another user's
+   * identity. `status` cannot stand in for it: a device verified by emoji on an Account
+   * with recovery is `ready` without the key, and one holding every key with no recovery
+   * is `needs-setup`.
+   */
+  readonly canSignUsers: boolean;
 }
 
 /**
@@ -85,6 +92,10 @@ export class TrustHealthService {
   );
   readonly thisDeviceVerified = computed(
     () => this.health().current?.thisDeviceVerified ?? null,
+  );
+  /** Whether verifying another user from this device would sign them; null while unknown. */
+  readonly canSignUsers = computed(
+    () => this.health().current?.canSignUsers ?? null,
   );
   /**
    * This device is verified but setup would replace the identity another device holds,

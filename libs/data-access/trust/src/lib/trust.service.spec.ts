@@ -604,6 +604,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,
@@ -648,6 +657,15 @@ describe('TrustService', () => {
         getDeviceVerificationStatus: vi
           .fn()
           .mockResolvedValue({ crossSigningVerified: false }),
+        getCrossSigningStatus: vi.fn().mockResolvedValue({
+          publicKeysOnDevice: false,
+          privateKeysInSecretStorage: false,
+          privateKeysCachedLocally: {
+            masterKey: false,
+            selfSigningKey: false,
+            userSigningKey: false,
+          },
+        }),
       };
       const clientB = {
         getCrypto: () => cryptoB,

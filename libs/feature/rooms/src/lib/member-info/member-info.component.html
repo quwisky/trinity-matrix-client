@@ -107,7 +107,9 @@
         (sessionsClosed)="closeSessions()"
         (sessionsRetried)="loadSessions()"
         (messageUser)="message()"
+        [verifyBlocked]="identityActions.verifyBlocked()"
         (verify)="verify()"
+        (setupOpened)="close()"
         (copyFailed)="selectUserId()"
       />
 

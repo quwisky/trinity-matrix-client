@@ -75,6 +75,7 @@ export class TrustService {
   readonly status = this.healthRuntime.status;
   readonly keyBackupActive = this.healthRuntime.keyBackupActive;
   readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
+  readonly canSignUsers = this.healthRuntime.canSignUsers;
   /** Verified here, but only the device holding the identity can set up recovery. */
   readonly recoverySetupElsewhere = this.healthRuntime.recoverySetupElsewhere;
 

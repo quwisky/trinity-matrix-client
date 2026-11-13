@@ -1,10 +1,12 @@
 import { type MemberSummary } from '@trinity/data-access/room-administration';
 import { type PresenceDetails } from '@trinity/data-access/identity';
 import { type UserSessions, type UserTrust } from '@trinity/data-access/trust';
+import { WorkspaceApplicationSurfaceService } from '@trinity/application/workspace';
 import { TrnToastService } from '@trinity/components/overlay';
 import { fireEvent, render, screen, waitFor, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { IdentityChangeActionsService } from '../../identity-change/identity-change-actions.service';
+import { of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberProfileTabComponent } from './member-profile-tab.component';
 
@@ -35,9 +37,12 @@ async function build(
     globalName?: string | null;
     showIdentityActions?: boolean;
     sessions?: UserSessions | null;
+    verifyBlocked?: boolean;
   } = {},
 ) {
   const toastShow = vi.fn();
+  const openSurface = vi.fn(() => of({ kind: 'opened' }));
+  const setupOpened = vi.fn();
   const message = vi.fn();
   const verify = vi.fn();
   const copyFailed = vi.fn();
@@ -53,6 +58,7 @@ async function build(
       globalName: inputs.globalName ?? null,
       showIdentityActions: inputs.showIdentityActions ?? true,
       sessions: inputs.sessions ?? null,
+      verifyBlocked: inputs.verifyBlocked ?? false,
     },
     on: {
       messageUser: message,
@@ -61,10 +67,17 @@ async function build(
       sessionsOpened,
       sessionsClosed,
       sessionsRetried,
+      setupOpened,
     },
     providers: [
       MockProvider(TrnToastService, { show: toastShow }),
-      MockProvider(IdentityChangeActionsService, { pending: () => null }),
+      MockProvider(WorkspaceApplicationSurfaceService, {
+        open: openSurface as never,
+      }),
+      MockProvider(IdentityChangeActionsService, {
+        pending: () => null,
+        verifyBlocked: () => inputs.verifyBlocked ?? false,
+      }),
     ],
   });
   return {
@@ -78,6 +91,8 @@ async function build(
     sessionsOpened,
     sessionsClosed,
     sessionsRetried,
+    openSurface,
+    setupOpened,
   };
 }
 
@@ -145,6 +160,47 @@ describe('MemberProfileTabComponent', () => {
           b.textContent?.trim(),
         ),
       ).toEqual(labels);
+    },
+  );
+
+  // Without its user-signing key this device would match emoji and sign nobody.
+  it.each([
+    ['unverified', ['Security settings']],
+    [
+      'verified-identity-changed',
+      ['Security settings', 'Withdraw verification'],
+    ],
+  ] as const)(
+    'offers finishing setup in place of verifying a %s person when this device cannot sign users',
+    async (trust, labels) => {
+      const { container, verify, openSurface, setupOpened } = await build({
+        trust,
+        verifyBlocked: true,
+      });
+
+      expect(byTestId(container, 'member-info-verify')).toBeNull();
+      expect(byTestId(container, 'identity-verify-again')).toBeNull();
+      const blocked = byTestId(container, 'verify-needs-setup');
+      expect(blocked?.textContent).toContain(
+        'Finish this device’s encryption setup to verify people.',
+      );
+      expect(
+        [
+          ...container.querySelectorAll(
+            '[data-testid="verify-needs-setup"] button, [data-testid="member-info-identity-change"] button',
+          ),
+        ].map((b) => b.textContent?.trim()),
+      ).toEqual(labels);
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Security settings' }),
+      );
+
+      expect(openSurface).toHaveBeenCalledWith({
+        surface: { kind: 'settings', section: 'security' },
+      });
+      expect(setupOpened).toHaveBeenCalledOnce();
+      expect(verify).not.toHaveBeenCalled();
     },
   );
 

@@ -3,6 +3,7 @@ import { TrnToastService } from '@trinity/components/overlay';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
+  TrustService,
   TrustUsersService,
   TrustVerificationService,
 } from '@trinity/data-access/trust';
@@ -26,12 +27,21 @@ export type IdentityChangeAction = 'acknowledge' | 'withdraw' | 'verify';
 @Injectable({ providedIn: 'root' })
 export class IdentityChangeActionsService {
   private readonly trust = inject(TrustUsersService);
+  private readonly ownTrust = inject(TrustService);
   private readonly verification = inject(TrustVerificationService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly toast = inject(TrnToastService);
   private readonly running = signal<ReadonlyMap<string, IdentityChangeAction>>(
     new Map(),
   );
+
+  /**
+   * This device is known not to hold its user-signing key, so verifying anyone from it
+   * would sign nothing. Unknown is not blocked: Trust refuses at the moment of use.
+   */
+  verifyBlocked(): boolean {
+    return this.ownTrust.canSignUsers() === false;
+  }
 
   /** The action in flight for this person, or null. */
   pending(userId: string): IdentityChangeAction | null {

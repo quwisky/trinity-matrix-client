@@ -23,13 +23,19 @@ export async function readTrustSnapshot(
   client: TrustMatrixClient,
   crypto: TrustCryptoApi,
 ): Promise<TrustHealthSnapshot> {
-  const [crossSigningReady, secretStorageReady, backupVersion, defaultKeyId] =
-    await Promise.all([
-      crypto.isCrossSigningReady(),
-      crypto.isSecretStorageReady(),
-      crypto.getActiveSessionBackupVersion(),
-      client.secretStorage.getDefaultKeyId(),
-    ]);
+  const [
+    crossSigningReady,
+    secretStorageReady,
+    backupVersion,
+    defaultKeyId,
+    crossSigning,
+  ] = await Promise.all([
+    crypto.isCrossSigningReady(),
+    crypto.isSecretStorageReady(),
+    crypto.getActiveSessionBackupVersion(),
+    client.secretStorage.getDefaultKeyId(),
+    crypto.getCrossSigningStatus(),
+  ]);
   const thisDeviceVerified = await readThisDeviceVerified(client, crypto);
   const ready = crossSigningReady && secretStorageReady;
   // Only asked where there is no recovery: with secret storage the privates are
@@ -49,6 +55,7 @@ export async function readTrustSnapshot(
     keyBackupActive: backupVersion !== null,
     thisDeviceVerified,
     identityElsewhere,
+    canSignUsers: crossSigning.privateKeysCachedLocally.userSigningKey,
     status,
   };
 }

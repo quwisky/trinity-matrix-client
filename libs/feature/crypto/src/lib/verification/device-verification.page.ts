@@ -120,6 +120,14 @@ export class DeviceVerificationPage {
   });
 
   /**
+   * This device is known not to hold its user-signing key, so it cannot sign another
+   * user's identity. Not derived from `status`, which is wrong about it in both directions.
+   */
+  readonly cannotSignUsers = computed(
+    () => this.trust.canSignUsers() === false,
+  );
+
+  /**
    * Matching emoji with another user finishes the flow even when this device holds no
    * user-signing key and so signed nothing. Only their trust status says they are verified,
    * and it can arrive a moment after `done`.

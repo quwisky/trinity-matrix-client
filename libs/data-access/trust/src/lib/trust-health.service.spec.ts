@@ -111,4 +111,24 @@ describe('TrustHealthService', () => {
     expect(newerContext.publish).toHaveBeenCalledOnce();
     expect(service.status()).toBe('needs-setup');
   });
+
+  it('says whether this device can sign other users, and forgets it on reset', async () => {
+    isCrossSigningReady.mockResolvedValue(false);
+    expect(service.canSignUsers()).toBeNull();
+
+    crypto.getCrossSigningStatus.mockResolvedValue({
+      publicKeysOnDevice: true,
+      privateKeysInSecretStorage: false,
+      privateKeysCachedLocally: {
+        masterKey: true,
+        selfSigningKey: true,
+        userSigningKey: true,
+      },
+    });
+    await firstValueFrom(service.refresh(), { defaultValue: undefined });
+    expect(service.canSignUsers()).toBe(true);
+
+    config.reset?.();
+    expect(service.canSignUsers()).toBeNull();
+  });
 });

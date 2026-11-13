@@ -47,6 +47,7 @@ async function renderPage(
     status?: TrustStatus;
     canOpenSecuritySettings?: boolean;
     userTrust?: WritableSignal<UserTrust | null>;
+    canSignUsers?: boolean | null;
   } = {},
 ) {
   const {
@@ -55,6 +56,7 @@ async function renderPage(
     status = 'ready',
     canOpenSecuritySettings,
     userTrust = signal<UserTrust | null>(null),
+    canSignUsers = true,
   } = options;
   const close = vi.fn();
   const result = await render(DeviceVerificationPage, {
@@ -66,7 +68,10 @@ async function renderPage(
     },
     providers: [
       MockProvider(TrustVerificationService, { active }),
-      MockProvider(TrustService, { status: signal(status) }),
+      MockProvider(TrustService, {
+        status: signal(status),
+        canSignUsers: signal(canSignUsers),
+      }),
       MockProvider(TrustUsersService, { userTrust: () => userTrust }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
@@ -123,6 +128,51 @@ describe('DeviceVerificationPage', () => {
     fireEvent.click(button(container, 'Start verification'));
 
     expect(svc.startSelfVerification).toHaveBeenCalledOnce();
+  });
+
+  // Accepting would run the emoji flow to "done" and sign nobody.
+  it('does not offer to accept another user’s request on a device that cannot sign users', async () => {
+    const { svc, container } = await renderPage(
+      signal(
+        view({
+          stage: 'requested',
+          incoming: true,
+          isSelfVerification: false,
+          otherUserId: '@bob:hs',
+        }),
+      ),
+      { canSignUsers: false },
+    );
+
+    expect(container.querySelector('[data-testid="verify-accept"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="verify-other-user"]')?.textContent,
+    ).toContain('@bob:hs');
+    expect(
+      normalized(
+        container.querySelector(
+          '[data-testid="verify-cannot-sign"]',
+        ) as HTMLElement,
+      ),
+    ).toContain(
+      'This device can’t verify other people until its own encryption setup is finished. Decline, finish setup in Security settings, then ask them to try again.',
+    );
+
+    fireEvent.click(button(container, 'Decline'));
+
+    expect(svc.cancel).toHaveBeenCalledOnce();
+    expect(svc.accept).not.toHaveBeenCalled();
+  });
+
+  it('still offers to accept a request from another of the user’s own sessions on such a device', async () => {
+    const { svc, container } = await renderPage(
+      signal(view({ stage: 'requested', incoming: true })),
+      { canSignUsers: false },
+    );
+
+    fireEvent.click(button(container, 'Accept'));
+
+    expect(svc.accept).toHaveBeenCalledOnce();
   });
 
   it('accepts an incoming request', async () => {
@@ -203,7 +253,9 @@ describe('DeviceVerificationPage', () => {
 
     it('does not claim the user is verified when this device could not sign their identity', async () => {
       const { container } = await renderPage(signal(done), {
-        status: 'needs-verification',
+        // `ready` on purpose: the status does not say whether this device can sign users.
+        status: 'ready',
+        canSignUsers: false,
         userTrust: signal<UserTrust | null>('unverified'),
       });
 
@@ -218,6 +270,19 @@ describe('DeviceVerificationPage', () => {
       expect(container.textContent).not.toContain(
         'This session is now trusted',
       );
+    });
+
+    it('does not blame setup while a device that can sign waits for their trust status', async () => {
+      const { container } = await renderPage(signal(done), {
+        status: 'needs-setup',
+        canSignUsers: true,
+        userTrust: signal<UserTrust | null>('unverified'),
+      });
+
+      expect(normalized(container)).toContain(
+        'The emoji matched with @bob:hs. They are not marked as verified yet.',
+      );
+      expect(container.textContent).not.toContain('encryption setup');
     });
 
     it('follows the trust status when it arrives after the flow is done, without moving focus again', async () => {

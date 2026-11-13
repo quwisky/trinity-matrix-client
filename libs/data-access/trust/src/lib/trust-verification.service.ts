@@ -170,6 +170,10 @@ export class TrustVerificationService {
     ) {
       this.attachVerifier(req.verifier);
     }
+    // The signing keys reach a newly verified device around now, with no event of their own.
+    if (req.phase === VerificationPhase.Done && req.isSelfVerification) {
+      void this.health.reconcile();
+    }
     this.recompute();
   };
 
@@ -287,8 +291,11 @@ export class TrustVerificationService {
       const context = this.cryptoPort.active();
       const client = context.client;
       const crypto = this.requireCrypto(context.crypto);
-      return directRoom.pipe(
-        take(1),
+      // Asked before the DM exists, so a refusal creates nothing.
+      return from(
+        this.requireUserSigningKey(crypto, 'start-verification'),
+      ).pipe(
+        switchMap(() => directRoom.pipe(take(1))),
         switchMap((roomId) => {
           this.requireCurrentCrypto(client, crypto);
           return this.waitForIdentity(client, crypto, userId).pipe(
@@ -322,9 +329,20 @@ export class TrustVerificationService {
 
   /** Accept an incoming verification request. */
   accept(): Observable<void> {
-    return defer(() => from(this.requireRequest().accept())).pipe(
-      recoverTrustOperation('accept-verification'),
-    );
+    return defer(() =>
+      from(
+        (async (): Promise<void> => {
+          const request = this.requireRequest();
+          if (!request.isSelfVerification) {
+            await this.requireUserSigningKey(
+              this.requireCrypto(),
+              'accept-verification',
+            );
+          }
+          await request.accept();
+        })(),
+      ),
+    ).pipe(recoverTrustOperation('accept-verification'));
   }
 
   /** Begin the emoji-SAS method once the request is `ready`. */
@@ -757,6 +775,26 @@ export class TrustVerificationService {
       );
     }
     return crypto;
+  }
+
+  /**
+   * Verifying another user ends by signing their identity with the private user-signing
+   * key. A device without it runs the whole emoji flow and signs nothing, so it is asked
+   * here, at the moment of use, rather than trusted from a projected signal.
+   */
+  private async requireUserSigningKey(
+    crypto: TrustCryptoApi,
+    operation: 'start-verification' | 'accept-verification',
+  ): Promise<void> {
+    const status = await crypto.getCrossSigningStatus();
+    if (!status.privateKeysCachedLocally.userSigningKey) {
+      throw new TrustOperationError(
+        operation,
+        'not-ready',
+        'review-security-settings',
+        'Finish this device’s encryption setup before verifying other people.',
+      );
+    }
   }
 
   private requireRequest(): VerificationRequest {
