@@ -675,6 +675,21 @@ describe('RoomsPage room / DM / invite actions', () => {
     await vi.waitFor(() => expect(shell.store.activeRoomId()).toBe('!room:hs'));
   });
 
+  it('does not create a room as an account that became active while the prompt was open', async () => {
+    const shell = build();
+    const name = new Subject<string | null>();
+    alertPrompt.mockReturnValue(name);
+
+    shell.rooms.onCreateRoom();
+    shell.session.switchAccount('@other:hs');
+    await vi.waitFor(() =>
+      expect(shell.store.activeAccountId()).toBe('@other:hs'),
+    );
+    name.next('general');
+
+    expect(createRoom).not.toHaveBeenCalled();
+  });
+
   it('does not create a room for an empty name', async () => {
     const shell = build();
     alertPrompt.mockReturnValue(of('   '));
@@ -693,6 +708,22 @@ describe('RoomsPage room / DM / invite actions', () => {
 
     expect(createDirectMessage).toHaveBeenCalledWith('@bob:hs');
     expect(shell.store.activeRoomId()).toBe('!dm:hs');
+  });
+
+  it('does not start a DM as an account that became active while the picker was open', async () => {
+    const shell = build();
+    const picked = new Subject<string | null>();
+    pick.mockReturnValue(picked);
+
+    shell.rooms.onStartDm();
+    shell.session.switchAccount('@other:hs');
+    await vi.waitFor(() =>
+      expect(shell.store.activeAccountId()).toBe('@other:hs'),
+    );
+    picked.next('@bob:hs');
+    await settleWorkspace();
+
+    expect(createDirectMessage).not.toHaveBeenCalled();
   });
 
   it('does not start a DM when the picker is cancelled', async () => {
@@ -1371,14 +1402,40 @@ describe('RoomsPage room / DM / invite actions', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(historyNote).toHaveBeenCalledWith('!r:hs');
+    expect(historyNote).toHaveBeenCalledWith({
+      accountId: '@me:hs',
+      roomId: '!r:hs',
+    });
     expect(pick).toHaveBeenCalledWith(
       expect.objectContaining({ note: HISTORY_NOTE }),
     );
-    expect(inviteUser).toHaveBeenCalledWith('!r:hs', '@bob:hs');
+    expect(inviteUser).toHaveBeenCalledWith(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      '@bob:hs',
+    );
     expect(toastShow).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ variant: 'success' }),
+    );
+  });
+
+  it('invites as the account that opened the picker, even after another becomes active', async () => {
+    const shell = build();
+    setRouteRoom('!r:hs');
+    await settleWorkspace();
+    const picked = new Subject<string | null>();
+    pick.mockReturnValue(picked);
+
+    shell.rooms.onInviteToRoom();
+    shell.session.switchAccount('@other:hs');
+    await vi.waitFor(() =>
+      expect(shell.store.activeAccountId()).toBe('@other:hs'),
+    );
+    picked.next('@bob:hs');
+
+    expect(inviteUser).toHaveBeenCalledWith(
+      { accountId: '@me:hs', roomId: '!r:hs' },
+      '@bob:hs',
     );
   });
 
@@ -1498,7 +1555,10 @@ describe('RoomsPage room / DM / invite actions', () => {
     shell.rooms.onInviteToSpace();
     await settleWorkspace();
 
-    expect(inviteUser).toHaveBeenCalledWith('!s:hs', '@bob:hs');
+    expect(inviteUser).toHaveBeenCalledWith(
+      { accountId: '@me:hs', roomId: '!s:hs' },
+      '@bob:hs',
+    );
   });
 
   it('accepts a room invite (joins) and selects the joined room', async () => {

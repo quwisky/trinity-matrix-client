@@ -301,6 +301,8 @@ export class RoomActionsService {
   /** Prompt for a name, create a standalone encrypted room, then select it. */
   onCreateRoom(): void {
     this.status.error.set(null);
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.alert
       .prompt$({
         header: 'Create a room',
@@ -313,12 +315,16 @@ export class RoomActionsService {
         filter((name): name is string => name !== null),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((name) => this.applyCreateRoom(name));
+      .subscribe((name) => this.applyCreateRoom(name, accountId));
   }
 
   /** Pick a user (MXID or directory), open/reuse a DM with them, then select it. */
   onStartDm(): void {
     this.status.error.set(null);
+    // The DM is created as the active Account, so one that replaced the requester while the
+    // picker was open must not get it.
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
     this.userPicker
       .pick$({
         title: 'Start a direct message',
@@ -327,8 +333,7 @@ export class RoomActionsService {
       .pipe(
         filter((userId): userId is string => Boolean(userId)),
         switchMap((userId) => {
-          const accountId = this.store.activeAccountId();
-          if (!accountId) return EMPTY;
+          if (accountId !== this.store.activeAccountId()) return EMPTY;
           return runWithBusy(
             this.rooms.createDirectMessage(userId),
             this.status,
@@ -357,31 +362,37 @@ export class RoomActionsService {
     }
   }
 
-  private applyCreateRoom(name: string): void {
+  private applyCreateRoom(name: string, accountId: string): void {
     if (!name.trim()) {
       return; // empty name — dismiss without creating
     }
-    const accountId = this.store.activeAccountId();
-    if (!accountId) return;
+    // The room is created as the active Account, so one that replaced the requester while the
+    // prompt was open must not get it.
+    if (accountId !== this.store.activeAccountId()) return;
     runWithBusy(this.rooms.createRoom({ name }), this.status).subscribe(
       (roomId) => this.nav.onSelectRoom({ roomId, accountId }),
     );
   }
 
   /** Shared invite flow for a room or space: pick a user, invite, then toast. */
-  private invitePeople(targetId: string, label: string): void {
+  private invitePeople(roomId: string, label: string): void {
     this.status.error.set(null);
+    // Pinned now: the picker outlives an Account switch, and the invite must go out as the
+    // Account it was opened for.
+    const accountId = this.store.activeAccountId();
+    if (!accountId) return;
+    const target = { accountId, roomId };
     this.userPicker
       .pickUser$({
         title: `Invite to ${label}`,
         confirmLabel: 'Invite',
-        note: this.historyNotes.noteFor(targetId),
+        note: this.historyNotes.noteFor(target),
       })
       .pipe(
         filter((picked): picked is PickedUser => picked !== null),
         switchMap((picked) =>
           runWithBusy(
-            this.rooms.inviteUser(targetId, picked.userId),
+            this.rooms.inviteUser(target, picked.userId),
             this.status,
             inviteErrorHandling(picked.displayName ?? picked.userId),
           ).pipe(map(() => picked.userId)),
