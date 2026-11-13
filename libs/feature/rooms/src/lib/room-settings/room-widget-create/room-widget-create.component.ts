@@ -28,6 +28,7 @@ import {
   validateRoomWidgetDraft,
 } from '@trinity/data-access/widgets';
 import { firstValueFrom } from 'rxjs';
+import { isImeKeydown } from '@trinity/util/ui';
 
 /** Why the fields are locked for someone who cannot manage widgets here. */
 const NOT_EDITABLE = 'You don’t have permission to add widgets to this room';
@@ -111,7 +112,7 @@ export class RoomWidgetCreateComponent {
 
   /** Treat Enter like the Add button, except while an IME is composing text. */
   onEnter(event: Event): void {
-    if ((event as KeyboardEvent).isComposing) {
+    if (isImeKeydown(event)) {
       return;
     }
     event.preventDefault();

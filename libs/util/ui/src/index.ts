@@ -11,3 +11,4 @@ export * from './lib/latest-guard';
 export * from './lib/routed-page';
 export * from './lib/shown-error';
 export * from './lib/signal-changes';
+export * from './lib/ime-keydown';

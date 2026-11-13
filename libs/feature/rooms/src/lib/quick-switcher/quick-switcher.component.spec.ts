@@ -252,6 +252,19 @@ describe('QuickSwitcherComponent', () => {
     });
   });
 
+  it.each([{ isComposing: true }, { isComposing: false, keyCode: 229 }])(
+    'does not open a result on the Enter that confirms an IME candidate (%o)',
+    async (ime) => {
+      const { fixture } = await renderSwitcher();
+      const key = keyEvent();
+
+      fixture.componentInstance.choose({ ...key.event, ...ime } as Event);
+
+      expect(dismiss).not.toHaveBeenCalled();
+      expect(key.preventDefault).not.toHaveBeenCalled();
+    },
+  );
+
   it('clicking a row dismisses with its selection', async () => {
     const { fixture } = await renderSwitcher();
     const c = fixture.componentInstance;

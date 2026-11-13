@@ -100,6 +100,17 @@ describe('RoomWidgetCreateComponent', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('does not submit the Enter WebKit fires after the composition ended', async () => {
+    const { component, create } = await build();
+    validDraft(component);
+    const event = new KeyboardEvent('keydown', { key: 'Enter' });
+    Object.defineProperty(event, 'keyCode', { value: 229 });
+
+    component.onEnter(event);
+
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('renders a permission loss returned by the write-time recheck', async () => {
     const { component, container, fixture } = await build();
     vi.mocked(TestBed.inject(WidgetManagementService).create).mockReturnValue(

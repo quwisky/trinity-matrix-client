@@ -101,6 +101,20 @@ describe('RoomAliasesComponent', () => {
     expect(addAlias).toHaveBeenCalledWith(TARGET, '#team:hs.example');
   });
 
+  it.each([{ isComposing: true }, { isComposing: false, keyCode: 229 }])(
+    'does not add on the Enter that confirms an IME candidate (%o)',
+    async (ime) => {
+      const { cmp, addAlias } = await build();
+      cmp.controller.aliasForm.localpart().value.set('team');
+      const event = { preventDefault: vi.fn(), ...ime } as unknown as Event;
+
+      cmp.onEnter(event);
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(addAlias).not.toHaveBeenCalled();
+    },
+  );
+
   it('loads and lists the room’s local aliases on init', async () => {
     const { cmp, container } = await build({ aliases: ['#a:hs.example'] });
     expect(cmp.controller.aliases()).toEqual(['#a:hs.example']);
