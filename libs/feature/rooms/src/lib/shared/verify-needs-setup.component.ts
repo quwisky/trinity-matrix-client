@@ -22,25 +22,25 @@ export interface VerifyBlock {
   } | null;
 }
 
-const ENTER_RECOVERY_KEY: VerifyBlock = Object.freeze({
+const ENTER_RECOVERY_KEY: VerifyBlock = {
   reason:
     'This device doesn’t have all its keys yet. Enter your recovery key to verify people.',
   action: { label: 'Enter recovery key', flow: 'unlock' },
-});
-const VERIFY_THIS_DEVICE: VerifyBlock = Object.freeze({
+};
+const VERIFY_THIS_DEVICE: VerifyBlock = {
   reason: 'Verify this device before you verify people.',
   action: { label: 'Verify this device', flow: 'verify' },
-});
-const SET_UP_ENCRYPTION: VerifyBlock = Object.freeze({
+};
+const SET_UP_ENCRYPTION: VerifyBlock = {
   reason: 'Set up encryption on this device to verify people.',
   action: { label: 'Set up encryption', flow: 'setup' },
-});
+};
 // No action: the only one this device could offer is replacing the identity.
-const KEYS_ON_ANOTHER_DEVICE: VerifyBlock = Object.freeze({
+const KEYS_ON_ANOTHER_DEVICE: VerifyBlock = {
   reason:
     'Verify people from the device where you set up encryption, or set up recovery there.',
   action: null,
-});
+};
 
 /**
  * Why a device without its user-signing key cannot verify people, and the existing flow
