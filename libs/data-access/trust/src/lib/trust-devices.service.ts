@@ -245,38 +245,53 @@ export class TrustDevicesService {
     });
   }
 
-  /** Rename a device's public display name. */
-  rename(deviceId: string, name: string): Observable<void> {
+  /** Rename a device of `accountId`, the Account its row was listed under. */
+  rename(accountId: string, deviceId: string, name: string): Observable<void> {
     const trimmed = name.trim();
     return defer(() =>
       from(
-        this.cryptoPort.active().client.setDeviceDetails(deviceId, {
-          display_name: trimmed,
-        }),
+        this.pinned(
+          accountId,
+          'rename-device',
+          'Device not renamed',
+        ).setDeviceDetails(deviceId, { display_name: trimmed }),
       ),
     ).pipe(
-      tap(() => this.patch(deviceId, { displayName: trimmed || deviceId })),
+      tap(() => {
+        if (this.shows(accountId)) {
+          this.patch(deviceId, { displayName: trimmed || deviceId });
+        }
+      }),
       map(() => void 0),
       recoverTrustOperation('rename-device'),
     );
   }
 
   /**
-   * Delete (sign out) a device, driving the password UIA when the homeserver
+   * Delete (sign out) a device of `accountId`, driving the password UIA when the homeserver
    * requires it — `promptPassword` is asked for the account password and may be
    * re-asked on a wrong password. A cancelled prompt aborts.
    */
-  delete(deviceId: string, promptPassword: PasswordPrompt): Observable<void> {
-    return defer(() => from(this.deleteWithUia(deviceId, promptPassword))).pipe(
-      recoverTrustOperation('delete-device'),
-    );
+  delete(
+    accountId: string,
+    deviceId: string,
+    promptPassword: PasswordPrompt,
+  ): Observable<void> {
+    return defer(() =>
+      from(this.deleteWithUia(accountId, deviceId, promptPassword)),
+    ).pipe(recoverTrustOperation('delete-device'));
   }
 
   private async deleteWithUia(
+    accountId: string,
     deviceId: string,
     promptPassword: PasswordPrompt,
   ): Promise<void> {
-    const client = this.cryptoPort.active().client;
+    const client = this.pinned(
+      accountId,
+      'delete-device',
+      'Device not signed out',
+    );
     // Deleting the active session is logout (it revokes this token), not device
     // management — refuse here so an exported caller can't self-revoke.
     if (deviceId === client.getDeviceId()) {
@@ -290,8 +305,15 @@ export class TrustDevicesService {
     try {
       await runPasswordUia(
         (auth) => client.deleteDevice(deviceId, auth ?? undefined),
-        promptPassword,
-        client.getUserId() ?? '',
+        async () => {
+          this.pinned(accountId, 'delete-device', 'Device not signed out');
+          const password = await promptPassword();
+          // The prompt can outlive a switch: a password typed over another Account's
+          // screen is dropped here, unsent.
+          this.pinned(accountId, 'delete-device', 'Device not signed out');
+          return password;
+        },
+        accountId,
       );
     } catch (err) {
       if (err instanceof UiaCancelledError) {
@@ -299,7 +321,35 @@ export class TrustDevicesService {
       }
       throw err;
     }
-    this.removeLocal(deviceId);
+    if (this.shows(accountId)) {
+      this.removeLocal(deviceId);
+    }
+  }
+
+  /** The list belongs to the active Account, so only its own changes may touch it. */
+  private shows(accountId: string): boolean {
+    return accountId === this.cryptoPort.activeAccountId();
+  }
+
+  /**
+   * The client of the Account an action was started for. Refused once another Account is
+   * active: a device id or a password must never reach an Account it was not meant for.
+   */
+  private pinned(
+    accountId: string,
+    operation: 'rename-device' | 'delete-device',
+    refusal: string,
+  ): TrustMatrixClient {
+    const client = this.cryptoPort.forAccount(accountId)?.client;
+    if (!client || !this.shows(accountId)) {
+      throw new TrustOperationError(
+        operation,
+        'stale-state',
+        'none',
+        `${refusal}: you switched account while this was open.`,
+      );
+    }
+    return client;
   }
 
   private removeLocal(deviceId: string): void {
