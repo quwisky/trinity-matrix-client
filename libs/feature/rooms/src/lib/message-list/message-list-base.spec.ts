@@ -454,3 +454,38 @@ describe('MessageListBase host hooks', () => {
     expect(cmp.roomId()).toBe('!a:hs');
   });
 });
+
+describe('MessageListBase reply banner', () => {
+  it('names the sender of the message being replied to', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+
+    compose.beginReply('$a');
+
+    expect(fixture.componentInstance.replyingToName()).toBe(
+      msg('$a').senderName,
+    );
+  });
+
+  it('still says a reply is on when its message is not loaded', () => {
+    // A room's history is released while it is left, but its reply is kept for the return.
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+
+    compose.beginReply('$older');
+
+    expect(fixture.componentInstance.replyingToName()).toBe(
+      'an earlier message',
+    );
+  });
+
+  it('shows no reply when none is on', () => {
+    const fixture = TestBed.createComponent(TestMessageListComponent);
+    fixture.componentRef.setInput('messages', [msg('$a')]);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.replyingToName()).toBe('');
+  });
+});
