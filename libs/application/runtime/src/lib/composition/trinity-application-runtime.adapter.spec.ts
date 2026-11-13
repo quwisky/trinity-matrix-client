@@ -1501,6 +1501,31 @@ describe('TrinityApplicationRuntimeAdapter Workspace restoration with the real r
     expect(router.url).toBe('/');
   });
 
+  it('keeps that page on a second retry too', async () => {
+    const { adapter, router } = setUp('/login');
+    await firstValueFrom(adapter.restoreWorkspace());
+    signedIn.set(true);
+    await router.navigateByUrl('/');
+    await firstValueFrom(adapter.restoreWorkspace());
+
+    await firstValueFrom(adapter.restoreWorkspace());
+
+    expect(router.url).toBe('/');
+  });
+
+  it('does not keep a page for a user who has since been signed out', async () => {
+    const { adapter, router } = setUp('/login');
+    await firstValueFrom(adapter.restoreWorkspace());
+    signedIn.set(true);
+    await router.navigateByUrl('/');
+    await firstValueFrom(adapter.restoreWorkspace());
+    signedIn.set(false);
+
+    await firstValueFrom(adapter.restoreWorkspace());
+
+    expect(router.url).toBe('/login');
+  });
+
   it('still blocks a retry whose guard throws on every Workspace route', async () => {
     const { adapter } = setUp('/');
     await firstValueFrom(adapter.restoreWorkspace());

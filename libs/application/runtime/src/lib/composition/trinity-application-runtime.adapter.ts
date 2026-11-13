@@ -131,6 +131,7 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
   private workspaceNavigationStarted = false;
   private workspaceUrl: string | null = null;
   private restoredUrl: string | null = null;
+  private keptUrl: string | null = null;
   /** Emits when a Workspace restoration starts; releases the one it supersedes. */
   private readonly workspaceRestorations = new Subject<void>();
 
@@ -366,12 +367,16 @@ export class TrinityApplicationRuntimeAdapter implements ApplicationRuntimeAdapt
           this.initialWorkspaceNavigation(),
         );
       } else {
-        // A user who moved on since the last restoration keeps their page: the launch
-        // URL may be a spent sign-in callback. Otherwise a guard redirect is tried again.
-        const moved =
-          this.restoredUrl !== null && this.router.url !== this.restoredUrl;
+        // A user who moved on since a restoration keeps their page on this and later
+        // retries: the launch URL may be a spent sign-in callback. With no account the page
+        // is not theirs to keep, and the launch URL's guard sends them to sign in.
+        if (this.restoredUrl !== null && this.router.url !== this.restoredUrl) {
+          this.keptUrl = this.router.url;
+        }
         navigation = this.navigateWorkspace(
-          moved ? this.router.url : this.workspaceUrl,
+          this.keptUrl !== null && this.accounts.hasActiveAccount()
+            ? this.keptUrl
+            : this.workspaceUrl,
         );
       }
       return navigation.pipe(
