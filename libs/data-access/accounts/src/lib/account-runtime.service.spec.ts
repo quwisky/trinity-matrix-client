@@ -364,6 +364,35 @@ describe('AccountRuntimeService', () => {
     ]);
   });
 
+  it('erases everything again once an account signed in after a partial reset', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: null,
+      accountIds: [],
+    });
+    vi.mocked(test.adapter.resetInstallation).mockReturnValueOnce(
+      of({
+        kind: 'partial-cleanup',
+        issues: [
+          {
+            scope: 'service-worker',
+            recovery: 'retry-installation-reset',
+          },
+        ],
+      }),
+    );
+    const runtime = setup(test);
+
+    await firstValueFrom(runtime.resetInstallation());
+    await firstValueFrom(
+      runtime.establishAuthenticatedAccount(grant(), activeIntent),
+    );
+    await firstValueFrom(runtime.resetInstallation());
+
+    expect(test.adapter.resetInstallation).toHaveBeenCalledTimes(2);
+    expect(test.adapter.retryInstallationCleanup).not.toHaveBeenCalled();
+  });
+
   it('retries only settled residue when Account removal is requested again', async () => {
     const test = testAdapter({
       kind: 'available',
