@@ -478,8 +478,14 @@ test('fetches pack media through the scoped homeserver CORS bridge', async () =>
         new URL('./fixtures/localhost-cert.pem', import.meta.url),
       ),
     },
-    (_request, response) => {
+    (request, response) => {
       // Deliberately no Access-Control-Allow-Origin: the Electron bridge must add it.
+      // The shell adds it only for an origin it has itself confirmed is a homeserver.
+      if (request.url === '/_matrix/client/versions') {
+        response.writeHead(200, { 'Content-Type': 'application/json' });
+        response.end(JSON.stringify({ versions: ['v1.11'] }));
+        return;
+      }
       response.writeHead(200, { 'Content-Type': 'image/png' });
       response.end(png);
     },

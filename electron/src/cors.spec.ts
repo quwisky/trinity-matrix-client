@@ -1,4 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 
 // cors.ts pulls APP_ORIGIN from ./scheme, whose module load imports `electron`.
 // Stub it so the graph resolves under the node test env (protocol is only used
@@ -7,7 +15,11 @@ vi.mock('electron', () => ({
   protocol: { handle: vi.fn(), registerSchemesAsPrivileged: vi.fn() },
 }));
 
+const { probe } = vi.hoisted(() => ({ probe: vi.fn() }));
+vi.mock('./cors-probe', () => ({ probeMatrixOrigin: probe }));
+
 import {
+  allowCorsOrigin,
   allowedCorsOrigins,
   installMatrixCors,
   setAllowedCorsOrigins,
@@ -16,6 +28,7 @@ import {
 const APP_ORIGIN = 'trinity://app';
 /** A homeserver the renderer has declared (the only kind the shim rewrites for). */
 const HS = 'https://hs.example';
+const ACAO_NAME = 'access-control-allow-origin';
 
 type Details = {
   method: string;
@@ -44,6 +57,8 @@ function fakeSession() {
     session: session as unknown as Electron.Session,
     onHeadersReceived: session.webRequest.onHeadersReceived,
     getFilter: () => filter,
+    handle: (details: Details, callback: Parameters<Handler>[1]): void =>
+      handler?.(details, callback),
     run: (details: Details): Record<string, string[]> => {
       let out: { responseHeaders?: Record<string, string[]> } | undefined;
       // Default to the declared homeserver so the existing cases keep testing the
@@ -56,6 +71,10 @@ function fakeSession() {
     },
   };
 }
+
+/** Let every probe that has answered reach the shim. */
+const probesSettled = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve));
 
 /** Case-insensitive lookup of a single header's values. */
 function pick(headers: Record<string, string[]>, name: string): string[] {
@@ -75,11 +94,13 @@ function keysFor(headers: Record<string, string[]>, name: string): string[] {
 describe('installMatrixCors', () => {
   let s: ReturnType<typeof fakeSession>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    probe.mockReset().mockResolvedValue('homeserver');
     s = fakeSession();
     installMatrixCors(s.session);
     // The renderer declares its live origin set; without it nothing is rewritten.
     setAllowedCorsOrigins([HS]);
+    await probesSettled();
   });
 
   it('scopes the interceptor to remote http(s) URLs only (never trinity://app)', () => {
@@ -153,10 +174,12 @@ describe('installMatrixCors', () => {
 describe('CORS scoping (the shim only serves declared origins)', () => {
   let s: ReturnType<typeof fakeSession>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    probe.mockReset().mockResolvedValue('homeserver');
     s = fakeSession();
     installMatrixCors(s.session);
     setAllowedCorsOrigins([HS]);
+    await probesSettled();
   });
 
   // The point of the allowlist. The app renders untrusted federated message HTML, so a
@@ -185,13 +208,14 @@ describe('CORS scoping (the shim only serves declared origins)', () => {
     expect(pick(headers, 'access-control-allow-origin')).toEqual([APP_ORIGIN]);
   });
 
-  it('follows the renderer as its origin set changes (account switch / sign-out)', () => {
+  it('follows the renderer as its origin set changes (account switch / sign-out)', async () => {
     const other = 'https://other.example';
     expect(
       s.run({ method: 'GET', url: `${other}/x`, responseHeaders: {} }),
     ).toEqual({});
 
     setAllowedCorsOrigins([HS, other]); // a second account signs in
+    await probesSettled();
     expect(
       pick(
         s.run({ method: 'GET', url: `${other}/x`, responseHeaders: {} }),
@@ -223,5 +247,326 @@ describe('CORS scoping (the shim only serves declared origins)', () => {
     expect(
       s.run({ method: 'GET', url: `${HS}/x`, responseHeaders: {} }),
     ).toEqual({});
+  });
+});
+
+describe('CORS boundary (main confirms an origin is a Matrix server itself)', () => {
+  let s: ReturnType<typeof fakeSession>;
+  let n = 0;
+  /** A fresh origin per case: what main learned about one lasts the session. */
+  const freshOrigin = (): string => `https://fresh-${(n += 1)}.example`;
+
+  beforeEach(() => {
+    probe.mockReset().mockResolvedValue('homeserver');
+    s = fakeSession();
+    installMatrixCors(s.session);
+    setAllowedCorsOrigins([]);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // The audit's case: script in the page names an intranet host and reads it.
+  it('does not rewrite an origin the renderer named when the probe refuses it', async () => {
+    const intranet = 'https://10.0.0.5';
+    probe.mockResolvedValue('refused');
+
+    allowCorsOrigin(intranet);
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledWith(intranet);
+    expect(
+      s.run({ method: 'GET', url: `${intranet}/admin`, responseHeaders: {} }),
+    ).toEqual({});
+  });
+
+  it('holds a response that arrives while the probe is pending, then rewrites it', async () => {
+    const origin = freshOrigin();
+    let answer: (result: string) => void = () => undefined;
+    probe.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+    allowCorsOrigin(origin);
+    s.handle(
+      { method: 'GET', url: `${origin}/_matrix/client/versions` },
+      (r) => (out = r),
+    );
+    await probesSettled();
+    expect(out).toBeUndefined();
+
+    answer('homeserver');
+    await probesSettled();
+    expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+  });
+
+  it('releases a held response untouched when the probe refuses', async () => {
+    const origin = freshOrigin();
+    probe.mockResolvedValue('refused');
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+    allowCorsOrigin(origin);
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+    await probesSettled();
+
+    expect(out).toEqual({});
+  });
+
+  it('releases a held response untouched when the origin was withdrawn meanwhile', async () => {
+    const origin = freshOrigin();
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+    allowCorsOrigin(origin);
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+    setAllowedCorsOrigins([]);
+    await probesSettled();
+
+    expect(out).toEqual({});
+  });
+
+  // Offline start: the stored account's homeserver cannot be reached yet.
+  it('asks again once an unreachable origin answers, instead of remembering the failure', async () => {
+    const origin = freshOrigin();
+    probe.mockResolvedValue('unreachable');
+    setAllowedCorsOrigins([origin]);
+    await probesSettled();
+
+    probe.mockResolvedValue('homeserver');
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+  });
+
+  it('does not probe a refused origin again straight away', async () => {
+    const origin = freshOrigin();
+    probe.mockResolvedValue('refused');
+
+    allowCorsOrigin(origin);
+    await probesSettled();
+    allowCorsOrigin(origin);
+    s.run({ method: 'GET', url: `${origin}/x` });
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledTimes(1);
+  });
+
+  it('probes a refused origin again once the back-off has passed', async () => {
+    const origin = freshOrigin();
+    probe.mockResolvedValue('refused');
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+    allowCorsOrigin(origin);
+    await probesSettled();
+
+    now.mockReturnValue(1_029_999);
+    s.run({ method: 'GET', url: `${origin}/x` });
+    await probesSettled();
+    expect(probe).toHaveBeenCalledTimes(1);
+
+    now.mockReturnValue(1_030_000);
+    probe.mockResolvedValue('homeserver');
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledTimes(2);
+    expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+  });
+
+  it('probes a confirmed origin once for the session', async () => {
+    const origin = freshOrigin();
+
+    allowCorsOrigin(origin);
+    await probesSettled();
+    setAllowedCorsOrigins([origin]);
+    setAllowedCorsOrigins([]);
+    setAllowedCorsOrigins([origin]);
+    await probesSettled();
+
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(
+      pick(s.run({ method: 'GET', url: `${origin}/x` }), ACAO_NAME),
+    ).toEqual([APP_ORIGIN]);
+  });
+
+  describe('a host that is not itself a homeserver', () => {
+    let origin: string;
+
+    beforeEach(async () => {
+      origin = freshOrigin();
+      probe.mockResolvedValue('well-known');
+      allowCorsOrigin(origin);
+      await probesSettled();
+    });
+
+    it.each(['/.well-known/matrix/client', '/.well-known/matrix/server'])(
+      'rewrites %s',
+      (path) => {
+        expect(
+          pick(s.run({ method: 'GET', url: `${origin}${path}` }), ACAO_NAME),
+        ).toEqual([APP_ORIGIN]);
+      },
+    );
+
+    // A server or proxy that decodes before resolving dot segments serves another path
+    // for the first three.
+    it.each([
+      '/.well-known/matrix/..%2f..%2fadmin',
+      '/.well-known/matrix/..%5cadmin',
+      '/.well-known/matrix/..;/admin',
+      '/.well-known/matrix/client/',
+      '/.well-known/matrix/client%2f..%2f..%2fadmin',
+      '/.well-known/matrix/support',
+      '/.well-known/matrix/',
+      '/index.html',
+    ])('does not rewrite %s', (path) => {
+      expect(s.run({ method: 'GET', url: `${origin}${path}` })).toEqual({});
+    });
+  });
+
+  // nginx serves the static well-known and proxies `/_matrix/` to a homeserver that was
+  // restarting when main first asked.
+  describe('a homeserver whose versions endpoint was down at the first probe', () => {
+    let origin: string;
+    let now: MockInstance<() => number>;
+    const sync = (): string => `${origin}/_matrix/client/v3/sync`;
+
+    beforeEach(async () => {
+      origin = freshOrigin();
+      now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      probe.mockResolvedValue('well-known');
+      allowCorsOrigin(origin);
+      await probesSettled();
+    });
+
+    it('rewrites its responses once a later probe finds the homeserver', async () => {
+      now.mockReturnValue(1_030_000);
+      probe.mockResolvedValue('homeserver');
+      let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+      s.handle({ method: 'GET', url: sync() }, (r) => (out = r));
+      expect(out).toBeUndefined();
+      await probesSettled();
+
+      expect(pick(out?.responseHeaders ?? {}, ACAO_NAME)).toEqual([APP_ORIGIN]);
+      expect(pick(s.run({ method: 'GET', url: sync() }), ACAO_NAME)).toEqual([
+        APP_ORIGIN,
+      ]);
+      expect(probe).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not probe it again before the back-off has passed', async () => {
+      now.mockReturnValue(1_029_999);
+      probe.mockResolvedValue('homeserver');
+
+      expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+      await probesSettled();
+
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not probe it again because the renderer names it again', async () => {
+      now.mockReturnValue(1_030_000);
+
+      allowCorsOrigin(origin);
+      setAllowedCorsOrigins([origin]);
+      await probesSettled();
+
+      expect(probe).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps its well-known documents readable while the later probe is pending', async () => {
+      now.mockReturnValue(1_030_000);
+      let answer: (result: string) => void = () => undefined;
+      probe.mockReturnValue(new Promise((resolve) => (answer = resolve)));
+      let held: { responseHeaders?: Record<string, string[]> } | undefined;
+
+      s.handle({ method: 'GET', url: sync() }, (r) => (held = r));
+
+      for (const path of [
+        '/.well-known/matrix/client',
+        '/.well-known/matrix/server',
+      ]) {
+        expect(
+          pick(s.run({ method: 'GET', url: `${origin}${path}` }), ACAO_NAME),
+        ).toEqual([APP_ORIGIN]);
+      }
+      expect(held).toBeUndefined();
+
+      answer('well-known');
+      await probesSettled();
+      expect(held).toEqual({});
+    });
+
+    it.each(['well-known', 'refused', 'unreachable'])(
+      'asks a host that stays without a homeserver once per back-off (%s)',
+      async (later) => {
+        probe.mockResolvedValue(later);
+
+        now.mockReturnValue(1_030_000);
+        expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+        s.handle(
+          { method: 'GET', url: `${origin}/index.html` },
+          () => undefined,
+        );
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(2);
+
+        now.mockReturnValue(1_059_999);
+        expect(s.run({ method: 'GET', url: sync() })).toEqual({});
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(2);
+
+        now.mockReturnValue(1_060_000);
+        s.handle({ method: 'GET', url: sync() }, () => undefined);
+        await probesSettled();
+        expect(probe).toHaveBeenCalledTimes(3);
+        expect(
+          pick(
+            s.run({
+              method: 'GET',
+              url: `${origin}/.well-known/matrix/client`,
+            }),
+            ACAO_NAME,
+          ),
+        ).toEqual([APP_ORIGIN]);
+      },
+    );
+  });
+
+  it('never allows an http origin', async () => {
+    allowCorsOrigin('http://hs.example');
+    setAllowedCorsOrigins(['http://hs.example']);
+    await probesSettled();
+
+    expect(probe).not.toHaveBeenCalled();
+    expect(allowedCorsOrigins()).toEqual([]);
+  });
+
+  // Last: it spends the session's budget.
+  it('stops probing new origins once the session has probed its share', async () => {
+    probe.mockResolvedValue('refused');
+
+    for (let i = 0; i < 150; i += 1) {
+      allowCorsOrigin(`https://scan-${i}.example`);
+    }
+    await probesSettled();
+
+    expect(probe.mock.calls.length).toBeLessThanOrEqual(100);
+    expect(probe).not.toHaveBeenCalledWith('https://scan-149.example');
+  });
+
+  it('releases a response from an origin past that share at once, untouched', () => {
+    const origin = 'https://past-the-cap.example';
+    probe.mockReturnValue(new Promise(() => undefined));
+    let out: { responseHeaders?: Record<string, string[]> } | undefined;
+
+    allowCorsOrigin(origin);
+    s.handle({ method: 'GET', url: `${origin}/x` }, (r) => (out = r));
+
+    expect(probe).not.toHaveBeenCalled();
+    expect(out).toEqual({});
   });
 });
