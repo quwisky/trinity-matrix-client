@@ -36,6 +36,12 @@ interface RenderOptions {
   status?: TrustStatus;
   /** A verified device whose identity's keys, and recovery, live on another device. */
   setupElsewhere?: boolean;
+  /** The Account on screen when the page is built. */
+  active?: string;
+  /** The Account the opener named: the dialog input. */
+  requestedAccountId?: string;
+  /** The Account the opener named: `account` query param on the routed page. */
+  account?: string | null;
 }
 
 /** Renders the page with mocked DI and returns the fixture + mocked deps. */
@@ -52,6 +58,9 @@ async function renderPage(options: RenderOptions = {}) {
     confirmClose = true,
     status = 'needs-recovery',
     setupElsewhere = false,
+    active = '@me:hs',
+    requestedAccountId,
+    account = null,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
   // first call is the gate, any later one is the password.
@@ -62,11 +71,12 @@ async function renderPage(options: RenderOptions = {}) {
   const liveStatus = signal<TrustStatus>(status);
   const liveSetupElsewhere = signal(setupElsewhere);
   // Writable so a test can switch account under the open screen.
-  const activeAccountId = signal<string | null>('@me:hs');
+  const activeAccountId = signal<string | null>(active);
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
       ...(offerReset === undefined ? {} : { offerReset }),
+      ...(requestedAccountId === undefined ? {} : { requestedAccountId }),
     },
     providers: [
       MockProvider(TrustService, {
@@ -78,7 +88,8 @@ async function renderPage(options: RenderOptions = {}) {
       MockProvider(ActivatedRoute, {
         snapshot: {
           queryParamMap: {
-            get: (key: string) => (key === 'returnTo' ? returnTo : null),
+            get: (key: string) =>
+              ({ returnTo, account })[key as 'returnTo' | 'account'] ?? null,
           },
         },
       } as never),
@@ -288,6 +299,83 @@ describe('EncryptionUnlockPage', () => {
         'Nothing was unlocked: you switched account while this was open.',
       );
     });
+  });
+
+  // The dialog's code is loaded after the press, so the page can be built once another
+  // Account is already on screen. The opener names the Account the user was looking at.
+  describe('built after the account that asked left the screen', () => {
+    it('opens no confirmation and resets nothing in the dialog', async () => {
+      const { crypto, prompt, dialogRef } = await renderPage({
+        asModal: true,
+        offerReset: true,
+        typed: 'RESET',
+        requestedAccountId: '@me:hs',
+        active: '@other:hs',
+      });
+      await flush();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('opens no confirmation and says why on the routed page', async () => {
+      const { fixture, crypto, prompt } = await renderPage({
+        offerReset: true,
+        typed: 'RESET',
+        account: '@me:hs',
+        active: '@other:hs',
+      });
+      await flush();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
+    });
+
+    it('does not unlock the account on screen with a key', async () => {
+      const { fixture, crypto } = await renderPage({
+        recover: of(undefined),
+        account: '@me:hs',
+        active: '@other:hs',
+      });
+
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(crypto.recoverWithKey).not.toHaveBeenCalled();
+    });
+
+    it('offers the reset when the account the opener named is still on screen', async () => {
+      const { prompt, dialogRef } = await renderPage({
+        asModal: true,
+        offerReset: true,
+        typed: null,
+        requestedAccountId: '@me:hs',
+      });
+      await flush();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+  });
+
+  it('names the account in the type-to-confirm gate', async () => {
+    const { fixture, prompt } = await renderPage({ typed: null });
+
+    fixture.componentInstance.resetRecovery();
+
+    expect(prompt.mock.calls[0][0].message).toBe(
+      [
+        'This resets the identity of @me:hs.',
+        'Your message backup on the server is deleted. Messages your devices cannot already read stay unreadable — forever.',
+        'Your other devices lose their verified status and must be verified again. They stay signed in.',
+        'You get a new recovery key. Save it.',
+        'Type RESET to confirm.',
+      ].join('\n\n'),
+    );
   });
 
   it('renders a Close control only in modal mode', async () => {

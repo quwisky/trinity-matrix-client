@@ -81,18 +81,24 @@ const SWITCHED_ACCOUNT = 'you switched account while this was open.';
 export class EncryptionUnlockPage {
   private readonly crypto = inject(TrustService);
   private readonly alert = inject(TrnAlertService);
+  private readonly route = inject(ActivatedRoute);
+  /** The Account on screen when this screen was built, unless its opener named one. */
+  private readonly builtFor =
+    this.route.snapshot.queryParamMap.get('account') ||
+    this.crypto.activeAccountId();
   /**
    * The Account this screen was opened for. The screen outlives an Account switch (a
    * notification click, a deep link), and nothing it does may reach the Account that
    * replaced this one.
    */
-  private readonly accountId = this.crypto.activeAccountId();
+  private readonly accountId = computed(
+    () => this.requestedAccountId() ?? this.builtFor,
+  );
   private readonly switchedAccount$ = toObservable(
     this.crypto.activeAccountId,
-  ).pipe(filter((active) => active !== this.accountId));
+  ).pipe(filter((active) => active !== this.accountId()));
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (desktop); null on the routed page.
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
     optional: true,
@@ -183,6 +189,13 @@ export class EncryptionUnlockPage {
    */
   readonly offerReset = input(false);
 
+  /**
+   * The Account on screen where the user asked for this screen: an input in the modal,
+   * `?account=` on the routed page. The screen is built later than the press (the dialog's
+   * code is loaded first), when another Account may already be on screen.
+   */
+  readonly requestedAccountId = input<string | null>(null);
+
   constructor() {
     this.switchedAccount$.pipe(takeUntilDestroyed()).subscribe(() => {
       // The key was typed for the Account that left the screen.
@@ -230,11 +243,12 @@ export class EncryptionUnlockPage {
    * backup, and a mis-tap must not reach it.
    */
   resetRecovery(): void {
-    if (!this.requestedAccount()) {
+    const asked = this.requestedAccount();
+    if (!asked) {
       this.error.set(`Nothing was reset: ${SWITCHED_ACCOUNT}`);
       return;
     }
-    confirmResetIntent(this.alert, this.switchedAccount$)
+    confirmResetIntent(this.alert, asked, this.switchedAccount$)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
         if (intent === 'cancelled') {
@@ -255,9 +269,8 @@ export class EncryptionUnlockPage {
 
   /** The Account this screen was opened for, or null once another one is on screen. */
   private requestedAccount(): string | null {
-    return this.accountId === this.crypto.activeAccountId()
-      ? this.accountId
-      : null;
+    const accountId = this.accountId();
+    return accountId === this.crypto.activeAccountId() ? accountId : null;
   }
 
   private beginRecoveryReset(accountId: string): void {

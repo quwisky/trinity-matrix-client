@@ -134,11 +134,14 @@ export class SecuritySectionComponent {
     offerReset = false,
   ): void {
     const nested = this.inSettingsDialog();
+    // Read at the press: the flow is presented later, and must not act for another Account.
+    const accountId = this.crypto.activeAccountId();
     this.applicationSurfaces
       .open({
         surface: { kind: 'trust', flow },
         context: {
           returnTo: { kind: 'settings', section: 'security' },
+          ...(accountId ? { accountId } : {}),
           ...(nested
             ? {
                 placement: 'nested' as const,

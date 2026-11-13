@@ -162,6 +162,9 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
         inputs: {
           asModal: true,
           ...(context?.offerReset ? { offerReset: true } : {}),
+          ...(surface.flow === 'unlock' && context?.accountId
+            ? { requestedAccountId: context.accountId }
+            : {}),
           ...(surface.flow === 'verify' && this.canOpenSecuritySettings(request)
             ? { canOpenSecuritySettings: true }
             : {}),
@@ -263,6 +266,11 @@ export class WorkspaceApplicationSurfacePresenterAdapter implements WorkspaceApp
       request.surface.flow === 'unlock' &&
       request.context?.offerReset
         ? { reset: '1' }
+        : {}),
+      ...(request.surface.kind === 'trust' &&
+      request.surface.flow !== 'verify' &&
+      request.context?.accountId
+        ? { account: request.context.accountId }
         : {}),
     };
     return from(

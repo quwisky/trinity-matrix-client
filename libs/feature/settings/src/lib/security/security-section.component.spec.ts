@@ -83,6 +83,7 @@ async function build(
             health.current.thisDeviceVerified &&
             health.current.identityElsewhere,
         ).asReadonly(),
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
         exportRoomKeys,
         importRoomKeys,
       }),
@@ -183,7 +184,10 @@ describe('SecuritySectionComponent', () => {
     click(container, 'security-verify-device');
     expect(open).toHaveBeenLastCalledWith({
       surface: { kind: 'trust', flow: 'verify' },
-      context: { returnTo: { kind: 'settings', section: 'security' } },
+      context: {
+        returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
+      },
     });
 
     click(container, 'security-reset-identity');
@@ -191,6 +195,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'unlock' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
         offerReset: true,
       },
     });
@@ -216,6 +221,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'unlock' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
         offerReset: true,
       },
     });
@@ -233,6 +239,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'setup' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
       },
     });
   });
@@ -251,6 +258,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'unlock' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
       },
     });
   });
@@ -273,6 +281,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'unlock' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
         offerReset: true,
       },
     });
@@ -300,6 +309,7 @@ describe('SecuritySectionComponent', () => {
       surface: { kind: 'trust', flow: 'verify' },
       context: {
         returnTo: { kind: 'settings', section: 'security' },
+        accountId: '@me:hs',
       },
     });
   });
@@ -316,6 +326,7 @@ describe('SecuritySectionComponent', () => {
         surface: { kind: 'trust', flow: 'verify' },
         context: expect.objectContaining({
           returnTo: { kind: 'settings', section: 'security' },
+          accountId: '@me:hs',
           placement: 'nested',
           ownerActive: expect.any(Function),
         }),

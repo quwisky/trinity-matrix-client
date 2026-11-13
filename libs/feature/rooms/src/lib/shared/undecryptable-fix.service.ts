@@ -71,6 +71,7 @@ export function deriveUndecryptableFix(
 
 function surfaceFor(
   target: UndecryptableFixTarget,
+  accountId: string | null,
 ): WorkspaceApplicationSurfaceRequest {
   switch (target) {
     case 'security':
@@ -78,7 +79,10 @@ function surfaceFor(
     case 'unlock':
     case 'verify':
     case 'setup':
-      return { surface: { kind: 'trust', flow: target } };
+      return {
+        surface: { kind: 'trust', flow: target },
+        ...(accountId ? { context: { accountId } } : {}),
+      };
     default: {
       const unhandled: never = target;
       void unhandled;
@@ -105,13 +109,16 @@ export class UndecryptableFixService {
     ),
   );
 
-  /** Open the surface the current status names; re-read at click time. */
+  /**
+   * Open the surface the current status names; re-read at click time, with the Account on
+   * screen at that moment so the surface cannot act for one that replaces it.
+   */
   open(): Observable<void> {
     return defer(() => {
       const fix = this.fix();
       if (!fix) return of(undefined);
       return this.surfaces
-        .open(surfaceFor(fix.target))
+        .open(surfaceFor(fix.target, this.trust.activeAccountId()))
         .pipe(map(() => undefined));
     });
   }

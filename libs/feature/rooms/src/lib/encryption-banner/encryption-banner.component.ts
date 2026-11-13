@@ -18,6 +18,7 @@ import {
   type TrnBannerPlacement,
 } from '@trinity/components/generic-content';
 import { TrnIconComponent } from '@trinity/components/foundations';
+import { TrustService } from '@trinity/data-access/trust';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 /** Which surface a banner action opens: an encryption flow, or Security settings. */
@@ -61,6 +62,7 @@ export class EncryptionBannerComponent {
     WorkspaceApplicationSurfaceService,
   );
   private readonly systemStatus = inject(WORKSPACE_SYSTEM_STATUS);
+  private readonly trust = inject(TrustService);
   private readonly destroyRef = inject(DestroyRef);
   /** The prompt the slot holds; null when the slot holds no encryption prompt. */
   private readonly slotPrompt = this.systemStatus.bannerPrompt;
@@ -138,13 +140,18 @@ export class EncryptionBannerComponent {
 
   /**
    * Open a trust surface or Security settings. The application adapter picks a modal or
-   * route, keeping Router and platform policy out of this capability.
+   * route, keeping Router and platform policy out of this capability. A trust surface is
+   * given the Account on screen at the press, so it cannot act for one that replaces it.
    */
   run(kind: BannerActionKind): void {
+    const accountId = this.trust.activeAccountId();
     const request: WorkspaceApplicationSurfaceRequest =
       kind === 'security'
         ? { surface: { kind: 'settings', section: 'security' } }
-        : { surface: { kind: 'trust', flow: kind } };
+        : {
+            surface: { kind: 'trust', flow: kind },
+            ...(accountId ? { context: { accountId } } : {}),
+          };
     this.applicationSurfaces
       .open(request)
       .pipe(takeUntilDestroyed(this.destroyRef))

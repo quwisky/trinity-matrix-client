@@ -26,17 +26,19 @@ export const RESET_MISTYPED_MESSAGE = `Nothing was reset. Type ${RESET_CONFIRMAT
 
 /**
  * Ask for the confirmation word before anything is destroyed. It is the only thing
- * between a user and an irreversible, account-wide deletion, so it states the cost first.
- * `closeWhen` withdraws it as cancelled once the question stops applying.
+ * between a user and an irreversible, account-wide deletion, so it names the Account and
+ * states the cost first. `closeWhen` withdraws it as cancelled once the question stops
+ * applying.
  */
 export function confirmResetIntent(
   alert: TrnAlertService,
+  accountId: string,
   closeWhen?: Observable<unknown>,
 ): Observable<ResetIntent> {
   return alert
     .prompt$({
       header: 'Reset your identity',
-      message: `${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
+      message: `This resets the identity of ${accountId}.\n\n${RESET_CONSEQUENCES}\n\nType ${RESET_CONFIRMATION_WORD} to confirm.`,
       placeholder: RESET_CONFIRMATION_WORD,
       inputLabel: `Type ${RESET_CONFIRMATION_WORD} to confirm`,
       confirmText: 'Reset identity',
