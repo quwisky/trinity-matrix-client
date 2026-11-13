@@ -56,14 +56,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           ref=HEAD
+          error=$(mktemp)
           while :; do
             version=$(git show "$ref:apps/docs-users/release.json" | jq -r .version)
-            # A draft this read-only token cannot see reads as "release not found".
-            # Any other failure stops the deploy: stepping back on it would publish an old guide.
-            if draft=$(gh release view "v$version" --json isDraft -q .isDraft 2>&1); then
+            # One REST lookup by tag: a draft has no tag, so a draft and a missing release
+            # both answer 404. `gh release view` also asks GraphQL and reports "not found"
+            # for a published release whose REST call failed. Any other failure stops the
+            # deploy: stepping back on it would publish an old guide.
+            if draft=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$version" --jq .draft 2>"$error"); then
               [ "$draft" = false ] && break
-            elif [[ "$draft" != *"release not found"* ]]; then
-              echo "::error::Could not read release v$version: $draft"
+            elif ! grep -q '(HTTP 404)' "$error"; then
+              echo "::error::Could not read release v$version: $(cat "$error")"
               exit 1
             fi
             echo "::notice::v$version is not published; building the user guide from before it."
