@@ -443,6 +443,15 @@ export class TrustVerificationService {
       if (!sas) {
         throw new Error('There is nothing to confirm yet.');
       }
+      // The UI compares emoji only; a decimals-only SAS would be confirmed unseen.
+      if (!sas.sas.emoji?.length) {
+        throw new TrustOperationError(
+          'confirm-verification',
+          'unsupported',
+          'none',
+          'The other app cannot compare emoji, so this verification cannot be completed here.',
+        );
+      }
       return from(
         (async (): Promise<void> => {
           this.setSasConfirmed(true);

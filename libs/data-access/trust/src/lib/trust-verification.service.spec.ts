@@ -28,7 +28,10 @@ function fakeSas(
   ],
 ) {
   return {
-    sas: { emoji },
+    sas: { emoji } as {
+      emoji?: [string, string][];
+      decimal?: [number, number, number];
+    },
     confirm: vi.fn().mockResolvedValue(undefined),
     mismatch: vi.fn(),
     cancel: vi.fn(),
@@ -819,6 +822,30 @@ describe('TrustVerificationService', () => {
       kind: 'server-failure',
       recovery: 'retry',
     });
+    expect(svc.active()?.sasConfirmed).toBe(false);
+  });
+
+  // A client that offers decimals but not emoji yields a SAS with no emoji. This app shows
+  // no decimals, so a confirmation would vouch for a comparison nobody made.
+  it('refuses to confirm a SAS that has no emoji to compare', async () => {
+    const { svc, client } = setup();
+    svc.runProjection().subscribe();
+    const req = fakeRequest({ phase: VerificationPhase.Started });
+    const verifier = fakeVerifier();
+    req.attachVerifier(verifier);
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+
+    const sas = fakeSas();
+    sas.sas = { decimal: [1111, 2222, 3333] };
+    verifier.showSas(sas);
+    expect(svc.active()?.emoji).toBeNull();
+
+    await expect(firstValueFrom(svc.confirmSas())).rejects.toMatchObject({
+      operation: 'confirm-verification',
+      kind: 'unsupported',
+      recovery: 'none',
+    });
+    expect(sas.confirm).not.toHaveBeenCalled();
     expect(svc.active()?.sasConfirmed).toBe(false);
   });
 

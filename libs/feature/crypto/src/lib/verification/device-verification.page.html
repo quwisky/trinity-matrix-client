@@ -319,21 +319,33 @@
           </div>
         }
         @case ('sas-shown') {
-          <h2 #stageHeading class="heading" tabindex="-1">Compare the emoji</h2>
-          @if (!v.isSelfVerification) {
-            <!-- This is the moment trust is granted, so it is the moment that must
-                 name the counterparty — "They match" here cross-signs THIS user. -->
-            <p class="text-muted-foreground">
-              With
-              <strong data-testid="verify-sas-other-user">{{
-                v.otherUserId
-              }}</strong>
-              . Only confirm if you are comparing these with them directly.
+          @if (!v.emoji?.length) {
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Can’t compare here
+            </h2>
+            <p class="text-muted-foreground" data-testid="sas-no-emoji">
+              The other app cannot compare emoji, so this verification cannot be
+              completed here.
             </p>
-          } @else if (v.newSession) {
-            <p class="text-muted-foreground">
-              Compare with the screen of the device you just signed in on.
-            </p>
+          } @else {
+            <h2 #stageHeading class="heading" tabindex="-1">
+              Compare the emoji
+            </h2>
+            @if (!v.isSelfVerification) {
+              <!-- This is the moment trust is granted, so it is the moment that must
+                   name the counterparty — "They match" here cross-signs THIS user. -->
+              <p class="text-muted-foreground">
+                With
+                <strong data-testid="verify-sas-other-user">{{
+                  v.otherUserId
+                }}</strong>
+                . Only confirm if you are comparing these with them directly.
+              </p>
+            } @else if (v.newSession) {
+              <p class="text-muted-foreground">
+                Compare with the screen of the device you just signed in on.
+              </p>
+            }
           }
           <trn-sas-compare
             [emoji]="v.emoji ?? []"
