@@ -117,15 +117,19 @@ export class NotificationSoundService {
       if (!this.matrix.isInitialized) {
         return throwError(() => new Error('Not signed in.'));
       }
+      // The active account can change before the write returns.
+      const client = this.matrix.instance;
       return from(
-        this.matrix.instance.setAccountData(
+        client.setAccountData(
           NOTIFICATION_SOUND_EVENT as never,
           { enabled: on } as never,
         ),
       ).pipe(
         map(() => {
           // Reflect it now rather than waiting for the account-data echo.
-          this._enabled.set(on);
+          if (this.matrix.instance === client) {
+            this._enabled.set(on);
+          }
         }),
       );
     });
