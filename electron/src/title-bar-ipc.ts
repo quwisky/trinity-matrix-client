@@ -1,5 +1,6 @@
 import { app, ipcMain, Menu } from 'electron';
 import type { BrowserWindow, IpcMainEvent, IpcMainInvokeEvent } from 'electron';
+import { deepLinkFromArgv } from './deep-link';
 import { getMainWindow, isSystemTitleBarActive } from './window';
 import { readWindowPrefs, writeWindowPrefs } from './window-prefs';
 
@@ -117,7 +118,9 @@ export function registerTitleBarIpc(): void {
     // renderer, so pending storage writes flush and the window closes instead of hiding.
     app.relaunch({
       execPath: process.env['APPIMAGE'] ?? process.execPath,
-      args: process.argv.slice(1),
+      // Without the deep link a cold start carried: its callback is spent, and the new
+      // process would deliver it to the renderer again.
+      args: process.argv.slice(1).filter((arg) => !deepLinkFromArgv([arg])),
     });
     app.quit();
   });
