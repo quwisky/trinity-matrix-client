@@ -11,10 +11,15 @@ import {
   NOTIFICATION_TEXT,
   NotificationPolicy,
 } from '@trinity/data-access/notifications';
+import {
+  HOST_CAPABILITY_NEGOTIATOR,
+  HostCapabilitiesService,
+  unavailableHostManifest,
+} from '@trinity/runtime/host';
 import { PREFERENCE_STORAGE_ADAPTER } from '@trinity/runtime/preferences';
 import { CONVERSATION_ATTENTION } from '@trinity/data-access/timeline';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, Subject, of, tap, type Observable } from 'rxjs';
+import { NEVER, Subject, firstValueFrom, of, tap, type Observable } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { appLockProviders, visibilityWhileLocked } from './app-lock.providers';
 
@@ -130,6 +135,62 @@ describe('appLockProviders', () => {
     await expect(
       TestBed.inject(ApplicationInitStatus).donePromise,
     ).resolves.toBeUndefined();
+  });
+
+  it('reads presence support again once a failed negotiation is retried', async () => {
+    const refreshSupport = vi.fn(() => NEVER);
+    const negotiate = vi
+      .fn(() => of(unavailableHostManifest('not-supported')))
+      .mockReturnValueOnce(of(unavailableHostManifest('host-rejected')));
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        MockProvider(AppLockService, {
+          hydrate: () => of(undefined),
+          status: signal('locked').asReadonly() as never,
+          refreshSupport,
+        }),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: { manifest: negotiate },
+        },
+      ],
+    });
+    await TestBed.inject(ApplicationInitStatus).donePromise;
+    const host = TestBed.inject(HostCapabilitiesService);
+
+    await firstValueFrom(host.manifest());
+    expect(refreshSupport).not.toHaveBeenCalled();
+    await firstValueFrom(host.manifest());
+    expect(refreshSupport).toHaveBeenCalledOnce();
+    await firstValueFrom(host.manifest());
+    expect(refreshSupport).toHaveBeenCalledOnce();
+  });
+
+  it('reads presence support once when the first negotiation succeeds', async () => {
+    const refreshSupport = vi.fn(() => NEVER);
+    TestBed.configureTestingModule({
+      providers: [
+        appLockProviders(),
+        MockProvider(AppLockService, {
+          hydrate: () => of(undefined),
+          status: signal('off').asReadonly() as never,
+          refreshSupport,
+        }),
+        MockProvider(AppearanceEffects, { applySaved: () => of(undefined) }),
+        {
+          provide: HOST_CAPABILITY_NEGOTIATOR,
+          useValue: {
+            manifest: () => of(unavailableHostManifest('not-supported')),
+          },
+        },
+      ],
+    });
+    await TestBed.inject(ApplicationInitStatus).donePromise;
+
+    await firstValueFrom(TestBed.inject(HostCapabilitiesService).manifest());
+    expect(refreshSupport).not.toHaveBeenCalled();
   });
 
   it('leaves the appearance to the usual startup when nothing is locked', async () => {

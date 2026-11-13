@@ -1,10 +1,12 @@
 import {
+  DestroyRef,
   computed,
   inject,
   makeEnvironmentProviders,
   provideAppInitializer,
   type EnvironmentProviders,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppearanceEffects } from '@trinity/application/appearance';
 import { QR_SCANNER_SUSPENDED } from '@trinity/components/controls';
 import {
@@ -20,6 +22,7 @@ import {
   CONVERSATION_ATTENTION,
   type ConversationAttention,
 } from '@trinity/data-access/timeline';
+import { HostCapabilitiesService } from '@trinity/runtime/host';
 import {
   EMPTY,
   catchError,
@@ -27,6 +30,7 @@ import {
   defer,
   firstValueFrom,
   ignoreElements,
+  switchMap,
   timeout,
 } from 'rxjs';
 
@@ -60,6 +64,13 @@ export function appLockProviders(): EnvironmentProviders {
     provideAppInitializer(() => {
       const appLock = inject(AppLockService);
       const appearance = inject(AppearanceEffects);
+      // Hydration can read presence support during a failed negotiation, as "none".
+      inject(HostCapabilitiesService)
+        .recovered.pipe(
+          switchMap(() => appLock.refreshSupport()),
+          takeUntilDestroyed(inject(DestroyRef)),
+        )
+        .subscribe();
       return firstValueFrom(
         concat(
           appLock.hydrate().pipe(ignoreElements()),

@@ -14,6 +14,8 @@ Trinity models platform behavior as narrow host operations. Application and feat
 
 The protocol-versioned host manifest covers authentication handoff, deep links, Back, file export, notification presentation, location, badges, secure storage, lifecycle, update checks, the desktop title bar (overlay colours, the application menu, the system-title-bar preference and relaunch), and App lock's user presence (the system prompt and the Trinity PIN), lock integration (the desktop menu item, power events and the hold before showing a window hidden while App lock is on) and screen privacy (the mobile app-switcher cover, which reports whether it also blocks screen capture, and the dismissal of native UI Trinity presented, on each lock). Every operation reports `supported` or a stable unavailable reason such as `not-supported` or `protocol-mismatch`.
 
+A negotiation that fails as a whole (every operation `host-rejected`) is not an answer. The Electron adapter does not keep it, and startup stops with Retry. A reader that starts before startup negotiates and lives on after it (lock requests, lifecycle events, the title bar colours) uses `HostCapabilitiesService.answered()`, which waits through such a failure for the answer the Retry gets and never asks again itself. A reader that already settled on the failure listens to `recovered` (App lock re-reads presence support). `not-supported` and `protocol-mismatch` are answers and stay final.
+
 Unsupported and disabled behavior is an expected state. Do not infer support from the user agent, a global object, screen size, or the presence of one unrelated plugin.
 
 ## Keep operations narrow {#narrow-operations}

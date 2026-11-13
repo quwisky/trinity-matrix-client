@@ -398,9 +398,10 @@ export class ElectronHostLifecycleAdapter implements HostLifecycleOperation {
     map((manifest) => manifest.operations.lifecycle),
   );
 
-  readonly events = this.support.pipe(
-    switchMap((support) =>
-      support.kind === 'supported'
+  // Subscribed before startup negotiates, so a failed negotiation must not end it.
+  readonly events = defer(() => this.capabilities.answered()).pipe(
+    switchMap((manifest) =>
+      manifest.operations.lifecycle.kind === 'supported'
         ? new Observable<'visible' | 'hidden'>((subscriber) =>
             getTrinityDesktopBridge()?.capabilities.lifecycle.subscribeVisibility(
               (visibility) => subscriber.next(visibility),

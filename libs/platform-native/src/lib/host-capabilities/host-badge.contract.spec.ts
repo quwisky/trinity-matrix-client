@@ -294,6 +294,22 @@ describe('host adapter rejection semantics', () => {
     expect(negotiate).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps a protocol mismatch as the host's answer", async () => {
+    const negotiate = vi.fn(() =>
+      Promise.resolve({ kind: 'rejected', reason: 'protocol-mismatch' }),
+    );
+    (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+      desktopBridgeFixture({ negotiate });
+    const adapter = new ElectronHostCapabilityAdapter();
+
+    await expect(firstValueFrom(adapter.support())).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'protocol-mismatch',
+    });
+    await firstValueFrom(adapter.support());
+    expect(negotiate).toHaveBeenCalledOnce();
+  });
+
   it('rejects a malformed accepted Electron manifest before using an operation', async () => {
     const secret = 'host response with access_token=secret';
     const negotiate = vi.fn(() =>

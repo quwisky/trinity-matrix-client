@@ -1,7 +1,17 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
-import { Observable, defaultIfEmpty, defer, of, take } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  defaultIfEmpty,
+  defer,
+  of,
+  switchMap,
+  take,
+  tap,
+} from 'rxjs';
 import {
   type HostCapabilityManifest,
+  hostNegotiationRejected,
   unavailableHostManifest,
 } from './host-capability.models';
 
@@ -20,6 +30,12 @@ export class HostCapabilitiesService {
     optional: true,
   });
 
+  private readonly recoveries = new Subject<HostCapabilityManifest>();
+  private failed = false;
+
+  /** The host's answer each time one follows a failed negotiation, for readers that settled on the failure. */
+  readonly recovered = this.recoveries.asObservable();
+
   manifest(): Observable<HostCapabilityManifest> {
     return defer(() =>
       this.negotiator
@@ -30,8 +46,27 @@ export class HostCapabilitiesService {
                 code: 'empty-negotiation',
               }),
             ),
+            tap((manifest) => {
+              const recovered = this.failed;
+              this.failed = hostNegotiationRejected(manifest);
+              if (recovered && !this.failed) this.recoveries.next(manifest);
+            }),
           )
         : of(unavailableHostManifest('not-implemented')),
+    );
+  }
+
+  /**
+   * `manifest()` for a reader that outlives startup: after a failed negotiation it waits
+   * for the answer a later `manifest()` reader gets (startup's Retry) instead of asking again.
+   */
+  answered(): Observable<HostCapabilityManifest> {
+    return this.manifest().pipe(
+      switchMap((manifest) =>
+        hostNegotiationRejected(manifest)
+          ? this.recovered.pipe(take(1))
+          : of(manifest),
+      ),
     );
   }
 }
