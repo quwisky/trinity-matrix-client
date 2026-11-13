@@ -20,7 +20,12 @@ import {
   MatrixClientService,
 } from './matrix-client.service';
 import type { MatrixSession } from '@trinity/util/matrix';
-import { SESSION, OIDC_SESSION, setup } from './matrix-client.spec-harness';
+import {
+  SESSION,
+  OIDC_SESSION,
+  setup,
+  startAccount,
+} from './matrix-client.spec-harness';
 import {
   METADATA,
   OP,
@@ -98,7 +103,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
     vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
-    await firstValueFrom(ctx.svc.init(session));
+    await firstValueFrom(startAccount(ctx.svc, session, 'replace'));
     return { ...ctx, client: ctx.svc.instance };
   }
 
@@ -815,7 +820,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
       ],
     });
     const svc = TestBed.inject(MatrixClientService);
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
     const client = svc.instance;
     await client.whoami();
 
@@ -1206,7 +1211,7 @@ describe('OAuth tokens through a real MatrixClient', () => {
       refreshToken: 'refresh-tok2',
       oidc: { ...OIDC_SESSION.oidc, clientId: 'client-2' },
     };
-    await firstValueFrom(svc.add(other));
+    await firstValueFrom(startAccount(svc, other));
 
     await Promise.all([
       svc.clientFor('@me:hs')!.whoami(),

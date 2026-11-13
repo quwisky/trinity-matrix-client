@@ -14,6 +14,7 @@ import {
   SESSION_B,
   fakeClient,
   setup,
+  startAccount,
 } from './matrix-client.spec-harness';
 import { resumeClientSync } from './outgoing-work';
 
@@ -137,7 +138,7 @@ describe('MatrixClientService session handover', () => {
 
   async function liveService(client: ReturnType<typeof handoverClient>) {
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
     return svc;
   }
 
@@ -474,7 +475,7 @@ describe('MatrixClientService session handover with a real MatrixClient', () => 
     storeMock.destroy.mockReset().mockResolvedValue(undefined);
     const { svc } = setup();
     started = svc;
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
     const client = svc.instance;
     const room = new actual.Room(ROOM_ID, client, '@me:hs', {});
     client.store.storeRoom(room);
@@ -598,8 +599,8 @@ describe('MatrixClientService background sync', () => {
     const a = syncingClient();
     const b = syncingClient('https://other.example');
     const { svc } = setup(a, b);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B));
     return { svc, a, b };
   }
 
@@ -656,7 +657,7 @@ describe('MatrixClientService background sync', () => {
     const { svc } = setup(a);
     svc.suspendSync();
 
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(a.syncApi.stop).toHaveBeenCalledOnce();
     svc.resumeSync();

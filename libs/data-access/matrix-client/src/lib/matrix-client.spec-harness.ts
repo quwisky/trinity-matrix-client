@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MockProvider } from 'ng-mocks';
 import { createClient } from 'matrix-js-sdk';
-import { of } from 'rxjs';
+import { type Observable, map, of } from 'rxjs';
 import { vi } from 'vitest';
 import { MatrixClientService } from './matrix-client.service';
 import {
@@ -9,6 +9,7 @@ import {
   SessionStorageService,
 } from '@trinity/platform-native';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
+import type { MatrixSession } from '@trinity/util/matrix';
 
 export const SESSION = {
   baseUrl: 'https://hs.example',
@@ -40,6 +41,25 @@ export const OIDC_SESSION = {
     },
   },
 };
+
+/**
+ * Sign an Account in the way Account Runtime does: start it in the background, then place
+ * it active, keeping or replacing the other live Accounts. Errors when the start fails.
+ */
+export function startAccount(
+  svc: MatrixClientService,
+  session: MatrixSession,
+  liveAccounts: 'keep' | 'replace' = 'keep',
+): Observable<void> {
+  return svc.restorePersisted(session, 'background').pipe(
+    map((outcome) => {
+      if (outcome.kind === 'failed') {
+        throw new Error(`Account start failed: ${outcome.failure}`);
+      }
+      svc.activateAccount(session.userId, liveAccounts);
+    }),
+  );
+}
 
 export function fakeClient(baseUrl = 'https://hs.example') {
   return {

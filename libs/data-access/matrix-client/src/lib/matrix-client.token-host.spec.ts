@@ -3,7 +3,11 @@ import type { HostTokenAnswer, MatrixClient, TokenHost } from 'matrix-js-sdk';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MatrixSession } from '@trinity/util/matrix';
-import { OIDC_SESSION, setup } from './matrix-client.spec-harness';
+import {
+  OIDC_SESSION,
+  setup,
+  startAccount,
+} from './matrix-client.spec-harness';
 import { fakeNetwork } from './matrix-client.oauth-network.spec-harness';
 
 const storeMock = vi.hoisted(() => ({ startup: vi.fn(), destroy: vi.fn() }));
@@ -67,7 +71,7 @@ describe('a session whose token exchanges a host makes', () => {
     vi.mocked(ctx.storage.remove).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
-    await firstValueFrom(ctx.svc.init(session));
+    await firstValueFrom(startAccount(ctx.svc, session, 'replace'));
     const client = ctx.svc.instance;
     const loggedOut = vi.fn();
     client.on(HttpApiEvent.SessionLoggedOut, loggedOut);

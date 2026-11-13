@@ -395,8 +395,7 @@ describe('AuthService', () => {
           accountRecord: 'upsert',
         },
       );
-      expect(matrix.init).not.toHaveBeenCalled();
-      expect(matrix.add).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
     });
 
     it('delegates add login to additive Account Runtime placement', async () => {
@@ -416,8 +415,7 @@ describe('AuthService', () => {
           accountRecord: 'upsert',
         },
       );
-      expect(matrix.add).not.toHaveBeenCalled();
-      expect(matrix.init).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
     });
 
     it('threads an existing device_id into the login payload only when provided', async () => {
@@ -425,8 +423,6 @@ describe('AuthService', () => {
       // store is reused; a fresh login must NOT pin a device_id (server issues one).
       const loginRequest = vi.fn().mockResolvedValue(loginRes);
       createClientMock.mockReturnValue({ loginRequest } as never);
-      const matrix = TestBed.inject(MatrixClientService);
-      vi.mocked(matrix.add).mockReturnValue(of(undefined));
 
       await firstValueFrom(
         auth.loginWithPassword(
@@ -886,8 +882,7 @@ describe('AuthService', () => {
           accountRecord: 'upsert',
         },
       );
-      expect(matrix.init).not.toHaveBeenCalled();
-      expect(matrix.add).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
     });
 
     it('adds the OIDC account alongside others in add mode', async () => {
@@ -902,8 +897,7 @@ describe('AuthService', () => {
         expect.anything(),
         expect.objectContaining({ liveAccounts: 'keep' }),
       );
-      expect(matrix.add).not.toHaveBeenCalled();
-      expect(matrix.init).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
     });
 
     it('refuses a grant for a different account than the one being re-authenticated', async () => {
@@ -945,7 +939,7 @@ describe('AuthService', () => {
       );
 
       expect(accounts.establishAuthenticatedAccount).toHaveBeenCalled();
-      expect(matrix.add).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
       expect(oidc.revokeTokens).not.toHaveBeenCalled();
     });
   });
@@ -1273,8 +1267,7 @@ describe('AuthService', () => {
         expect.anything(),
         expect.objectContaining({ liveAccounts: 'keep' }),
       );
-      expect(matrix.add).not.toHaveBeenCalled();
-      expect(matrix.init).not.toHaveBeenCalled();
+      expect(matrix.restorePersisted).not.toHaveBeenCalled();
     });
   });
 

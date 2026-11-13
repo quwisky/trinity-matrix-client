@@ -37,6 +37,7 @@ import {
   OIDC_SESSION,
   fakeClient,
   setup,
+  startAccount,
 } from './matrix-client.spec-harness';
 
 // A controllable fake sync store (the real IndexedDBStore needs a browser IDB).
@@ -101,7 +102,7 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc } = setup(client);
 
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(createClient).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -135,7 +136,7 @@ describe('MatrixClientService', () => {
     );
     const { svc } = setup(client);
 
-    const started = firstValueFrom(svc.init(SESSION));
+    const started = firstValueFrom(startAccount(svc, SESSION, 'replace'));
     await vi.waitFor(() => expect(client.initRustCrypto).toHaveBeenCalled());
 
     // In flight while crypto opens; startClient() reuses the SDK's memoized request.
@@ -150,7 +151,7 @@ describe('MatrixClientService', () => {
     client.getVersions.mockRejectedValue(new Error('offline'));
     const { svc } = setup(client);
 
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(client.startClient).toHaveBeenCalledOnce();
     expect(svc.isInitialized).toBe(true);
@@ -161,7 +162,11 @@ describe('MatrixClientService', () => {
     const { svc } = setup(client);
 
     await firstValueFrom(
-      svc.init({ ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs' }),
+      startAccount(
+        svc,
+        { ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs' },
+        'replace',
+      ),
     );
 
     expect(client.initRustCrypto).toHaveBeenCalledWith({
@@ -185,7 +190,7 @@ describe('MatrixClientService', () => {
         key: KEY,
       });
 
-      await firstValueFrom(svc.init(KEYED));
+      await firstValueFrom(startAccount(svc, KEYED, 'replace'));
 
       expect(storeKeys.read).toHaveBeenCalledWith('trinity-crypto:@me:hs:DEV');
       expect(client.initRustCrypto).toHaveBeenCalledWith({
@@ -208,7 +213,7 @@ describe('MatrixClientService', () => {
         key: KEY,
       });
 
-      const started = firstValueFrom(svc.init(KEYED));
+      const started = firstValueFrom(startAccount(svc, KEYED, 'replace'));
       await vi.waitFor(() => expect(storeMock.startup).toHaveBeenCalled());
 
       expect(storeKeys.read).toHaveBeenCalledWith('trinity-crypto:@me:hs:DEV');
@@ -253,7 +258,11 @@ describe('MatrixClientService', () => {
       const { svc, storeKeys } = setup(client);
 
       await firstValueFrom(
-        svc.init({ ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs:DEV' }),
+        startAccount(
+          svc,
+          { ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs:DEV' },
+          'replace',
+        ),
       );
 
       // A key on an existing unencrypted store would make it fail to open.
@@ -329,9 +338,9 @@ describe('MatrixClientService', () => {
         key: prefix === 'trinity-crypto:@you:other:DEV2' ? keyB : KEY,
       }));
 
-      await firstValueFrom(svc.add(KEYED));
+      await firstValueFrom(startAccount(svc, KEYED));
       await firstValueFrom(
-        svc.add({
+        startAccount(svc, {
           ...SESSION_B,
           cryptoPrefix: 'trinity-crypto:@you:other:DEV2',
           cryptoStoreKeyed: true,
@@ -357,8 +366,8 @@ describe('MatrixClientService', () => {
       });
       expect(svc.cryptoStoreEncrypted()).toBeNull();
 
-      await firstValueFrom(svc.add(KEYED));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, KEYED));
+      await firstValueFrom(startAccount(svc, SESSION_B));
       expect(svc.cryptoStoreEncrypted()).toBe(false);
 
       svc.setActive(SESSION.userId);
@@ -385,7 +394,7 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc } = setup(client);
 
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
 
     const opts = vi.mocked(createClient).mock.calls[0][0];
     // Without oauthClientId matrix-js-sdk 43 refuses to refresh, and the first 401 becomes
@@ -402,7 +411,9 @@ describe('MatrixClientService', () => {
     const { svc, storage } = setup(client);
     const write = new Subject<void>();
     vi.mocked(storage.updateTokens).mockReturnValue(write);
-    await firstValueFrom(svc.init({ ...OIDC_SESSION, lineage: 'L1' }));
+    await firstValueFrom(
+      startAccount(svc, { ...OIDC_SESSION, lineage: 'L1' }, 'replace'),
+    );
     const opts = vi.mocked(createClient).mock.calls[0][0];
 
     const pending = opts.onTokenRefresh?.({
@@ -437,7 +448,7 @@ describe('MatrixClientService', () => {
     vi.mocked(storage.updateTokens).mockReturnValue(write);
     const rotations: AccessTokenRotation[] = [];
     svc.accessTokenRotations.subscribe((rotation) => rotations.push(rotation));
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
     const opts = vi.mocked(createClient).mock.calls[0][0];
 
     const pending = opts.onTokenRefresh?.({
@@ -460,7 +471,7 @@ describe('MatrixClientService', () => {
   it('knows the expiry of the OAuth token a client starts with, and only for that token', async () => {
     const { svc } = setup(fakeClient());
 
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
 
     expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
     expect(svc.accessTokenExpiry('@me:hs', 'another')).toBeUndefined();
@@ -470,7 +481,7 @@ describe('MatrixClientService', () => {
   it('knows no expiry for a password session', async () => {
     const { svc } = setup(fakeClient());
 
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBeUndefined();
   });
@@ -483,7 +494,7 @@ describe('MatrixClientService', () => {
     svc.accessTokenRotations.subscribe(({ userId, accessToken }) =>
       seen.push(svc.accessTokenExpiry(userId, accessToken)),
     );
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
     const opts = vi.mocked(createClient).mock.calls[0][0];
 
     const pending = opts.onTokenRefresh?.({
@@ -506,7 +517,7 @@ describe('MatrixClientService', () => {
 
   it('forgets the expiry when the account is removed', async () => {
     const { svc } = setup(fakeClient());
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
 
     await firstValueFrom(svc.remove('@me:hs'));
 
@@ -519,7 +530,7 @@ describe('MatrixClientService', () => {
       http: { refreshOAuthTokens: vi.fn().mockResolvedValue(true) },
     };
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     await expect(
       firstValueFrom(svc.refreshAccessToken('@me:hs')),
@@ -539,7 +550,7 @@ describe('MatrixClientService', () => {
     };
     const { svc } = setup(client);
     const { refreshToken: _unused, ...withoutRefreshToken } = OIDC_SESSION;
-    await firstValueFrom(svc.init(withoutRefreshToken));
+    await firstValueFrom(startAccount(svc, withoutRefreshToken, 'replace'));
 
     await expect(
       firstValueFrom(svc.refreshAccessToken('@me:hs')),
@@ -550,7 +561,7 @@ describe('MatrixClientService', () => {
 
   it('can refresh a live OAuth account with a refresh token until it is removed', async () => {
     const { svc } = setup(fakeClient());
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
 
     expect(svc.canRefreshAccessToken('@me:hs')).toBe(true);
 
@@ -762,21 +773,22 @@ describe('MatrixClientService', () => {
       expect(rotations).toEqual([]);
     });
 
-    it('keeps an in-flight OAuth start tracked when init replaces the other accounts', async () => {
+    it('keeps an in-flight OAuth start tracked when the runtime stops the live accounts', async () => {
       const starting = fakeClient();
       let release!: () => void;
       starting.initRustCrypto.mockReturnValue(
         new Promise<void>((resolve) => (release = resolve)),
       );
-      const { svc } = setup(starting, fakeClient('https://other.example'));
+      const { svc } = setup(fakeClient('https://other.example'), starting);
+      await firstValueFrom(startAccount(svc, SESSION_B));
 
-      const added = firstValueFrom(svc.add(OIDC_SESSION));
+      const added = firstValueFrom(startAccount(svc, OIDC_SESSION));
       await vi.waitFor(() =>
         expect(starting.initRustCrypto).toHaveBeenCalled(),
       );
-      const replaced = firstValueFrom(svc.init(SESSION_B));
+      await firstValueFrom(svc.stop());
       release();
-      await Promise.all([added, replaced]);
+      await added;
 
       expect(svc.clientFor('@me:hs')).toBe(starting);
       expect(svc.accessTokenExpiry('@me:hs', 'tok')).toBe(1234);
@@ -817,7 +829,7 @@ describe('MatrixClientService', () => {
       },
     };
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(OIDC_SESSION));
+    await firstValueFrom(startAccount(svc, OIDC_SESSION, 'replace'));
 
     await expect(
       firstValueFrom(svc.refreshAccessToken('@me:hs')),
@@ -836,8 +848,8 @@ describe('MatrixClientService', () => {
       vi.mocked(createClient).mockReturnValueOnce(a as never);
       vi.mocked(createClient).mockReturnValueOnce(b as never);
       const { svc } = setup();
-      await firstValueFrom(svc.init(SESSION));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      await firstValueFrom(startAccount(svc, SESSION_B));
 
       await firstValueFrom(svc.signOutAll());
 
@@ -855,7 +867,7 @@ describe('MatrixClientService', () => {
       const logout = vi.fn().mockResolvedValue(undefined);
       (client as unknown as { logout: unknown }).logout = logout;
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       await firstValueFrom(svc.stop());
 
       await firstValueFrom(svc.signOutAll());
@@ -869,7 +881,7 @@ describe('MatrixClientService', () => {
         .fn()
         .mockRejectedValue(new Error('homeserver down'));
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       await expect(firstValueFrom(svc.signOutAll())).resolves.toBeUndefined();
     });
@@ -879,7 +891,7 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc } = setup(client);
 
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     const opts = vi.mocked(createClient).mock.calls[0][0];
     expect(opts.refreshToken).toBeUndefined();
@@ -893,9 +905,9 @@ describe('MatrixClientService', () => {
     client.startClient.mockRejectedValue(new Error('sync failed'));
     const { svc } = setup(client);
 
-    await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow(
-      'sync failed',
-    );
+    await expect(
+      firstValueFrom(startAccount(svc, SESSION, 'replace')),
+    ).rejects.toThrow('sync failed');
     // Rolled back: client stopped, 4S key cleared, nothing left half-initialized.
     expect(client.stopClient).toHaveBeenCalled();
     expect(clearHolder).toHaveBeenCalled();
@@ -935,24 +947,12 @@ describe('MatrixClientService', () => {
     await expect(start).resolves.toEqual({ kind: 'ready' });
   });
 
-  it('tears down a prior client when re-initialized', async () => {
-    const a = fakeClient();
-    const b = fakeClient();
-    const { svc } = setup(a, b);
-
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.init(SESSION));
-
-    expect(a.stopClient).toHaveBeenCalled(); // old client torn down
-    expect(svc.instance).toBe(b);
-  });
-
   it('activates a fully started Account and can retire the other live runtimes', async () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B));
 
     svc.activateAccount('@me:hs', 'replace');
 
@@ -985,7 +985,7 @@ describe('MatrixClientService', () => {
   it('bridges sync state into the signal', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     // Grab the ClientEvent.Sync handler the service registered and fire it.
     const syncCall = client.on.mock.calls.find(([evt]) => evt === 'sync');
@@ -1046,7 +1046,7 @@ describe('MatrixClientService', () => {
         room('!b:hs', [waiting('two')]),
       );
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       echoUpdated(client, waiting('one'));
 
@@ -1057,7 +1057,7 @@ describe('MatrixClientService', () => {
       const reply = waiting('in a thread');
       const client = clientWith(room('!a:hs', [], [reply]));
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       echoUpdated(client, reply);
 
@@ -1069,7 +1069,7 @@ describe('MatrixClientService', () => {
       const cancelled = waiting('cancelled');
       const client = clientWith(room('!a:hs', [sent, cancelled]));
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       echoUpdated(client, sent);
       expect(svc.waitingCount()).toBe(2);
 
@@ -1088,8 +1088,8 @@ describe('MatrixClientService', () => {
         room('!b:hs', [waiting('y1'), waiting('y2'), waiting('y3')]),
       );
       const { svc } = setup(mine, yours);
-      await firstValueFrom(svc.init(SESSION));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      await firstValueFrom(startAccount(svc, SESSION_B));
       echoUpdated(mine, waiting('m'));
       echoUpdated(yours, waiting('y'));
 
@@ -1108,7 +1108,7 @@ describe('MatrixClientService', () => {
     it('does not rescan the rooms while an ordinary send goes through', async () => {
       const client = clientWith(room('!a:hs', []));
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const send = new MatrixEvent({
         type: 'm.room.message',
         content: { msgtype: 'm.text', body: 'hi' },
@@ -1131,7 +1131,7 @@ describe('MatrixClientService', () => {
     it('stops listening when the client stops', async () => {
       const client = clientWith();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       await firstValueFrom(svc.stop());
 
@@ -1146,7 +1146,9 @@ describe('MatrixClientService', () => {
       client.startClient.mockRejectedValue(new Error('no'));
       const { svc } = setup(client);
 
-      await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow();
+      await expect(
+        firstValueFrom(startAccount(svc, SESSION, 'replace')),
+      ).rejects.toThrow();
 
       expect(client.off).toHaveBeenCalledWith(
         RoomEvent.LocalEchoUpdated,
@@ -1167,7 +1169,7 @@ describe('MatrixClientService', () => {
           expect(listenerOf(client)).toBeDefined();
         });
 
-        await firstValueFrom(svc.init(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
         expect(client.startClient).toHaveBeenCalled();
       });
@@ -1175,7 +1177,7 @@ describe('MatrixClientService', () => {
       it('stops remembering when the account is removed', async () => {
         const client = clientWith();
         const { svc } = setup(client);
-        await firstValueFrom(svc.init(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
         await firstValueFrom(svc.remove(SESSION.userId));
 
@@ -1188,7 +1190,7 @@ describe('MatrixClientService', () => {
       it('stops remembering when the runtime stops', async () => {
         const client = clientWith();
         const { svc } = setup(client);
-        await firstValueFrom(svc.init(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
         await firstValueFrom(svc.stop());
 
@@ -1203,7 +1205,9 @@ describe('MatrixClientService', () => {
         client.startClient.mockRejectedValue(new Error('no'));
         const { svc } = setup(client);
 
-        await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow();
+        await expect(
+          firstValueFrom(startAccount(svc, SESSION, 'replace')),
+        ).rejects.toThrow();
 
         expect(client.off).toHaveBeenCalledWith(
           MatrixEventEvent.Decrypted,
@@ -1241,7 +1245,7 @@ describe('MatrixClientService', () => {
         resendEvent: vi.fn().mockResolvedValue(undefined),
       };
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const onSync = client.on.mock.calls.find(
         ([evt]) => evt === ClientEvent.Sync,
       )![1] as (state: SyncState, previous: SyncState | null) => void;
@@ -1428,7 +1432,7 @@ describe('MatrixClientService', () => {
   it('stop() tears down without clearing the stores', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     await firstValueFrom(svc.stop());
 
@@ -1437,13 +1441,13 @@ describe('MatrixClientService', () => {
     expect(svc.isInitialized).toBe(false);
   });
 
-  it('reset() stops the client and wipes the stores + 4S key', async () => {
+  it('remove() stops the active client and wipes the stores + 4S key', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
     clearHolder.mockClear();
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     expect(client.stopClient).toHaveBeenCalled();
     expect(client.clearStores).toHaveBeenCalledOnce();
@@ -1455,10 +1459,14 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc } = setup(client);
     await firstValueFrom(
-      svc.init({ ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs' }),
+      startAccount(
+        svc,
+        { ...SESSION, cryptoPrefix: 'trinity-crypto:@me:hs' },
+        'replace',
+      ),
     );
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     // clearStores() must target THIS account's per-account prefix. Called with no
     // args, the SDK deletes only the default-prefix Rust crypto DB and orphans this
@@ -1474,9 +1482,9 @@ describe('MatrixClientService', () => {
   it('wipes with an undefined prefix for a migrated legacy account (SDK default store)', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION)); // no cryptoPrefix → SDK default store
+    await firstValueFrom(startAccount(svc, SESSION, 'replace')); // no cryptoPrefix → SDK default store
 
-    await firstValueFrom(svc.reset());
+    await firstValueFrom(svc.remove(SESSION.userId));
 
     // A legacy account really lives on the default prefix, so wiping must pass it
     // through unchanged (the SDK falls back to its default) — not invent a prefix.
@@ -1496,7 +1504,7 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc, storage } = setup(client);
     vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     loggedOutHandler(client)({ data: { soft_logout: true } });
 
@@ -1514,8 +1522,8 @@ describe('MatrixClientService', () => {
     const { svc, storage } = setup(a, b);
     vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
     vi.mocked(storage.setActive).mockReturnValue(of(undefined));
-    await firstValueFrom(svc.init(SESSION)); // A active
-    await firstValueFrom(svc.add(SESSION_B)); // B added, now active
+    await firstValueFrom(startAccount(svc, SESSION, 'replace')); // A active
+    await firstValueFrom(startAccount(svc, SESSION_B)); // B added, now active
 
     loggedOutHandler(b)({ data: { soft_logout: true } });
 
@@ -1529,7 +1537,7 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc, storage } = setup(client);
     vi.mocked(storage.remove).mockReturnValue(of(undefined));
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     loggedOutHandler(client)({ data: { soft_logout: false } });
 
@@ -1544,13 +1552,13 @@ describe('MatrixClientService', () => {
     const b = fakeClient();
     const { svc, storage } = setup(a, b);
     vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     loggedOutHandler(a)({ data: { soft_logout: true } });
     expect(svc.softLoggedOut()).toContain('@me:hs');
 
     // Re-auth = the same account logging back in (its store + registry survived).
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(svc.softLoggedOut()).not.toContain('@me:hs');
     expect(svc.isInitialized).toBe(true);
@@ -1566,8 +1574,8 @@ describe('MatrixClientService', () => {
       const ctx = setup(a, b, again);
       vi.mocked(ctx.storage.invalidateToken).mockReturnValue(of(undefined));
       vi.mocked(ctx.storage.setActive).mockReturnValue(of(undefined));
-      await firstValueFrom(ctx.svc.init(OIDC_SESSION));
-      await firstValueFrom(ctx.svc.add(OIDC_SESSION_B));
+      await firstValueFrom(startAccount(ctx.svc, OIDC_SESSION, 'replace'));
+      await firstValueFrom(startAccount(ctx.svc, OIDC_SESSION_B));
       loggedOutHandler(a)({ data: { soft_logout: false } });
       loggedOutHandler(b)({ data: { soft_logout: false } });
       return ctx;
@@ -1577,7 +1585,7 @@ describe('MatrixClientService', () => {
       const { svc } = await twoSignedOut();
       expect(svc.reauthTargets()).toEqual(['@me:hs', '@you:other']);
 
-      await firstValueFrom(svc.add(OIDC_SESSION));
+      await firstValueFrom(startAccount(svc, OIDC_SESSION));
 
       expect(svc.reauthTargets()).toEqual(['@you:other']);
       expect(svc.softLoggedOut()).toEqual(['@you:other']);
@@ -1603,7 +1611,7 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
       vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       loggedOutHandler(client)({ data: { soft_logout: true } });
 
@@ -1647,7 +1655,7 @@ describe('MatrixClientService', () => {
     it('stops the account without wiping or touching the registry, and reports it', async () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const onTokenDied = vi.fn();
       const hold = svc.holdServerLogout('@me:hs', { onTokenDied });
 
@@ -1665,7 +1673,7 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
       vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const hold = svc.holdServerLogout('@me:hs');
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
@@ -1679,10 +1687,10 @@ describe('MatrixClientService', () => {
       const old = fakeClient();
       const signedIn = fakeClient();
       const { svc, storage } = setup(old, signedIn);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const hold = svc.holdServerLogout('@me:hs');
       loggedOutHandler(old)({ data: { soft_logout: false } });
-      await firstValueFrom(svc.add(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION));
 
       hold.release({ deleted: false });
 
@@ -1698,10 +1706,10 @@ describe('MatrixClientService', () => {
       const signedIn = fakeClient();
       const { svc, storage } = setup(old, signedIn);
       vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const hold = svc.holdServerLogout('@me:hs');
       loggedOutHandler(old)({ data: { soft_logout: false } });
-      await firstValueFrom(svc.add(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION));
 
       loggedOutHandler(signedIn)({ data: { soft_logout: false } });
       expect(hold.tokenDied()).toBe(true);
@@ -1714,7 +1722,7 @@ describe('MatrixClientService', () => {
 
     it('stops being held once released or once the account is removed another way', async () => {
       const { svc } = setup(fakeClient());
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const released = svc.holdServerLogout('@me:hs');
       const removed = svc.holdServerLogout('@me:hs');
       expect(removed.isHeld()).toBe(true);
@@ -1729,7 +1737,7 @@ describe('MatrixClientService', () => {
     it('leaves the account to the deletion cleanup when released as deleted', async () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const hold = svc.holdServerLogout('@me:hs');
       loggedOutHandler(client)({ data: { soft_logout: false } });
 
@@ -1742,7 +1750,7 @@ describe('MatrixClientService', () => {
     it('does nothing on release when the token never died', async () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       svc.holdServerLogout('@me:hs').release({ deleted: false });
 
@@ -1755,7 +1763,7 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
       vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       svc.holdServerLogout('@me:hs').release({ deleted: false });
 
       loggedOutHandler(client)({ data: { soft_logout: false } });
@@ -1767,7 +1775,7 @@ describe('MatrixClientService', () => {
       const client = fakeClient();
       const { svc, storage } = setup(client);
       vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const hold = svc.holdServerLogout('@me:hs');
 
       loggedOutHandler(client)({ data: { soft_logout: true } });
@@ -1782,15 +1790,15 @@ describe('MatrixClientService', () => {
       const { svc, storage } = setup(a, b, fakeClient());
       vi.mocked(storage.invalidateToken).mockReturnValue(of(undefined));
       vi.mocked(storage.setActive).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const onSignedInAgain = vi.fn();
       svc.holdServerLogout('@me:hs', { onSignedInAgain });
 
-      await firstValueFrom(svc.add(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION));
       expect(onSignedInAgain).not.toHaveBeenCalled();
 
       loggedOutHandler(b)({ data: { soft_logout: true } });
-      await firstValueFrom(svc.add(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION));
 
       expect(onSignedInAgain).toHaveBeenCalledOnce();
     });
@@ -1801,8 +1809,8 @@ describe('MatrixClientService', () => {
       const { svc, storage } = setup(a, b);
       vi.mocked(storage.remove).mockReturnValue(of(undefined));
       vi.mocked(storage.setActive).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      await firstValueFrom(startAccount(svc, SESSION_B));
       svc.holdServerLogout('@me:hs');
 
       loggedOutHandler(b)({ data: { soft_logout: false } });
@@ -1815,7 +1823,7 @@ describe('MatrixClientService', () => {
     it('reports an account whose token the server still accepts', async () => {
       const client = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
         'active',
@@ -1830,7 +1838,7 @@ describe('MatrixClientService', () => {
           whoami: vi.fn().mockRejectedValue(new MatrixError({ errcode }, 401)),
         };
         const { svc } = setup(client);
-        await firstValueFrom(svc.init(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
         await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
           'gone',
@@ -1844,7 +1852,7 @@ describe('MatrixClientService', () => {
         whoami: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')),
       };
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       await expect(firstValueFrom(svc.accountStatus('@me:hs'))).resolves.toBe(
         'unreachable',
@@ -1855,8 +1863,8 @@ describe('MatrixClientService', () => {
       const a = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
       const b = { ...fakeClient(), whoami: vi.fn().mockResolvedValue({}) };
       const { svc } = setup(a, b);
-      await firstValueFrom(svc.init(SESSION));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      await firstValueFrom(startAccount(svc, SESSION_B));
       svc.setActive('@you:other');
 
       await firstValueFrom(svc.accountStatus('@me:hs'));
@@ -1869,12 +1877,12 @@ describe('MatrixClientService', () => {
   it('maps sync state to connectivity (offline while erroring/reconnecting)', async () => {
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     // Before any sync transition the app reads online (no startup offline flash).
     expect(svc.connectivity()).toBe('online');
 
-    // Drive the Sync listener the service registered during init().
+    // Drive the Sync listener the service registered during the start.
     const onSync = client.on.mock.calls.find(
       (c: unknown[]) => c[0] === ClientEvent.Sync,
     )?.[1] as (state: SyncState) => void;
@@ -1896,7 +1904,9 @@ describe('MatrixClientService', () => {
     const client = fakeClient();
     const { svc } = setup(client);
 
-    await expect(firstValueFrom(svc.init(SESSION))).resolves.toBeUndefined();
+    await expect(
+      firstValueFrom(startAccount(svc, SESSION, 'replace')),
+    ).resolves.toBeUndefined();
     expect(svc.isInitialized).toBe(true); // a broken cache must not block login
     expect(client.startClient).toHaveBeenCalledOnce();
   });
@@ -1905,7 +1915,7 @@ describe('MatrixClientService', () => {
     vi.stubGlobal('indexedDB', {});
     const client = fakeClient();
     const { svc } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     await firstValueFrom(svc.stop());
     await Promise.resolve(); // let the best-effort destroy() microtask run
@@ -1921,13 +1931,13 @@ describe('MatrixClientService', () => {
       (c: unknown[]) => c[0] === ClientEvent.Sync,
     )?.[1] as (s: SyncState) => void;
 
-  it('add() keeps existing accounts running and activates the new one', async () => {
+  it('keeps existing accounts running and activates the new one', async () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
 
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B));
 
     expect(a.stopClient).not.toHaveBeenCalled(); // first account kept running
     expect(svc.instance).toBe(b); // new account active
@@ -1941,8 +1951,8 @@ describe('MatrixClientService', () => {
     const b = fakeClient();
     const { svc, projections } = setup(a, b);
 
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B));
     expect(projections.diagnostics()).toMatchObject({
       activeProjections: 2,
       listenerCount:
@@ -2002,7 +2012,7 @@ describe('MatrixClientService', () => {
     it('does not report a server sync for a PREPARED replayed from the cache', async () => {
       const client = fakeClient();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       expect(svc.serverSynced('@me:hs')).toBe(false);
 
       syncWithDataOf(client)(SyncState.Prepared, null, { fromCache: true });
@@ -2018,7 +2028,7 @@ describe('MatrixClientService', () => {
     ])('latches the first server sync: %s', async (_name, state) => {
       const client = fakeClient();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const sync = syncWithDataOf(client);
 
       sync(SyncState.Prepared, null, { fromCache: true });
@@ -2031,7 +2041,7 @@ describe('MatrixClientService', () => {
     it('keeps it through RECONNECTING, ERROR and STOPPED', async () => {
       const client = fakeClient();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const sync = syncWithDataOf(client);
       sync(SyncState.Prepared, null, {});
       await Promise.resolve();
@@ -2054,8 +2064,8 @@ describe('MatrixClientService', () => {
       const b = fakeClient();
       const { svc, storage } = setup(a1, b, a2);
       vi.mocked(storage.remove).mockReturnValue(of(undefined));
-      await firstValueFrom(svc.init(SESSION));
-      await firstValueFrom(svc.add(SESSION_B));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      await firstValueFrom(startAccount(svc, SESSION_B));
       syncWithDataOf(a1)(SyncState.Syncing, null, {});
       syncWithDataOf(b)(SyncState.Syncing, null, {});
       await Promise.resolve();
@@ -2064,7 +2074,7 @@ describe('MatrixClientService', () => {
       );
       expect(synced()).toBe(true);
 
-      await firstValueFrom(svc.add(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION));
       expect(synced()).toBe(false);
       syncWithDataOf(a2)(SyncState.Prepared, null, {});
       await Promise.resolve();
@@ -2078,7 +2088,7 @@ describe('MatrixClientService', () => {
     it('reports rooms prepared once the cache replays, before any server sync', async () => {
       const client = fakeClient();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const prepared = TestBed.runInInjectionContext(() =>
         computed(() => svc.roomsPrepared('@me:hs')),
       );
@@ -2098,7 +2108,7 @@ describe('MatrixClientService', () => {
     it('reports rooms prepared after a first server sync without a cache', async () => {
       const client = fakeClient();
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       syncWithDataOf(client)(SyncState.Error, null, {});
       await Promise.resolve();
@@ -2112,7 +2122,7 @@ describe('MatrixClientService', () => {
     it('still uses one listener and the same retained bytes per live account', async () => {
       const client = fakeClient();
       const { svc, projections } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       syncWithDataOf(client)(SyncState.Prepared, null, {});
       await Promise.resolve();
@@ -2133,8 +2143,8 @@ describe('MatrixClientService', () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B)); // B active
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B)); // B active
 
     svc.setActive('@me:hs');
     expect(svc.instance).toBe(a);
@@ -2148,8 +2158,8 @@ describe('MatrixClientService', () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B)); // B active
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B)); // B active
 
     await firstValueFrom(svc.remove('@you:other'));
 
@@ -2160,12 +2170,12 @@ describe('MatrixClientService', () => {
     expect([...svc.accountIds()]).toEqual(['@me:hs']);
   });
 
-  it('add() for an already-signed-in account replaces its client (no leak)', async () => {
+  it('starting an already-signed-in account replaces its client (no leak)', async () => {
     const a1 = fakeClient();
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
-    await firstValueFrom(svc.init(SESSION)); // A via a1
-    await firstValueFrom(svc.add(SESSION)); // re-add the same account via a2
+    await firstValueFrom(startAccount(svc, SESSION, 'replace')); // A via a1
+    await firstValueFrom(startAccount(svc, SESSION)); // re-add the same account via a2
 
     expect(a1.stopClient).toHaveBeenCalled(); // old client torn down, not orphaned
     expect(a1.off).toHaveBeenCalled(); // its Sync listener detached
@@ -2178,9 +2188,9 @@ describe('MatrixClientService', () => {
     const a1 = fakeClient();
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.reset()); // sign out (background store wipe)
-    await firstValueFrom(svc.add(SESSION)); // sign back in
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(svc.remove(SESSION.userId)); // sign out (background store wipe)
+    await firstValueFrom(startAccount(svc, SESSION)); // sign back in
 
     expect(a1.clearStores).toHaveBeenCalled(); // its stores were wiped
     expect(svc.instance).toBe(a2);
@@ -2190,7 +2200,7 @@ describe('MatrixClientService', () => {
   it('clientFor() returns the account client, or null', async () => {
     const a = fakeClient();
     const { svc } = setup(a);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     expect(svc.clientFor('@me:hs')).toBe(a);
     expect(svc.clientFor('@nobody:hs')).toBeNull();
@@ -2339,8 +2349,8 @@ describe('MatrixClientService', () => {
     const a = fakeClient();
     const b = fakeClient();
     const { svc } = setup(a, b);
-    await firstValueFrom(svc.init(SESSION));
-    await firstValueFrom(svc.add(SESSION_B)); // B active
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
+    await firstValueFrom(startAccount(svc, SESSION_B)); // B active
 
     syncOf(a)(SyncState.Syncing);
     syncOf(b)(SyncState.Error);
@@ -2360,8 +2370,8 @@ describe('MatrixClientService', () => {
 
     expect(svc.activeHolder()).toBeNull(); // nothing signed in yet
 
-    await firstValueFrom(svc.init(SESSION)); // A
-    await firstValueFrom(svc.add(SESSION_B)); // B, now active
+    await firstValueFrom(startAccount(svc, SESSION, 'replace')); // A
+    await firstValueFrom(startAccount(svc, SESSION_B)); // B, now active
 
     // Each client got its OWN cryptoCallbacks, so a background account's key op
     // cannot read or overwrite another account's key.
@@ -2391,19 +2401,19 @@ describe('MatrixClientService', () => {
     const a1 = fakeClient();
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
     expect(createClient).toHaveBeenCalledOnce();
 
-    // Its store wipe never settles yet, so reset()'s background delete stays pending.
+    // Its store wipe never settles yet, so remove()'s background delete stays pending.
     let resolveWipe!: () => void;
     a1.clearStores.mockReturnValue(
       new Promise<void>((resolve) => (resolveWipe = resolve)),
     );
-    await firstValueFrom(svc.reset()); // sign out — wipe tracked, still pending
+    await firstValueFrom(svc.remove(SESSION.userId)); // sign out — wipe tracked, still pending
 
     // Re-add the same account: start() must await the pending wipe before opening a
     // second connection to the same per-account store.
-    const readded = firstValueFrom(svc.add(SESSION));
+    const readded = firstValueFrom(startAccount(svc, SESSION));
     await new Promise((resolve) => setTimeout(resolve, 0)); // drain microtasks
     expect(createClient).toHaveBeenCalledOnce(); // still 1 — blocked on the wipe
 
@@ -2418,7 +2428,7 @@ describe('MatrixClientService', () => {
     const a1 = fakeClient();
     const a2 = fakeClient();
     const { svc } = setup(a1, a2);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
     syncOf(a1)(SyncState.Syncing);
     await Promise.resolve();
@@ -2426,7 +2436,7 @@ describe('MatrixClientService', () => {
 
     // Re-add the SAME active account: fresh client + fresh per-account syncState
     // signal, active id net-unchanged.
-    await firstValueFrom(svc.add(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION));
     expect(svc.syncState()).toBeNull(); // re-bound to a2's untransitioned signal
 
     syncOf(a2)(SyncState.Error); // only the NEW client's listener now feeds state
@@ -2437,7 +2447,7 @@ describe('MatrixClientService', () => {
   it('ignores a duplicate server logout for an already-removed account', async () => {
     const client = fakeClient();
     const { svc, storage } = setup(client);
-    await firstValueFrom(svc.init(SESSION));
+    await firstValueFrom(startAccount(svc, SESSION, 'replace'));
     const onLoggedOut = loggedOutHandler(client);
 
     await firstValueFrom(svc.remove('@me:hs')); // detaches listener, wipes once, drops entry
@@ -2465,7 +2475,7 @@ describe('MatrixClientService', () => {
         ),
       });
       const { svc } = setup(client);
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
       const keysRemaining = (count: number): void =>
         (
           client.on.mock.calls.find(
@@ -2596,7 +2606,7 @@ describe('MatrixClientService', () => {
       const { client, release } = clientWithPendingCrypto();
       const { svc } = setup(client);
 
-      svc.init(SESSION).subscribe().unsubscribe(); // navigation superseded
+      startAccount(svc, SESSION, 'replace').subscribe().unsubscribe(); // navigation superseded
       release();
       await settle();
 
@@ -2618,8 +2628,8 @@ describe('MatrixClientService', () => {
       const { client, release } = clientWithPendingCrypto();
       const { svc } = setup(client);
 
-      const guard = firstValueFrom(svc.init(SESSION));
-      const deepLink = firstValueFrom(svc.add(SESSION));
+      const guard = firstValueFrom(startAccount(svc, SESSION, 'replace'));
+      const deepLink = firstValueFrom(startAccount(svc, SESSION));
       release();
       await Promise.all([guard, deepLink]);
 
@@ -2638,12 +2648,12 @@ describe('MatrixClientService', () => {
       const working = fakeClient();
       const { svc } = setup(failing, working);
 
-      await expect(firstValueFrom(svc.init(SESSION))).rejects.toThrow(
-        'sync boom',
-      );
+      await expect(
+        firstValueFrom(startAccount(svc, SESSION, 'replace')),
+      ).rejects.toThrow('sync boom');
       expect(failing.stopClient).toHaveBeenCalled();
 
-      await firstValueFrom(svc.init(SESSION));
+      await firstValueFrom(startAccount(svc, SESSION, 'replace'));
 
       expect(createClient).toHaveBeenCalledTimes(2);
       expect(svc.instance).toBe(working);
@@ -2669,7 +2679,7 @@ describe('MatrixClientService', () => {
         const { svc, storage } = setup();
         vi.mocked(storage.setActive).mockReturnValue(of(undefined));
 
-        await firstValueFrom(svc.init(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION, 'replace'));
         expect(setAllowedOrigins).toHaveBeenLastCalledWith([
           'https://hs.example',
         ]);
@@ -2678,7 +2688,7 @@ describe('MatrixClientService', () => {
         vi.mocked(createClient).mockReturnValueOnce(
           fakeClient('https://other.example') as never,
         );
-        await firstValueFrom(svc.add(SESSION_B));
+        await firstValueFrom(startAccount(svc, SESSION_B));
         expect(setAllowedOrigins).toHaveBeenLastCalledWith([
           'https://hs.example',
           'https://other.example',
@@ -2712,7 +2722,7 @@ describe('MatrixClientService', () => {
         }) as never);
         const { svc } = setup();
 
-        await firstValueFrom(svc.add(SESSION));
+        await firstValueFrom(startAccount(svc, SESSION));
 
         expect(allowOrigin).toHaveBeenCalledWith('https://hs.example');
         expect(order).toEqual([
@@ -2732,7 +2742,9 @@ describe('MatrixClientService', () => {
       vi.mocked(createClient).mockReturnValueOnce(fakeClient() as never);
       const { svc } = setup();
 
-      await expect(firstValueFrom(svc.init(SESSION))).resolves.not.toThrow();
+      await expect(
+        firstValueFrom(startAccount(svc, SESSION, 'replace')),
+      ).resolves.not.toThrow();
       expect(svc.isInitialized).toBe(true);
     });
   });

@@ -326,7 +326,7 @@ export class MatrixClientService {
   >();
 
   /**
-   * In-flight background store wipes started by {@link reset}/{@link remove}, keyed by
+   * In-flight background store wipes started by {@link remove}, keyed by
    * user id. Re-adding that account awaits its wipe first: the sync and Rust-crypto
    * IndexedDB names repeat across a same-account re-login, so opening either before the
    * pending delete finishes would block (or race) it.
@@ -385,9 +385,7 @@ export class MatrixClientService {
   get instance(): MatrixClient {
     const account = this.active();
     if (!account) {
-      throw new Error(
-        'MatrixClient not initialized — call init()/add() first.',
-      );
+      throw new Error('MatrixClient not initialized — no Account is live.');
     }
     return account.client;
   }
@@ -570,29 +568,6 @@ export class MatrixClientService {
     });
   }
 
-  /**
-   * Replace any signed-in accounts with this one and make it active; use {@link add} to
-   * keep the others. Cold. The new client is only published once fully started: a failed
-   * bootstrap cleans up and rethrows rather than leaving a half-initialized client.
-   */
-  init(session: MatrixSession): Observable<void> {
-    return defer(() => {
-      this.teardownAll();
-      return this.startForExistingCaller(session).pipe(
-        tap((account) => this._activeUserId.set(account.userId)),
-        map(() => void 0),
-      );
-    });
-  }
-
-  /** Add another account (keeping the others syncing) and make it active. */
-  add(session: MatrixSession): Observable<void> {
-    return this.startForExistingCaller(session).pipe(
-      tap((account) => this._activeUserId.set(account.userId)),
-      map(() => void 0),
-    );
-  }
-
   /** Start one persisted Account without leaking adapter errors into Account Runtime. */
   restorePersisted(
     session: MatrixSession,
@@ -764,22 +739,6 @@ export class MatrixClientService {
     });
   }
 
-  /**
-   * Log the ACTIVE account out: stop it, DELETE its persistent stores (sync +
-   * crypto IndexedDB), and repoint the active account to another if any remain.
-   * Best-effort: a store-clear failure still tears the client down.
-   */
-  reset(): Observable<void> {
-    return defer(() => {
-      const account = this.active();
-      if (!account) {
-        return of(void 0);
-      }
-      this.removeInternal(account.userId, true);
-      return of(void 0);
-    });
-  }
-
   /** Sign one account out: stop it + wipe its stores; repoint active if needed. */
   remove(userId: string): Observable<void> {
     return defer(() => {
@@ -920,19 +879,6 @@ export class MatrixClientService {
       this.starting.set(session.userId, started);
       return started;
     });
-  }
-
-  /** Preserve the existing login/auth interface while Account Runtime consumes typed failures. */
-  private startForExistingCaller(
-    session: MatrixSession,
-  ): Observable<AccountClient> {
-    return this.start(session).pipe(
-      catchError((error: unknown) =>
-        throwError(() =>
-          error instanceof MatrixClientStartupError ? error.original : error,
-        ),
-      ),
-    );
   }
 
   /**
