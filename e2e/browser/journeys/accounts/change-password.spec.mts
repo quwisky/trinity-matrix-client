@@ -83,7 +83,10 @@ test.describe('Change password', () => {
     await page.getByTestId('current-password').fill(oldPass);
     await page.getByTestId('change-password').click();
     await expect(
-      page.getByLabel('Notifications alt+T').getByText('Password changed.'),
+      // The toast names the account, since the answer can arrive after a switch.
+      page
+        .getByLabel('Notifications alt+T')
+        .getByText(`Password changed for @${user}:`),
     ).toBeVisible({ timeout: 20_000 });
 
     // The change persisted server-side: the new password logs in, the old no longer.
