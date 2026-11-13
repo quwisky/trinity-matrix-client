@@ -255,10 +255,16 @@ export class MatrixClientService {
    * shim (electron/src/cors.ts) is scoped to them instead of rewriting every remote https
    * response. Main cannot know them: the user picks homeservers at login. Called wherever
    * the live account set changes; a no-op off desktop.
+   *
+   * Starts still in flight are named too: the set is replaced, and another account
+   * finishing first would otherwise drop the origin their first requests are still using.
    */
   private publishCorsOrigins(): void {
-    const origins = [...this.clients.values()].map((a) => a.client.baseUrl);
-    this.hostNetworkPolicy.replaceAllowedOrigins(origins);
+    const origins = new Set([
+      ...[...this.clients.values()].map((a) => a.client.baseUrl),
+      ...this.startingOrigins.values(),
+    ]);
+    this.hostNetworkPolicy.replaceAllowedOrigins([...origins]);
   }
 
   /**
@@ -338,6 +344,8 @@ export class MatrixClientService {
    * start joins the first.
    */
   private readonly starting = new Map<string, Observable<AccountClient>>();
+  /** The homeserver of each start in {@link starting}, for {@link publishCorsOrigins}. */
+  private readonly startingOrigins = new Map<string, string>();
 
   /**
    * matrix-js-sdk's legacy-to-Rust migration store is process-global during
@@ -867,6 +875,7 @@ export class MatrixClientService {
         finalize(() => {
           if (this.starting.get(session.userId) === started) {
             this.starting.delete(session.userId);
+            this.startingOrigins.delete(session.userId);
           }
         }),
         // The entry is dropped above once the chain settles, so a FAILED start is never
@@ -877,6 +886,7 @@ export class MatrixClientService {
         }),
       );
       this.starting.set(session.userId, started);
+      this.startingOrigins.set(session.userId, session.baseUrl);
       return started;
     });
   }
