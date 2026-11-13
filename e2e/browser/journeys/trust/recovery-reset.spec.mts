@@ -75,7 +75,9 @@ test.describe('Recovery reset', () => {
     const spelledOut = await gate.locator('p').first().innerText();
     expect(
       spelledOut.split('\n').filter((line) => line.trim().length > 0),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
+    // The first line says whose identity goes: the gate can outlive an account switch.
+    expect(spelledOut).toContain('This resets the identity of @');
     // …and it has to say which word, since the placeholder vanishes on the first keystroke.
     expect(spelledOut).toContain('Type RESET to confirm');
 
