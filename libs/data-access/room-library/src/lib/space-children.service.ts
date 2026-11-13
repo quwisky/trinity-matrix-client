@@ -198,14 +198,15 @@ export class SpaceChildrenService {
         // link already carries, so treat it as a no-op.
         return from(Promise.resolve()).pipe(map(() => void 0));
       }
-      const last = links.length > 0 ? links[links.length - 1].order : '';
+      const last = links.at(-1);
+      // Appended, not inserted, so an admin's arrangement is undisturbed. No key at all
+      // sorts as unordered, which the spec puts last: the only place after an unordered
+      // last child, and where a null gap lands too.
+      const order =
+        last && !last.order ? null : orderBetween(last?.order ?? '', '');
       const content: SpaceChildContent = {
         via: viaFor(client, childId),
-        // Appended, not inserted, so an admin's arrangement is undisturbed. A null gap just
-        // means the new child sorts as unordered, which the spec puts last.
-        ...(orderBetween(last, '')
-          ? { order: orderBetween(last, '') as string }
-          : {}),
+        ...(order ? { order } : {}),
       };
       return from(
         client.sendStateEvent(spaceId, EventType.SpaceChild, content, childId),
@@ -258,20 +259,25 @@ export class SpaceChildrenService {
    * Normally one write: a key is minted between the two neighbours. When no such key exists
    * (neighbours with no gap, or a key another client wrote that this one cannot do arithmetic
    * against) the whole sibling list is renumbered, which is several writes; {@link spreadOrders}
-   * leaves room so the next move is a single write again.
+   * leaves room so the next move is a single write again. The same happens when the child
+   * lands after one that has no order, since any minted key sorts ahead of that one.
+   *
+   * Children with no order have no position of their own: `shownOrder` is the list the caller
+   * chose the move from, and decides where they sit.
    */
   moveChildBefore(
     accountId: string,
     spaceId: string,
     childId: string,
     beforeChildId: string | null,
+    shownOrder: readonly string[] = [],
   ): Observable<SpaceChildWriteReceipt> {
     return defer(() => {
       const client = this.matrix.clientFor(accountId);
       if (!client) {
         return throwError(() => new Error('Account unavailable.'));
       }
-      const links = readLinksFrom(client, spaceId);
+      const links = inShownOrder(readLinksFrom(client, spaceId), shownOrder);
       const moving = links.find((link) => link.childId === childId);
       if (!moving) {
         return throwError(() => new Error('That room is not in this space.'));
@@ -285,7 +291,8 @@ export class SpaceChildrenService {
       }
       const prev = target > 0 ? remaining[target - 1].order : '';
       const next = target < remaining.length ? remaining[target].order : '';
-      const minted = orderBetween(prev, next);
+      const minted =
+        target > 0 && prev === '' ? null : orderBetween(prev, next);
       if (minted !== null) {
         return this.writeLink(accountId, spaceId, {
           ...moving,
@@ -428,6 +435,18 @@ function readChildLinks(state: RoomState | null | undefined): SpaceChildLink[] {
         (a, b) =>
           compareOrder(a.order, b.order) || (a.childId < b.childId ? -1 : 1),
       )
+  );
+}
+
+/** `links` with the ties between equal orders broken by position in `shown`, then as before. */
+function inShownOrder(
+  links: readonly SpaceChildLink[],
+  shown: readonly string[],
+): SpaceChildLink[] {
+  const rank = new Map(shown.map((childId, index) => [childId, index]));
+  const at = (link: SpaceChildLink) => rank.get(link.childId) ?? shown.length;
+  return [...links].sort(
+    (a, b) => compareOrder(a.order, b.order) || at(a) - at(b),
   );
 }
 
