@@ -550,7 +550,7 @@ export class PushService {
           status: 'degraded',
           code: 'push-pusher-verification-failed',
         });
-        return;
+        // Keep reading: another account's pusher may be missing as well.
       }
     }
   }

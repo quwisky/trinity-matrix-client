@@ -335,6 +335,19 @@ describe('PushService', () => {
       expect(svc.backgroundDeliveryFor('@alt:hs')).toBe('app');
     });
 
+    it('keeps the app notifying for every account whose pusher the homeserver dropped', async () => {
+      h.state.platform = 'android';
+      const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+      for (const client of clients.values()) {
+        client.getPushers.mockResolvedValue({ pushers: [] });
+      }
+
+      await registerWithToken(svc);
+
+      expect(svc.backgroundDeliveryFor('@me:hs')).toBe('app');
+      expect(svc.backgroundDeliveryFor('@alt:hs')).toBe('app');
+    });
+
     it('keeps every account with the app on iOS', async () => {
       const { svc } = setup();
 
