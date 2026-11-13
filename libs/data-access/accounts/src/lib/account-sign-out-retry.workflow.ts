@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { MatrixError } from 'matrix-js-sdk';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import {
   LocalDataWipeService,
@@ -41,8 +42,8 @@ export interface SignOutRetryContext {
 /**
  * End the account's remote session once. matrix-js-sdk 43's `logout()` revokes an OAuth-native
  * session's tokens at its provider (and sends no `POST /logout`) and logs a password or SSO
- * session out at the homeserver. With no live client, a stored OAuth session is logged out
- * through a detached client so its tokens are still revoked.
+ * session out at the homeserver. With no live client, say after a failed restore, the stored
+ * session is logged out through a detached client so its token does not stay valid.
  */
 export function remoteLogout(
   context: SignOutRetryContext,
@@ -51,8 +52,21 @@ export function remoteLogout(
   return defer(() => {
     const client =
       context.client ??
-      (context.session?.oidc ? matrix.detachedClient(context.session) : null);
-    return client ? from(client.logout(true)) : of(void 0);
+      (context.session ? matrix.detachedClient(context.session) : null);
+    return client
+      ? from(client.logout(true)).pipe(
+          catchError((error: unknown) => {
+            // The homeserver no longer knows the token: the session is already ended.
+            if (
+              error instanceof MatrixError &&
+              error.errcode === 'M_UNKNOWN_TOKEN'
+            ) {
+              return of(void 0);
+            }
+            throw error;
+          }),
+        )
+      : of(void 0);
   });
 }
 
@@ -168,12 +182,9 @@ export class AccountSignOutRetryWorkflow {
       operations.push(...this.retryNotifications(attempt, context));
     }
     const logoutScope = remoteLogoutScope(context);
-    // Without a client or a stored OAuth session there is nothing to log out with, and
+    // Without a client or a stored session there is nothing to log out with, and
     // resolving the residue anyway would claim a revocation that never happened.
-    if (
-      retryable.has(logoutScope) &&
-      (context.client || context.session?.oidc)
-    ) {
+    if (retryable.has(logoutScope) && (context.client || context.session)) {
       operations.push(
         this.retryStep(
           attempt,

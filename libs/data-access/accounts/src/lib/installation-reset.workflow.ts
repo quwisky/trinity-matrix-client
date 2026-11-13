@@ -258,6 +258,25 @@ export class InstallationResetWorkflow {
         'restart-application',
         ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
       ),
+      // signOutAll reaches live clients only; a stored session whose restore failed still
+      // holds a valid token. OAuth sessions are revoked at their provider below.
+      ...sessions
+        .filter(
+          (session): session is MatrixSession =>
+            session !== null &&
+            !session.oidc &&
+            !this.matrix.clientFor(session.userId),
+        )
+        .map((session) =>
+          attempt.capture(
+            defer(() =>
+              from(this.matrix.detachedClient(session).logout(true)),
+            ).pipe(catchError(() => of(void 0))),
+            'matrix-session',
+            'restart-application',
+            ACCOUNT_CLEANUP_STEP_BUDGET_MS.matrixLogout,
+          ),
+        ),
       ...sessions
         .filter(
           (

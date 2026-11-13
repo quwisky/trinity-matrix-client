@@ -1,3 +1,4 @@
+import { MatrixError } from 'matrix-js-sdk';
 import { Subject, defer, firstValueFrom, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import type { MatrixSession } from '@trinity/util/matrix';
@@ -788,6 +789,77 @@ describe('MatrixAccountRuntimeAdapter', () => {
     expect(matrix.detachedClient).toHaveBeenCalledWith(OIDC_STORED);
     expect(detached.logout).toHaveBeenCalledOnce();
     expect(lifecycle.revokeProviderSession).not.toHaveBeenCalled();
+  });
+
+  describe('a password account with no live client', () => {
+    const STORED = {
+      userId: '@pw:hs',
+      baseUrl: 'https://hs',
+      deviceId: 'A',
+      accessToken: 'stored-token',
+    } as MatrixSession;
+
+    function signingOut(logout: () => Promise<unknown>) {
+      const test = setup(null);
+      const detached = { logout: vi.fn(logout) };
+      vi.mocked(test.matrix.clientFor).mockReturnValue(null);
+      vi.mocked(test.matrix.detachedClient).mockReturnValue(detached as never);
+      vi.mocked(test.storage.list).mockReturnValue(
+        of([{ userId: '@pw:hs', baseUrl: 'https://hs', deviceId: 'A' }]),
+      );
+      vi.mocked(test.storage.load).mockReturnValue(of(STORED));
+      vi.mocked(test.matrix.remove).mockReturnValue(of(void 0));
+      vi.mocked(test.storage.clear).mockReturnValue(of(void 0));
+      return { ...test, detached };
+    }
+
+    it('is logged out at the homeserver with its stored token', async () => {
+      const { adapter, matrix, detached } = signingOut(() => Promise.resolve());
+
+      await expect(
+        firstValueFrom(adapter.signOutAccount('@pw:hs')),
+      ).resolves.toMatchObject({ kind: 'ready' });
+      expect(matrix.detachedClient).toHaveBeenCalledWith(STORED);
+      expect(detached.logout).toHaveBeenCalledExactlyOnceWith(true);
+    });
+
+    it('counts as logged out when the homeserver no longer knows the token', async () => {
+      const { adapter, storage } = signingOut(() =>
+        Promise.reject(new MatrixError({ errcode: 'M_UNKNOWN_TOKEN' }, 401)),
+      );
+
+      await expect(
+        firstValueFrom(adapter.signOutAccount('@pw:hs')),
+      ).resolves.toMatchObject({ kind: 'ready' });
+      expect(storage.clear).toHaveBeenCalledOnce();
+    });
+
+    it('is still wiped locally when the logout fails, and a retry logs it out', async () => {
+      let attempts = 0;
+      const { adapter, matrix, storage, detached } = signingOut(() =>
+        attempts++ === 0
+          ? Promise.reject(new Error('homeserver down'))
+          : Promise.resolve(),
+      );
+
+      const first = await firstValueFrom(adapter.signOutAccount('@pw:hs'));
+      expect(first).toMatchObject({
+        kind: 'partial-cleanup',
+        issues: [{ scope: 'matrix-session', recovery: 'retry-sign-out' }],
+      });
+      expect(matrix.remove).toHaveBeenCalledWith('@pw:hs');
+      expect(storage.clear).toHaveBeenCalledOnce();
+
+      await expect(
+        firstValueFrom(
+          adapter.retrySignOutCleanup(
+            '@pw:hs',
+            first.kind === 'partial-cleanup' ? first.issues : [],
+          ),
+        ),
+      ).resolves.toMatchObject({ kind: 'ready' });
+      expect(detached.logout).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('retries a failed detached revocation through a new detached client', async () => {
