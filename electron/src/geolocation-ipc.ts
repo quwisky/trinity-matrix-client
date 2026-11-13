@@ -9,22 +9,25 @@ export const APPROX_LOCATION_CHANNEL = 'trinity:geolocation:approximate';
 const IP_GEO_URL = 'https://ipapi.co/json/';
 const LOOKUP_TIMEOUT_MS = 8_000;
 
-/** Coerce a lat/lng pair to a finite point inside WGS84 bounds, else null. */
+/**
+ * A numeric lat/lng pair as a finite point inside WGS84 bounds, else null. Nothing is
+ * coerced: `Number(null)` is 0, which would turn an unknown location into 0,0.
+ */
 function toGeoPoint(
   lat: unknown,
   lng: unknown,
 ): { lat: number; lng: number } | null {
-  const latitude = Number(lat);
-  const longitude = Number(lng);
   if (
-    !Number.isFinite(latitude) ||
-    !Number.isFinite(longitude) ||
-    Math.abs(latitude) > 90 ||
-    Math.abs(longitude) > 180
+    typeof lat !== 'number' ||
+    typeof lng !== 'number' ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    Math.abs(lat) > 90 ||
+    Math.abs(lng) > 180
   ) {
     return null;
   }
-  return { lat: latitude, lng: longitude };
+  return { lat, lng };
 }
 
 /**
