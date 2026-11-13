@@ -106,6 +106,39 @@ describe('ComposerDrafts', () => {
     expect(s.text()).toBe('body B');
   });
 
+  it('returns to the kept edit, not the original body, after leaving the room and coming back', () => {
+    // The Conversation keeps an edit and its draft per room. Like its compose proxy, the
+    // managed draft and `editing` follow whichever room is focused.
+    const s = setup({ roomId: '!a' });
+    s.composeDraft.set('original');
+    s.draft.set('original');
+    s.editTargetId.set('$m');
+    s.editing.set(true);
+    TestBed.tick();
+    expect(s.text()).toBe('original');
+    s.text.set('half-edited');
+    TestBed.tick();
+    expect(s.emitted.at(-1)).toBe('half-edited');
+
+    s.roomId.set('!b');
+    s.editing.set(false);
+    s.editTargetId.set(null);
+    s.draft.set('');
+    s.composeDraft.set('');
+    TestBed.tick();
+    s.emitted.length = 0;
+
+    s.roomId.set('!a');
+    s.composeDraft.set('half-edited');
+    s.draft.set('original');
+    s.editTargetId.set('$m');
+    s.editing.set(true);
+    TestBed.tick();
+
+    expect(s.text()).toBe('half-edited');
+    expect(s.emitted).not.toContain('original');
+  });
+
   it('restores the compose draft when the edit ends, without saving the edit body', () => {
     const s = setup({ roomId: '!a' });
     s.text.set('compose');

@@ -115,7 +115,9 @@ export class ComposerDrafts {
         isEditing &&
         (!this.wasEditing || targetId !== this.wasEditTargetId)
       ) {
-        text.set(untracked(() => draft()));
+        // A managed edit draft starts as the message's body and keeps what was typed since,
+        // so returning to a room mid-edit must not start over from the body.
+        text.set(untracked(() => composeDraft() ?? draft()));
         // The text is replaced wholesale, so an open preview would show stale content, and the
         // focus() below cannot land on a hidden textarea, leaving edit mode unresponsive.
         ports.leavePreview();
