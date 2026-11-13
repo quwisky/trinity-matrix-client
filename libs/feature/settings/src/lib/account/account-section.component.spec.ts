@@ -39,6 +39,7 @@ describe('AccountSectionComponent', () => {
   async function renderSection(
     api: AccountServerApi | null = { kind: 'legacy' },
   ) {
+    const activeUserId = signal('@alice:example.org');
     const result = await render(AccountSectionComponent, {
       providers: [
         // Read on construction, so it must be stubbed before render.
@@ -46,7 +47,7 @@ describe('AccountSectionComponent', () => {
           accountManagementFor: vi.fn(() => (api ? of(api) : NEVER)),
         }),
         MockProvider(MatrixClientService, {
-          activeUserId: signal('@alice:example.org').asReadonly(),
+          activeUserId: activeUserId.asReadonly(),
         }),
         MockProvider(TrnToastService),
         MockProvider(ExternalBrowserService, { open: vi.fn(() => of(true)) }),
@@ -75,6 +76,7 @@ describe('AccountSectionComponent', () => {
       auth,
       toast,
       externalBrowser,
+      activeUserId,
     };
   }
 
@@ -263,6 +265,27 @@ describe('AccountSectionComponent', () => {
       'Password changed.',
       expect.objectContaining({ variant: 'success' }),
     );
+  });
+
+  it('forgets a password typed for one account when another becomes active', async () => {
+    const { cmp, auth, activeUserId } = await renderSection();
+    fill(cmp, {
+      currentPassword: 'alice-pw',
+      newPassword: 'new-secret-pw',
+      confirmPassword: 'new-secret-pw',
+    });
+    cmp.form().markAsTouched();
+
+    // A notification click switches account under the open Settings dialog.
+    activeUserId.set('@bob:example.org');
+    cmp.submit();
+
+    expect(auth.changePassword).not.toHaveBeenCalled();
+    expect(cmp.form.currentPassword().value()).toBe('');
+
+    TestBed.tick();
+    expect(cmp.form.currentPassword().touched()).toBe(false);
+    expect(cmp.error()).toBeNull();
   });
 
   it('refuses a mismatched confirmation without calling the service', async () => {

@@ -4,6 +4,7 @@ import {
   DestroyRef,
   computed,
   inject,
+  linkedSignal,
   signal,
 } from '@angular/core';
 import {
@@ -125,7 +126,11 @@ export class AccountSectionComponent {
   /** The server's account API; null until it has answered. */
   readonly serverApi = toSignal(
     toObservable(this.accountId).pipe(
-      tap(() => this.announcement.set('')),
+      tap(() => {
+        this.announcement.set('');
+        this.error.set(null);
+        this.form().reset({ ...EMPTY_PASSWORDS });
+      }),
       switchMap((id) =>
         id
           ? this.retries.pipe(
@@ -187,7 +192,14 @@ export class AccountSectionComponent {
   /** Last failure (bad password, mismatch, server error), or null. */
   readonly error = signal<string | null>(null);
 
-  private readonly passwords = signal<PasswordModel>({ ...EMPTY_PASSWORDS });
+  /**
+   * Emptied the moment another Account becomes active: a password typed for one Account must
+   * never be sent to another's server. The reset on the Account change clears touched state.
+   */
+  private readonly passwords = linkedSignal<string | null, PasswordModel>({
+    source: this.accountId,
+    computation: () => ({ ...EMPTY_PASSWORDS }),
+  });
   readonly form = form(this.passwords, passwordSchema);
 
   /**
