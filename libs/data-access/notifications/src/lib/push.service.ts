@@ -535,7 +535,7 @@ export class PushService {
       try {
         pushers = (await account.client.getPushers()).pushers;
       } catch {
-        return; // Inconclusive — leave the applied state as it stands.
+        continue; // Inconclusive for this account: its applied state stands.
       }
       const present = pushers.some(
         (p) => p.app_id === appId && p.pushkey === pushkey,

@@ -348,6 +348,18 @@ describe('PushService', () => {
       expect(svc.backgroundDeliveryFor('@alt:hs')).toBe('app');
     });
 
+    it('still checks the next account when one readback fails', async () => {
+      h.state.platform = 'android';
+      const { svc, clients } = setup({ accounts: ['@me:hs', '@alt:hs'] });
+      clients.get('@me:hs')!.getPushers.mockRejectedValue(new Error('offline'));
+      clients.get('@alt:hs')!.getPushers.mockResolvedValue({ pushers: [] });
+
+      await registerWithToken(svc);
+
+      expect(svc.backgroundDeliveryFor('@me:hs')).toBe('push');
+      expect(svc.backgroundDeliveryFor('@alt:hs')).toBe('app');
+    });
+
     it('keeps every account with the app on iOS', async () => {
       const { svc } = setup();
 
