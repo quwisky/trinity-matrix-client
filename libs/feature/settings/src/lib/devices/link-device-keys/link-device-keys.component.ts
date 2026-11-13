@@ -24,9 +24,12 @@ import {
 } from '@trinity/components/generic-content';
 import { runWithBusy } from '@trinity/util/ui';
 
-/** This device is already verified here, so the unlock screen's advice to verify it is wrong. */
+/**
+ * This device is already verified here, so the unlock screen's advice to verify it is wrong.
+ * True both when recovery lacks the keys and when the account has no recovery at all.
+ */
 const NO_KEYS_IN_RECOVERY =
-  'This account’s recovery doesn’t hold the keys a new device needs. Link the new device from the device where you set up encryption instead.';
+  'This account’s recovery can’t give a new device the keys it needs. Link the new device from the device where you set up encryption, or set up recovery in Security settings and come back.';
 
 /**
  * Before linking: this device is verified but lacks a private cross-signing key a new device
