@@ -186,17 +186,13 @@ export function authenticatedRegistrationResponse(
       false,
     );
   }
-  const mxid = /^@([^:]+):(.+)$/.exec(response.user_id);
+  const mxid = /^@([^:]+):/.exec(response.user_id);
   if (
     !mxid ||
     userIdServerName(response.user_id) === null ||
-    mxid[1].toLocaleLowerCase() !== expected.localpart.toLocaleLowerCase() ||
-    mxid[2].toLocaleLowerCase() !== expected.serverName.toLocaleLowerCase()
+    mxid[1].toLocaleLowerCase() !== expected.localpart.toLocaleLowerCase()
   ) {
-    throw new RegistrationSessionError(
-      'The homeserver returned an account identity that did not match this registration.',
-      false,
-    );
+    throw registrationIdentityMismatch();
   }
   return {
     user_id: response.user_id,
@@ -213,6 +209,13 @@ export function authenticatedRegistrationResponse(
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+export function registrationIdentityMismatch(): RegistrationSessionError {
+  return new RegistrationSessionError(
+    'The homeserver returned an account identity that did not match this registration.',
+    false,
+  );
 }
 
 export class RegistrationSessionError extends Error {

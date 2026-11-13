@@ -37,6 +37,7 @@ import {
   readRegistrationPolicies,
   readRegistrationUiaChallenge,
   registrationErrorMessage,
+  registrationIdentityMismatch,
   registrationLocalpart,
   registrationProbeLocalpart,
   type RegistrationAvailability,
@@ -48,7 +49,13 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
-import { accountEstablishment, type LoginMode } from './account-establishment';
+import {
+  UnacceptableAccountError,
+  accountEstablishment,
+  verifyAccountServer,
+  type LoginMode,
+} from './account-establishment';
+import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port';
 import { HostAuthenticationHandoffService } from '@trinity/runtime/host';
 
 export type {
@@ -71,6 +78,7 @@ type InitialRegistrationResult =
 @Injectable({ providedIn: 'root' })
 export class RegistrationService {
   private readonly accounts = inject(AccountRuntimeService);
+  private readonly discovery = inject(AUTHENTICATION_HOMESERVER_DISCOVERY);
   private readonly handoff = inject(HostAuthenticationHandoffService);
   private readonly storage = inject(SessionStorageService);
 
@@ -435,9 +443,25 @@ export class RegistrationService {
         // they use now active.
         () => this.attempt.isCurrent(token),
       );
-      return this.accounts.establishAuthenticatedAccount(
-        command.grant,
-        command.intent,
+      // The same rule as sign-in, so an account that can be created can also be kept.
+      return verifyAccountServer(
+        this.activeBaseUrl,
+        session.user_id,
+        this.discovery,
+        identity.serverName,
+      ).pipe(
+        catchError((error: unknown) => {
+          throw error instanceof UnacceptableAccountError &&
+            error.reason === 'other-server'
+            ? registrationIdentityMismatch()
+            : error;
+        }),
+        switchMap(() =>
+          this.accounts.establishAuthenticatedAccount(
+            command.grant,
+            command.intent,
+          ),
+        ),
       );
     }).pipe(
       switchMap((outcome) => {
