@@ -2737,6 +2737,46 @@ describe('MatrixClientService', () => {
       }
     });
 
+    it('keeps the origin of an account whose start is still in flight', async () => {
+      // Starts run concurrently. One finishing must not replace the set with the started
+      // accounts alone: the other's /versions and first /sync are still outstanding.
+      const setAllowedOrigins = vi.fn();
+      (globalThis as { trinityDesktop?: unknown }).trinityDesktop =
+        desktopBridgeFixture({
+          capabilities: {
+            networkCors: { setAllowedOrigins, allowOrigin: vi.fn() },
+          },
+        });
+      try {
+        const slow = fakeClient('https://other.example');
+        let finishSlowStart = (): void => undefined;
+        slow.startClient.mockReturnValue(
+          new Promise<void>((resolve) => {
+            finishSlowStart = resolve;
+          }),
+        );
+        vi.mocked(createClient)
+          .mockReturnValueOnce(slow as never)
+          .mockReturnValueOnce(fakeClient('https://hs.example') as never);
+        const { svc } = setup();
+
+        const slowStart = firstValueFrom(startAccount(svc, SESSION_B));
+        await firstValueFrom(startAccount(svc, SESSION));
+
+        expect(setAllowedOrigins).toHaveBeenLastCalledWith(
+          expect.arrayContaining([
+            'https://hs.example',
+            'https://other.example',
+          ]),
+        );
+
+        finishSlowStart();
+        await slowStart;
+      } finally {
+        delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
+      }
+    });
+
     it('does not throw off desktop (no bridge)', async () => {
       delete (globalThis as { trinityDesktop?: unknown }).trinityDesktop;
       vi.mocked(createClient).mockReturnValueOnce(fakeClient() as never);
