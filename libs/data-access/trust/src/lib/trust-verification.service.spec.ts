@@ -464,6 +464,57 @@ describe('TrustVerificationService', () => {
     expect(svc.active()?.emoji?.[0]).toEqual({ glyph: '🐶', name: 'Dog' });
   });
 
+  it('cancels a self-verification request that answers after an account switch', async () => {
+    const { svc, crypto, matrix } = setup();
+    let resolveRequest!: (request: ReturnType<typeof fakeRequest>) => void;
+    crypto.requestOwnUserVerification.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRequest = resolve;
+      }),
+    );
+    const start = firstValueFrom(svc.startSelfVerification());
+
+    ngMocks.stubMember(matrix, 'instance', {
+      ...fakeEmitter(),
+      getCrypto: () => ({}),
+      getUserId: () => '@b:hs',
+    } as unknown as MatrixClient);
+    const request = fakeRequest({ initiatedByMe: true });
+    resolveRequest(request);
+
+    await expect(start).rejects.toMatchObject({ kind: 'stale-state' });
+    expect(request.cancel).toHaveBeenCalledOnce();
+    expect(svc.active()).toBeNull();
+  });
+
+  it('cancels a late SAS verifier instead of attaching it to a replacement request', async () => {
+    const { svc, client } = setup();
+    svc.runProjection().subscribe();
+    const oldRequest = fakeRequest({ phase: VerificationPhase.Ready });
+    let resolveStart!: (verifier: ReturnType<typeof fakeVerifier>) => void;
+    oldRequest.startVerification.mockReturnValue(
+      new Promise((resolve) => {
+        resolveStart = resolve;
+      }),
+    );
+    client.emit(CryptoEvent.VerificationRequestReceived, oldRequest);
+    const start = firstValueFrom(svc.startSas());
+
+    oldRequest.setPhase(VerificationPhase.Cancelled);
+    const replacement = fakeRequest({ phase: VerificationPhase.Ready });
+    client.emit(CryptoEvent.VerificationRequestReceived, replacement);
+    const staleVerifier = fakeVerifier();
+    resolveStart(staleVerifier);
+    await start;
+
+    expect(staleVerifier.cancel).toHaveBeenCalledOnce();
+    expect(staleVerifier.verify).not.toHaveBeenCalled();
+    const verifier = fakeVerifier();
+    replacement.startVerification.mockResolvedValue(verifier);
+    await firstValueFrom(svc.startSas());
+    expect(verifier.verify).toHaveBeenCalledOnce();
+  });
+
   it('offers QR directions only for self-verification methods the other device supports', () => {
     const { svc, client } = setup();
     svc.runProjection().subscribe();
