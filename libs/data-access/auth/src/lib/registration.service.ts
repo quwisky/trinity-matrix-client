@@ -98,6 +98,7 @@ export class RegistrationService {
   private activeBaseUrl = '';
   private activeMode: LoginMode = 'replace';
   private activeIdentity?: ExpectedRegistrationIdentity;
+  private saveStarted = false;
 
   /**
    * Probe the side-effect-free username-availability endpoint. A 200 response means
@@ -234,7 +235,7 @@ export class RegistrationService {
     this.errorState.set(null);
     // Runs to the end even when the page goes away: cut off mid-save, it could leave a
     // record whose session nothing restores, or a session nothing signs out.
-    const run = this.establishCreated(token, response).pipe(
+    const run = this.establishCreated(token, response, true).pipe(
       catchError((error: unknown) => this.handleFailure(token, error)),
       finalize(() => {
         if (!this.attempt.isCurrent(token)) {
@@ -249,16 +250,19 @@ export class RegistrationService {
 
   /** Invalidate callbacks from the current route and discard unpersisted UIA state. */
   cancel(): void {
-    // A created session kept only for Retry: leaving means nothing will use it. A Retry
-    // still running decides once it ends.
+    // A created session nothing will use: one kept only for Retry, or one whose save has
+    // not begun. A Retry still running decides once it ends, and a first save is left to
+    // finish.
     const created = this.createdResponse;
     if (
       created &&
-      this.stageState().kind === 'session-error' &&
-      !this.busyState()
+      (this.stageState().kind === 'session-error'
+        ? !this.busyState()
+        : !this.saveStarted)
     ) {
       this.leaveCreatedSession(created, this.activeBaseUrl);
     }
+    this.saveStarted = false;
     this.token = this.attempt.next();
     this.emailInput?.complete();
     this.emailInput = undefined;
@@ -425,6 +429,7 @@ export class RegistrationService {
   private establishCreated(
     token: LatestToken,
     response: RegisterResponse,
+    outlivesPage = false,
   ): Observable<void> {
     this.ensureActive(token);
     this.createdResponse = response;
@@ -456,12 +461,15 @@ export class RegistrationService {
             ? registrationIdentityMismatch()
             : error;
         }),
-        switchMap(() =>
-          this.accounts.establishAuthenticatedAccount(
+        switchMap(() => {
+          // Leaving before this point signed the session out: do not save it.
+          if (!outlivesPage) this.ensureActive(token);
+          this.saveStarted = true;
+          return this.accounts.establishAuthenticatedAccount(
             command.grant,
             command.intent,
-          ),
-        ),
+          );
+        }),
       );
     }).pipe(
       switchMap((outcome) => {
@@ -512,7 +520,9 @@ export class RegistrationService {
       this.errorState.set(
         !retryable
           ? `${this.nonretryableSessionMessage(error)} No local account data was changed.`
-          : 'Your account was created, but Trinity could not finish signing in. ' +
+          : error instanceof UnacceptableAccountError
+            ? error.message
+            : 'Your account was created, but Trinity could not finish signing in. ' +
               'Retry local setup or sign in normally.',
       );
       return EMPTY;
