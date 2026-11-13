@@ -23,7 +23,7 @@
   <p class="hint">Do these emoji match the ones shown on your other device?</p>
 }
 
-<div class="actions">
+<div class="actions" [class.mt-3]="!emoji().length">
   @if (!confirmed() && emoji().length) {
     <button
       trnBtn
