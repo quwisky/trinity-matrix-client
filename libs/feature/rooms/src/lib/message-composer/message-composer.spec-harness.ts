@@ -132,6 +132,7 @@ export function pasteEvent(opts: {
   files?: File[];
   items?: unknown[];
   types?: string[];
+  text?: string;
 }): {
   event: ClipboardEvent;
   preventDefault: Mock;
@@ -142,6 +143,7 @@ export function pasteEvent(opts: {
       files: opts.files ?? [],
       items: opts.items ?? [],
       types: opts.types ?? [],
+      getData: () => opts.text ?? '',
     },
     preventDefault,
   } as unknown as ClipboardEvent;

@@ -344,9 +344,12 @@ export class ComposerAttachmentsService {
       return;
     }
     const data = event.clipboardData;
-    // Office apps add a bitmap of the copied cells or paragraph next to its text; a copied
-    // picture carries no rich text.
-    if (!data || data.types.includes('text/rtf')) {
+    // Office apps add a bitmap of the copied cells or paragraph next to its rich text; a
+    // picture copied out of a document has no plain text beside it.
+    if (
+      !data ||
+      (data.types.includes('text/rtf') && data.getData('text/plain').trim())
+    ) {
       return;
     }
     let images: File[] = Array.from(data.files).filter((file) =>
