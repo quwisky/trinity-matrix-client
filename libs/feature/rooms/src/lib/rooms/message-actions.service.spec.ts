@@ -109,10 +109,17 @@ describe('MessageActionsService', () => {
   });
   const toastShow = vi.fn();
   const mediaSend = vi.fn<() => Observable<MediaTransferEvent>>();
+  const sendMessage = vi.fn<
+    (
+      body: string,
+      mentions?: Mention[],
+    ) => Observable<ConversationTextSendOutcome>
+  >(() => of({ kind: 'sent', eventId: '$caption' }));
   const compose = {
     setDraft,
     draft,
     submit: submitText,
+    sendMessage,
     setTyping,
     intent,
     cancelIntent,
@@ -163,6 +170,8 @@ describe('MessageActionsService', () => {
                 m?: Mention[],
               ) => ReturnType<typeof submitText>
             )(mentions),
+          sendMessage: (body: string, mentions?: Mention[]) =>
+            currentCompose().sendMessage(body, mentions),
           setTyping: (typing: boolean) => currentCompose().setTyping(typing),
         },
         messages: { redact, toggleReaction, retry, cancel, toComposer },
@@ -268,6 +277,99 @@ describe('MessageActionsService', () => {
       actions.onSend({ body: 'x', mentions: [] });
 
       expect(toastShow).not.toHaveBeenCalled();
+    });
+
+    describe('a batch caption, written before its upload', () => {
+      afterEach(() => {
+        intent.set({ kind: 'message' });
+        draft.set('');
+      });
+
+      it('goes out as a new message, not as the edit started since', () => {
+        const { actions } = build();
+        intent.set({ kind: 'edit', eventId: '$old' });
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith('holiday', []);
+        expect(submitText).not.toHaveBeenCalled();
+        expect(setDraft).not.toHaveBeenCalled();
+      });
+
+      it('leaves text typed since in the draft', () => {
+        const { actions } = build();
+        draft.set('next message');
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith('holiday', []);
+        expect(submitText).not.toHaveBeenCalled();
+        expect(setDraft).not.toHaveBeenCalled();
+      });
+
+      it('goes to the room its files went to when another room is focused as the upload settles', () => {
+        const { actions } = build();
+        const upload = new Subject<MediaTransferEvent>();
+        mediaSend.mockReturnValueOnce(upload);
+        const other = { ...conversation, compose: { sendMessage: vi.fn() } };
+
+        actions.onSendMedia({
+          items: [
+            { id: 'a', file: new File(['x'], 'a.png'), media: {} as never },
+          ],
+          caption: 'holiday',
+          // The composer sends the caption from here, before it has rendered the new room.
+          onOutcomes: () =>
+            actions.onSendCaption({ body: 'holiday', mentions: [] }),
+        });
+        focusedConversation = other;
+        upload.next({ kind: 'sent', eventId: '$a' });
+        upload.complete();
+
+        expect(other.compose.sendMessage).not.toHaveBeenCalled();
+        expect(sendMessage).toHaveBeenCalledExactlyOnceWith('holiday', []);
+      });
+
+      it('says so when the caption could not be sent', () => {
+        const { actions } = build();
+        sendMessage.mockReturnValueOnce(
+          of({ kind: 'rejected', failure: 'send-rejected', retryable: true }),
+        );
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+          'Could not send the caption.',
+          expect.objectContaining({ variant: 'danger' }),
+        );
+      });
+
+      it('says so when sending the caption errors', () => {
+        const { actions } = build();
+        sendMessage.mockReturnValueOnce(throwError(() => new Error('defect')));
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(toastShow).toHaveBeenCalledExactlyOnceWith(
+          'Could not send the caption.',
+          expect.objectContaining({ variant: 'danger' }),
+        );
+      });
+
+      it('stays quiet when the caption was kept as the draft of a room left behind', () => {
+        const { actions } = build();
+        sendMessage.mockReturnValueOnce(
+          of({
+            kind: 'rejected',
+            failure: 'conversation-unavailable',
+            retryable: false,
+          }),
+        );
+
+        actions.onSendCaption({ body: 'holiday', mentions: [] });
+
+        expect(toastShow).not.toHaveBeenCalled();
+      });
     });
 
     describe('editing', () => {

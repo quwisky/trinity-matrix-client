@@ -29,6 +29,9 @@ export class ConversationComposeStub implements ConversationCompose {
   readonly submit: ConversationCompose['submit'] = vi.fn(() =>
     of({ kind: 'sent' as const, eventId: '$test' }),
   );
+  readonly sendMessage: ConversationCompose['sendMessage'] = vi.fn(() =>
+    of({ kind: 'sent' as const, eventId: '$test' }),
+  );
 
   setDraft(draft: string): void {
     if (this.intentState().kind === 'edit') this.editDraftState.set(draft);

@@ -241,6 +241,8 @@ export abstract class MessageListBase {
   /** Pin or unpin this event id (host resolves which, given its current pinned state). */
   readonly togglePin = output<string>();
   readonly send = output<{ body: string; mentions: Mention[] }>();
+  /** A batch caption: a new message whatever the composer is editing or replying to by now. */
+  readonly sendCaption = output<{ body: string; mentions: Mention[] }>();
   readonly sendSticker = output<ImagePackImage>();
   /**
    * Send a batch of staged attachments. The sender MUST call `onOutcomes`: it lets the composer
@@ -854,7 +856,7 @@ export abstract class MessageListBase {
    * upload that may have taken minutes, so a since-started edit or reply is not what it belongs to.
    */
   protected onBatchCaption({ text, mentions }: ComposerSubmit): void {
-    this.send.emit({ body: text, mentions });
+    this.sendCaption.emit({ body: text, mentions });
   }
 
   onSubmit({ text, mentions }: ComposerSubmit): void {

@@ -186,7 +186,9 @@ describe('MessageListBase batch caption routing', () => {
     fixture.detectChanges();
     const cmp = fixture.componentInstance;
     const sent: string[] = [];
-    cmp.send.subscribe((e) => sent.push(e.body));
+    const submitted: string[] = [];
+    cmp.sendCaption.subscribe((e) => sent.push(e.body));
+    cmp.send.subscribe((e) => submitted.push(e.body));
 
     cmp.startEdit({ ...msg('$a'), showHeader: true });
     cmp['onBatchCaption']({ text: 'check these out', mentions: [] });
@@ -200,6 +202,7 @@ describe('MessageListBase batch caption routing', () => {
     cmp['onBatchCaption']({ text: 'and these', mentions: [] });
 
     expect(sent).toEqual(['check these out', 'and these']);
+    expect(submitted).toEqual([]); // `send` is routed by what the composer holds now
   });
 
   it('does not forward another text submit while Conversation delivery is active', () => {

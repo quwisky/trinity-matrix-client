@@ -2064,6 +2064,122 @@ describe('ConversationRuntime', () => {
     first.unsubscribe();
   });
 
+  describe('a plain message sent beside what is being composed', () => {
+    const ROOM = { accountId: ALICE, roomId: '!room:example.org' };
+
+    it('goes out as a new message and leaves an edit in progress alone', async () => {
+      const { runtime, sender, sends } = setup(2, undefined, [
+        message('$edit'),
+      ]);
+      const handle = runtime.focus(ROOM);
+      handle.messages.beginEdit('$edit', 'original');
+      handle.compose.setDraft('half-edited');
+
+      const sent = firstValueFrom(handle.compose.sendMessage('holiday'));
+      sends.next({ kind: 'accepted', eventId: '$caption' });
+
+      await expect(sent).resolves.toEqual({
+        kind: 'sent',
+        eventId: '$caption',
+      });
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          body: 'holiday',
+          intent: { kind: 'message' },
+        }),
+      );
+      expect(handle.compose.intent()).toEqual({
+        kind: 'edit',
+        eventId: '$edit',
+      });
+      expect(handle.compose.draft()).toBe('half-edited');
+    });
+
+    it('leaves typed text and a reply in progress alone', async () => {
+      const { runtime, sender, sends } = setup(2, undefined, [
+        message('$target'),
+      ]);
+      const handle = runtime.focus(ROOM);
+      handle.messages.beginReply('$target');
+      handle.compose.setDraft('next message');
+
+      const sent = firstValueFrom(handle.compose.sendMessage('holiday'));
+      sends.next({ kind: 'accepted', eventId: '$caption' });
+      await sent;
+
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ intent: { kind: 'message' } }),
+      );
+      expect(handle.compose.draft()).toBe('next message');
+      expect(handle.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
+    });
+
+    it('keeps text nothing sent after the typed draft', async () => {
+      const { runtime, sends } = setup();
+      const compose = runtime.focus(ROOM).compose;
+      compose.setDraft('next message');
+
+      const sent = firstValueFrom(compose.sendMessage('holiday'));
+      sends.next({ kind: 'rejected', retryable: true });
+
+      await expect(sent).resolves.toMatchObject({ kind: 'rejected' });
+      expect(compose.draft()).toBe('next message\n\nholiday');
+    });
+
+    it('carries its mentions', async () => {
+      const { runtime, sender, sends } = setup();
+      const mention = { userId: '@bob:example.org', display: '@Bob' };
+
+      const sent = firstValueFrom(
+        runtime.focus(ROOM).compose.sendMessage('holiday @Bob', [mention]),
+      );
+      sends.next({ kind: 'accepted', eventId: '$caption' });
+      await sent;
+
+      expect(sender.send).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ mentions: [mention] }),
+      );
+    });
+
+    it('leaves the draft and a reply in progress alone when its echo failed', async () => {
+      const { runtime, sends } = setup(2, undefined, [message('$target')]);
+      const handle = runtime.focus(ROOM);
+      handle.messages.beginReply('$target');
+      handle.compose.setDraft('next message');
+
+      const sent = firstValueFrom(handle.compose.sendMessage('holiday'));
+      sends.next({ kind: 'failed' });
+
+      await expect(sent).resolves.toEqual({
+        kind: 'rejected',
+        failure: 'send-rejected',
+        retryable: true,
+      });
+      // The failed row holds the text, with Retry.
+      expect(handle.compose.draft()).toBe('next message');
+      expect(handle.compose.intent()).toEqual({
+        kind: 'reply',
+        eventId: '$target',
+      });
+    });
+
+    it('keeps the text as its own draft once another conversation is focused', async () => {
+      const { runtime, sender } = setup();
+      const left = runtime.focus(ROOM);
+      runtime.focus({ accountId: ALICE, roomId: '!other:example.org' });
+
+      await expect(
+        firstValueFrom(left.compose.sendMessage('holiday')),
+      ).resolves.toMatchObject({ failure: 'conversation-unavailable' });
+
+      expect(sender.send).not.toHaveBeenCalled();
+      expect(left.compose.draft()).toBe('holiday');
+    });
+  });
+
   it('does not clear newer draft or target changes when an older send settles', async () => {
     const { runtime, sends } = setup(2, undefined, [message('$new-target')]);
     const handle = runtime.focus({

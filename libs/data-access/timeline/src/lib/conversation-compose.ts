@@ -63,6 +63,15 @@ export interface ConversationCompose {
   submit(
     mentions?: readonly Mention[],
   ): Observable<ConversationTextSendOutcome>;
+  /**
+   * Send `body` as a new message, whatever is being composed: the draft and a reply or edit in
+   * progress stay as they are. Text nothing sent or kept goes after the message draft, also
+   * when this conversation is no longer the focused one (`conversation-unavailable`).
+   */
+  sendMessage(
+    body: string,
+    mentions?: readonly Mention[],
+  ): Observable<ConversationTextSendOutcome>;
 }
 
 export interface ConversationComposeSnapshot {
@@ -120,6 +129,8 @@ export class ConversationComposeController {
       cancelIntent: () => this.cancelIntent(),
       setTyping: (typing: boolean) => this.ports.setTyping(typing),
       submit: (mentions: readonly Mention[] = []) => this.submit(mentions),
+      sendMessage: (body: string, mentions: readonly Mention[] = []) =>
+        this.sendMessage(body, mentions),
     });
   }
 
@@ -279,6 +290,71 @@ export class ConversationComposeController {
           this.sendingState.set(false);
         }),
       );
+    });
+  }
+
+  private sendMessage(
+    text: string,
+    mentions: readonly Mention[],
+  ): Observable<ConversationTextSendOutcome> {
+    return defer(() => {
+      const body = text.trim();
+      if (!body) {
+        return of(this.rejected('empty-draft', false));
+      }
+      const keep = () => {
+        if (this.ports.state() === 'retired') this.ports.putBackRetired(body);
+        else this.keepMessageDraft(body);
+      };
+      if (this.ports.state() !== 'focused') {
+        keep();
+        return of(this.rejected('conversation-unavailable', false));
+      }
+      let settled = false;
+
+      return new Observable<ConversationTextSendOutcome>((subscriber) => {
+        const operation = this.ports.send(
+          Object.freeze({
+            key: this.ports.key,
+            body,
+            mentions: Object.freeze([...mentions]),
+            intent: MESSAGE_INTENT,
+          }),
+        );
+        const delivery = operation.outcome
+          .pipe(
+            take(1),
+            defaultIfEmpty({ kind: 'rejected', retryable: true } as const),
+          )
+          .subscribe({
+            next: (outcome) => {
+              settled = true;
+              if (outcome.kind === 'accepted') {
+                subscriber.next({ kind: 'sent', eventId: outcome.eventId });
+              } else if (outcome.kind === 'queued') {
+                subscriber.next(outcome);
+              } else {
+                // A failed echo holds the text; a rejected send left it nowhere.
+                if (outcome.kind === 'rejected') keep();
+                subscriber.next(
+                  this.rejected(
+                    'send-rejected',
+                    outcome.kind === 'failed' || outcome.retryable,
+                  ),
+                );
+              }
+            },
+            error: (error: unknown) => {
+              settled = true;
+              subscriber.error(error);
+            },
+            complete: () => subscriber.complete(),
+          });
+        return () => {
+          if (!settled && operation.cancel()) keep();
+          delivery.unsubscribe();
+        };
+      });
     });
   }
 

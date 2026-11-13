@@ -762,6 +762,16 @@ export class ConversationRuntime {
               retryable: false,
             }),
         ),
+      sendMessage: (body, mentions) =>
+        defer(
+          () =>
+            focused()?.compose.sendMessage(body, mentions) ??
+            of({
+              kind: 'rejected' as const,
+              failure: 'conversation-unavailable' as const,
+              retryable: false,
+            }),
+        ),
     };
   }
 
