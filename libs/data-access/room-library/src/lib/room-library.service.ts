@@ -504,16 +504,7 @@ export class RoomLibraryService {
         return throwError(() => new Error('Not signed in.'));
       }
       const room = client.getRoom(roomId);
-      const events = room?.getLiveTimeline().getEvents() ?? [];
-      // Walk backward for the newest confirmed (non-local-echo) event; no array copy, since the
-      // caller runs this per unread room.
-      let latest: (typeof events)[number] | undefined;
-      for (let i = events.length - 1; i >= 0; i--) {
-        if (!events[i].status) {
-          latest = events[i];
-          break;
-        }
-      }
+      const latest = newestConfirmed(room?.getLiveTimeline().getEvents() ?? []);
       // Clear the flag first, and unconditionally: an empty room returns early below, but a
       // room flagged unread and then marked read must stop being flagged either way.
       const latestId = latest?.getId();
@@ -526,11 +517,15 @@ export class RoomLibraryService {
       const receiptType = this.privacy.sendReadReceipts()
         ? ReceiptType.Read
         : ReceiptType.ReadPrivate;
+      // The row's count includes thread notifications, and the homeserver clears those only
+      // for an unthreaded receipt at or after the reply, so ack the room's newest event.
+      const reply = newestConfirmed(room?.getLastThread()?.events ?? []);
+      const newest = reply && reply.getTs() > latest.getTs() ? reply : latest;
       return this.clearMarkedUnreadOn(roomId, accountId).pipe(
         concatMap(() =>
           forkJoin([
             from(client.setRoomReadMarkers(roomId, latestId)),
-            from(client.sendReadReceipt(latest, receiptType)),
+            from(client.sendReadReceipt(newest, receiptType, true)),
           ]),
         ),
         map(() => void 0),
@@ -889,4 +884,14 @@ function sortKeyChanged(previous: RoomSummary, next: RoomSummary): boolean {
     previous.activityTs !== next.activityTs ||
     previous.name !== next.name
   );
+}
+
+/** The newest confirmed (non-local-echo) event; walks backward without copying the array. */
+function newestConfirmed(
+  events: readonly MatrixEvent[],
+): MatrixEvent | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (!events[i].status) return events[i];
+  }
+  return undefined;
 }
