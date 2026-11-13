@@ -143,6 +143,7 @@ function fakeRoom(opts: {
     getUnreadNotificationCount: (type?: string) =>
       type === 'highlight' ? (opts.highlight ?? 0) : (opts.unread ?? 0),
     getLastActiveTimestamp: () => opts.activity ?? 0,
+    getLastThread: () => undefined,
     getThreads: () =>
       (opts.threads ?? []).map((thread) => ({
         rootEvent: { getTs: () => thread.rootTs },
@@ -1153,6 +1154,7 @@ describe('RoomLibraryService', () => {
         getEvents: () => [{ getId: () => '$old', status: null }, latest],
         getState: () => undefined,
       }),
+      getLastThread: () => undefined,
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
     const setRoomReadMarkers = vi.fn().mockResolvedValue({});
@@ -1169,7 +1171,73 @@ describe('RoomLibraryService', () => {
     await firstValueFrom(svc.markRead('!r:hs'));
 
     expect(setRoomReadMarkers).toHaveBeenCalledWith('!r:hs', '$latest');
+    expect(sendReadReceipt).toHaveBeenCalledWith(
+      latest,
+      ReceiptType.Read,
+      true,
+    );
+  });
+
+  it('acks a newer thread reply for the whole room, so thread notifications clear too', async () => {
+    const latest = { getId: () => '$latest', getTs: () => 100, status: null };
+    const reply = { getId: () => '$reply', getTs: () => 200, status: null };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
+      getLastThread: () => ({
+        events: [reply, { getId: () => '$echo', status: 'sending' }],
+      }),
+    };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const setRoomReadMarkers = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers,
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+
+    await firstValueFrom(svc.markRead('!r:hs'));
+
+    expect(setRoomReadMarkers).toHaveBeenCalledWith('!r:hs', '$latest');
+    expect(sendReadReceipt).toHaveBeenCalledWith(reply, ReceiptType.Read, true);
+    // The reply's time is its sender's word, so the main timeline is acked on its own too.
     expect(sendReadReceipt).toHaveBeenCalledWith(latest, ReceiptType.Read);
+  });
+
+  it('acks the main timeline alone when the last thread reply is older', async () => {
+    const latest = { getId: () => '$latest', getTs: () => 200, status: null };
+    const reply = { getId: () => '$reply', getTs: () => 100, status: null };
+    const room = {
+      getLiveTimeline: () => ({
+        getEvents: () => [latest],
+        getState: () => undefined,
+      }),
+      getLastThread: () => ({ events: [reply] }),
+    };
+    const sendReadReceipt = vi.fn().mockResolvedValue({});
+    const client = {
+      baseUrl: 'https://hs',
+      getRooms: () => [],
+      getRoom: () => room,
+      sendReadReceipt,
+      setRoomReadMarkers: vi.fn().mockResolvedValue({}),
+      on: () => {},
+    };
+    const { svc } = provideRooms(client);
+
+    await firstValueFrom(svc.markRead('!r:hs'));
+
+    expect(sendReadReceipt).toHaveBeenCalledExactlyOnceWith(
+      latest,
+      ReceiptType.Read,
+      true,
+    );
   });
 
   it('acks privately when read receipts are turned off', async () => {
@@ -1179,6 +1247,7 @@ describe('RoomLibraryService', () => {
         getEvents: () => [latest],
         getState: () => undefined,
       }),
+      getLastThread: () => undefined,
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
     const client = {
@@ -1197,6 +1266,7 @@ describe('RoomLibraryService', () => {
     expect(sendReadReceipt).toHaveBeenCalledWith(
       latest,
       ReceiptType.ReadPrivate,
+      true,
     );
   });
 
@@ -1210,6 +1280,7 @@ describe('RoomLibraryService', () => {
         ],
         getState: () => undefined,
       }),
+      getLastThread: () => undefined,
     };
     const sendReadReceipt = vi.fn().mockResolvedValue({});
     const client = {
@@ -1224,7 +1295,11 @@ describe('RoomLibraryService', () => {
 
     await firstValueFrom(svc.markRead('!r:hs'));
 
-    expect(sendReadReceipt).toHaveBeenCalledWith(confirmed, ReceiptType.Read);
+    expect(sendReadReceipt).toHaveBeenCalledWith(
+      confirmed,
+      ReceiptType.Read,
+      true,
+    );
   });
 
   it('is a no-op for an unknown or empty room', async () => {
