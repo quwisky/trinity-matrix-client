@@ -56,13 +56,18 @@ export class VoiceRecorderService {
     return this.recorder !== null;
   }
 
+  /** A recording is running or its microphone is still being opened. */
+  get busy(): boolean {
+    return !!this.recorder || this.acquiring;
+  }
+
   /**
    * Prompt for the mic and begin recording. Rejects when recording isn't supported
    * or the permission is denied. Rejects too while another recording is in progress or
    * starting: resolving would let a second composer stop and send the first one's clip.
    */
   async start(): Promise<void> {
-    if (this.recorder || this.acquiring) {
+    if (this.busy) {
       throw new Error('A voice recording is already in progress.');
     }
     if (!this.supported) {
@@ -75,12 +80,22 @@ export class VoiceRecorderService {
     } finally {
       this.acquiring = false;
     }
+    this.stream = stream;
+    try {
+      this.begin(stream);
+    } catch (error) {
+      // A recorder that cannot be built or started must not keep the mic or the handle.
+      this.teardown();
+      throw error;
+    }
+  }
+
+  private begin(stream: MediaStream): void {
     const mimeType = pickMimeType();
     const recorder = new MediaRecorder(
       stream,
       mimeType ? { mimeType } : undefined,
     );
-    this.stream = stream;
     this.chunks = [];
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {

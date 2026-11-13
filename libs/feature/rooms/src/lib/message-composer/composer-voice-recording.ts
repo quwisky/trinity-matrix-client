@@ -76,6 +76,13 @@ export class ComposerVoiceRecording {
     if (this.recordingVoice() || this.voiceStarting) {
       return;
     }
+    // The recorder is shared: another composer may be recording or opening the mic.
+    if (this.voiceRecorder.busy) {
+      this.toast.show('A voice recording is already in progress.', {
+        duration: 4000,
+      });
+      return;
+    }
     this.voiceStarting = true;
     const conversationAtStart = this.conversation();
     try {

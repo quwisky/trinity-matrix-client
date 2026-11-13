@@ -121,6 +121,23 @@ describe('VoiceRecorderService', () => {
     expect(svc.recording).toBe(true);
   });
 
+  it('releases the mic and works again when the recorder cannot start', async () => {
+    const svc = make();
+    const start = vi
+      .spyOn(FakeMediaRecorder.prototype, 'start')
+      .mockImplementationOnce(() => {
+        throw new Error('NotSupportedError');
+      });
+
+    await expect(svc.start()).rejects.toThrow('NotSupportedError');
+    expect(trackStop).toHaveBeenCalled();
+    expect(svc.busy).toBe(false);
+
+    await svc.start();
+    expect(svc.recording).toBe(true);
+    start.mockRestore();
+  });
+
   it('stop() resolves the clip with a duration and waveform, releasing the mic', async () => {
     const svc = make();
     await svc.start();
