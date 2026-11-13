@@ -128,13 +128,23 @@ export function enter(shift = false): Event {
   return new KeyboardEvent('keydown', { key: 'Enter', shiftKey: shift });
 }
 
-export function pasteEvent(opts: { files?: File[]; items?: unknown[] }): {
+export function pasteEvent(opts: {
+  files?: File[];
+  items?: unknown[];
+  types?: string[];
+  text?: string;
+}): {
   event: ClipboardEvent;
   preventDefault: Mock;
 } {
   const preventDefault = vi.fn();
   const event = {
-    clipboardData: { files: opts.files ?? [], items: opts.items ?? [] },
+    clipboardData: {
+      files: opts.files ?? [],
+      items: opts.items ?? [],
+      types: opts.types ?? [],
+      getData: () => opts.text ?? '',
+    },
     preventDefault,
   } as unknown as ClipboardEvent;
   return { event, preventDefault };
