@@ -58,6 +58,9 @@ const PARTIAL_SETUP_MESSAGE =
 const INCOMPLETE_RECOVERY_MESSAGE =
   'That recovery key is correct, but this account’s recovery was never finished and can’t verify this device. Verify this device with another device instead, or reset your identity if you can’t.';
 
+const RESET_NOT_SIGNED_IN_MESSAGE =
+  'Nothing was reset: this account is not signed in.';
+
 const SETUP_WITHDRAWN_MESSAGE =
   'Nothing was set up: you switched account while this was open.';
 
@@ -262,11 +265,18 @@ export class TrustService {
         accountId === this.cryptoPort.activeAccountId();
       // Captured once: the reset spans several awaits, and an account switch mid-flight
       // must not retarget the rollback (or the UIA user id) onto a different account.
-      const context = stillRequested()
-        ? this.cryptoPort.forAccount(accountId)
-        : null;
-      if (!context) {
+      if (!stillRequested()) {
         throw new ResetWithdrawnError();
+      }
+      const context = this.cryptoPort.forAccount(accountId);
+      if (!context) {
+        // On screen but without a live client (soft-logged-out): no switch happened.
+        throw new TrustOperationError(
+          'reset-recovery',
+          'not-ready',
+          'none',
+          RESET_NOT_SIGNED_IN_MESSAGE,
+        );
       }
       const client = context.client;
       return from(

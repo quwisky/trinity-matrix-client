@@ -1040,6 +1040,23 @@ describe('resetRecovery when another account becomes active', () => {
     expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
   });
 
+  it('says the account is not signed in when it is on screen without a live client', async () => {
+    const { svc, matrix, client } = setup();
+    ngMocks.stubMember(matrix, 'clientFor', (() => null) as never);
+    const prompt = vi.fn().mockResolvedValue('pw');
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'not-ready',
+      message: 'Nothing was reset: this account is not signed in.',
+    });
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(client.deleteMultipleDevices).not.toHaveBeenCalled();
+  });
+
   // Past the pre-auth the old identity is parked and rotated: refusing there would
   // abandon the reset half-way, so the upload's prompt asks, naming its account.
   it('still asks at the key upload after a switch, for the account being reset', async () => {
