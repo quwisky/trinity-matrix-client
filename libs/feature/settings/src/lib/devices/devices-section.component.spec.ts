@@ -19,10 +19,11 @@ import {
 import { fireEvent, render, screen, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import { TrustService } from '@trinity/data-access/trust';
-import { Observable, of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
 import {
   TrustDevicesService,
+  TrustOperationError,
   type DeviceInfo,
 } from '@trinity/data-access/trust';
 import { DevicesSectionComponent } from './devices-section.component';
@@ -312,6 +313,38 @@ describe('DevicesSectionComponent', () => {
       expect(
         await screen.findByText(/still doesn’t have all the keys/),
       ).toBeTruthy();
+      expect(linkerForActiveAccount).not.toHaveBeenCalled();
+    });
+
+    it('points to another device, not to verifying this one, when recovery holds no keys', async () => {
+      recoverWithKey.mockReturnValue(
+        throwError(
+          () =>
+            new TrustOperationError(
+              'recover',
+              'recovery-not-configured',
+              'verify-another-device',
+              'Verify this device with another device instead, or reset your identity if you can’t.',
+            ),
+        ),
+      );
+      const { fixture } = await renderSection();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Link a new device' }),
+      );
+      fixture.detectChanges();
+      fireEvent.input(screen.getByLabelText('Recovery key'), {
+        target: { value: 'EsTx 1234' },
+      });
+      fixture.detectChanges();
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      fixture.detectChanges();
+
+      const alert = await screen.findByRole('alert');
+      expect(alert.textContent).toContain(
+        'Link the new device from the device where you set up encryption',
+      );
+      expect(alert.textContent).not.toContain('reset your identity');
       expect(linkerForActiveAccount).not.toHaveBeenCalled();
     });
 
