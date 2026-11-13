@@ -29,7 +29,7 @@ import { runWithBusy } from '@trinity/util/ui';
  * True both when recovery lacks the keys and when the account has no recovery at all.
  */
 const NO_KEYS_IN_RECOVERY =
-  'This account’s recovery can’t give a new device the keys it needs. Link the new device from the device where you set up encryption, or set up recovery in Security settings and come back.';
+  'This account’s recovery can’t give a new device the keys it needs. Link the new device from the device where you set up encryption instead.';
 
 /**
  * Before linking: this device is verified but lacks a private cross-signing key a new device

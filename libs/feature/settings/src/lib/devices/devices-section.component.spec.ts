@@ -345,6 +345,8 @@ describe('DevicesSectionComponent', () => {
         'Link the new device from the device where you set up encryption',
       );
       expect(alert.textContent).not.toContain('reset your identity');
+      // Security settings offers only the same key entry or a reset in this state.
+      expect(alert.textContent).not.toContain('Security settings');
       expect(linkerForActiveAccount).not.toHaveBeenCalled();
     });
 
