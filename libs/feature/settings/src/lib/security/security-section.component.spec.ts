@@ -6,7 +6,7 @@ import {
 } from '@trinity/application/workspace';
 import { render } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of, throwError } from 'rxjs';
+import { type Observable, Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, type Mock, vi } from 'vitest';
 import {
   TrustService,
@@ -63,6 +63,7 @@ async function build(
   const importRoomKeys = over.importRoomKeys ?? vi.fn(() => of(undefined));
   const prompt = over.prompt ?? vi.fn(() => of('pw'));
   const toastShow = vi.fn();
+  const activeUserId = signal<string | null>('@alice:example.org');
   const fileSave =
     over.fileSave ?? vi.fn(() => of({ kind: 'completed' as const }));
   const { fixture, container } = await render(SecuritySectionComponent, {
@@ -100,6 +101,7 @@ async function build(
         spaceLow: () => Promise.resolve(opts.spaceLow ?? false),
       }),
       MockProvider(MatrixClientService, {
+        activeUserId: activeUserId.asReadonly(),
         cryptoStoreEncrypted: signal(
           opts.cryptoStoreEncrypted ?? true,
         ).asReadonly(),
@@ -116,6 +118,7 @@ async function build(
     prompt,
     toastShow,
     fileSave,
+    activeUserId,
   };
 }
 
@@ -526,7 +529,7 @@ describe('SecuritySectionComponent', () => {
     expect(exportRoomKeys).toHaveBeenCalledWith('pw');
     expect(fileSave).toHaveBeenCalledWith({
       bytes: expect.any(Blob),
-      filename: 'trinity-room-keys.txt',
+      filename: 'trinity-room-keys-alice_example.org.txt',
     });
     const [{ bytes }] = fileSave.mock.calls[0] as [{ bytes: Blob }];
     await expect(bytes.text()).resolves.toBe('ARMORED');
@@ -640,5 +643,134 @@ describe('SecuritySectionComponent', () => {
       expect.stringContaining('Incorrect passphrase'),
       expect.objectContaining({ variant: 'danger' }),
     );
+  });
+
+  describe('when another account becomes active while a key prompt is open', () => {
+    const NOT_EXPORTED =
+      'Keys not exported: you switched account while this was open.';
+    const NOT_IMPORTED =
+      'Keys not imported: you switched account while this was open.';
+
+    it('does not export the new account’s keys when the passphrase is entered after the switch', async () => {
+      const passphrase = new Subject<string | null>();
+      const prompt = vi.fn(() => passphrase);
+      const { cmp, exportRoomKeys, fileSave, toastShow, activeUserId } =
+        await build({}, { prompt });
+
+      cmp.exportKeys();
+      activeUserId.set('@bob:example.org');
+      passphrase.next('pw');
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(exportRoomKeys).not.toHaveBeenCalled();
+      expect(fileSave).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        NOT_EXPORTED,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
+
+    it('does not export the new account’s keys when the passphrase is repeated after the switch', async () => {
+      const repeated = new Subject<string | null>();
+      const prompt = vi
+        .fn()
+        .mockReturnValueOnce(of('pw'))
+        .mockReturnValue(repeated);
+      const { cmp, exportRoomKeys, fileSave, toastShow, activeUserId } =
+        await build({}, { prompt });
+
+      cmp.exportKeys();
+      activeUserId.set('@bob:example.org');
+      repeated.next('pw');
+
+      expect(exportRoomKeys).not.toHaveBeenCalled();
+      expect(fileSave).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        NOT_EXPORTED,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
+
+    it('writes no file when the switch comes while the keys are being exported', async () => {
+      const armored = new Subject<string>();
+      const exportRoomKeys = vi.fn(() => armored);
+      const { cmp, fileSave, toastShow, activeUserId } = await build(
+        {},
+        { exportRoomKeys },
+      );
+
+      cmp.exportKeys();
+      activeUserId.set('@bob:example.org');
+      armored.next('ARMORED');
+      armored.complete();
+
+      expect(fileSave).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        NOT_EXPORTED,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+      expect(cmp.busy()).toBe(false);
+    });
+
+    it('withdraws an open passphrase prompt on the switch', async () => {
+      const prompt = vi.fn(
+        (_: { closeWhen?: Observable<unknown> }) =>
+          new Subject<string | null>(),
+      );
+      const { cmp, activeUserId } = await build({}, { prompt });
+      const withdrawn = vi.fn();
+
+      cmp.exportKeys();
+      prompt.mock.calls[0][0].closeWhen?.subscribe(withdrawn);
+      TestBed.tick();
+      expect(withdrawn).not.toHaveBeenCalled();
+
+      activeUserId.set('@bob:example.org');
+      TestBed.tick();
+
+      expect(withdrawn).toHaveBeenCalledOnce();
+    });
+
+    it('does not import the file into the new account when its passphrase is entered after the switch', async () => {
+      const passphrase = new Subject<string | null>();
+      const prompt = vi.fn(
+        (_: { closeWhen?: Observable<unknown> }) => passphrase,
+      );
+      const { cmp, importRoomKeys, toastShow, activeUserId } = await build(
+        {},
+        { prompt },
+      );
+      const file = { text: vi.fn(() => Promise.resolve('ARMORED-FILE')) };
+
+      cmp.onKeyFile({
+        target: { files: [file], value: '' },
+      } as unknown as Event);
+      expect(prompt.mock.calls[0][0].closeWhen).toBeDefined();
+      activeUserId.set('@bob:example.org');
+      passphrase.next('pw');
+
+      expect(file.text).not.toHaveBeenCalled();
+      expect(importRoomKeys).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        NOT_IMPORTED,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
+
+    it('does not ask for a passphrase when the switch came while the file was being chosen', async () => {
+      const { cmp, prompt, importRoomKeys, toastShow, activeUserId } =
+        await build();
+
+      cmp.pickKeyFile();
+      activeUserId.set('@bob:example.org');
+      cmp.onKeyFile(fileEvent('ARMORED-FILE'));
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(importRoomKeys).not.toHaveBeenCalled();
+      expect(toastShow).toHaveBeenCalledWith(
+        NOT_IMPORTED,
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
   });
 });
