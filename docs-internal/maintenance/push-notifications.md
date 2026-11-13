@@ -491,11 +491,12 @@ does not refresh again. These are the results, shared by both renderers through 
 | Entry with no token (signed-out OAuth account) | none                                                                        | "Open Trinity to read this message", no read                                            |
 | Before first unlock (iOS)                      | none                                                                        | The gateway's alert as delivered: the keychain can't be read yet                        |
 
-**Who presents in the background.** Once Android push is registered,
-`PushService.backgroundDelivery` is `push`, and the notification policy stops the running
-app presenting its own message notifications while the page is hidden
-(`document.visibilityState === 'hidden'`, not merely unfocused), so `TrinityMessagingService`
-is the only source. Opted-in reaction notifications are exempt, because no push carries
+**Who presents in the background.** Once an account's Android pusher carries the device
+token, `PushService.backgroundDeliveryFor(userId)` is `push` for it, and the notification
+policy stops the running app presenting that account's message notifications while the page
+is hidden (`document.visibilityState === 'hidden'`, not merely unfocused), so
+`TrinityMessagingService` is the only source. An account whose homeserver refused or dropped
+its pusher stays with the app. Opted-in reaction notifications are exempt, because no push carries
 them. A visible app, and iOS, web and desktop, present as before.
 
 **Opening a room** clears that account's delivered notifications for it:
