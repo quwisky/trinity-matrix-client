@@ -785,13 +785,14 @@ describe('replyPreview', () => {
       status?: string | null;
       ts?: number;
       encryptedAt?: number;
+      body?: unknown;
     } = {},
   ) =>
     ({
       findEventById: () =>
         ({
           getSender: () => '@a:hs',
-          getOriginalContent: () => ({ body: 'sign in here' }),
+          getOriginalContent: () => ({ body: over.body ?? 'sign in here' }),
           getTs: () => over.ts ?? 200,
           isRedacted: () => over.redacted ?? false,
           isEncrypted: () => over.encrypted ?? false,
@@ -837,6 +838,10 @@ describe('replyPreview', () => {
     expect(
       replyPreview(roomWith({ redacted: true }), '$t', true),
     ).toMatchObject({ body: '(message deleted)', mark: null });
+  });
+
+  it('quotes a body that is not text as empty instead of throwing', () => {
+    expect(replyPreview(roomWith({ body: 1 }), '$t', false)?.body).toBe('…');
   });
 
   it('judges the mark on the subject whose text is shown', () => {

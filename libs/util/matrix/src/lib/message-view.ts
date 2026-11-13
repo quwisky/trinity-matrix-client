@@ -238,7 +238,7 @@ export function replyPreview(
   const redacted = target.isRedacted();
   const raw = redacted
     ? '(message deleted)'
-    : stripReplyFallbackText((contentOf(target)['body'] as string) ?? '');
+    : stripReplyFallbackText(contentOf(target)['body']);
   return {
     id: eventId,
     senderName,
@@ -663,9 +663,13 @@ export function asEncryptedFile(value: unknown): EncryptedFileInfo | null {
 
 /**
  * Strip the rich-reply fallback from a body: the leading `> …` quote lines and
- * the blank line that separates them from the actual reply text.
+ * the blank line that separates them from the actual reply text. A body that is not
+ * text, which only a malformed event carries, reads as empty.
  */
-export function stripReplyFallbackText(body: string): string {
+export function stripReplyFallbackText(body: unknown): string {
+  if (typeof body !== 'string') {
+    return '';
+  }
   if (!body.startsWith('>')) {
     return body;
   }

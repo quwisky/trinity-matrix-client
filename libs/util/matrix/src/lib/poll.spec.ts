@@ -17,8 +17,8 @@ import {
 const POLL_ID = '$poll';
 
 function startEvent(
-  question: string,
-  options: string[],
+  question: unknown,
+  options: unknown[],
   maxSelections: unknown = 1,
 ): MatrixEvent {
   return {
@@ -121,6 +121,17 @@ describe('isPollStart', () => {
 });
 
 describe('buildPollView', () => {
+  it('reads question and answer text that is not a string as empty', () => {
+    const view = buildPollView(
+      client,
+      room([]),
+      startEvent(5, [{ nested: true }, 'Pear']),
+      false,
+    );
+    expect(view.question).toBe('');
+    expect(view.options.map((o) => o.text)).toEqual(['', 'Pear']);
+  });
+
   it('reads the question and answers', () => {
     const view = buildPollView(
       client,
@@ -294,6 +305,25 @@ describe('buildPollView', () => {
     const view = buildPollView(client, room([]), hostile, false);
     expect(view.options).toEqual([]);
     expect(view.question).toBe('Q');
+  });
+
+  it('skips an answer that is not an object', () => {
+    const hostile = {
+      getId: () => POLL_ID,
+      getType: () => 'm.poll.start',
+      getTs: () => 0,
+      isRedacted: () => false,
+      replacingEvent: () => null,
+      getOriginalContent: () => ({
+        'm.poll.start': {
+          question: { 'm.text': 'Q' },
+          answers: [null, 5, { id: 'a0', 'm.text': 'A' }],
+        },
+      }),
+    } as unknown as MatrixEvent;
+
+    const view = buildPollView(client, room([]), hostile, false);
+    expect(view.options.map((option) => option.text)).toEqual(['A']);
   });
 
   it('counts every answer of a multi-select response', () => {

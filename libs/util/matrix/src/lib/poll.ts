@@ -53,12 +53,10 @@ function extensibleText(obj: Record<string, unknown> | undefined): string {
   if (!obj) {
     return '';
   }
-  return (
-    (obj[M_TEXT.name] as string) ??
-    (obj[M_TEXT.altName] as string) ??
-    (obj['body'] as string) ??
-    ''
+  const text = [obj[M_TEXT.name], obj[M_TEXT.altName], obj['body']].find(
+    (candidate): candidate is string => typeof candidate === 'string',
   );
+  return text ?? '';
 }
 
 /** The `m.poll.start` subtype from a start event's content (either namespace). */
@@ -231,12 +229,11 @@ export function buildPollView(
   const rawAnswers = subtype?.['answers'];
   const answers = (
     Array.isArray(rawAnswers) ? rawAnswers.slice(0, MAX_POLL_ANSWERS) : []
-  ) as Array<Record<string, unknown>>;
-  const optionIds = new Set(
-    answers.map((a) =>
-      String((a && typeof a === 'object' ? a['id'] : undefined) ?? ''),
-    ),
+  ).filter(
+    (answer): answer is Record<string, unknown> =>
+      typeof answer === 'object' && answer !== null,
   );
+  const optionIds = new Set(answers.map((a) => String(a['id'] ?? '')));
   const maxSelections = maxSelectionsOf(
     subtype?.['max_selections'],
     answers.length,

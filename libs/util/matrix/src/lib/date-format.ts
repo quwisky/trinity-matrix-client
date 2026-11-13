@@ -91,7 +91,15 @@ function formatterFor(shape: Shape, prefs: DateTimePrefs): CachedFormatter {
   return built;
 }
 
+/** Whether `ts` is inside the ECMA-262 time range; outside it `Intl` throws a RangeError. */
+function inDateRange(ts: number): boolean {
+  return Math.abs(ts) <= 8.64e15;
+}
+
 function formatWith(shape: Shape, prefs: DateTimePrefs, ts: number): string {
+  if (!inDateRange(ts)) {
+    return '';
+  }
   const { formatter, text } = formatterFor(shape, prefs);
   let formatted = text.get(ts);
   if (formatted === undefined) {
@@ -161,6 +169,9 @@ function optionsFor(
  * rather than the locale's separator: the reader has opted out of the locale's convention.
  */
 function explicitDate(ts: number, date: Exclude<DateFormat, 'system'>): string {
+  if (!inDateRange(ts)) {
+    return '';
+  }
   const at = new Date(ts);
   const year = String(at.getFullYear()).padStart(4, '0');
   const month = String(at.getMonth() + 1).padStart(2, '0');
@@ -207,7 +218,8 @@ export function formatDateTime(
       ts,
     );
   }
-  return `${explicitDate(ts, prefs.date)}, ${formatClockTime(ts, prefs, withSeconds)}`;
+  const date = explicitDate(ts, prefs.date);
+  return date && `${date}, ${formatClockTime(ts, prefs, withSeconds)}`;
 }
 
 /**
