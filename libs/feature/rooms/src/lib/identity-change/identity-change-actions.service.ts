@@ -1,5 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnToastService } from '@trinity/components/overlay';
+import { IdentityService } from '@trinity/data-access/identity';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
@@ -29,6 +31,8 @@ export class IdentityChangeActionsService {
   private readonly verification = inject(TrustVerificationService);
   private readonly rooms = inject(RoomLibraryService);
   private readonly toast = inject(TrnToastService);
+  private readonly workspace = inject(WorkspaceNavigationService);
+  private readonly identity = inject(IdentityService);
   private readonly running = signal<ReadonlyMap<string, IdentityChangeAction>>(
     new Map(),
   );
@@ -45,6 +49,7 @@ export class IdentityChangeActionsService {
       'acknowledge',
       () => this.trust.acknowledgeIdentity(target.userId),
       `Couldn't accept ${target.name}'s new identity.`,
+      'Identity not accepted',
     );
   }
 
@@ -55,6 +60,7 @@ export class IdentityChangeActionsService {
       'withdraw',
       () => this.trust.withdrawVerification(target.userId),
       `Couldn't withdraw verification for ${target.name}.`,
+      'Verification not withdrawn',
     );
   }
 
@@ -72,6 +78,7 @@ export class IdentityChangeActionsService {
           this.rooms.createDirectMessage(target.userId),
         ),
       null,
+      'Verification not started',
       started,
     );
   }
@@ -81,9 +88,19 @@ export class IdentityChangeActionsService {
     kind: IdentityChangeAction,
     action: () => Observable<unknown>,
     failure: string | null,
+    refusal: string,
     succeeded?: () => void,
   ): void {
     if (this.pending(userId)) return;
+    // The person is listed for the shown Account and the action runs as the client's active
+    // one, which changes a moment earlier: while they differ it would run as the wrong one.
+    if (this.workspace.activeAccountId() !== this.identity.activeUserId()) {
+      this.toast.show(`${refusal}: you switched account while this was open.`, {
+        duration: 4000,
+        variant: 'danger',
+      });
+      return;
+    }
     this.running.update((map) => new Map(map).set(userId, kind));
     action()
       .pipe(

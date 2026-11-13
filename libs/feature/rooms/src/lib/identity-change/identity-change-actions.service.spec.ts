@@ -1,5 +1,8 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnToastService } from '@trinity/components/overlay';
+import { IdentityService } from '@trinity/data-access/identity';
 import { RoomLibraryService } from '@trinity/data-access/room-library';
 import {
   TrustOperationError,
@@ -19,12 +22,17 @@ describe('IdentityChangeActionsService', () => {
   let startUserVerification: Mock;
   let show: Mock;
   const dm = of('!dm:hs');
+  /** The Account the banner and its lists show, and the one the client acts as. */
+  let shownAccountId: ReturnType<typeof signal<string | null>>;
+  let clientAccountId: ReturnType<typeof signal<string | null>>;
 
   beforeEach(() => {
     acknowledgeIdentity = vi.fn(() => of(undefined));
     withdrawVerification = vi.fn(() => of(undefined));
     startUserVerification = vi.fn(() => of(undefined));
     show = vi.fn();
+    shownAccountId = signal<string | null>('@me:hs');
+    clientAccountId = signal<string | null>('@me:hs');
     TestBed.configureTestingModule({
       providers: [
         MockProvider(TrustUsersService, {
@@ -34,6 +42,12 @@ describe('IdentityChangeActionsService', () => {
         MockProvider(TrustVerificationService, { startUserVerification }),
         MockProvider(RoomLibraryService, { createDirectMessage: () => dm }),
         MockProvider(TrnToastService, { show }),
+        MockProvider(WorkspaceNavigationService, {
+          activeAccountId: shownAccountId.asReadonly(),
+        }),
+        MockProvider(IdentityService, {
+          activeUserId: clientAccountId.asReadonly(),
+        }),
       ],
     });
   });
@@ -90,5 +104,37 @@ describe('IdentityChangeActionsService', () => {
       expect.objectContaining({ variant: 'danger' }),
     );
     expect(service().pending('@bob:hs')).toBeNull();
+  });
+
+  describe('once the client has switched account, before the shown one follows', () => {
+    beforeEach(() => clientAccountId.set('@other:hs'));
+
+    it('does not start verification, or a DM, as the new account', () => {
+      const started = vi.fn();
+      service().verifyAgain(BOB, started);
+
+      expect(startUserVerification).not.toHaveBeenCalled();
+      expect(started).not.toHaveBeenCalled();
+      expect(show).toHaveBeenCalledWith(
+        'Verification not started: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
+
+    it('does not accept or withdraw as the new account', () => {
+      service().acknowledge(BOB);
+      service().withdraw(BOB);
+
+      expect(acknowledgeIdentity).not.toHaveBeenCalled();
+      expect(withdrawVerification).not.toHaveBeenCalled();
+      expect(show).toHaveBeenCalledWith(
+        'Identity not accepted: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+      expect(show).toHaveBeenCalledWith(
+        'Verification not withdrawn: you switched account while this was open.',
+        expect.objectContaining({ variant: 'danger' }),
+      );
+    });
   });
 });
