@@ -393,17 +393,19 @@ export class MessageSearchComponent {
       return [{ text: snippet, match: false }];
     }
     const parts: HighlightPart[] = [];
-    const lower = snippet.toLowerCase();
-    const needle = term.toLowerCase();
+    // Matched on the snippet itself: offsets found in a lowercased copy drift where
+    // lowercasing changes the length ('İ' becomes two code units).
+    const needle = new RegExp(
+      term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      'giu',
+    );
     let from = 0;
-    let at = lower.indexOf(needle, from);
-    while (at >= 0) {
-      if (at > from) {
-        parts.push({ text: snippet.slice(from, at), match: false });
+    for (const found of snippet.matchAll(needle)) {
+      if (found.index > from) {
+        parts.push({ text: snippet.slice(from, found.index), match: false });
       }
-      parts.push({ text: snippet.slice(at, at + needle.length), match: true });
-      from = at + needle.length;
-      at = lower.indexOf(needle, from);
+      parts.push({ text: found[0], match: true });
+      from = found.index + found[0].length;
     }
     if (from < snippet.length) {
       parts.push({ text: snippet.slice(from), match: false });
