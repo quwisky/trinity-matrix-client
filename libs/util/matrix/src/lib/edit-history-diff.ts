@@ -41,10 +41,15 @@ function peelEdgeWhitespace(ops: DiffOp[]): DiffOp[] {
     if (op.kind !== 'add') {
       return [op];
     }
-    const [, lead, core, trail] = /^(\s*)([\s\S]*?)(\s*)$/.exec(op.text) ?? [];
-    if (core === undefined || core === '') {
+    // Sliced, not matched: a pattern with a lazy middle backtracks quadratically over a
+    // long run of spaces inside the addition, and the sender picks that text.
+    const core = op.text.trim();
+    if (core === '') {
       return [op];
     }
+    const leadLength = op.text.length - op.text.trimStart().length;
+    const lead = op.text.slice(0, leadLength);
+    const trail = op.text.slice(leadLength + core.length);
     return [
       ...(lead ? [{ kind: 'same' as const, text: lead }] : []),
       { kind: 'add' as const, text: core },
