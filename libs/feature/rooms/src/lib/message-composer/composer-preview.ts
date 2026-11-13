@@ -52,7 +52,7 @@ export function composerPreview(
     const names = Object.fromEntries(
       mentions.map((m) => [m.userId, m.display.replace(/^@/, '')]),
     );
-    return { html: sanitizeMatrixHtml(html, false, names), rich: true };
+    return { html: sanitizeMatrixHtml(html, null, names), rich: true };
   }
   // No formatted_body means plain text, which the timeline linkifies (raw body when there is
   // no URL); mirror both, including the container and link behaviour (an external link opens in

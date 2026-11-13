@@ -185,7 +185,7 @@ describe('message links that leave Trinity', () => {
       'see https://example.org/x and https://matrix.to/#/!room:hs',
       null,
       false,
-      false,
+      null,
     );
     const links = parse(textHtml ?? '').querySelectorAll('a');
 

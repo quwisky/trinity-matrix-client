@@ -456,21 +456,21 @@ export function mapStatus(
  */
 export const UNDECRYPTABLE_BODY = '⚠️ Unable to decrypt this message';
 
-/** Whether an event's `m.mentions` names the viewer — the only trustworthy "this is for
- * you" signal, since everything else in the content is written by the sender. */
-function mentionsViewer(
+/** The viewer's ID when an event's `m.mentions` names them, else null — the only trustworthy
+ * "this is for you" signal, since everything else in the content is written by the sender. */
+function mentionedViewerId(
   content: Record<string, unknown>,
   selfUserId: string,
-): boolean {
+): string | null {
   if (selfUserId === '') {
-    return false;
+    return null;
   }
   const mentions = content['m.mentions'];
   if (typeof mentions !== 'object' || mentions === null) {
-    return false;
+    return null;
   }
   const ids = (mentions as { user_ids?: unknown }).user_ids;
-  return Array.isArray(ids) && ids.includes(selfUserId);
+  return Array.isArray(ids) && ids.includes(selfUserId) ? selfUserId : null;
 }
 
 /** The text of a message body, rendered every way the msgtype branches need it. */
@@ -508,7 +508,7 @@ export function renderTextBody(
     typeof content['body'] === 'string' ? content['body'] : '',
     rawHtml,
     isReply,
-    mentionsViewer(content, selfUserId),
+    mentionedViewerId(content, selfUserId),
     mentionNamesIn(rawHtml, nameOf),
   );
 }
@@ -518,7 +518,7 @@ export function renderNormalizedTextBody(
   body: string,
   formattedBody: string | null,
   isReply: boolean,
-  addressesViewer: boolean,
+  addressedViewerId: string | null,
   mentionNames: Readonly<Record<string, string>> = {},
 ): RenderedText {
   const text = isReply ? stripReplyFallbackText(body) : body;
@@ -529,7 +529,7 @@ export function renderNormalizedTextBody(
   const html =
     strippedHtml === null
       ? null
-      : sanitizeMatrixHtml(strippedHtml, addressesViewer, mentionNames);
+      : sanitizeMatrixHtml(strippedHtml, addressedViewerId, mentionNames);
 
   // Bare URLs are clickable in both forms a body arrives in; a caption keeps `html` unlinked.
   return {

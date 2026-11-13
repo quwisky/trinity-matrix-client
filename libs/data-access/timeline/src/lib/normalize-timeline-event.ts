@@ -83,17 +83,14 @@ function finiteNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
-function mentionsViewer(
+function mentionedViewerId(
   content: Readonly<Record<string, unknown>>,
   viewerId: string,
-): boolean {
-  if (viewerId === '') return false;
+): string | null {
+  if (viewerId === '') return null;
   const mentions = record(content['m.mentions']);
   const userIds = mentions['user_ids'];
-  return (
-    Array.isArray(userIds) &&
-    userIds.some((value) => typeof value === 'string' && value === viewerId)
-  );
+  return Array.isArray(userIds) && userIds.includes(viewerId) ? viewerId : null;
 }
 
 function mentionNames(
@@ -144,7 +141,7 @@ function normalizeMedia(
     caption: captioned ? body : null,
     formattedCaption,
     replyFallback: read(() => Boolean(event.replyEventId), false),
-    addressesViewer: mentionsViewer(content, viewerId),
+    addressedViewerId: mentionedViewerId(content, viewerId),
     mentionNames: mentionNames(room, formattedCaption),
   });
 }
@@ -175,7 +172,7 @@ function normalizeSticker(
     caption: null,
     formattedCaption: null,
     replyFallback: false,
-    addressesViewer: false,
+    addressedViewerId: null,
     mentionNames: Object.freeze({}),
   });
 }
@@ -622,7 +619,7 @@ export function normalizeTimelineEvent(
       body: content['body'],
       formattedBody,
       replyFallback: read(() => Boolean(event.replyEventId), false),
-      addressesViewer: mentionsViewer(content, viewerId),
+      addressedViewerId: mentionedViewerId(content, viewerId),
       mentionNames: mentionNames(room, formattedBody),
       roomEncrypted: read(() => room.hasEncryptionStateEvent?.() ?? true, true),
       roomId: room.roomId,
