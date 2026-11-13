@@ -166,7 +166,12 @@ export class TrustDevicesService {
     });
     // Drop a stale result if a newer load — or a mutation (rename/remove) — has
     // happened since this one began, so a slow reload can't resurrect a device.
-    if (gen === this.loadGen) {
+    // Only a connected projection resets on an Account switch, so a detached read is
+    // answered without being kept.
+    if (
+      gen === this.loadGen &&
+      (projectedClient || this.projection.isConnected())
+    ) {
       this._devices.set(result);
     }
     return result;
