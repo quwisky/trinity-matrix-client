@@ -14,7 +14,15 @@ import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
-import { Observable, filter, finalize, firstValueFrom, take } from 'rxjs';
+import {
+  Observable,
+  Subject,
+  filter,
+  finalize,
+  firstValueFrom,
+  merge,
+  take,
+} from 'rxjs';
 import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
@@ -89,6 +97,13 @@ export class EncryptionUnlockPage {
   private readonly switchedAccount$ = toObservable(
     this.crypto.activeAccountId,
   ).pipe(filter((active) => active !== this.accountId()));
+  private readonly left$ = new Subject<void>();
+  /**
+   * Closes a prompt opened from here. On a phone this screen is a routed page: a switch
+   * navigates away and destroys it before the Account changes, which would otherwise leave
+   * its prompt open over the other Account's room.
+   */
+  private readonly gone$ = merge(this.switchedAccount$, this.left$);
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
   // Present only when opened as a dialog (desktop); null on the routed page.
@@ -198,6 +213,7 @@ export class EncryptionUnlockPage {
   );
 
   constructor() {
+    this.destroyRef.onDestroy(() => this.left$.next());
     this.switchedAccount$.pipe(takeUntilDestroyed()).subscribe(() => {
       // The key was typed for the Account that left the screen.
       this.clearKey();
@@ -249,7 +265,7 @@ export class EncryptionUnlockPage {
       this.error.set(`Nothing was reset: ${SWITCHED_ACCOUNT}`);
       return;
     }
-    confirmResetIntent(this.alert, asked, this.switchedAccount$)
+    confirmResetIntent(this.alert, asked, this.gone$)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
         if (intent === 'cancelled') {
@@ -281,10 +297,7 @@ export class EncryptionUnlockPage {
     this.resetting.set(true);
     this.error.set(null);
     this.crypto
-      .resetRecovery(
-        accountId,
-        resetPasswordPrompt(this.alert, this.switchedAccount$),
-      )
+      .resetRecovery(accountId, resetPasswordPrompt(this.alert, this.gone$))
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => {

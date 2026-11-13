@@ -8,7 +8,14 @@ import {
 } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
-import { filter, firstValueFrom, tap, type Observable } from 'rxjs';
+import {
+  filter,
+  firstValueFrom,
+  merge,
+  Subject,
+  tap,
+  type Observable,
+} from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
@@ -56,6 +63,12 @@ export class EncryptionSetupPage {
   private readonly switchedAccount$ = toObservable(
     this.crypto.activeAccountId,
   ).pipe(filter((active) => active !== this.accountId));
+  private readonly left$ = new Subject<void>();
+  /** Also on leaving: on a phone a switch destroys this routed page before the Account changes. */
+  private readonly gone$ = merge(this.switchedAccount$, this.left$);
+  private readonly stopOnLeave = this.destroyRef.onDestroy(() =>
+    this.left$.next(),
+  );
 
   /** What the last failed setup said the user can do about it; cleared by the next try. */
   private readonly failureRecovery = signal<TrustRecovery | null>(null);
@@ -187,7 +200,7 @@ export class EncryptionSetupPage {
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
-        closeWhen: this.switchedAccount$,
+        closeWhen: this.gone$,
       }),
     );
 

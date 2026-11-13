@@ -106,6 +106,24 @@ describe('EncryptionSetupPage', () => {
     const REFUSED =
       'Nothing was set up: you switched account while this was open.';
 
+    it('closes the password prompt when the page itself goes away, as a switch does on a phone', async () => {
+      const { fixture, crypto } = await setup();
+      const prompt = vi
+        .mocked(TestBed.inject(TrnAlertService).prompt$)
+        .mockReturnValue(new Subject<string | null>());
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+      fixture.componentInstance.setUp();
+      void vi.mocked(crypto.setUp).mock.calls[0][0]('@me:hs', true);
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+
+      fixture.destroy();
+
+      expect(withdrawn).toBe(true);
+    });
+
     it('closes the password prompt', async () => {
       const { fixture, crypto, activeAccountId } = await setup();
       const prompt = vi

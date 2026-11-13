@@ -442,6 +442,21 @@ describe('EncryptionUnlockPage', () => {
       );
     });
 
+    it('withdraws the confirmation when the page itself goes away, as a switch does on a phone', async () => {
+      const { fixture, prompt } = await renderPage();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(new Subject<string | null>());
+      fixture.componentInstance.resetRecovery();
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+
+      fixture.destroy();
+
+      expect(withdrawn).toBe(true);
+    });
+
     it('withdraws the confirmation when another account becomes active', async () => {
       const { fixture, prompt, activeAccountId } = await renderPage();
       prompt.mockReset();
