@@ -800,6 +800,8 @@ that marker inside a version block. Prereleases leave the user guide alone. The 
 guide always deploys from `main`. Between merging the back-merge PR and publishing the release,
 `docs-pages.yml` builds the user guide from the newest commit whose version is
 published, and publishing the release re-runs the workflow on `main` to switch it.
+A release it cannot read (an API error, not a draft) fails the build instead of deploying
+an older guide; re-run it.
 
 The release verifier checks the tag format, ancestry and both manifest versions.
 Ancestry shows that the commit is contained in `main` or a `release/*` branch; it does not
