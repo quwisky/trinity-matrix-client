@@ -15,7 +15,6 @@ import {
 import { ClientEvent, MatrixError } from 'matrix-js-sdk';
 import {
   CryptoEvent,
-  deriveRecoveryKeyFromPassphrase,
   encodeRecoveryKey,
   type BootstrapCrossSigningOpts,
 } from 'matrix-js-sdk/lib/crypto-api';
@@ -25,17 +24,6 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { secretsBundle, setup, uiaError } from './trust.spec-harness';
-
-// PBKDF2 (WebCrypto subtle) isn't available in the test environment, so stub the
-// passphrase derivation while keeping the real encode/decode + CryptoEvent.
-vi.mock('matrix-js-sdk/lib/crypto-api', async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import('matrix-js-sdk/lib/crypto-api')>();
-  return {
-    ...actual,
-    deriveRecoveryKeyFromPassphrase: vi.fn(async () => new Uint8Array(32)),
-  };
-});
 
 // A valid recovery key (round-trips through decodeRecoveryKey to 32 bytes).
 const VALID_KEY = encodeRecoveryKey(new Uint8Array(32)) as string;
@@ -452,39 +440,6 @@ describe('TrustService', () => {
         crypto.loadSessionBackupPrivateKeyFromSecretStorage,
       ).not.toHaveBeenCalled();
     });
-  });
-
-  describe('recoverWithPassphrase', () => {
-    it('derives the key from the passphrase and recovers', async () => {
-      const { svc, keys, crypto } = setup({
-        defaultKeyId: 'k',
-        checkKey: true,
-        storedSecrets: SEEDS,
-        keyInfo: {
-          passphrase: { algorithm: 'm.pbkdf2', salt: 'salty', iterations: 1 },
-        },
-      });
-
-      await firstValueFrom(svc.recoverWithPassphrase('hunter2'));
-
-      expect(keys.hasKey).toBe(true);
-      expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith({});
-      // Derives from the passphrase using the salt/iterations from the key info.
-      expect(vi.mocked(deriveRecoveryKeyFromPassphrase)).toHaveBeenCalledWith(
-        'hunter2',
-        'salty',
-        1,
-        undefined,
-      );
-    });
-
-    it('errors when the account has no recovery passphrase', async () => {
-      const { svc } = setup({ defaultKeyId: 'k', checkKey: true, keyInfo: {} });
-      await expect(
-        firstValueFrom(svc.recoverWithPassphrase('hunter2')),
-      ).rejects.toThrow(/no recovery passphrase/i);
-    });
-
     it('still completes recovery when enabling key backup fails', async () => {
       const { svc, keys, crypto } = setup({
         defaultKeyId: 'k',

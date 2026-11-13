@@ -2,13 +2,9 @@ import { Injectable, inject } from '@angular/core';
 import type { UIAuthCallback } from 'matrix-js-sdk';
 import {
   decodeRecoveryKey,
-  deriveRecoveryKeyFromPassphrase,
   type GeneratedSecretStorageKey,
 } from 'matrix-js-sdk/lib/crypto-api';
-import type {
-  SecretStorageKeyDescriptionAesV1,
-  ServerSideSecretStorage,
-} from 'matrix-js-sdk/lib/secret-storage';
+import type { ServerSideSecretStorage } from 'matrix-js-sdk/lib/secret-storage';
 import { Observable, catchError, defer, from, map, of, throwError } from 'rxjs';
 import {
   TrustCryptoPort,
@@ -104,7 +100,7 @@ export class TrustService {
    * device-signing keys.
    *
    * The key is generated randomly (no passphrase), so accounts onboarded here are
-   * recovered via {@link recoverWithKey}, not {@link recoverWithPassphrase}.
+   * recovered via {@link recoverWithKey}.
    *
    * Two guards run first, both of which ask the server before trusting this device's view:
    * - {@link assertNoRecoveryOnAccount} refuses an account that already has a 4S key.
@@ -261,33 +257,7 @@ export class TrustService {
 
   /** Unlock this device from the account's recovery key. */
   recoverWithKey(recoveryKey: string): Observable<void> {
-    return this.recover(async () => ({ privateKey: this.decode(recoveryKey) }));
-  }
-
-  /**
-   * Unlock this device from a recovery passphrase. Only works for accounts whose 4S key
-   * was derived from a passphrase; {@link setUp} provisions a random recovery key, so
-   * Trinity-onboarded accounts use {@link recoverWithKey} instead.
-   */
-  recoverWithPassphrase(passphrase: string): Observable<void> {
-    return this.recover(async (keyInfo) => {
-      const info = keyInfo.passphrase;
-      if (!info) {
-        throw new TrustOperationError(
-          'recover',
-          'unsupported',
-          'reenter-secret',
-          'This account has no recovery passphrase — enter the recovery key instead.',
-        );
-      }
-      const privateKey = await deriveRecoveryKeyFromPassphrase(
-        passphrase,
-        info.salt,
-        info.iterations,
-        info.bits,
-      );
-      return { privateKey };
-    });
+    return this.recover(recoveryKey);
   }
 
   /**
@@ -336,17 +306,13 @@ export class TrustService {
   }
 
   /**
-   * Shared recovery body: resolve the private key (from a key or passphrase),
+   * Recovery body: decode the recovery key,
    * verify it against the stored key info, cache it for the SDK callbacks, import
    * cross-signing from 4S so this device becomes trusted, and enable key backup.
    * History decrypts lazily from the backup once enabled, so the (potentially
    * huge) bulk `restoreKeyBackup()` is intentionally skipped.
    */
-  private recover(
-    resolveKey: (
-      keyInfo: SecretStorageKeyDescriptionAesV1,
-    ) => Promise<{ privateKey: Uint8Array<ArrayBuffer> }>,
-  ): Observable<void> {
+  private recover(recoveryKey: string): Observable<void> {
     return defer(() =>
       from(
         (async (): Promise<void> => {
@@ -368,7 +334,7 @@ export class TrustService {
             );
           }
           const keyInfo = tuple[1];
-          const { privateKey } = await resolveKey(keyInfo);
+          const privateKey = this.decode(recoveryKey);
           if (!(await secretStorage.checkKey(privateKey, keyInfo))) {
             privateKey.fill(0);
             throw new TrustOperationError(
