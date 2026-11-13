@@ -1,4 +1,4 @@
-import { ApplicationRef, signal } from '@angular/core';
+import { ApplicationRef, computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   TrnAlertService,
@@ -23,7 +23,7 @@ import { TrustVerificationService } from '@trinity/data-access/trust';
 import { BELOW_MD_QUERY } from '@trinity/util/ui';
 import { MockProvider } from 'ng-mocks';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
-import { NEVER, of } from 'rxjs';
+import { NEVER, Subject, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemberActionsService } from './member-actions.service';
 import { RoomShellNavigationService } from './room-shell-navigation.service';
@@ -68,12 +68,15 @@ function build({ narrow = false } = {}) {
   // The shell and identity read the same active Account in the app; one signal here.
   const activeAccountId = signal<string | null>('@me:hs');
   const activeRoomId = signal<string | null>('!r:hs');
+  // Set to model the moment the client has switched Account and the shell has not yet.
+  const clientAccountId = signal<string | null>(null);
+  const showToast = vi.fn();
   TestBed.configureTestingModule({
     providers: [
       MemberActionsService,
       ShellStatusService,
       MockProvider(WorkspaceNavigationService),
-      MockProvider(TrnToastService),
+      MockProvider(TrnToastService, { show: showToast }),
       MockProvider(TrnAlertService, { prompt$: () => of('') }),
       MockProvider(RoomShellStore, {
         activeAccountId: activeAccountId.asReadonly(),
@@ -94,7 +97,7 @@ function build({ narrow = false } = {}) {
         },
       },
       MockProvider(IdentityService, {
-        activeUserId: activeAccountId.asReadonly(),
+        activeUserId: computed(() => clientAccountId() ?? activeAccountId()),
         lookup: () => NEVER,
       }),
       MockProvider(RoomModerationService, { kick }),
@@ -126,6 +129,8 @@ function build({ narrow = false } = {}) {
     kick,
     activeAccountId,
     activeRoomId,
+    clientAccountId,
+    showToast,
   };
 }
 
@@ -328,6 +333,38 @@ describe('MemberActionsService member info', () => {
     built.activeAccountId.set('@other:hs');
     button('member-info-message').click();
     built.tick();
+
+    expect(built.createDirectMessage).not.toHaveBeenCalled();
+    expect(built.onSelectRoom).not.toHaveBeenCalled();
+  });
+
+  it('opens no direct message once the client has switched account, before the shell follows', async () => {
+    const built = build();
+    surfaces = built.surfaces;
+    built.members.onSelectMember(BOB);
+    await vi.dynamicImportSettled();
+    built.tick();
+
+    built.clientAccountId.set('@other:hs');
+    button('member-info-message').click();
+    built.tick();
+
+    expect(built.createDirectMessage).not.toHaveBeenCalled();
+    expect(built.showToast).toHaveBeenCalledWith(
+      'Message not started: you switched account while this was open.',
+      expect.anything(),
+    );
+  });
+
+  it('opens no direct message from a user card as an account that became active while it was open', () => {
+    const built = build();
+    surfaces = built.surfaces;
+    const picked = new Subject<string | undefined>();
+    vi.spyOn(built.surfaces, 'openAndWait$').mockReturnValue(picked);
+
+    built.members.openUserCard('@bob:hs');
+    built.activeAccountId.set('@other:hs');
+    picked.next('@bob:hs');
 
     expect(built.createDirectMessage).not.toHaveBeenCalled();
     expect(built.onSelectRoom).not.toHaveBeenCalled();
