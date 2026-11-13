@@ -8,7 +8,6 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
-import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
@@ -62,7 +61,8 @@ async function renderPage(options: RenderOptions = {}) {
   // Writable so a test can move the live status while the page is open.
   const liveStatus = signal<TrustStatus>(status);
   const liveSetupElsewhere = signal(setupElsewhere);
-  const activeUserId = signal<string | null>('@me:hs');
+  // Writable so a test can switch account under the open screen.
+  const activeAccountId = signal<string | null>('@me:hs');
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
@@ -72,9 +72,7 @@ async function renderPage(options: RenderOptions = {}) {
       MockProvider(TrustService, {
         status: liveStatus.asReadonly(),
         recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
-      }),
-      MockProvider(MatrixClientService, {
-        activeUserId: activeUserId.asReadonly(),
+        activeAccountId: activeAccountId.asReadonly(),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
@@ -114,7 +112,7 @@ async function renderPage(options: RenderOptions = {}) {
     externalBrowser,
     liveStatus,
     liveSetupElsewhere,
-    activeUserId,
+    activeAccountId,
   };
 }
 
@@ -214,6 +212,84 @@ describe('EncryptionUnlockPage', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
+  describe('when another account becomes active', () => {
+    it('closes the dialog and forgets the typed recovery key', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+      });
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('keeps the dialog open while it shows a new recovery key', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+      });
+      fixture.componentInstance.resetRecovery();
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.newRecoveryKey()).toBe('EsTBrandNew');
+    });
+
+    it('keeps the dialog open while a reset is running', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+      fixture.componentInstance.resetRecovery();
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('forgets the typed recovery key on the routed page without navigating', async () => {
+      const { fixture, router, activeAccountId } = await renderPage();
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('does not unlock with a key typed after the switch', async () => {
+      const { fixture, crypto, activeAccountId } = await renderPage({
+        recover: of(undefined),
+      });
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(crypto.recoverWithKey).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was unlocked: you switched account while this was open.',
+      );
+    });
+  });
+
   it('renders a Close control only in modal mode', async () => {
     const { fixture, container } = await renderPage();
     expect(closeButton()).toBeNull();
@@ -241,20 +317,83 @@ describe('EncryptionUnlockPage', () => {
     });
 
     it('resets nothing when another account became active while the confirmation was open', async () => {
-      const { fixture, crypto, prompt, activeUserId } = await renderPage();
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage();
       const typed = new Subject<string | null>();
       prompt.mockReset();
       prompt.mockReturnValueOnce(typed);
 
       fixture.componentInstance.resetRecovery();
       // A notification click switches account under the open dialog.
-      activeUserId.set('@other:hs');
+      activeAccountId.set('@other:hs');
       typed.next('RESET');
 
       expect(crypto.resetRecovery).not.toHaveBeenCalled();
       expect(fixture.componentInstance.error()).toBe(
         'Nothing was reset: you switched account while this was open.',
       );
+    });
+
+    it('resets nothing when Reset is pressed after another account became active', async () => {
+      // Opened for one account and left open; the switch lands before Reset is pressed.
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        typed: 'RESET',
+      });
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
+    });
+
+    it('withdraws the confirmation when another account becomes active', async () => {
+      const { fixture, prompt, activeAccountId } = await renderPage();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(new Subject<string | null>());
+      fixture.componentInstance.resetRecovery();
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+      fixture.detectChanges();
+      expect(withdrawn).toBe(false);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('resets the account the screen was opened for, and names it in the password prompt', async () => {
+      const { fixture, crypto, prompt } = await renderPage({ typed: 'RESET' });
+
+      fixture.componentInstance.resetRecovery();
+
+      expect(crypto.resetRecovery).toHaveBeenCalledWith(
+        '@me:hs',
+        expect.any(Function),
+      );
+      const askPassword = vi.mocked(crypto.resetRecovery).mock.calls[0][1];
+      await askPassword('@alice:example.org');
+      expect(prompt.mock.calls[1][0].message).toBe(
+        'Enter the password for @alice:example.org to reset your identity.',
+      );
+    });
+
+    it('asks for the provider link of the account that was refused', async () => {
+      const { fixture, crypto } = await renderPage({
+        typed: 'RESET',
+        reset: throwError(providerActionRequired),
+      });
+
+      fixture.componentInstance.resetRecovery();
+      await flush();
+
+      expect(crypto.providerResetLink).toHaveBeenCalledWith('@me:hs');
     });
 
     it('warns about the cost before doing it', async () => {

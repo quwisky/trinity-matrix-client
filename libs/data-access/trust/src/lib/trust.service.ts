@@ -22,6 +22,7 @@ import {
 } from './cross-signing-repair';
 import {
   PartialRecoveryResetError,
+  ResetWithdrawnError,
   encodedRecoveryKey,
   runRecoveryReset,
 } from './recovery-reset';
@@ -58,6 +59,14 @@ const INCOMPLETE_RECOVERY_MESSAGE =
   'That recovery key is correct, but this account’s recovery was never finished and can’t verify this device. Verify this device with another device instead, or reset your identity if you can’t.';
 
 /**
+ * Asks for the password of `accountId`, the Account the operation captured when it started
+ * (null = cancelled). The prompt must name that Account: it can outlive an Account switch.
+ */
+export type AccountPasswordPrompt = (
+  accountId: string,
+) => Promise<string | null>;
+
+/**
  * The account-level Trust module on top of the lifecycle-free {@link TrustCryptoPort}:
  * bootstraps cross-signing, secret storage (4S) and key backup, exposes readiness as
  * signals, and recovers a fresh device from the recovery key. Wraps `client.getCrypto()`
@@ -77,6 +86,8 @@ export class TrustService {
   readonly thisDeviceVerified = this.healthRuntime.thisDeviceVerified;
   /** Verified here, but only the device holding the identity can set up recovery. */
   readonly recoverySetupElsewhere = this.healthRuntime.recoverySetupElsewhere;
+  /** The Account on screen, for a surface to notice that it is no longer the one it opened for. */
+  readonly activeAccountId = this.cryptoPort.activeAccountId;
 
   /** Cold Trust-health projection retained by the named session lifetime. */
   runProjection(): Observable<void> {
@@ -115,7 +126,7 @@ export class TrustService {
    * or failed before its upload), setup creates and uploads new keys rather than storing
    * the unpublished ones in secret storage.
    */
-  setUp(promptPassword: PasswordPrompt): Observable<string> {
+  setUp(promptPassword: AccountPasswordPrompt): Observable<string> {
     return defer(() =>
       from(
         (async (): Promise<string> => {
@@ -156,7 +167,7 @@ export class TrustService {
           }
           await crypto.bootstrapCrossSigning({
             authUploadDeviceSigningKeys: this.passwordUia(
-              promptPassword,
+              () => promptPassword(userId),
               userId,
             ),
             // Keys this device made and never uploaded: bootstrapping without this does
@@ -213,12 +224,26 @@ export class TrustService {
    * Emits the new recovery key, exactly as {@link setUp} does, so the same shown-once
    * display can present it. **This destroys data and cannot be undone** — see
    * {@link runRecoveryReset}, which owns the ordering that makes a refused reset free.
+   *
+   * `accountId` is the Account whose screen asked. The reset is refused unless that
+   * Account is still the one on screen, when it starts and around its first password
+   * prompt, so no caller can reset an Account the user is not looking at.
    */
-  resetRecovery(promptPassword: PasswordPrompt): Observable<string> {
+  resetRecovery(
+    accountId: string,
+    promptPassword: AccountPasswordPrompt,
+  ): Observable<string> {
     return defer(() => {
+      const stillRequested = (): boolean =>
+        accountId === this.cryptoPort.activeAccountId();
       // Captured once: the reset spans several awaits, and an account switch mid-flight
       // must not retarget the rollback (or the UIA user id) onto a different account.
-      const context = this.cryptoPort.active();
+      const context = stillRequested()
+        ? this.cryptoPort.forAccount(accountId)
+        : null;
+      if (!context) {
+        throw new ResetWithdrawnError();
+      }
       const client = context.client;
       return from(
         runRecoveryReset(
@@ -226,30 +251,46 @@ export class TrustService {
             crypto: this.requireCrypto('reset-recovery', context.crypto),
             client,
             storage: client.secretStorage,
-            userId: client.getUserId() ?? '',
+            userId: accountId,
+            stillRequested,
             refreshStatus: () => this.healthRuntime.reconcile(),
           },
-          promptPassword,
+          () => promptPassword(accountId),
         ),
       );
     }).pipe(
       catchError((cause: unknown) =>
         throwError(() =>
-          trustOperationFailure(
-            'reset-recovery',
-            cause,
-            cause instanceof PartialRecoveryResetError,
-          ),
+          cause instanceof ResetWithdrawnError
+            ? new TrustOperationError(
+                'reset-recovery',
+                'stale-state',
+                'none',
+                cause.message,
+              )
+            : trustOperationFailure(
+                'reset-recovery',
+                cause,
+                cause instanceof PartialRecoveryResetError,
+              ),
         ),
       ),
     );
   }
 
-  /** Provider-hosted cross-signing reset link, resolved only after a typed refusal. */
-  providerResetLink(): Observable<string | null> {
-    return defer(() => this.providerRecovery.accountManagement()).pipe(
+  /**
+   * Provider-hosted cross-signing reset link, resolved only after a typed refusal. The
+   * provider is read for the Account on screen, so the link is null unless `accountId`,
+   * the Account that was refused, is that Account before and after the read.
+   */
+  providerResetLink(accountId: string): Observable<string | null> {
+    const onScreen = (): boolean =>
+      accountId === this.cryptoPort.activeAccountId();
+    return defer(() =>
+      onScreen() ? this.providerRecovery.accountManagement() : of(null),
+    ).pipe(
       map((management) =>
-        management ? crossSigningResetUrl(management) : null,
+        management && onScreen() ? crossSigningResetUrl(management) : null,
       ),
       catchError(() => of(null)),
     );

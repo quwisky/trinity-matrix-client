@@ -1,6 +1,8 @@
-import type { PasswordPrompt } from '@trinity/util/matrix';
 import type { TrnAlertService } from '@trinity/components/overlay';
-import { TrustOperationError } from '@trinity/data-access/trust';
+import {
+  TrustOperationError,
+  type AccountPasswordPrompt,
+} from '@trinity/data-access/trust';
 import { firstValueFrom, map, type Observable } from 'rxjs';
 
 /** The word the user has to type before an irreversible reset will run. */
@@ -25,9 +27,11 @@ export const RESET_MISTYPED_MESSAGE = `Nothing was reset. Type ${RESET_CONFIRMAT
 /**
  * Ask for the confirmation word before anything is destroyed. It is the only thing
  * between a user and an irreversible, account-wide deletion, so it states the cost first.
+ * `closeWhen` withdraws it as cancelled once the question stops applying.
  */
 export function confirmResetIntent(
   alert: TrnAlertService,
+  closeWhen?: Observable<unknown>,
 ): Observable<ResetIntent> {
   return alert
     .prompt$({
@@ -38,6 +42,7 @@ export function confirmResetIntent(
       confirmText: 'Reset identity',
       cancelText: 'Cancel',
       variant: 'danger',
+      closeWhen,
     })
     .pipe(
       map((typed) => {
@@ -51,13 +56,18 @@ export function confirmResetIntent(
     );
 }
 
-/** Password prompt for the reset's device-signing-key upload (a UIA stage). */
-export function resetPasswordPrompt(alert: TrnAlertService): PasswordPrompt {
-  return () =>
+/**
+ * Password prompt for the reset's UIA stages. It names the Account being reset, because it
+ * can still be open after another Account came on screen.
+ */
+export function resetPasswordPrompt(
+  alert: TrnAlertService,
+): AccountPasswordPrompt {
+  return (accountId) =>
     firstValueFrom(
       alert.prompt$({
         header: 'Confirm your password',
-        message: 'Your homeserver needs your password to reset your identity.',
+        message: `Enter the password for ${accountId} to reset your identity.`,
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',

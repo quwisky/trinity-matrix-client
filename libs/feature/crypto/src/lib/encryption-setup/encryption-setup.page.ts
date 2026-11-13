@@ -14,9 +14,9 @@ import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   TrustOperationError,
   TrustService,
+  type AccountPasswordPrompt,
   type TrustRecovery,
 } from '@trinity/data-access/trust';
-import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import {
   PageHeaderComponent,
@@ -155,13 +155,14 @@ export class EncryptionSetupPage {
   /**
    * Answers the SDK's UIA password challenge. The SDK may invoke this zero times
    * (server completes without UIA) or repeatedly (wrong password); each call shows
-   * a fresh password alert. Resolving `null` cancels the whole setup.
+   * a fresh password alert. Resolving `null` cancels the whole setup. It names the Account
+   * being set up, because it can still be open after another Account came on screen.
    */
-  private readonly promptPassword: PasswordPrompt = () =>
+  private readonly promptPassword: AccountPasswordPrompt = (accountId) =>
     firstValueFrom(
       this.alert.prompt$({
         header: 'Confirm your password',
-        message: 'Your homeserver needs your password to set up encryption.',
+        message: `Enter the password for ${accountId} to set up encryption.`,
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',

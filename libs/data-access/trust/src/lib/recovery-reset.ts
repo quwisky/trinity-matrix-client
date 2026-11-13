@@ -63,6 +63,15 @@ export class PartialRecoveryResetError extends Error {
   }
 }
 
+/** Another Account came on screen before the reset touched anything, so it did not start. */
+export class ResetWithdrawnError extends Error {
+  override readonly name = 'ResetWithdrawnError';
+
+  constructor() {
+    super('Nothing was reset: you switched account while this was open.');
+  }
+}
+
 /** The account-data key every device reads to find the current 4S key. */
 export const DEFAULT_KEY_EVENT = 'm.secret_storage.default_key';
 
@@ -76,6 +85,8 @@ export interface RecoveryResetContext {
   readonly client: TrustMatrixClient;
   readonly storage: ServerSideSecretStorage;
   readonly userId: string;
+  /** Whether this Account is still the one on screen. Read around the pre-auth prompt only. */
+  readonly stillRequested: () => boolean;
   /** Recompute the caller's status signals; must not reject. */
   readonly refreshStatus: () => Promise<void>;
 }
@@ -128,7 +139,7 @@ export async function runRecoveryReset(
   // Authenticate BEFORE anything is parked or rotated. Deleting an empty list of devices
   // does nothing itself but is gated by the same password UIA as the key upload below, so
   // this proves the user can answer it, rather than only that the server offers it.
-  const accepted = await preAuthenticate(client, promptPassword, userId);
+  const accepted = await preAuthenticate(ctx, promptPassword);
 
   // Park the 4S pointer. `resetCrossSigning` exports the freshly rotated private keys
   // into the CURRENT 4S key before it uploads anything, but only when `hasKey()`, which
@@ -232,20 +243,34 @@ export function encodedRecoveryKey(key: GeneratedSecretStorageKey): string {
  * itself failing (a dropped connection, or a server that gates `/delete_devices` differently
  * from the key upload) and must not become a new way for the reset to fail: the upload's
  * own prompt still asks.
+ *
+ * The only prompt that refuses after an Account switch, before it is shown and again once
+ * it is answered: nothing is touched yet, so stopping is free, and a password typed over
+ * another Account's screen is dropped unsent. The upload's prompt cannot refuse without
+ * abandoning a reset already under way; it names its Account instead.
  */
 async function preAuthenticate(
-  client: TrustMatrixClient,
+  ctx: RecoveryResetContext,
   promptPassword: PasswordPrompt,
-  userId: string,
 ): Promise<string | null> {
+  const requireRequested = (): void => {
+    if (!ctx.stillRequested()) {
+      throw new ResetWithdrawnError();
+    }
+  };
   try {
     return await completePasswordUia(
-      (auth) => client.deleteMultipleDevices([], auth ?? undefined),
-      promptPassword,
-      userId,
+      (auth) => ctx.client.deleteMultipleDevices([], auth ?? undefined),
+      async () => {
+        requireRequested();
+        const password = await promptPassword();
+        requireRequested();
+        return password;
+      },
+      ctx.userId,
     );
   } catch (err) {
-    if (isUiaRefusal(err)) {
+    if (isUiaRefusal(err) || err instanceof ResetWithdrawnError) {
       throw err;
     }
     return null;

@@ -698,4 +698,24 @@ describe('setUp failures', () => {
     ).rejects.toMatchObject({ recoveryKey: 'EsTRecoveryKey' });
     expect(keys.unfinishedSetupKey).toBeNull();
   });
+
+  it('names the account being set up to the password prompt, even after a switch', async () => {
+    const { svc, crypto, activeUserId } = setup();
+    const prompt = vi.fn().mockResolvedValue('s3cret');
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        activeUserId.set('@b:hs');
+        await opts.authUploadDeviceSigningKeys?.(
+          vi
+            .fn()
+            .mockRejectedValueOnce(uiaError('sess1'))
+            .mockResolvedValueOnce(undefined),
+        );
+      },
+    );
+
+    await firstValueFrom(svc.setUp(prompt));
+
+    expect(prompt).toHaveBeenCalledWith('@me:hs');
+  });
 });

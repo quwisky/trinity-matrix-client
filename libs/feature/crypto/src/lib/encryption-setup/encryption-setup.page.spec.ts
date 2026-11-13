@@ -71,6 +71,21 @@ function continueButton(): HTMLElement {
 }
 
 describe('EncryptionSetupPage', () => {
+  it('names the account being set up in the password prompt', async () => {
+    const { fixture, crypto } = await setup();
+    const prompt = vi
+      .mocked(TestBed.inject(TrnAlertService).prompt$)
+      .mockReturnValue(of('pw'));
+    vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+    fixture.componentInstance.setUp();
+
+    await vi.mocked(crypto.setUp).mock.calls[0][0]('@alice:example.org');
+
+    expect(prompt.mock.calls[0][0].message).toBe(
+      'Enter the password for @alice:example.org to set up encryption.',
+    );
+  });
+
   it('shows the recovery key after setUp succeeds', async () => {
     const { fixture, crypto } = await setup();
     vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
