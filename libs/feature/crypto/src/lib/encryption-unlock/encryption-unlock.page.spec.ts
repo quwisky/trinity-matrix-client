@@ -8,6 +8,7 @@ import {
   type TrustStatus,
 } from '@trinity/data-access/trust';
 import { TrnDialogRef, TrnAlertService } from '@trinity/components/overlay';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { MockProvider } from 'ng-mocks';
 import { Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
@@ -61,6 +62,7 @@ async function renderPage(options: RenderOptions = {}) {
   // Writable so a test can move the live status while the page is open.
   const liveStatus = signal<TrustStatus>(status);
   const liveSetupElsewhere = signal(setupElsewhere);
+  const activeUserId = signal<string | null>('@me:hs');
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
@@ -70,6 +72,9 @@ async function renderPage(options: RenderOptions = {}) {
       MockProvider(TrustService, {
         status: liveStatus.asReadonly(),
         recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
+      }),
+      MockProvider(MatrixClientService, {
+        activeUserId: activeUserId.asReadonly(),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
@@ -109,6 +114,7 @@ async function renderPage(options: RenderOptions = {}) {
     externalBrowser,
     liveStatus,
     liveSetupElsewhere,
+    activeUserId,
   };
 }
 
@@ -232,6 +238,23 @@ describe('EncryptionUnlockPage', () => {
       await fixture.componentInstance.resetRecovery();
 
       expect(crypto.resetRecovery).toHaveBeenCalledOnce();
+    });
+
+    it('resets nothing when another account became active while the confirmation was open', async () => {
+      const { fixture, crypto, prompt, activeUserId } = await renderPage();
+      const typed = new Subject<string | null>();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(typed);
+
+      fixture.componentInstance.resetRecovery();
+      // A notification click switches account under the open dialog.
+      activeUserId.set('@other:hs');
+      typed.next('RESET');
+
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
     });
 
     it('warns about the cost before doing it', async () => {

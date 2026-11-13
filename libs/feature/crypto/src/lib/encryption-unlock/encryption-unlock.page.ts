@@ -15,6 +15,7 @@ import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Observable, finalize, firstValueFrom, take } from 'rxjs';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
@@ -79,6 +80,7 @@ const BUSY_REASON = 'Wait for this step to finish';
 export class EncryptionUnlockPage {
   private readonly crypto = inject(TrustService);
   private readonly alert = inject(TrnAlertService);
+  private readonly activeAccountId = inject(MatrixClientService).activeUserId;
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
@@ -205,6 +207,9 @@ export class EncryptionUnlockPage {
    * backup, and a mis-tap must not reach it.
    */
   resetRecovery(): void {
+    // Pinned now: the confirmation outlives an Account switch, and the reset runs as the
+    // active Account, so one that replaced the requester must not lose its identity.
+    const accountId = this.activeAccountId();
     confirmResetIntent(this.alert)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
@@ -213,6 +218,12 @@ export class EncryptionUnlockPage {
         }
         if (intent === 'mistyped') {
           this.error.set(RESET_MISTYPED_MESSAGE);
+          return;
+        }
+        if (accountId !== this.activeAccountId()) {
+          this.error.set(
+            'Nothing was reset: you switched account while this was open.',
+          );
           return;
         }
         this.beginRecoveryReset();
