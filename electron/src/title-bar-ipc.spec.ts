@@ -38,6 +38,9 @@ vi.mock('./window', () => ({
   getMainWindow: () => mocks.mainWindowRef.current,
   isSystemTitleBarActive: () => mocks.systemTitleBarActive.current,
 }));
+vi.mock('./app-identity', () => ({
+  appIdentity: () => ({ deepLinkScheme: 'dev.trinityproject.trinity' }),
+}));
 vi.mock('./window-prefs', () => ({
   readWindowPrefs: mocks.readWindowPrefs,
   writeWindowPrefs: mocks.writeWindowPrefs,
@@ -316,6 +319,20 @@ describe('title-bar IPC', () => {
         args: ['--flag'],
       });
       expect(mocks.quit).toHaveBeenCalledOnce();
+    });
+
+    it('drops the deep link the app was cold-started with', () => {
+      delete process.env['APPIMAGE'];
+      process.argv = [
+        process.execPath,
+        '--flag',
+        'dev.trinityproject.trinity://sso-callback?loginToken=spent',
+      ];
+      send('relaunch', ownSender());
+      expect(mocks.relaunch).toHaveBeenCalledWith({
+        execPath: process.execPath,
+        args: ['--flag'],
+      });
     });
 
     it('ignores a foreign sender', () => {
