@@ -9,10 +9,12 @@ import { fireEvent, render, screen, within } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
 import {
   TrustService,
+  TrustUsersService,
   TrustVerificationService,
   MANAGE_IDENTITY,
   type NewSessionDetails,
   type TrustStatus,
+  type UserTrust,
   type VerificationView,
 } from '@trinity/data-access/trust';
 import { of, Subject } from 'rxjs';
@@ -44,6 +46,7 @@ async function renderPage(
     asModal?: boolean;
     status?: TrustStatus;
     canOpenSecuritySettings?: boolean;
+    userTrust?: WritableSignal<UserTrust | null>;
   } = {},
 ) {
   const {
@@ -51,6 +54,7 @@ async function renderPage(
     asModal = false,
     status = 'ready',
     canOpenSecuritySettings,
+    userTrust = signal<UserTrust | null>(null),
   } = options;
   const close = vi.fn();
   const result = await render(DeviceVerificationPage, {
@@ -63,6 +67,7 @@ async function renderPage(
     providers: [
       MockProvider(TrustVerificationService, { active }),
       MockProvider(TrustService, { status: signal(status) }),
+      MockProvider(TrustUsersService, { userTrust: () => userTrust }),
       MockProvider(QrCodeService, {
         cameraSupported: true,
         createDataUrl: vi.fn(() =>
@@ -173,22 +178,69 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('Another of your sessions');
   });
 
-  it('says the other user is verified, not this session, once a cross-user verification is done', async () => {
-    const { container } = await renderPage(
-      signal(
-        view({
-          stage: 'done',
-          isSelfVerification: false,
-          otherUserId: '@bob:hs',
-        }),
-      ),
-    );
+  describe('once a cross-user verification is done', () => {
+    const done = view({
+      stage: 'done',
+      isSelfVerification: false,
+      otherUserId: '@bob:hs',
+    });
 
-    expect(
-      within(container).getByRole('heading', { name: 'User verified' }),
-    ).toBeTruthy();
-    expect(normalized(container)).toContain('You verified @bob:hs.');
-    expect(container.textContent).not.toContain('This session is now trusted');
+    it('says the other user is verified, not this session, when their identity was signed', async () => {
+      const { container } = await renderPage(signal(done), {
+        userTrust: signal<UserTrust | null>('verified'),
+      });
+
+      expect(
+        within(container).getByRole('heading', { name: 'User verified' }),
+      ).toBeTruthy();
+      expect(normalized(container)).toContain(
+        'You verified @bob:hs. You’ll be warned if their identity changes.',
+      );
+      expect(container.textContent).not.toContain(
+        'This session is now trusted',
+      );
+    });
+
+    it('does not claim the user is verified when this device could not sign their identity', async () => {
+      const { container } = await renderPage(signal(done), {
+        status: 'needs-verification',
+        userTrust: signal<UserTrust | null>('unverified'),
+      });
+
+      expect(
+        within(container).getByRole('heading', { name: 'Emoji matched' }),
+      ).toBeTruthy();
+      expect(normalized(container)).toContain(
+        'The emoji matched with @bob:hs. They are not marked as verified yet because this device’s own encryption setup is not finished.',
+      );
+      expect(container.textContent).not.toContain('User verified');
+      expect(container.textContent).not.toContain('You verified');
+      expect(container.textContent).not.toContain(
+        'This session is now trusted',
+      );
+    });
+
+    it('follows the trust status when it arrives after the flow is done, without moving focus again', async () => {
+      const userTrust = signal<UserTrust | null>('unverified');
+      const { container, fixture } = await renderPage(signal(done), {
+        userTrust,
+      });
+      await fixture.whenStable();
+      const heading = within(container).getByRole('heading', {
+        name: 'Emoji matched',
+      });
+      expect(document.activeElement).toBe(heading);
+      // A ready device signs the identity a moment later: no setup to blame meanwhile.
+      expect(container.textContent).not.toContain('not marked as verified');
+      const focus = vi.spyOn(heading, 'focus');
+
+      userTrust.set('verified');
+      await fixture.whenStable();
+
+      expect(heading.textContent).toContain('User verified');
+      expect(document.activeElement).toBe(heading);
+      expect(focus).not.toHaveBeenCalled();
+    });
   });
 
   it('shows the emoji and confirms on match', async () => {

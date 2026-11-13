@@ -348,13 +348,27 @@
           <div class="center" role="status">
             <div class="result result--ok" aria-hidden="true">✓</div>
             <h2 #stageHeading class="heading" tabindex="-1">
-              {{ v.isSelfVerification ? 'Device verified' : 'User verified' }}
+              {{
+                v.isSelfVerification
+                  ? 'Device verified'
+                  : otherUserVerified()
+                    ? 'User verified'
+                    : 'Emoji matched'
+              }}
             </h2>
             <p class="text-muted-foreground">
-              @if (!v.isSelfVerification) {
+              @if (otherUserVerified()) {
                 You verified
                 <strong>{{ v.otherUserId }}</strong
                 >. You’ll be warned if their identity changes.
+              } @else if (!v.isSelfVerification) {
+                The emoji matched with
+                <strong>{{ v.otherUserId }}</strong
+                >.
+                @if (ownSetupUnfinished()) {
+                  They are not marked as verified yet because this device’s own
+                  encryption setup is not finished.
+                }
               } @else if (v.newSession; as session) {
                 @if (session.displayName) {
                   <bdi>{{ session.displayName }}</bdi> (<code>{{
