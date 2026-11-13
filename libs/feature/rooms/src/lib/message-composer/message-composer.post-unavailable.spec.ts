@@ -113,4 +113,27 @@ describe('MessageComposerComponent — postUnavailableReason', () => {
     expect(cancel).toHaveBeenCalled();
     expect(cmp['attachments'].recordingVoice()).toBe(false);
   });
+
+  it('stops a recording whose microphone opened after posting became unavailable', async () => {
+    const cancel = vi.fn();
+    let grantMic: () => void = () => undefined;
+    const { fixture } = await renderComposer({}, [
+      MockProvider(VoiceRecorderService, {
+        supported: true,
+        start: () => new Promise<void>((resolve) => (grantMic = resolve)),
+        cancel,
+      }),
+    ]);
+    const cmp = fixture.componentInstance;
+    const starting = cmp.startVoiceRecording();
+    fixture.componentRef.setInput('postUnavailableReason', 'No posting here.');
+    fixture.detectChanges();
+
+    grantMic();
+    await starting;
+    fixture.detectChanges();
+
+    expect(cancel).toHaveBeenCalled();
+    expect(cmp['attachments'].recordingVoice()).toBe(false);
+  });
 });
