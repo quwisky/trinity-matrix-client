@@ -185,12 +185,29 @@ describe('checkForUpdates', () => {
     ]);
   });
 
-  it('always notifies on a manual check, and says when the app is up to date', async () => {
+  it('offers the release in a dialog, not a notification, on a manual check', async () => {
     respond([release('v0.2.1')]);
-    await checkForUpdates({ manual: false });
     await checkForUpdates({ manual: true });
-    expect(mocks.notifications).toHaveLength(2);
+    expect(mocks.notifications).toHaveLength(0);
+    expect(mocks.showMessageBox).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Trinity 0.2.1 is available',
+        buttons: ['Open Download Page', 'Later'],
+      }),
+    );
+    expect(mocks.openExternal).toHaveBeenCalledWith(
+      'https://github.com/quwisky/trinity-matrix-client/releases/tag/v0.2.1',
+    );
+  });
 
+  it('leaves the release page closed when a manual check is dismissed', async () => {
+    mocks.showMessageBox.mockResolvedValueOnce({ response: 1 });
+    respond([release('v0.2.1')]);
+    await checkForUpdates({ manual: true });
+    expect(mocks.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('says when the app is up to date on a manual check', async () => {
     respond([release('v0.2.0')]);
     await checkForUpdates({ manual: true });
     expect(mocks.showMessageBox).toHaveBeenCalledWith(

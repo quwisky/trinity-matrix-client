@@ -158,7 +158,7 @@ function announce(release: AvailableRelease): void {
 
 /**
  * Check GitHub Releases once. Automatic checks announce each new version once and fail
- * silently; a manual check always announces and reports "up to date" or an error.
+ * silently; a manual check always answers in a dialog: the new version, "up to date" or an error.
  */
 export async function checkForUpdates({
   manual,
@@ -191,7 +191,19 @@ export async function checkForUpdates({
   }
   if (!manual && lastNotifiedVersion() === release.version) return;
   rememberNotified(release.version);
-  announce(release);
+  if (!manual) {
+    announce(release);
+    return;
+  }
+  // A notification can be switched off or suppressed by the OS; a menu click must answer.
+  const { response } = await dialog.showMessageBox({
+    type: 'info',
+    message: `${appIdentity().productName} ${release.version} is available`,
+    buttons: ['Open Download Page', 'Later'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (response === 0) void shell.openExternal(release.url);
 }
 
 /** Start the background check: shortly after launch, then once a day. */
