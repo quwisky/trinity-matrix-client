@@ -268,9 +268,14 @@ export class DeviceVerificationPage {
     const returnTo = this.asModal()
       ? this.router.url
       : this.route.snapshot.queryParamMap.get('returnTo');
+    // Named, so the page refuses once another Account is on screen.
+    const account = this.trust.activeAccountId();
     this.cancelAndLeaveModal();
     void this.router.navigate([`/encryption/${flow}`], {
-      ...(returnTo ? { queryParams: { returnTo } } : {}),
+      queryParams: {
+        ...(returnTo ? { returnTo } : {}),
+        ...(account ? { account } : {}),
+      },
     });
   }
 
