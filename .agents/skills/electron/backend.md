@@ -21,7 +21,10 @@ The desktop secure store is a narrow main-process service:
   return null and `set` return false without writing. Decryption errors are caught
   and return null. Encryption or persistence errors from `set`, and persistence
   errors from `delete`, reject their IPC promises; preserve that distinction
-  instead of treating an operation failure as unavailable support.
+  instead of treating an operation failure as unavailable support. A `delete`
+  that could not read the store file rejects too, because the entry may still be
+  there; deleting an absent key resolves, and a store file that is not a JSON map
+  is emptied.
 - [`preload.ts`](../../../electron/src/preload.ts) exposes only the negotiated
   `secureStore` operations; it does not expose the keyring, ciphertext file, or
   `ipcRenderer`.
