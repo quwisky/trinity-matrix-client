@@ -252,7 +252,8 @@ export class DeviceVerificationPage {
   private cancelInFlight(): void {
     const stage = this.active()?.stage;
     if (stage && stage !== 'done' && stage !== 'cancelled') {
-      this.verification.cancel().subscribe();
+      // The flow is closing either way; an unsent cancel leaves the request to time out.
+      this.verification.cancel().subscribe({ error: () => undefined });
     }
     this.verification.dismiss();
   }
