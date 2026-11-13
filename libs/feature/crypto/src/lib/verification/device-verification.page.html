@@ -347,9 +347,15 @@
         @case ('done') {
           <div class="center" role="status">
             <div class="result result--ok" aria-hidden="true">✓</div>
-            <h2 #stageHeading class="heading" tabindex="-1">Device verified</h2>
+            <h2 #stageHeading class="heading" tabindex="-1">
+              {{ v.isSelfVerification ? 'Device verified' : 'User verified' }}
+            </h2>
             <p class="text-muted-foreground">
-              @if (v.newSession; as session) {
+              @if (!v.isSelfVerification) {
+                You verified
+                <strong>{{ v.otherUserId }}</strong
+                >. You’ll be warned if their identity changes.
+              } @else if (v.newSession; as session) {
                 @if (session.displayName) {
                   <bdi>{{ session.displayName }}</bdi> (<code>{{
                     session.deviceId ?? 'unknown'

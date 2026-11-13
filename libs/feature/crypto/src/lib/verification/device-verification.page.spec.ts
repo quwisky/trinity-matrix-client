@@ -173,6 +173,24 @@ describe('DeviceVerificationPage', () => {
     expect(container.textContent).toContain('Another of your sessions');
   });
 
+  it('says the other user is verified, not this session, once a cross-user verification is done', async () => {
+    const { container } = await renderPage(
+      signal(
+        view({
+          stage: 'done',
+          isSelfVerification: false,
+          otherUserId: '@bob:hs',
+        }),
+      ),
+    );
+
+    expect(
+      within(container).getByRole('heading', { name: 'User verified' }),
+    ).toBeTruthy();
+    expect(normalized(container)).toContain('You verified @bob:hs.');
+    expect(container.textContent).not.toContain('This session is now trusted');
+  });
+
   it('shows the emoji and confirms on match', async () => {
     const { svc, container } = await renderPage(
       signal(
