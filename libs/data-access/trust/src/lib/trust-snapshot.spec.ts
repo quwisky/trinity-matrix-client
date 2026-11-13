@@ -119,6 +119,7 @@ describe('readTrustSnapshot', () => {
       thisDeviceVerified: false,
       identityElsewhere: true,
     });
+    expect(crypto.getCrossSigningStatus).toHaveBeenCalledOnce();
   });
 
   it('needs setup when the account has no identity at all', async () => {
@@ -270,7 +271,9 @@ describe('identityHeldElsewhere', () => {
       privates: { master: true, selfSigning: false, userSigning: true },
     });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(true);
   });
 
   it('is true when this device holds all three privates but they do not match', async () => {
@@ -279,7 +282,9 @@ describe('identityHeldElsewhere', () => {
       privates: ALL_PRIVATES,
     });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(true);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(true);
   });
 
   it('is false when this device holds the matching private keys', async () => {
@@ -288,13 +293,17 @@ describe('identityHeldElsewhere', () => {
       privates: ALL_PRIVATES,
     });
 
-    await expect(identityHeldElsewhere(crypto, true)).resolves.toBe(false);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), true),
+    ).toBe(false);
   });
 
   it('is false when the account has no published identity', async () => {
     const { crypto } = account({ privates: ALL_PRIVATES });
 
-    await expect(identityHeldElsewhere(crypto, false)).resolves.toBe(false);
+    expect(
+      identityHeldElsewhere(await crypto.getCrossSigningStatus(), false),
+    ).toBe(false);
   });
 });
 

@@ -43,7 +43,7 @@ export async function readTrustSnapshot(
   const identityElsewhere =
     !ready &&
     !defaultKeyId &&
-    (await identityHeldElsewhere(crypto, crossSigningReady));
+    identityHeldElsewhere(crossSigning, crossSigningReady);
   const status: TrustHealthSnapshot['status'] = ready
     ? 'ready'
     : defaultKeyId
@@ -100,14 +100,13 @@ export async function readThisDeviceVerified(
  * hold. A purely local read: right after sign-in the own identity may not have been
  * downloaded yet, so destructive callers must also ask the server (see `TrustService.setUp`).
  *
- * `crossSigningReady` is this device's `isCrossSigningReady()`, passed in because the
- * snapshot has already read it.
+ * `status` and `crossSigningReady` are this device's `getCrossSigningStatus()` and
+ * `isCrossSigningReady()`, passed in because the snapshot has already read them.
  */
-export async function identityHeldElsewhere(
-  crypto: Pick<TrustCryptoApi, 'getCrossSigningStatus'>,
+export function identityHeldElsewhere(
+  status: Awaited<ReturnType<TrustCryptoApi['getCrossSigningStatus']>>,
   crossSigningReady: boolean,
-): Promise<boolean> {
-  const status = await crypto.getCrossSigningStatus();
+): boolean {
   return (
     status.publicKeysOnDevice &&
     !holdsCrossSigningIdentity(status, crossSigningReady)

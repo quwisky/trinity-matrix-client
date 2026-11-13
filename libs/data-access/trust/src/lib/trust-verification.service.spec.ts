@@ -448,6 +448,83 @@ describe('TrustVerificationService', () => {
     expect(svc.active()).toBeNull();
   });
 
+  // The DM is created from whichever Account is active when it is subscribed, so an
+  // Account replaced during the key check must stop the start before that.
+  it('does not ask for the direct room when the Account changes during the key check', async () => {
+    const { svc, crypto, client, matrix } = setup();
+    let answer!: () => void;
+    crypto.getCrossSigningStatus.mockReturnValue(
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({ privateKeysCachedLocally: { userSigningKey: true } });
+      }),
+    );
+    const directRoom = new Subject<string>();
+    const outcome = firstValueFrom(
+      svc.startUserVerification('@bob:hs', directRoom),
+    ).catch((error: unknown) => error);
+    await vi.waitFor(() =>
+      expect(crypto.getCrossSigningStatus).toHaveBeenCalled(),
+    );
+
+    ngMocks.stubMember(matrix, 'instance', {
+      ...client,
+    } as unknown as MatrixClient);
+    answer();
+
+    await expect(outcome).resolves.toMatchObject({ kind: 'stale-state' });
+    expect(directRoom.observed).toBe(false);
+  });
+
+  it('does not accept a request that was replaced during the key check', async () => {
+    const { svc, crypto, client } = setup();
+    svc.runProjection().subscribe();
+    const req = fakeRequest({
+      otherUserId: '@bob:hs',
+      isSelfVerification: false,
+    });
+    client.emit(CryptoEvent.VerificationRequestReceived, req);
+    let answer!: () => void;
+    crypto.getCrossSigningStatus.mockReturnValue(
+      new Promise((resolve) => {
+        answer = () =>
+          resolve({ privateKeysCachedLocally: { userSigningKey: true } });
+      }),
+    );
+    const outcome = firstValueFrom(svc.accept()).catch(
+      (error: unknown) => error,
+    );
+    await vi.waitFor(() =>
+      expect(crypto.getCrossSigningStatus).toHaveBeenCalled(),
+    );
+
+    svc.dismiss();
+    answer();
+
+    await expect(outcome).resolves.toMatchObject({
+      operation: 'accept-verification',
+      kind: 'stale-state',
+    });
+    expect(req.accept).not.toHaveBeenCalled();
+  });
+
+  // The projected key status only follows health events, so a request from another user
+  // is the moment to read it again: a stale "cannot sign" would hide Accept.
+  it('re-reads this device’s health when another user’s request arrives', () => {
+    const { svc, client, health } = setup();
+    svc.runProjection().subscribe();
+
+    client.emit(CryptoEvent.VerificationRequestReceived, fakeRequest());
+    expect(health.reconcile).not.toHaveBeenCalled();
+    svc.dismiss();
+
+    client.emit(
+      CryptoEvent.VerificationRequestReceived,
+      fakeRequest({ otherUserId: '@bob:hs', isSelfVerification: false }),
+    );
+    expect(health.reconcile).toHaveBeenCalledOnce();
+  });
+
   it.each(['unsubscribe', 'session end', 'Account replacement'])(
     'cancels an unadopted request that arrives after %s',
     async (transition) => {

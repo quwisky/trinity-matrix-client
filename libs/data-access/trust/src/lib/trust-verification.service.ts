@@ -295,7 +295,11 @@ export class TrustVerificationService {
       return from(
         this.requireUserSigningKey(crypto, 'start-verification'),
       ).pipe(
-        switchMap(() => directRoom.pipe(take(1))),
+        switchMap(() => {
+          // The DM is created from the Account active when it is subscribed.
+          this.requireCurrentCrypto(client, crypto);
+          return directRoom.pipe(take(1));
+        }),
         switchMap((roomId) => {
           this.requireCurrentCrypto(client, crypto);
           return this.waitForIdentity(client, crypto, userId).pipe(
@@ -338,6 +342,14 @@ export class TrustVerificationService {
               this.requireCrypto(),
               'accept-verification',
             );
+            if (request !== this.request) {
+              throw new TrustOperationError(
+                'accept-verification',
+                'stale-state',
+                'retry',
+                'The verification request changed. Try again.',
+              );
+            }
           }
           await request.accept();
         })(),
@@ -565,6 +577,11 @@ export class TrustVerificationService {
       this.attachVerifier(request.verifier);
     }
     this.recompute();
+    if (!request.isSelfVerification) {
+      // The projected key status follows health events only; a stale "cannot sign" would
+      // hide Accept on a device that has since received its keys.
+      void this.health.reconcile();
+    }
     if (this.newSession) {
       this.awaitingTrustState =
         this.health.thisDeviceVerified() === null ? request : null;

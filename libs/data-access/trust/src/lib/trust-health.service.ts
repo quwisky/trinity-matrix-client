@@ -74,6 +74,8 @@ export const TRUST_HEALTH_EVENTS = [
   CryptoEvent.KeysChanged,
   CryptoEvent.UserTrustStatusChanged,
   CryptoEvent.KeyBackupStatus,
+  // Recovery and secret gossip cache this key alongside the cross-signing privates.
+  CryptoEvent.KeyBackupDecryptionKeyCached,
   CryptoEvent.DevicesUpdated,
   // Restored /sync may contain old secrets until fresh account data arrives.
   ClientEvent.AccountData,
