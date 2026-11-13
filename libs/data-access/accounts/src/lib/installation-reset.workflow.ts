@@ -235,8 +235,9 @@ export class InstallationResetWorkflow {
         // A re-auth target's tokens are already gone.
         const providerExpected =
           record.oidc && !signedOut.includes(record.userId);
-        // A retry repeats no server effect, so a password session nothing could read to
-        // sign out waits for a restart too. A live client is signed out without the read.
+        // No retry repeats a server effect and the token goes with the erase, so a password
+        // session nothing could read stays signed in at its server: recorded, so the erase
+        // does not report it done. A live client is signed out without the read.
         const logoutExpected =
           !record.oidc &&
           !signedOut.includes(record.userId) &&
@@ -461,24 +462,24 @@ export class InstallationResetWorkflow {
       operations.push(
         this.keepsRegistry(attempt, records).pipe(
           concatMap((keep) => {
+            // The registry entry stays, so the scope stays open: the retry decides again.
             if (keep) {
               attempt.addIssue('preferences', 'retry-installation-reset');
-              return of(void 0);
             }
             return this.wipePair(
               attempt,
               'preferences',
               [
                 {
-                  run: () => this.wipe.wipePreferences(),
+                  run: () => this.wipe.wipePreferences(keep),
                   budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.preferencesWipe,
                 },
                 {
-                  run: () => this.wipe.wipeWebStorage(),
+                  run: () => this.wipe.wipeWebStorage(keep),
                   budgetMs: ACCOUNT_CLEANUP_STEP_BUDGET_MS.webStorageWipe,
                 },
               ],
-              resolve,
+              resolve && !keep,
             );
           }),
         ),
@@ -493,12 +494,13 @@ export class InstallationResetWorkflow {
   }
 
   /**
-   * Whether the Preferences wipe must wait for a registry clear that failed or is still
-   * running. Only on the desktop keychain, where the registry (a Preferences entry) is the
-   * one map to the entries left: wiping it would strand them beyond any later erase.
-   * Elsewhere the wipe or the sweep reaches them without it. A registry that cannot be read
-   * or names nothing is no map, so it never holds the wipe back. `records` is what this
-   * attempt read; a retry reads again.
+   * Whether the Preferences wipe must leave the registry entry for a registry clear that
+   * failed or is still running. Only on the desktop keychain, where the registry (a
+   * Preferences entry) is the one map to the entries left: wiping it would strand them
+   * beyond any later erase. The rest of Preferences goes either way, the App lock setting
+   * with the data it protected. Elsewhere the wipe or the sweep reaches the secrets without
+   * the registry. A registry that cannot be read or names nothing is no map, so it is never
+   * kept. `records` is what this attempt read; a retry reads again.
    */
   private keepsRegistry(
     attempt: AccountCleanupAttempt<InstallationResetOutcome>,

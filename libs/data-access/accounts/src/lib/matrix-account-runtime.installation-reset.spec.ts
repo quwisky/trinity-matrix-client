@@ -332,9 +332,9 @@ describe('a registry clear that fails', () => {
       kind: 'partial-cleanup',
       issues: [REGISTRY, PREFERENCES],
     });
-    // The registry is a Preferences entry.
-    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
-    expect(test.wipe.wipeWebStorage).not.toHaveBeenCalled();
+    // Only the registry entry stays: the App lock setting goes with the data it protected.
+    expect(test.wipe.wipePreferences).toHaveBeenCalledExactlyOnceWith(true);
+    expect(test.wipe.wipeWebStorage).toHaveBeenCalledExactlyOnceWith(true);
 
     await expect(
       firstValueFrom(
@@ -344,7 +344,7 @@ describe('a registry clear that fails', () => {
       kind: 'partial-cleanup',
       issues: [REGISTRY, PREFERENCES],
     });
-    expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+    expect(test.wipe.wipePreferences).toHaveBeenLastCalledWith(true);
 
     vi.mocked(test.storage.clearAll).mockReturnValue(of([]));
     await expect(
@@ -352,7 +352,8 @@ describe('a registry clear that fails', () => {
         test.adapter.retryInstallationCleanup([REGISTRY, PREFERENCES]),
       ),
     ).resolves.toEqual({ kind: 'ready' });
-    expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
+    expect(test.wipe.wipePreferences).toHaveBeenLastCalledWith(false);
+    expect(test.wipe.wipeWebStorage).toHaveBeenLastCalledWith(false);
   });
 
   it('wipes a registry that cannot be read, so the retry finishes', async () => {
@@ -420,10 +421,72 @@ describe('a registry clear that fails', () => {
       clearing.error(new Error('keyring prompt dismissed'));
       await vi.runAllTimersAsync();
 
-      expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+      expect(test.wipe.wipePreferences).toHaveBeenCalledExactlyOnceWith(true);
       expect(outcomes.at(-1)).toEqual({
         kind: 'partial-cleanup',
         issues: expect.arrayContaining([REGISTRY, PREFERENCES]),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the registry on a retry whose clear is still running, without a read that would queue behind it', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = desktopKeychain([RECORD] as AccountRecord[]);
+      const clearing = new Subject<AccountRecord[]>();
+      vi.mocked(test.storage.clearAll).mockReturnValue(clearing);
+      vi.mocked(test.storage.list).mockClear();
+      const outcomes: InstallationResetOutcome[] = [];
+
+      test.adapter
+        .retryInstallationCleanup([REGISTRY, PREFERENCES])
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryWrite,
+      );
+      await vi.runAllTimersAsync();
+
+      expect(test.wipe.wipePreferences).toHaveBeenCalledExactlyOnceWith(true);
+      expect(test.storage.list).not.toHaveBeenCalled();
+
+      clearing.error(new Error('keyring prompt dismissed'));
+      await vi.runAllTimersAsync();
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'partial-cleanup',
+        issues: expect.arrayContaining([REGISTRY, PREFERENCES]),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('wipes everything when the backend does not say in time whether the registry is the only map', async () => {
+    vi.useFakeTimers();
+    try {
+      const test = desktopKeychain([RECORD] as AccountRecord[]);
+      vi.mocked(test.storage.clearAll).mockReturnValue(failing());
+      vi.mocked(test.wipe.secretsRemovedByNameOnly).mockReturnValue(
+        new Promise<boolean>(() => undefined),
+      );
+      const outcomes: InstallationResetOutcome[] = [];
+
+      test.adapter
+        .resetInstallation()
+        .subscribe((outcome) => outcomes.push(outcome));
+      await vi.advanceTimersByTimeAsync(
+        ACCOUNT_CLEANUP_STEP_BUDGET_MS.registryRead - 1,
+      );
+      expect(test.wipe.wipePreferences).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await vi.runAllTimersAsync();
+
+      // The erase must always be able to finish.
+      expect(test.wipe.wipePreferences).toHaveBeenCalledExactlyOnceWith(false);
+      expect(outcomes.at(-1)).toEqual({
+        kind: 'partial-cleanup',
+        issues: [REGISTRY],
       });
     } finally {
       vi.useRealTimers();
@@ -469,6 +532,31 @@ describe('a desktop whose host has not answered, so its keychain cannot be reach
     expect(test.wipe.wipePreferences).toHaveBeenCalledOnce();
   });
 
+  it('goes back to retrying only residue once a refused erase has run in full', async () => {
+    const test = setup();
+    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
+    vi.mocked(test.wipe.keychainAwaitingHost).mockResolvedValue(true);
+    await firstValueFrom(test.adapter.resetInstallation());
+    vi.mocked(test.wipe.keychainAwaitingHost).mockResolvedValue(false);
+    await expect(
+      firstValueFrom(test.adapter.retryInstallationCleanup(REFUSED)),
+    ).resolves.toEqual({ kind: 'ready' });
+
+    await expect(
+      firstValueFrom(
+        test.adapter.retryInstallationCleanup([
+          { scope: 'preferences', recovery: 'retry-installation-reset' },
+        ]),
+      ),
+    ).resolves.toEqual({ kind: 'ready' });
+
+    expect(test.wipe.wipePreferences).toHaveBeenCalledTimes(2);
+    expect(test.matrix.signOutAll).toHaveBeenCalledOnce();
+    expect(test.matrix.stop).toHaveBeenCalledOnce();
+    expect(test.wipe.beginIndexedDbWipe).toHaveBeenCalledOnce();
+    expect(test.storage.clearAll).toHaveBeenCalledOnce();
+  });
+
   it('erases anyway when the check itself fails', async () => {
     const test = setup();
     prepareSuccessfulReset(test);
@@ -482,22 +570,84 @@ describe('a desktop whose host has not answered, so its keychain cannot be reach
   });
 });
 
-it('asks for a restart when a password session could not be read to sign it out', async () => {
-  const test = setup();
-  prepareSuccessfulReset(test, [
-    { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' },
-  ] as AccountRecord[]);
-  vi.mocked(test.storage.load).mockReturnValue(
-    throwError(() => new Error('secure read failed')),
-  );
-  vi.mocked(test.matrix.clientFor).mockReturnValue(null);
-
-  // A retry in this page repeats no server sign-out; only a restart's full erase does.
-  await expect(
-    firstValueFrom(test.adapter.resetInstallation()),
-  ).resolves.toEqual({
+describe('a password account whose stored session could not be read to sign it out', () => {
+  const RECORD = { userId: '@a:hs', baseUrl: 'https://hs', deviceId: 'A' };
+  // No retry repeats a server sign-out and the token goes with the erase, so the session
+  // stays signed in at its homeserver: the erase must say so, not report it done.
+  const STILL_SIGNED_IN = {
     kind: 'partial-cleanup',
     issues: [{ scope: 'matrix-session', recovery: 'restart-application' }],
+  };
+
+  function unread(live: boolean): AdapterTest {
+    const test = setup();
+    prepareSuccessfulReset(test, [RECORD] as AccountRecord[]);
+    vi.mocked(test.matrix.clientFor).mockReturnValue(
+      live ? ({} as never) : null,
+    );
+    return test;
+  }
+
+  async function afterReadBudget(
+    test: AdapterTest,
+  ): Promise<InstallationResetOutcome | undefined> {
+    const sessionRead = new Subject<MatrixSession | null>();
+    vi.mocked(test.storage.load).mockReturnValue(sessionRead);
+    const outcomes: InstallationResetOutcome[] = [];
+    test.adapter
+      .resetInstallation()
+      .subscribe((outcome) => outcomes.push(outcome));
+    await vi.advanceTimersByTimeAsync(
+      ACCOUNT_CLEANUP_STEP_BUDGET_MS.sessionRead,
+    );
+    sessionRead.next(null);
+    sessionRead.complete();
+    await vi.runAllTimersAsync();
+    return outcomes.at(-1);
+  }
+
+  it('asks for a restart when the read fails', async () => {
+    const test = unread(false);
+    vi.mocked(test.storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual(STILL_SIGNED_IN);
+  });
+
+  it('asks for a restart when the read does not answer within its budget', async () => {
+    vi.useFakeTimers();
+    try {
+      await expect(afterReadBudget(unread(false))).resolves.toEqual(
+        STILL_SIGNED_IN,
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('records nothing for a failed read when a live client signs the account out', async () => {
+    const test = unread(true);
+    vi.mocked(test.storage.load).mockReturnValue(
+      throwError(() => new Error('secure read failed')),
+    );
+
+    await expect(
+      firstValueFrom(test.adapter.resetInstallation()),
+    ).resolves.toEqual({ kind: 'ready' });
+  });
+
+  it('records nothing for a late read when a live client signs the account out', async () => {
+    vi.useFakeTimers();
+    try {
+      await expect(afterReadBudget(unread(true))).resolves.toEqual({
+        kind: 'ready',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

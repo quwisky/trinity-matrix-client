@@ -12,7 +12,7 @@ import { MENTION_INDEX_DB_NAME } from './mention-index-db-name';
 import { firstValueFrom } from 'rxjs';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
-import type { AccountRecord } from './session-storage.service';
+import { ACCOUNTS_KEY, type AccountRecord } from './session-storage.service';
 
 /** What a wipe managed to do. Reported rather than thrown — see {@link LocalDataWipeService}. */
 export interface WipeReport {
@@ -187,19 +187,37 @@ export class LocalDataWipeService {
    * is scoped to the app's own `CapacitorStorage` group on every backend: prefixed
    * localStorage keys on web/Electron, the app-private group file on Android, prefixed
    * `UserDefaults` keys on iOS.
+   *
+   * `keepRegistry` leaves the account registry entry and nothing else, for an erase that
+   * still needs it to name keychain entries.
    */
-  wipePreferences(): Promise<boolean> {
-    return attemptAsync(() => Preferences.clear());
+  wipePreferences(keepRegistry = false): Promise<boolean> {
+    return attemptAsync(async () => {
+      if (!keepRegistry) return Preferences.clear();
+      const { keys } = await Preferences.keys();
+      await Promise.all(
+        keys
+          .filter((key) => key !== ACCOUNTS_KEY)
+          .map((key) => Preferences.remove({ key })),
+      );
+    });
   }
 
   /**
    * Clear raw local and session storage on every host, not just web: the OIDC callback
    * re-seed writes `sessionStorage` on NATIVE too, and skipping it would leave a PKCE
    * `code_verifier` behind, the one secret in this surface. On web it also catches keys
-   * outside `CapacitorStorage`.
+   * outside `CapacitorStorage`. `keepRegistry` leaves the registry entry, as in
+   * {@link wipePreferences}.
    */
-  async wipeWebStorage(): Promise<boolean> {
-    const localStorage = attempt(() => globalThis.localStorage?.clear());
+  async wipeWebStorage(keepRegistry = false): Promise<boolean> {
+    const localStorage = attempt(() => {
+      const storage = globalThis.localStorage;
+      if (!keepRegistry) return storage?.clear();
+      for (const key of Object.keys(storage ?? {})) {
+        if (key !== WEB_REGISTRY_KEY) storage?.removeItem(key);
+      }
+    });
     const sessionStorage = attempt(() => globalThis.sessionStorage?.clear());
     return localStorage && sessionStorage;
   }
@@ -235,6 +253,12 @@ export class LocalDataWipeService {
     return true;
   }
 }
+
+/**
+ * The registry entry as Capacitor's web Preferences names it in localStorage. The registry
+ * is only ever held back on the desktop keychain, where Preferences is that implementation.
+ */
+const WEB_REGISTRY_KEY = `CapacitorStorage.${ACCOUNTS_KEY}`;
 
 /** Run a best-effort cleanup step and report whether it completed. */
 function attempt(step: () => void): boolean {

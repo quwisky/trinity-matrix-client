@@ -173,6 +173,71 @@ describe('SessionStorageService', () => {
   beforeEach(() => prefs.clear());
   afterEach(() => vi.unstubAllGlobals());
 
+  describe('a stored registry that is not a registry', () => {
+    it.each([
+      ['unparseable', '{'],
+      ['an empty object', '{}'],
+      ['an array', '[]'],
+      ['accounts that are no list', '{"accounts":{}}'],
+      ['a list of something else', '{"accounts":[1]}'],
+      ['a record without its device', '{"accounts":[{"userId":"@a:hs"}]}'],
+      ['JSON null', 'null'],
+    ])('is corrupt local state for every reader: %s', async (_, value) => {
+      const { svc } = setup();
+      prefs.set('matrix.accounts', value);
+
+      await expect(firstValueFrom(svc.list())).rejects.toThrow();
+      await expect(firstValueFrom(svc.snapshot())).rejects.toThrow();
+      await expect(firstValueFrom(svc.hasAccounts())).rejects.toThrow();
+      await expect(firstValueFrom(svc.clearAll())).rejects.toThrow();
+      expect(prefs.get('matrix.accounts')).toBe(value);
+    });
+  });
+
+  describe('an erase that could not remove every secret', () => {
+    it('leaves a registry that names its accounts for the next erase but restores none of them', async () => {
+      const { svc, removals, secure } = setup();
+      await firstValueFrom(save(svc, ALICE));
+      const remove = removals.getMockImplementation()!;
+      removals.mockRejectedValue(new Error('store file locked'));
+
+      await expect(firstValueFrom(svc.clearAll())).rejects.toThrow(
+        'store file locked',
+      );
+
+      expect(secure.store.has('matrix.accessToken:@alice:hs')).toBe(true);
+      await expect(firstValueFrom(svc.snapshot())).rejects.toThrow();
+      await expect(
+        firstValueFrom(svc.persistForEstablishment(ALICE, 'upsert')),
+      ).rejects.toThrow();
+      await expect(firstValueFrom(svc.list())).resolves.toEqual([
+        expect.objectContaining({ userId: '@alice:hs' }),
+      ]);
+
+      removals.mockImplementation(remove);
+      await expect(firstValueFrom(svc.clearAll())).resolves.toEqual([
+        expect.objectContaining({ userId: '@alice:hs' }),
+      ]);
+      expect(secure.store.size).toBe(0);
+      await expect(firstValueFrom(svc.snapshot())).resolves.toEqual({
+        activeAccountId: null,
+        accounts: [],
+      });
+    });
+
+    it('keeps the registry when a crypto store key could not be removed, since nothing else names it', async () => {
+      const { svc, keys } = setup();
+      await firstValueFrom(save(svc, ALICE));
+      keys.remove.mockRejectedValue(new Error('store file locked'));
+
+      await expect(firstValueFrom(svc.clearAll())).rejects.toThrow(
+        'store file locked',
+      );
+
+      expect(prefs.has('matrix.accounts')).toBe(true);
+    });
+  });
+
   it('keeps the token out of Preferences (secure, per-account) and records the account', async () => {
     const { svc, secure } = setup();
     await firstValueFrom(save(svc, ALICE));
