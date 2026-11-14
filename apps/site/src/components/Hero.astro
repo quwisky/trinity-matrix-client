@@ -23,14 +23,14 @@ const { releasePage, version } = Astro.props;
     </div>
     {version && <p class="muted version">Version {version}</p>}
   </div>
-  <div class="shots">
+  <div class="shots rise">
     <Shot
       scene="hero"
       viewport="desktop"
-      alt="Trinity on the desktop: the room list beside an open conversation."
+      alt="Trinity on the desktop: a space's room list beside a conversation with a code block and a formula."
       eager
     />
-    <Shot scene="hero" viewport="phone" alt="Trinity on a phone: an open conversation." eager />
+    <Shot scene="hero" viewport="phone" alt="Trinity on a phone: the same conversation, with its code block and formula." eager />
   </div>
 </header>
 
@@ -68,15 +68,29 @@ const { releasePage, version } = Astro.props;
     font-size: 0.875rem;
   }
 
+  /* The phone overlaps the window in the same grid cell, so the cell's height includes both. */
   .shots {
-    position: relative;
-    padding-inline-end: 12%;
+    display: grid;
+    /* A soft accent glow behind the devices. */
+    background: radial-gradient(
+      closest-side,
+      color-mix(in oklch, var(--sl-color-accent) 22%, transparent),
+      transparent
+    );
+  }
+
+  .shots > :global(*) {
+    grid-area: 1 / 1;
+  }
+
+  .shots > :global(.desktop) {
+    margin-inline-end: 12%;
+    margin-block-end: 2.5rem;
   }
 
   .shots > :global(.phone) {
-    position: absolute;
-    inset-block-end: -1.5rem;
-    inset-inline-end: 0;
+    align-self: end;
+    justify-self: end;
     inline-size: 24%;
   }
 

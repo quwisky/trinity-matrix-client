@@ -57,13 +57,42 @@ const { width, height } = captured?.size ?? placeholder;
 </picture>
 
 <style>
-  .shot img {
-    border: 1px solid var(--border);
+  /* Device frames: a window with a title bar for desktop shots, a bezel for phone shots. */
+  .shot {
+    display: block;
+    overflow: hidden;
+    box-shadow:
+      0 2rem 4rem -2rem oklch(0% 0 0deg / 55%),
+      0 0 0 1px var(--frame-edge);
+  }
+
+  .desktop {
+    position: relative;
+    padding-block-start: 1.75rem;
     border-radius: var(--radius);
-    box-shadow: 0 1.5rem 3rem -1.5rem oklch(0% 0 0deg / 50%);
+    background: var(--frame);
+  }
+
+  /* The window's three controls. */
+  .desktop::before {
+    position: absolute;
+    inset-block-start: 0.65rem;
+    inset-inline-start: 0.85rem;
+    inline-size: 2.6rem;
+    block-size: 0.5rem;
+    background:
+      radial-gradient(circle closest-side, var(--frame-dot) 98%, transparent) 0 0 / 0.9rem 100%
+      repeat-x;
+    content: '';
+  }
+
+  .phone {
+    padding: 0.45rem;
+    border-radius: 2.25rem;
+    background: var(--bezel);
   }
 
   .phone img {
-    border-radius: 1.5rem;
+    border-radius: 1.8rem;
   }
 </style>
