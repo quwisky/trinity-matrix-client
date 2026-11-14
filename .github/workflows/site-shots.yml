@@ -37,8 +37,8 @@ jobs:
             echo "::error::Dispatch this workflow from main (--ref main); it was dispatched from '$REF'."
             exit 1
           fi
-      # Validated before anything uses it: a dispatch input is free text. A draft has no tag,
-      # so `release view` fails for it as for a missing release.
+      # Validated before anything uses it: a dispatch input is free text. `release view` fails
+      # for a missing release; the isDraft/isPrerelease check refuses drafts and prereleases.
       - name: Tag is a published stable release
         id: tag
         env:
