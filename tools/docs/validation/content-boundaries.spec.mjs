@@ -29,7 +29,7 @@ describe('public content boundaries', () => {
     const roots = fixture();
     writeFileSync(
       join(roots.userRoot, 'index.md'),
-      '[Developer guide](/trinity-matrix-client/developers/)\n',
+      '[Developer guide](/developers/)\n',
       'utf8',
     );
 

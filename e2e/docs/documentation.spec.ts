@@ -1,7 +1,7 @@
 import axe from 'axe-core';
 import { expect, test, type Page } from '@playwright/test';
 
-const pagesBase = '/trinity-matrix-client';
+const pagesBase = '';
 
 interface AxeNodeResult {
   readonly html: string;
@@ -160,7 +160,7 @@ test('keeps each Starlight search inside its content channel', async ({
   for (const href of await developerResults.evaluateAll((links) =>
     links.map((link) => link.getAttribute('href')),
   )) {
-    expect(href).toMatch(/^\/trinity-matrix-client\/developers\//);
+    expect(href).toMatch(/^\/developers\//);
   }
 
   await page.goto('users/');

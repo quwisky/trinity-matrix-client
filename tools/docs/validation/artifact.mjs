@@ -3,7 +3,8 @@ import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const EXPECTED_ROOTS = ['404.html', 'developers', 'index.html', 'users'];
-const PAGES_BASE = '/trinity-matrix-client/';
+export const PAGES_BASE = '/';
+const LEGACY_PREFIX = '/trinity-matrix-client/';
 const SECRET_NAME =
   /(?:^|[-_.])(?:secret|credential|token|id_rsa)(?:[-_.]|$)|(?:\.pem|\.key)$|^\.env(?:\.|$)/i;
 const URL_ATTRIBUTE = /(?:href|src)="(?<url>[^"]+)"/g;
@@ -71,7 +72,7 @@ export const validateArtifact = (root) => {
     for (const match of source.matchAll(URL_ATTRIBUTE)) {
       const url = match.groups.url;
       if (EXTERNAL_URL.test(url)) continue;
-      if (url.startsWith('/') && !url.startsWith(PAGES_BASE)) {
+      if (url.startsWith(LEGACY_PREFIX)) {
         throw new Error(
           `${relativePath} contains an invalid base URL: ${url}.`,
         );

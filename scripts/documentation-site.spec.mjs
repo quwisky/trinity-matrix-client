@@ -98,13 +98,11 @@ describe('documentation site presentation', () => {
     }
 
     expect(userConfig).toContain("title: 'Trinity User Guide'");
-    expect(userConfig).toContain("base: '/trinity-matrix-client/users'");
+    expect(userConfig).toContain("base: '/users'");
     expect(userConfig).not.toContain('apps/docs-developers/src/content');
 
     expect(developerConfig).toContain("title: 'Trinity Developer Guide'");
-    expect(developerConfig).toContain(
-      "base: '/trinity-matrix-client/developers'",
-    );
+    expect(developerConfig).toContain("base: '/developers'");
     expect(developerConfig).not.toContain('apps/docs-users/src/content');
   });
 

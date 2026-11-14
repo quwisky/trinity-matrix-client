@@ -95,7 +95,7 @@ docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest
 
 Then open `http://localhost:8080`. You can also serve the static files from
 `Trinity-Web-0.7.0.zip` with any web server. For HTTPS, headers and updates, see
-[Self-host a release](/trinity-matrix-client/developers/platforms/web-and-pwa/#self-host-release)
+[Self-host a release](/developers/platforms/web-and-pwa/#self-host-release)
 in the developer guide.
 
 ### Use one tab at a time {#one-tab}
