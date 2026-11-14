@@ -45,19 +45,21 @@ const assertControlledOutput = (outputRoot) => {
 };
 
 export const assemblePages = ({
+  siteRoot,
   portalRoot,
   userRoot,
   developerRoot,
   outputRoot,
 }) => {
   const output = assertControlledOutput(asPath(outputRoot));
+  const site = asPath(siteRoot);
   const portal = asPath(portalRoot);
   const users = asPath(userRoot);
   const developers = asPath(developerRoot);
 
   rmSync(output, { recursive: true, force: true });
   mkdirSync(output, { recursive: true });
-  copyTree(join(portal, 'index.html'), join(output, 'index.html'));
+  copyTree(site, output);
   copyTree(join(portal, '404.html'), join(output, '404.html'));
   copyTree(users, join(output, 'users'));
   copyTree(developers, join(output, 'developers'));
@@ -67,6 +69,7 @@ export const assemblePages = ({
 if (import.meta.main) {
   const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
   assemblePages({
+    siteRoot: join(workspaceRoot, 'dist/site'),
     portalRoot: join(workspaceRoot, 'tools/docs/portal'),
     userRoot: join(workspaceRoot, 'dist/docs/users'),
     developerRoot: join(workspaceRoot, 'dist/docs/developers'),

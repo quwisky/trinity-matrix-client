@@ -67,6 +67,10 @@
       "reason": "Repository tooling is outside the shipped application dependency model."
     },
     {
+      "project": "site",
+      "reason": "The public landing page is outside the shipped application dependency model."
+    },
+    {
       "project": "testing",
       "reason": "Test-only helpers are outside the shipped application dependency model."
     },

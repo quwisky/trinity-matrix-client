@@ -1,0 +1,32 @@
+---
+import desktop from '../placeholders/desktop.svg';
+import phone from '../placeholders/phone.svg';
+import Base from '../layouts/Base.astro';
+
+const features = [
+  'Multiple accounts',
+  'End-to-end encryption and verification',
+  'Every platform',
+  'Spaces, threads and rich chat',
+];
+---
+
+<Base title="Trinity">
+  <header>
+    <h1>Trinity</h1>
+    <img src={desktop.src} width={desktop.width} height={desktop.height} alt="" />
+  </header>
+  <main>
+    {
+      features.map((feature) => (
+        <section>
+          <h2>{feature}</h2>
+          <img src={phone.src} width={phone.width} height={phone.height} alt="" />
+        </section>
+      ))
+    }
+    <section><h2>Download</h2></section>
+    <section><h2>Open source and privacy</h2></section>
+  </main>
+  <footer><p>Trinity</p></footer>
+</Base>

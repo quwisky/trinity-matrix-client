@@ -45,13 +45,14 @@
       "dependsOn": [
         "check",
         {
-          "projects": ["docs-users", "docs-developers"],
+          "projects": ["docs-users", "docs-developers", "site"],
           "target": "build"
         }
       ],
       "inputs": [
         "default",
         "{workspaceRoot}/tools/docs/portal/**/*",
+        "{workspaceRoot}/dist/site/**/*",
         "{workspaceRoot}/dist/docs/users/**/*",
         "{workspaceRoot}/dist/docs/developers/**/*"
       ],
