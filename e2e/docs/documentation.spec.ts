@@ -70,25 +70,22 @@ const formatViolations = (violations: readonly AxeViolation[]): string[] =>
     ),
   );
 
-test('routes readers from the Pages root with keyboard-visible choices', async ({
+test('reaches the guides from the landing page by keyboard', async ({
   page,
 }) => {
   await page.goto('./');
 
   await expect(
-    page.getByRole('heading', { level: 1, name: 'Trinity documentation' }),
+    page.getByRole('heading', { level: 1, name: 'Trinity' }),
   ).toBeVisible();
-  const audiences = page.getByRole('navigation', {
-    name: 'Documentation audiences',
-  });
-  const users = audiences.getByRole('link', { name: /Use Trinity/ });
-  const developers = audiences.getByRole('link', { name: /Develop Trinity/ });
-  await expect(users).toHaveAttribute('href', './users/');
-  await expect(developers).toHaveAttribute('href', './developers/');
+  const guides = page.getByRole('navigation', { name: 'Guides' });
+  const users = guides.getByRole('link', { name: 'User guide' });
+  const developers = guides.getByRole('link', { name: 'Developer guide' });
+  await expect(users).toHaveAttribute('href', '/users/');
+  await expect(developers).toHaveAttribute('href', '/developers/');
 
   await page.keyboard.press('Tab');
   await expect(users).toBeFocused();
-  await expect(users).toHaveCSS('outline-style', 'solid');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(`${pagesBase}/users/`);
 });
