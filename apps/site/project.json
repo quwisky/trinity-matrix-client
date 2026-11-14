@@ -15,6 +15,7 @@
     },
     "build": {
       "executor": "nx:run-commands",
+      "cache": false,
       "outputs": ["{workspaceRoot}/dist/site"],
       "options": {
         "command": "astro build",

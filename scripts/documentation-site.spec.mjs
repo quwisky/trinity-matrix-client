@@ -54,7 +54,10 @@ describe('documentation site projects', () => {
     expect(project.targets.check).toMatchObject({
       executor: 'nx:run-commands',
       dependsOn: [
-        { projects: ['docs-users', 'docs-developers'], target: 'check' },
+        {
+          projects: ['docs-users', 'docs-developers', 'site'],
+          target: 'check',
+        },
       ],
     });
     expect(project.targets.assemble).toMatchObject({

@@ -99,19 +99,48 @@ test('reaches the guides from the landing page by keyboard', async ({
 
 const RELEASES =
   /^https:\/\/github\.com\/quwisky\/trinity-matrix-client\/releases/;
+/** An asset of the built release, or its release page when the asset is missing or offline. */
+const RELEASE_ASSET =
+  /^https:\/\/github\.com\/quwisky\/trinity-matrix-client\/releases\/(latest|tag\/v\d+\.\d+\.\d+|download\/v\d+\.\d+\.\d+\/[^/]+)$/;
 
 test('landing page offers downloads and the guides', async ({ page }) => {
   await page.goto('./');
 
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-  const download = page.getByRole('link', { name: /download/i }).first();
-  expect(await download.getAttribute('href')).toMatch(RELEASES);
+  const downloads = page
+    .getByRole('region', { name: 'Download' })
+    .getByRole('link', { name: /download/i });
+  await expect(downloads).not.toHaveCount(0);
+  for (const href of await downloads.evaluateAll((links) =>
+    links.map((link) => link.getAttribute('href')),
+  )) {
+    expect(href).toMatch(RELEASE_ASSET);
+  }
   await expect(
     page.locator('a[href="/users/"]').filter({ visible: true }).first(),
   ).toBeVisible();
   await expect(
     page.locator('a[href="/developers/"]').filter({ visible: true }).first(),
   ).toBeVisible();
+});
+
+test('landing page links resolve on the site', async ({ page }) => {
+  await page.goto('./');
+
+  const hrefs = await page
+    .locator('a[href^="/"]:not([href^="//"])')
+    .evaluateAll((links) => [
+      ...new Set(links.map((link) => link.getAttribute('href') ?? '')),
+    ]);
+  expect(hrefs).not.toHaveLength(0);
+  for (const href of hrefs) {
+    const [path, fragment] = href.split('#');
+    const response = await page.goto(path);
+    expect(response?.status(), href).toBe(200);
+    if (fragment) {
+      await expect(page.locator(`[id="${fragment}"]`), href).toHaveCount(1);
+    }
+  }
 });
 
 test('landing page fits a phone without horizontal scroll', async ({

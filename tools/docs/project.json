@@ -23,7 +23,7 @@
       "executor": "nx:run-commands",
       "dependsOn": [
         {
-          "projects": ["docs-users", "docs-developers"],
+          "projects": ["docs-users", "docs-developers", "site"],
           "target": "check"
         }
       ],
