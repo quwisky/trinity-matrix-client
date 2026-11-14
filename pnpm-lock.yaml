@@ -286,8 +286,8 @@ importers:
         specifier: ^1.2.3
         version: 1.2.5
       '@matrix-org/matrix-sdk-crypto-wasm':
-        specifier: 18.9.2
-        version: 18.9.2
+        specifier: 18.9.0
+        version: 18.9.0
       '@ng-icons/core':
         specifier: ^36.0.0
         version: 36.1.0(@angular-devkit/schematics@22.2.6(chokidar@5.0.0))(@angular/common@22.2.5(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.5(@angular/compiler@22.2.5)(rxjs@7.8.2))(@schematics/angular@22.2.6(chokidar@5.0.0))(rxjs@7.8.2)
@@ -2813,10 +2813,6 @@ packages:
 
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0':
     resolution: {integrity: sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ==}
-    engines: {node: '>= 18'}
-
-  '@matrix-org/matrix-sdk-crypto-wasm@18.9.2':
-    resolution: {integrity: sha512-GHeuSeb5Fj6Wg2+NE/WoLJJs9U3nOzttO+2sj7lOaS5gNBpGIksc48N/Q/kK/Z+Lxh7YMhopB7M8b6HyASXnGQ==}
     engines: {node: '>= 18'}
 
   '@mdx-js/mdx@3.1.1':
@@ -12622,8 +12618,6 @@ snapshots:
   '@marijn/find-cluster-break@1.0.4': {}
 
   '@matrix-org/matrix-sdk-crypto-wasm@18.9.0': {}
-
-  '@matrix-org/matrix-sdk-crypto-wasm@18.9.2': {}
 
   '@mdx-js/mdx@3.1.1(supports-color@8.1.1)':
     dependencies:
