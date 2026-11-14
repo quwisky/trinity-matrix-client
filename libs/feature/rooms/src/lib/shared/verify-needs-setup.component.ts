@@ -86,7 +86,14 @@ export class VerifyNeedsSetupComponent {
 
   protected open(flow: NonNullable<VerifyBlock['action']>['flow']): void {
     // Finite, and deliberately not tied to this component: its host closes on `opened`.
-    this.surfaces.open({ surface: { kind: 'trust', flow } }).subscribe();
+    // Named, so the flow presented later refuses once another Account is on screen.
+    const accountId = this.trust.activeAccountId();
+    this.surfaces
+      .open({
+        surface: { kind: 'trust', flow },
+        ...(accountId ? { context: { accountId } } : {}),
+      })
+      .subscribe();
     this.opened.emit();
   }
 }

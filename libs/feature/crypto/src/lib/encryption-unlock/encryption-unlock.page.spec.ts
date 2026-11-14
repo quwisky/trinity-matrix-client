@@ -36,6 +36,12 @@ interface RenderOptions {
   status?: TrustStatus;
   /** A verified device whose identity's keys, and recovery, live on another device. */
   setupElsewhere?: boolean;
+  /** The Account on screen when the page is built. */
+  active?: string;
+  /** The Account the opener named: the dialog input. */
+  requestedAccountId?: string;
+  /** The Account the opener named: `account` query param on the routed page. */
+  account?: string | null;
   /** This device is already verified, so the key is only fetching its missing keys. */
   verified?: boolean;
 }
@@ -54,6 +60,9 @@ async function renderPage(options: RenderOptions = {}) {
     confirmClose = true,
     status = 'needs-recovery',
     setupElsewhere = false,
+    active = '@me:hs',
+    requestedAccountId,
+    account = null,
     verified = false,
   } = options;
   // The type-to-confirm gate and the password prompt both go through prompt$(); the
@@ -64,22 +73,27 @@ async function renderPage(options: RenderOptions = {}) {
   // Writable so a test can move the live status while the page is open.
   const liveStatus = signal<TrustStatus>(status);
   const liveSetupElsewhere = signal(setupElsewhere);
+  // Writable so a test can switch account under the open screen.
+  const activeAccountId = signal<string | null>(active);
   const result = await render(EncryptionUnlockPage, {
     inputs: {
       ...(asModal === undefined ? {} : { asModal }),
       ...(offerReset === undefined ? {} : { offerReset }),
+      ...(requestedAccountId === undefined ? {} : { requestedAccountId }),
     },
     providers: [
       MockProvider(TrustService, {
         status: liveStatus.asReadonly(),
         recoverySetupElsewhere: liveSetupElsewhere.asReadonly(),
+        activeAccountId: activeAccountId.asReadonly(),
         thisDeviceVerified: signal(verified),
       }),
       MockProvider(Router),
       MockProvider(ActivatedRoute, {
         snapshot: {
           queryParamMap: {
-            get: (key: string) => (key === 'returnTo' ? returnTo : null),
+            get: (key: string) =>
+              ({ returnTo, account })[key as 'returnTo' | 'account'] ?? null,
           },
         },
       } as never),
@@ -113,6 +127,7 @@ async function renderPage(options: RenderOptions = {}) {
     externalBrowser,
     liveStatus,
     liveSetupElsewhere,
+    activeAccountId,
   };
 }
 
@@ -212,6 +227,165 @@ describe('EncryptionUnlockPage', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
+  describe('when another account becomes active', () => {
+    it('closes the dialog and forgets the typed recovery key', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+      });
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('keeps the dialog open while it shows a new recovery key', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: of('EsTBrandNew'),
+      });
+      fixture.componentInstance.resetRecovery();
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.newRecoveryKey()).toBe('EsTBrandNew');
+      // The key now sits over another Account's screen, so it says whose it is.
+      expect(
+        screen.getByTestId('recovery-key-account').textContent?.trim(),
+      ).toBe('This recovery key is for @me:hs.');
+    });
+
+    it('keeps the dialog open while a reset is running', async () => {
+      const { fixture, dialogRef, activeAccountId } = await renderPage({
+        asModal: true,
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+      fixture.componentInstance.resetRecovery();
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+
+    it('forgets the typed recovery key on the routed page without navigating', async () => {
+      const { fixture, router, activeAccountId } = await renderPage();
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(router.navigateByUrl).not.toHaveBeenCalled();
+    });
+
+    it('does not unlock with a key typed after the switch', async () => {
+      const { fixture, crypto, activeAccountId } = await renderPage({
+        recover: of(undefined),
+      });
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(crypto.recoverWithKey).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.unlockForm.recoveryKey().value()).toBe(
+        '',
+      );
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was unlocked: you switched account while this was open.',
+      );
+    });
+  });
+
+  // The dialog's code is loaded after the press, so the page can be built once another
+  // Account is already on screen. The opener names the Account the user was looking at.
+  describe('built after the account that asked left the screen', () => {
+    it('opens no confirmation and resets nothing in the dialog', async () => {
+      const { crypto, prompt, dialogRef } = await renderPage({
+        asModal: true,
+        offerReset: true,
+        typed: 'RESET',
+        requestedAccountId: '@me:hs',
+        active: '@other:hs',
+      });
+      await flush();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(dialogRef.close).toHaveBeenCalled();
+    });
+
+    it('opens no confirmation and says why on the routed page', async () => {
+      const { fixture, crypto, prompt } = await renderPage({
+        offerReset: true,
+        typed: 'RESET',
+        account: '@me:hs',
+        active: '@other:hs',
+      });
+      await flush();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
+    });
+
+    it('does not unlock the account on screen with a key', async () => {
+      const { fixture, crypto } = await renderPage({
+        recover: of(undefined),
+        account: '@me:hs',
+        active: '@other:hs',
+      });
+
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(crypto.recoverWithKey).not.toHaveBeenCalled();
+    });
+
+    it('offers the reset when the account the opener named is still on screen', async () => {
+      const { prompt, dialogRef } = await renderPage({
+        asModal: true,
+        offerReset: true,
+        typed: null,
+        requestedAccountId: '@me:hs',
+      });
+      await flush();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(dialogRef.close).not.toHaveBeenCalled();
+    });
+  });
+
+  it('names the account in the type-to-confirm gate', async () => {
+    const { fixture, prompt } = await renderPage({ typed: null });
+
+    fixture.componentInstance.resetRecovery();
+
+    expect(prompt.mock.calls[0][0].message).toBe(
+      [
+        'This resets the identity of @me:hs.',
+        'Your message backup on the server is deleted. Messages your devices cannot already read stay unreadable — forever.',
+        'Your other devices lose their verified status and must be verified again. They stay signed in.',
+        'You get a new recovery key. Save it.',
+        'Type RESET to confirm.',
+      ].join('\n\n'),
+    );
+  });
+
   it('renders a Close control only in modal mode', async () => {
     const { fixture, container } = await renderPage();
     expect(closeButton()).toBeNull();
@@ -236,6 +410,187 @@ describe('EncryptionUnlockPage', () => {
       await fixture.componentInstance.resetRecovery();
 
       expect(crypto.resetRecovery).toHaveBeenCalledOnce();
+    });
+
+    it('resets nothing when another account became active while the confirmation was open', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage();
+      const typed = new Subject<string | null>();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(typed);
+
+      fixture.componentInstance.resetRecovery();
+      // A notification click switches account under the open dialog.
+      activeAccountId.set('@other:hs');
+      typed.next('RESET');
+
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
+    });
+
+    it('resets nothing when Reset is pressed after another account became active', async () => {
+      // Opened for one account and left open; the switch lands before Reset is pressed.
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        typed: 'RESET',
+      });
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+
+      expect(prompt).not.toHaveBeenCalled();
+      expect(crypto.resetRecovery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(
+        'Nothing was reset: you switched account while this was open.',
+      );
+    });
+
+    it('withdraws the confirmation when the page itself goes away, as a switch does on a phone', async () => {
+      const { fixture, prompt } = await renderPage();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(new Subject<string | null>());
+      fixture.componentInstance.resetRecovery();
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+
+      fixture.destroy();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('withdraws the confirmation when another account becomes active', async () => {
+      const { fixture, prompt, activeAccountId } = await renderPage();
+      prompt.mockReset();
+      prompt.mockReturnValueOnce(new Subject<string | null>());
+      fixture.componentInstance.resetRecovery();
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+      fixture.detectChanges();
+      expect(withdrawn).toBe(false);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('resets the account the screen was opened for, and names it in a password prompt that outlives a switch', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+
+      fixture.componentInstance.resetRecovery();
+      expect(crypto.resetRecovery).toHaveBeenCalledWith(
+        '@me:hs',
+        expect.any(Function),
+      );
+      // The reset is under way when the switch lands; its key upload then asks again.
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      const askPassword = vi.mocked(crypto.resetRecovery).mock.calls[0][1];
+      await askPassword('@me:hs', false);
+
+      expect(prompt.mock.calls[1][0].message).toBe(
+        'Enter the password for @me:hs to reset your identity.',
+      );
+      // Cancelling here would abandon a reset part-way, so a switch must not close it.
+      expect(prompt.mock.calls[1][0].closeWhen).toBeUndefined();
+    });
+
+    it('closes the first password prompt when another account becomes active', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        typed: 'RESET',
+        reset: new Observable<string>(() => undefined),
+      });
+      fixture.componentInstance.resetRecovery();
+      prompt.mockReturnValue(new Subject<string | null>());
+      void vi.mocked(crypto.resetRecovery).mock.calls[0][1]('@me:hs', true);
+      let withdrawn = false;
+      (prompt.mock.calls[1][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+      fixture.detectChanges();
+      expect(withdrawn).toBe(false);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('asks for the provider link of the account that was refused, not the one now on screen', async () => {
+      const reset = new Subject<string>();
+      const { fixture, crypto, activeAccountId } = await renderPage({
+        typed: 'RESET',
+        reset,
+      });
+
+      fixture.componentInstance.resetRecovery();
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      reset.error(providerActionRequired());
+      await flush();
+
+      expect(crypto.providerResetLink).toHaveBeenCalledExactlyOnceWith(
+        '@me:hs',
+      );
+    });
+
+    it('stays open and refuses another reset once a reset ended after the switch', async () => {
+      const reset = new Subject<string>();
+      const { fixture, crypto, prompt, dialogRef, activeAccountId } =
+        await renderPage({ asModal: true, typed: 'RESET', reset });
+      fixture.componentInstance.resetRecovery();
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      reset.error(
+        new TrustOperationError(
+          'reset-recovery',
+          'stale-state',
+          'none',
+          'Nothing was reset: you switched account while this was open.',
+        ),
+      );
+      await flush();
+      fixture.detectChanges();
+
+      // The dialog is what tells the user their reset did not happen.
+      expect(dialogRef.close).not.toHaveBeenCalled();
+      expect(screen.getByTestId('unlock-error').textContent).toContain(
+        'Nothing was reset: you switched account while this was open.',
+      );
+
+      fixture.componentInstance.resetRecovery();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(crypto.resetRecovery).toHaveBeenCalledOnce();
+    });
+
+    it('works again once the original account is back on screen', async () => {
+      const { fixture, crypto, prompt, activeAccountId } = await renderPage({
+        recover: of(undefined),
+        typed: null,
+      });
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+      expect(prompt).not.toHaveBeenCalled();
+
+      activeAccountId.set('@me:hs');
+      fixture.detectChanges();
+      fixture.componentInstance.resetRecovery();
+      fixture.componentInstance.unlockForm.recoveryKey().value.set('my-key');
+      fixture.componentInstance.unlock();
+
+      expect(prompt).toHaveBeenCalledOnce();
+      expect(crypto.recoverWithKey).toHaveBeenCalledWith('my-key');
     });
 
     it('warns about the cost before doing it', async () => {

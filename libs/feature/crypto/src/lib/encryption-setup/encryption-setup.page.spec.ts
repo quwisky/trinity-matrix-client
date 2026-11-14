@@ -1,5 +1,6 @@
+import { signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { render, screen } from '@trinity/testing';
 import {
   TrustOperationError,
@@ -17,6 +18,8 @@ const KEY = 'THE-RECOVERY-KEY';
 interface SetupOptions {
   /** What the "are you sure you want to leave" guard resolves to. */
   confirmLeave?: boolean;
+  /** The Account the opener named: `account` query param. */
+  account?: string;
 }
 
 async function setup(options: SetupOptions = {}): Promise<{
@@ -24,18 +27,31 @@ async function setup(options: SetupOptions = {}): Promise<{
   crypto: TrustService;
   router: Router;
   confirm: Mock;
+  activeAccountId: WritableSignal<string | null>;
 }> {
   const confirm = vi.fn(() => of(options.confirmLeave ?? true));
+  // Writable so a test can switch account under the open screen.
+  const activeAccountId = signal<string | null>('@me:hs');
   const { fixture } = await render(EncryptionSetupPage, {
     providers: [
-      MockProvider(TrustService),
+      MockProvider(TrustService, {
+        activeAccountId: activeAccountId.asReadonly(),
+      }),
       MockProvider(Router),
+      MockProvider(ActivatedRoute, {
+        snapshot: {
+          queryParamMap: {
+            get: (key: string) =>
+              key === 'account' ? (options.account ?? null) : null,
+          },
+        },
+      } as never),
       MockProvider(TrnAlertService, { confirm$: confirm }),
     ],
   });
   const crypto = TestBed.inject(TrustService);
   const router = TestBed.inject(Router);
-  return { fixture, crypto, router, confirm };
+  return { fixture, crypto, router, confirm, activeAccountId };
 }
 
 /** Get to step 2 — the key is on screen and has not been confirmed saved. */
@@ -71,6 +87,113 @@ function continueButton(): HTMLElement {
 }
 
 describe('EncryptionSetupPage', () => {
+  it('names the account being set up in the password prompt', async () => {
+    const { fixture, crypto } = await setup();
+    const prompt = vi
+      .mocked(TestBed.inject(TrnAlertService).prompt$)
+      .mockReturnValue(of('pw'));
+    vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+    fixture.componentInstance.setUp();
+
+    await vi.mocked(crypto.setUp).mock.calls[0][0]('@alice:example.org', true);
+
+    expect(prompt.mock.calls[0][0].message).toBe(
+      'Enter the password for @alice:example.org to set up encryption.',
+    );
+  });
+
+  describe('when another account becomes active', () => {
+    const REFUSED =
+      'Nothing was set up: you switched account while this was open.';
+
+    it('closes the password prompt when the page itself goes away, as a switch does on a phone', async () => {
+      const { fixture, crypto } = await setup();
+      const prompt = vi
+        .mocked(TestBed.inject(TrnAlertService).prompt$)
+        .mockReturnValue(new Subject<string | null>());
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+      fixture.componentInstance.setUp();
+      void vi.mocked(crypto.setUp).mock.calls[0][0]('@me:hs', true);
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+
+      fixture.destroy();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('closes the password prompt', async () => {
+      const { fixture, crypto, activeAccountId } = await setup();
+      const prompt = vi
+        .mocked(TestBed.inject(TrnAlertService).prompt$)
+        .mockReturnValue(new Subject<string | null>());
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+      fixture.componentInstance.setUp();
+      void vi.mocked(crypto.setUp).mock.calls[0][0]('@me:hs', true);
+      let withdrawn = false;
+      (prompt.mock.calls[0][0].closeWhen as Observable<unknown>).subscribe(
+        () => (withdrawn = true),
+      );
+      fixture.detectChanges();
+      expect(withdrawn).toBe(false);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(withdrawn).toBe(true);
+    });
+
+    it('sets nothing up when Set up is pressed after the switch', async () => {
+      const { fixture, crypto, activeAccountId } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+
+      activeAccountId.set('@other:hs');
+      fixture.componentInstance.setUp();
+
+      expect(crypto.setUp).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.recoveryKey()).toBeNull();
+      expect(fixture.componentInstance.error()).toBe(REFUSED);
+    });
+
+    it('sets up again once the original account is back on screen', async () => {
+      const { fixture, crypto, activeAccountId } = await setup();
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+      activeAccountId.set('@other:hs');
+      fixture.componentInstance.setUp();
+
+      activeAccountId.set('@me:hs');
+      fixture.componentInstance.setUp();
+
+      expect(crypto.setUp).toHaveBeenCalledOnce();
+      expect(fixture.componentInstance.error()).toBeNull();
+      expect(fixture.componentInstance.recoveryKey()).toBe(KEY);
+    });
+
+    it('sets nothing up when built after the account that asked left the screen', async () => {
+      const { fixture, crypto } = await setup({ account: '@asked:hs' });
+      vi.mocked(crypto.setUp).mockReturnValue(of(KEY));
+
+      fixture.componentInstance.setUp();
+
+      expect(crypto.setUp).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.error()).toBe(REFUSED);
+    });
+
+    it('keeps naming the account whose recovery key is on screen', async () => {
+      const { fixture, crypto, activeAccountId } = await setup();
+      showKey(fixture, crypto);
+
+      activeAccountId.set('@other:hs');
+      fixture.detectChanges();
+
+      expect(
+        screen.getByTestId('recovery-key-account').textContent?.trim(),
+      ).toBe('This recovery key is for @me:hs.');
+    });
+  });
+
   it('shows the recovery key after setUp succeeds', async () => {
     const { fixture, crypto } = await setup();
     vi.mocked(crypto.setUp).mockReturnValue(of(KEY));

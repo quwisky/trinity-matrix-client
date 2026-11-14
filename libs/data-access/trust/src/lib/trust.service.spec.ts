@@ -2,7 +2,7 @@ import { webcrypto } from 'node:crypto';
 import { ApplicationRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ngMocks } from 'ng-mocks';
-import { firstValueFrom } from 'rxjs';
+import { Subject, firstValueFrom } from 'rxjs';
 import {
   afterAll,
   beforeAll,
@@ -24,6 +24,10 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { secretsBundle, setup, uiaError } from './trust.spec-harness';
+import {
+  TRUST_PROVIDER_RECOVERY,
+  type TrustProviderManagement,
+} from './trust-provider-recovery.port';
 
 // A valid recovery key (round-trips through decodeRecoveryKey to 32 bytes).
 const VALID_KEY = encodeRecoveryKey(new Uint8Array(32)) as string;
@@ -52,7 +56,7 @@ describe('TrustService', () => {
         },
       });
 
-      const url = await firstValueFrom(svc.providerResetLink());
+      const url = await firstValueFrom(svc.providerResetLink('@me:hs'));
 
       expect(url).toContain('tenant=acme');
       expect(url).toContain('action=org.matrix.cross_signing_reset');
@@ -66,13 +70,55 @@ describe('TrustService', () => {
         },
       });
 
-      await expect(firstValueFrom(svc.providerResetLink())).resolves.toBeNull();
+      await expect(
+        firstValueFrom(svc.providerResetLink('@me:hs')),
+      ).resolves.toBeNull();
+    });
+
+    it('returns no link for an account that is no longer on screen', async () => {
+      const { svc, activeUserId } = setup({
+        providerManagement: {
+          url: 'https://auth.example/account',
+          actionsSupported: ['org.matrix.cross_signing_reset'],
+        },
+      });
+      const lookup = vi.spyOn(
+        TestBed.inject(TRUST_PROVIDER_RECOVERY),
+        'accountManagement',
+      );
+      activeUserId.set('@b:hs');
+
+      await expect(
+        firstValueFrom(svc.providerResetLink('@me:hs')),
+      ).resolves.toBeNull();
+      // The lookup reads the account on screen, which is the other account's provider.
+      expect(lookup).not.toHaveBeenCalled();
+    });
+
+    it('returns no link when the switch lands while the provider is being read', async () => {
+      const { svc, activeUserId } = setup();
+      const management = new Subject<TrustProviderManagement | null>();
+      vi.spyOn(
+        TestBed.inject(TRUST_PROVIDER_RECOVERY),
+        'accountManagement',
+      ).mockReturnValue(management);
+
+      const link = firstValueFrom(svc.providerResetLink('@me:hs'));
+      activeUserId.set('@b:hs');
+      management.next({
+        url: 'https://auth.example/account',
+        actionsSupported: ['org.matrix.cross_signing_reset'],
+      });
+
+      await expect(link).resolves.toBeNull();
     });
 
     it('keeps provider lookup failures out of the Trust error channel', async () => {
       const { svc } = setup({ providerLookupFails: true });
 
-      await expect(firstValueFrom(svc.providerResetLink())).resolves.toBeNull();
+      await expect(
+        firstValueFrom(svc.providerResetLink('@me:hs')),
+      ).resolves.toBeNull();
     });
   });
 

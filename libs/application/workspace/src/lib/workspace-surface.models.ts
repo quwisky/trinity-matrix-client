@@ -49,6 +49,11 @@ export interface WorkspaceApplicationSurfaceContext {
   readonly restoreFocus?: () => void;
   /** Enter unlock with the destructive recovery reset already offered. */
   readonly offerReset?: boolean;
+  /**
+   * The Account on screen where the user asked for a trust flow. The flow is presented
+   * later (a lazy dialog, a route) and refuses once another Account is on screen.
+   */
+  readonly accountId?: string;
 }
 
 /** One request to present a typed application surface. */

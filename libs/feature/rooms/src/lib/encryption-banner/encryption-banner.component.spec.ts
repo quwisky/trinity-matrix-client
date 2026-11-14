@@ -31,6 +31,7 @@ function renderBanner() {
       MockProvider(TrustService, {
         status: status.asReadonly(),
         recoverySetupElsewhere: setupElsewhere.asReadonly(),
+        activeAccountId: signal<string | null>('@me:hs').asReadonly(),
       }),
       MockProvider(WorkspaceApplicationSurfaceService, { open }),
       {
@@ -174,6 +175,7 @@ describe('EncryptionBannerComponent', () => {
     clickAction(container, 'Set up');
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'setup' },
+      context: { accountId: '@me:hs' },
     });
   });
 
@@ -195,9 +197,11 @@ describe('EncryptionBannerComponent', () => {
     clickAction(container, 'Verify with another device');
     expect(open).toHaveBeenNthCalledWith(1, {
       surface: { kind: 'trust', flow: 'unlock' },
+      context: { accountId: '@me:hs' },
     });
     expect(open).toHaveBeenNthCalledWith(2, {
       surface: { kind: 'trust', flow: 'verify' },
+      context: { accountId: '@me:hs' },
     });
   });
 
@@ -216,6 +220,7 @@ describe('EncryptionBannerComponent', () => {
     clickAction(container, 'Verify with another device');
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'verify' },
+      context: { accountId: '@me:hs' },
     });
   });
 

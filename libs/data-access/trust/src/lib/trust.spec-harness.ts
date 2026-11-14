@@ -220,7 +220,7 @@ export function setup(opts: CryptoOpts = {}) {
 
   const holder = new SecretStorageKeyHolder();
   // Writable so tests can flip the active account and fire the reproject effect.
-  const activeUserId = signal<string | null>(null);
+  const activeUserId = signal<string | null>('@me:hs');
   TestBed.configureTestingModule({
     providers: [
       TrustService,
@@ -246,6 +246,8 @@ export function setup(opts: CryptoOpts = {}) {
     'instance',
     client as unknown as MatrixClientService['instance'],
   );
+  ngMocks.stubMember(matrix, 'clientFor', ((id: string) =>
+    id === '@me:hs' ? client : null) as never);
   // TrustService caches the unlocked 4S key on the ACTIVE account's holder.
   ngMocks.stubMember(matrix, 'activeHolder', () => holder);
 

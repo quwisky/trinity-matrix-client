@@ -140,6 +140,19 @@ describe('Workspace application-surface composition adapter', () => {
     });
   });
 
+  it('carries the account that asked to a routed trust flow', async () => {
+    await firstValueFrom(
+      presenter().present({
+        surface: { kind: 'trust', flow: 'unlock' },
+        context: { offerReset: true, accountId: '@a:hs' },
+      }),
+    );
+
+    expect(navigate).toHaveBeenCalledWith(['/encryption/unlock'], {
+      queryParams: { reset: '1', account: '@a:hs' },
+    });
+  });
+
   it('passes the requested Settings part through as the dialog initial part', async () => {
     await firstValueFrom(
       presenter().present({
@@ -280,6 +293,21 @@ describe('Workspace application-surface composition adapter', () => {
         'matchMedia',
         vi.fn(() => ({ matches: true })),
       );
+    });
+
+    it('builds the unlock dialog for the account that asked', async () => {
+      await firstValueFrom(
+        presenter().present({
+          surface: { kind: 'trust', flow: 'unlock' },
+          context: { offerReset: true, accountId: '@a:hs' },
+        }),
+      );
+
+      expect(verifyInputs(0)).toEqual({
+        asModal: true,
+        offerReset: true,
+        requestedAccountId: '@a:hs',
+      });
     });
 
     it('opens Security settings from the top level and restores focus after it', async () => {

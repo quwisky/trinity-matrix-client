@@ -27,7 +27,11 @@ async function build(
     on: { opened },
     providers: [
       MockProvider(WorkspaceApplicationSurfaceService, { open: open as never }),
-      MockProvider(TrustService, { verifyBlock, refresh }),
+      MockProvider(TrustService, {
+        verifyBlock,
+        refresh,
+        activeAccountId: signal<string | null>('@me:hs'),
+      }),
     ],
   });
   return { container, open, opened, refresh };
@@ -43,6 +47,7 @@ describe('VerifyNeedsSetupComponent', () => {
 
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'unlock' },
+      context: { accountId: '@me:hs' },
     });
     expect(opened).toHaveBeenCalledOnce();
   });

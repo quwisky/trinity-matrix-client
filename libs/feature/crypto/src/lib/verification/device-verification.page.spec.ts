@@ -75,6 +75,7 @@ async function renderPage(
         status: signal(status),
         canSignUsers: signal(canSignUsers),
         verifyBlock: signal(verifyBlock),
+        activeAccountId: signal<string | null>('@me:hs'),
       }),
       MockProvider(TrustUsersService, { userTrust: () => userTrust }),
       MockProvider(QrCodeService, {
@@ -185,8 +186,8 @@ describe('DeviceVerificationPage', () => {
 
   // The profile shows the card only for some trust states, so the way on is offered here.
   it.each([
-    ['as a dialog', true, { returnTo: '/rooms/!room:hs' }],
-    ['as a routed page', false, { returnTo: '/rooms/back' }],
+    ['as a dialog', true, { returnTo: '/rooms/!room:hs', account: '@me:hs' }],
+    ['as a routed page', false, { returnTo: '/rooms/back', account: '@me:hs' }],
   ])(
     'declines another user’s request and opens the flow this device needs, %s',
     async (_name, asModal, queryParams) => {

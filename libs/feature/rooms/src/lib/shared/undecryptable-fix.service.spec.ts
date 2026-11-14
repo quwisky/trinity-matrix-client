@@ -80,6 +80,7 @@ describe('UndecryptableFixService', () => {
           status: statusSignal.asReadonly(),
           thisDeviceVerified: verifiedSignal.asReadonly(),
           recoverySetupElsewhere: elsewhere.asReadonly(),
+          activeAccountId: signal<string | null>('@me:hs').asReadonly(),
         }),
         MockProvider(WorkspaceApplicationSurfaceService, { open }),
       ],
@@ -100,6 +101,7 @@ describe('UndecryptableFixService', () => {
 
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'unlock' },
+      context: { accountId: '@me:hs' },
     });
   });
 
@@ -110,6 +112,7 @@ describe('UndecryptableFixService', () => {
 
     expect(open).toHaveBeenCalledWith({
       surface: { kind: 'trust', flow: 'setup' },
+      context: { accountId: '@me:hs' },
     });
   });
 

@@ -6,17 +6,25 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { Router } from '@angular/router';
-import { firstValueFrom, tap, type Observable } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
+import {
+  filter,
+  firstValueFrom,
+  merge,
+  Subject,
+  tap,
+  type Observable,
+} from 'rxjs';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import {
   TrustOperationError,
   TrustService,
+  type AccountPasswordPrompt,
   type TrustRecovery,
 } from '@trinity/data-access/trust';
-import { type PasswordPrompt } from '@trinity/util/matrix';
 import { runWithBusy } from '@trinity/util/ui';
 import {
   PageHeaderComponent,
@@ -52,6 +60,15 @@ export class EncryptionSetupPage {
   private readonly router = inject(Router);
   private readonly alert = inject(TrnAlertService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly switchedAccount$ = toObservable(
+    this.crypto.activeAccountId,
+  ).pipe(filter((active) => active !== this.accountId));
+  private readonly left$ = new Subject<void>();
+  /** Also on leaving: on a phone a switch destroys this routed page before the Account changes. */
+  private readonly gone$ = merge(this.switchedAccount$, this.left$);
+  private readonly stopOnLeave = this.destroyRef.onDestroy(() =>
+    this.left$.next(),
+  );
 
   /** What the last failed setup said the user can do about it; cleared by the next try. */
   private readonly failureRecovery = signal<TrustRecovery | null>(null);
@@ -72,6 +89,16 @@ export class EncryptionSetupPage {
     );
   });
 
+  /**
+   * The Account this screen was opened for: the one its opener named (`?account=`), else
+   * the one on screen when it was built. The screen outlives an Account switch (a
+   * notification click, a deep link), and must not set up the Account that replaced this
+   * one, nor show that Account's recovery key as this one's.
+   */
+  readonly accountId =
+    inject(ActivatedRoute).snapshot.queryParamMap.get('account') ||
+    this.crypto.activeAccountId();
+
   /** The generated recovery key — shown once, never persisted. */
   readonly recoveryKey = signal<string | null>(null);
 
@@ -89,6 +116,12 @@ export class EncryptionSetupPage {
   /** Bootstrap cross-signing, secret storage and key backup. */
   setUp(): void {
     this.failureRecovery.set(null);
+    if (this.accountId !== this.crypto.activeAccountId()) {
+      this.error.set(
+        'Nothing was set up: you switched account while this was open.',
+      );
+      return;
+    }
     const setUp = this.crypto.setUp(this.promptPassword).pipe(
       tap({
         error: (err: unknown) => {
@@ -155,16 +188,19 @@ export class EncryptionSetupPage {
   /**
    * Answers the SDK's UIA password challenge. The SDK may invoke this zero times
    * (server completes without UIA) or repeatedly (wrong password); each call shows
-   * a fresh password alert. Resolving `null` cancels the whole setup.
+   * a fresh password alert. Resolving `null` cancels the whole setup. It names the Account
+   * being set up and closes as cancelled once another Account is on screen: setup has
+   * uploaded nothing yet and drops an answer given after the switch.
    */
-  private readonly promptPassword: PasswordPrompt = () =>
+  private readonly promptPassword: AccountPasswordPrompt = (accountId) =>
     firstValueFrom(
       this.alert.prompt$({
         header: 'Confirm your password',
-        message: 'Your homeserver needs your password to set up encryption.',
+        message: `Enter the password for ${accountId} to set up encryption.`,
         placeholder: 'Password',
         confirmText: 'Confirm',
         inputType: 'password',
+        closeWhen: this.gone$,
       }),
     );
 

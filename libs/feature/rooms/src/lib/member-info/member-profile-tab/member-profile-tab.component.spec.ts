@@ -82,6 +82,7 @@ async function build(
         open: openSurface as never,
       }),
       MockProvider(TrustService, {
+        activeAccountId: signal<string | null>('@me:hs'),
         verifyBlock: signal(
           deriveVerifyBlock({
             status: 'ready',
@@ -216,6 +217,7 @@ describe('MemberProfileTabComponent', () => {
 
       expect(openSurface).toHaveBeenCalledWith({
         surface: { kind: 'trust', flow: 'unlock' },
+        context: { accountId: '@me:hs' },
       });
       expect(setupOpened).toHaveBeenCalledOnce();
       expect(verify).not.toHaveBeenCalled();

@@ -104,7 +104,7 @@ export class DeviceConfirmationPage {
 
   useRecoveryKey(): void {
     void this.router.navigate(['/encryption/unlock'], {
-      queryParams: { returnTo: CHECK_URL },
+      queryParams: { returnTo: CHECK_URL, ...this.askedFor() },
     });
   }
 
@@ -117,8 +117,14 @@ export class DeviceConfirmationPage {
   /** The unlock page owns the typed confirmation and the consequences of a reset. */
   resetIdentity(): void {
     void this.router.navigate(['/encryption/unlock'], {
-      queryParams: { returnTo: CHECK_URL, reset: '1' },
+      queryParams: { returnTo: CHECK_URL, reset: '1', ...this.askedFor() },
     });
+  }
+
+  /** The Account checked here at the press; the unlock page refuses to act for another. */
+  private askedFor(): { account?: string } {
+    const account = this.confirmation.activeAccountId();
+    return account ? { account } : {};
   }
 
   skip(): void {

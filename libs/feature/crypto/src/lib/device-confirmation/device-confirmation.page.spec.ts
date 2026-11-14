@@ -147,7 +147,7 @@ describe('DeviceConfirmationPage', () => {
 
     byTestId(container, 'device-confirmation-recovery-key')!.click();
     expect(navigate).toHaveBeenLastCalledWith(['/encryption/unlock'], {
-      queryParams: { returnTo: '/encryption/confirm' },
+      queryParams: { returnTo: '/encryption/confirm', account: '@me:hs' },
     });
 
     byTestId(container, 'device-confirmation-other-device')!.click();
@@ -157,7 +157,11 @@ describe('DeviceConfirmationPage', () => {
 
     byTestId(container, 'device-confirmation-reset')!.click();
     expect(navigate).toHaveBeenLastCalledWith(['/encryption/unlock'], {
-      queryParams: { returnTo: '/encryption/confirm', reset: '1' },
+      queryParams: {
+        returnTo: '/encryption/confirm',
+        reset: '1',
+        account: '@me:hs',
+      },
     });
   });
 

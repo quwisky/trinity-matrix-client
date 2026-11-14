@@ -30,7 +30,9 @@ describe('resetRecovery', () => {
       },
     });
 
-    const shown = await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    const shown = await firstValueFrom(
+      svc.resetRecovery('@me:hs', async () => 'pw'),
+    );
 
     expect(crypto.bootstrapCrossSigning).toHaveBeenCalledWith(
       expect.objectContaining({ setupNewCrossSigning: true }),
@@ -57,7 +59,7 @@ describe('resetRecovery', () => {
       async () => void order.push('destroy'),
     );
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(order).toEqual(['park', 'upload', 'destroy']);
   });
@@ -68,7 +70,7 @@ describe('resetRecovery', () => {
     // this single call is the whole destructive tail.
     const { svc, crypto } = setup();
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(
       crypto.bootstrapSecretStorage.mock.calls[0][0].setupNewKeyBackup,
@@ -80,7 +82,7 @@ describe('resetRecovery', () => {
     // only when one is set — and this user cannot open theirs, so it would die there.
     const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(secretStorage.setDefaultKeyId).toHaveBeenCalledWith(null);
   });
@@ -88,7 +90,7 @@ describe('resetRecovery', () => {
   it('leaves the pointer alone when the account has no 4S', async () => {
     const { svc, secretStorage, client } = setup({ defaultKeyId: null });
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
     // The restore's PUT is unconditional given a pointer to restore; there wasn't one.
@@ -98,7 +100,7 @@ describe('resetRecovery', () => {
   it('drives the upload through the password UIA callback', async () => {
     const { svc, crypto } = setup();
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(
       crypto.bootstrapCrossSigning.mock.calls[0][0].authUploadDeviceSigningKeys,
@@ -112,7 +114,7 @@ describe('resetRecovery', () => {
       defaultKeyId: 'k',
     });
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(svc.status()).toBe('ready');
   });
@@ -123,7 +125,7 @@ describe('resetRecovery', () => {
       .mockResolvedValueOnce('old-key')
       .mockResolvedValue('new-key');
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(secretStorage.store).toHaveBeenCalledWith(
       'm.secret_storage.key.old-key',
@@ -134,7 +136,7 @@ describe('resetRecovery', () => {
   it('keeps the old description when the new key never landed', async () => {
     const { svc, secretStorage } = setup({ defaultKeyId: 'old-key' });
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(secretStorage.store).not.toHaveBeenCalled();
   });
@@ -168,7 +170,7 @@ describe('resetRecovery', () => {
       crypto.bootstrapCrossSigning.mockRejectedValue(error);
 
       await expect(
-        firstValueFrom(svc.resetRecovery(async () => 'pw')),
+        firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
       ).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind,
@@ -194,7 +196,7 @@ describe('resetRecovery', () => {
     crypto.bootstrapCrossSigning.mockRejectedValue(new UiaCancelledError());
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
@@ -215,7 +217,7 @@ describe('resetRecovery', () => {
       .mockRejectedValue(new Error('rollback exploded'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
@@ -233,7 +235,7 @@ describe('resetRecovery', () => {
     crypto.isSecretStorageReady.mockResolvedValue(true);
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'partial-update',
@@ -252,7 +254,7 @@ describe('resetRecovery', () => {
     crypto.createRecoveryKeyFromPassphrase.mockRejectedValue(new Error('boom'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       kind: 'partial-update',
       partial: true,
@@ -275,7 +277,7 @@ describe('resetRecovery', () => {
     });
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
@@ -301,7 +303,9 @@ describe('resetRecovery', () => {
         .mockResolvedValueOnce(undefined)
         .mockReturnValue(new Promise(() => undefined)); // never settles
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'cancelled',
@@ -320,7 +324,7 @@ describe('resetRecovery', () => {
     client.deleteMultipleDevices.mockRejectedValue(ssoOnlyUiaError());
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'provider-action-required',
@@ -334,7 +338,7 @@ describe('resetRecovery', () => {
   it('authenticates against an empty device list, so the check itself deletes nothing', async () => {
     const { svc, client } = setup();
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     // Both the unauthed probe and the authed retry, and neither names a device.
     expect(client.deleteMultipleDevices).toHaveBeenCalledTimes(2);
@@ -350,7 +354,7 @@ describe('resetRecovery', () => {
     const { svc, crypto, secretStorage } = setup({ defaultKeyId: 'old-key' });
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => null)),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => null)),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
@@ -369,7 +373,7 @@ describe('resetRecovery', () => {
     const prompt = vi.fn().mockResolvedValue('wrong');
 
     await expect(
-      firstValueFrom(svc.resetRecovery(prompt)),
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'permission-denied',
@@ -393,7 +397,7 @@ describe('resetRecovery', () => {
       },
     );
 
-    await firstValueFrom(svc.resetRecovery(prompt));
+    await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
     const makeRequest = vi
       .fn()
       .mockRejectedValueOnce(uiaError('upload'))
@@ -426,7 +430,7 @@ describe('resetRecovery', () => {
       },
     );
 
-    await firstValueFrom(svc.resetRecovery(prompt));
+    await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
     const makeRequest = vi
       .fn()
       .mockRejectedValueOnce(uiaError('u1')) // unauthed probe
@@ -448,7 +452,7 @@ describe('resetRecovery', () => {
     client.deleteMultipleDevices.mockRejectedValue(new Error('network down'));
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).resolves.toBeTypeOf('string');
     expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
   });
@@ -457,7 +461,7 @@ describe('resetRecovery', () => {
     const { svc, crypto, client } = setup();
     client.deleteMultipleDevices.mockResolvedValue({});
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(crypto.bootstrapCrossSigning).toHaveBeenCalledOnce();
   });
@@ -494,7 +498,7 @@ describe('resetRecovery', () => {
     });
 
     await expect(
-      firstValueFrom(svc.resetRecovery(prompt)),
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
     ).rejects.toMatchObject({
       operation: 'reset-recovery',
       kind: 'cancelled',
@@ -516,7 +520,7 @@ describe('resetRecovery', () => {
       },
     );
 
-    await firstValueFrom(svc.resetRecovery(prompt));
+    await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
     const makeRequest = vi.fn().mockRejectedValue(uiaError('upload'));
     await expect(uia(makeRequest)).rejects.toThrow(/too many/i);
 
@@ -527,7 +531,7 @@ describe('resetRecovery', () => {
   it('deletes the dehydrated device, which the new identity can no longer sign', async () => {
     const { svc, client } = setup();
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(client.http.authedRequest).toHaveBeenCalledWith(
       'DELETE',
@@ -558,7 +562,7 @@ describe('resetRecovery', () => {
       async () => void order.push('destroy'),
     );
 
-    await firstValueFrom(svc.resetRecovery(async () => 'pw'));
+    await firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw'));
 
     expect(order).toEqual(['park', 'upload', 'dehydrated', 'destroy']);
   });
@@ -570,7 +574,7 @@ describe('resetRecovery', () => {
     );
 
     await expect(
-      firstValueFrom(svc.resetRecovery(async () => 'pw')),
+      firstValueFrom(svc.resetRecovery('@me:hs', async () => 'pw')),
     ).resolves.toBeTypeOf('string');
   });
 
@@ -601,7 +605,9 @@ describe('resetRecovery', () => {
           return new Promise(() => undefined); // then the echo stopped coming
         });
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'cancelled',
@@ -642,7 +648,9 @@ describe('resetRecovery', () => {
       // ...so the local store never moves off the pre-park value.
       secretStorage.getDefaultKeyId.mockResolvedValue('old-key');
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'server-failure',
@@ -685,7 +693,9 @@ describe('resetRecovery', () => {
         .mockRejectedValueOnce(new ConnectionError('flaky'))
         .mockResolvedValue({});
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'server-failure',
@@ -723,7 +733,9 @@ describe('resetRecovery', () => {
         new Promise(() => undefined), // the park never echoes
       );
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'server-failure',
@@ -758,7 +770,9 @@ describe('resetRecovery', () => {
         .mockReturnValueOnce(new Promise(() => undefined))
         .mockResolvedValue('new-key');
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const shown = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
       await vi.advanceTimersByTimeAsync(30_000);
       await assertion;
@@ -778,7 +792,9 @@ describe('resetRecovery', () => {
         .mockResolvedValue('new-key');
       secretStorage.store.mockReturnValue(new Promise(() => undefined));
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const shown = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
       await vi.advanceTimersByTimeAsync(30_000);
       await assertion;
@@ -803,7 +819,9 @@ describe('resetRecovery', () => {
         .mockResolvedValueOnce(undefined)
         .mockReturnValue(new Promise(() => undefined)); // never settles
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(failure).rejects.toMatchObject({
         operation: 'reset-recovery',
         kind: 'cancelled',
@@ -836,7 +854,9 @@ describe('resetRecovery', () => {
       crypto.isCrossSigningReady.mockResolvedValue(true);
       crypto.isSecretStorageReady.mockResolvedValue(true);
 
-      const failure = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const failure = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       // Not "timed out": a timeout here cannot undo anything the tail already did, so
       // the user has to be told where to look rather than just that it failed.
       const assertion = expect(failure).rejects.toMatchObject({
@@ -865,7 +885,9 @@ describe('resetRecovery', () => {
         new Promise((resolve) => setTimeout(resolve, 120_000)),
       );
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const shown = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
       await vi.advanceTimersByTimeAsync(200_000);
       await assertion;
@@ -883,12 +905,181 @@ describe('resetRecovery', () => {
       const { svc, client } = setup();
       client.http.authedRequest.mockReturnValue(new Promise(() => undefined));
 
-      const shown = firstValueFrom(svc.resetRecovery(async () => 'pw'));
+      const shown = firstValueFrom(
+        svc.resetRecovery('@me:hs', async () => 'pw'),
+      );
       const assertion = expect(shown).resolves.toBe('EsTRecoveryKey');
       await vi.advanceTimersByTimeAsync(30_000);
       await assertion;
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('resetRecovery when another account becomes active', () => {
+  const SWITCHED = {
+    operation: 'reset-recovery',
+    kind: 'stale-state',
+    message: 'Nothing was reset: you switched account while this was open.',
+  };
+
+  it('refuses a reset asked for an account that is no longer on screen', async () => {
+    const { svc, crypto, secretStorage, client, activeUserId } = setup({
+      defaultKeyId: 'old-key',
+    });
+    const prompt = vi.fn().mockResolvedValue('pw');
+    activeUserId.set('@b:hs');
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).rejects.toMatchObject(SWITCHED);
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(client.deleteMultipleDevices).not.toHaveBeenCalled();
+    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+  });
+
+  it('does not ask for a password once the switch lands before the first prompt', async () => {
+    const { svc, crypto, secretStorage, client, activeUserId } = setup({
+      defaultKeyId: 'old-key',
+    });
+    let challenge!: (err: MatrixError) => void;
+    client.deleteMultipleDevices.mockReturnValueOnce(
+      new Promise((_resolve, reject) => {
+        challenge = reject;
+      }),
+    );
+    const prompt = vi.fn().mockResolvedValue('pw');
+
+    const reset = firstValueFrom(svc.resetRecovery('@me:hs', prompt));
+    await Promise.resolve();
+    activeUserId.set('@b:hs');
+    challenge(uiaError('probe'));
+
+    await expect(reset).rejects.toMatchObject(SWITCHED);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+  });
+
+  it('discards a password typed after the switch, with nothing parked or rotated', async () => {
+    const { svc, crypto, secretStorage, client, activeUserId } = setup({
+      defaultKeyId: 'old-key',
+    });
+    let answer!: (password: string | null) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          answer = resolve;
+        }),
+    );
+
+    const reset = firstValueFrom(svc.resetRecovery('@me:hs', prompt));
+    await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+    activeUserId.set('@b:hs');
+    answer('password-of-b');
+
+    await expect(reset).rejects.toMatchObject(SWITCHED);
+    // Only the unauthenticated probe: the typed password was never sent.
+    expect(client.deleteMultipleDevices).toHaveBeenCalledTimes(1);
+    expect(client.deleteMultipleDevices).toHaveBeenCalledWith([], undefined);
+    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+    expect(crypto.bootstrapSecretStorage).not.toHaveBeenCalled();
+  });
+
+  it('names the account being reset to every password prompt, also after a switch', async () => {
+    const { svc, crypto, activeUserId } = setup();
+    const prompt = vi.fn().mockResolvedValue('pw');
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        activeUserId.set('@b:hs');
+        // The replayed password is rejected, so the user is asked again over B's screen.
+        await opts.authUploadDeviceSigningKeys?.(
+          vi
+            .fn()
+            .mockRejectedValueOnce(uiaError('upload'))
+            .mockRejectedValueOnce(uiaError('upload'))
+            .mockResolvedValueOnce(undefined),
+        );
+      },
+    );
+
+    await firstValueFrom(svc.resetRecovery('@me:hs', prompt));
+
+    // Before anything changed the prompt may close on a switch; afterwards it must not.
+    expect(prompt.mock.calls).toEqual([
+      ['@me:hs', true],
+      ['@me:hs', false],
+    ]);
+  });
+
+  it('does not ask again after a wrong password once the switch has landed', async () => {
+    const { svc, crypto, secretStorage, client, activeUserId } = setup({
+      defaultKeyId: 'old-key',
+    });
+    const prompt = vi.fn().mockResolvedValue('wrong');
+    client.deleteMultipleDevices.mockImplementation(
+      async (_devices: string[], auth?: unknown) => {
+        if (auth) {
+          activeUserId.set('@b:hs');
+        }
+        throw uiaError('probe');
+      },
+    );
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).rejects.toMatchObject(SWITCHED);
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(client.deleteMultipleDevices).toHaveBeenCalledTimes(2);
+    expect(secretStorage.setDefaultKeyId).not.toHaveBeenCalled();
+    expect(crypto.bootstrapCrossSigning).not.toHaveBeenCalled();
+  });
+
+  it('says the account is not signed in when it is on screen without a live client', async () => {
+    const { svc, matrix, client } = setup();
+    ngMocks.stubMember(matrix, 'clientFor', (() => null) as never);
+    const prompt = vi.fn().mockResolvedValue('pw');
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).rejects.toMatchObject({
+      operation: 'reset-recovery',
+      kind: 'not-ready',
+      message: 'Nothing was reset: this account is not signed in.',
+    });
+
+    expect(prompt).not.toHaveBeenCalled();
+    expect(client.deleteMultipleDevices).not.toHaveBeenCalled();
+  });
+
+  // Past the pre-auth the old identity is parked and rotated: refusing there would
+  // abandon the reset half-way, so the upload's prompt asks, naming its account.
+  it('still asks at the key upload after a switch, for the account being reset', async () => {
+    const { svc, crypto, client, activeUserId } = setup();
+    client.deleteMultipleDevices.mockResolvedValue({}); // no pre-auth challenge
+    const prompt = vi.fn().mockResolvedValue('s3cret');
+    crypto.bootstrapCrossSigning.mockImplementation(
+      async (opts: BootstrapCrossSigningOpts) => {
+        activeUserId.set('@b:hs');
+        await opts.authUploadDeviceSigningKeys?.(
+          vi
+            .fn()
+            .mockRejectedValueOnce(uiaError('upload'))
+            .mockResolvedValueOnce(undefined),
+        );
+      },
+    );
+
+    await expect(
+      firstValueFrom(svc.resetRecovery('@me:hs', prompt)),
+    ).resolves.toBe('EsTRecoveryKey');
+
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith('@me:hs', false);
   });
 });

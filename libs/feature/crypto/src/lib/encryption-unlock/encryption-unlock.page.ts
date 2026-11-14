@@ -13,8 +13,16 @@ import {
 import { NgTemplateOutlet } from '@angular/common';
 import { FormField, disabled, form } from '@angular/forms/signals';
 import { ActivatedRoute, Router } from '@angular/router';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Observable, finalize, firstValueFrom, take } from 'rxjs';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import {
+  Observable,
+  Subject,
+  filter,
+  finalize,
+  firstValueFrom,
+  merge,
+  take,
+} from 'rxjs';
 import { TrustOperationError, TrustService } from '@trinity/data-access/trust';
 import { ExternalBrowserService } from '@trinity/platform-native';
 import { resolveInternalReturnTo, runWithBusy } from '@trinity/util/ui';
@@ -47,6 +55,8 @@ import {
 } from './recovery-reset';
 
 const BUSY_REASON = 'Wait for this step to finish';
+
+const SWITCHED_ACCOUNT = 'you switched account while this was open.';
 
 /**
  * A verified device is refused the keys: the service's advice to verify this device is
@@ -86,9 +96,23 @@ const NO_KEYS_IN_RECOVERY =
 export class EncryptionUnlockPage {
   private readonly crypto = inject(TrustService);
   private readonly alert = inject(TrnAlertService);
+  private readonly route = inject(ActivatedRoute);
+  /** The Account on screen when this screen was built, unless its opener named one. */
+  private readonly builtFor =
+    this.route.snapshot.queryParamMap.get('account') ||
+    this.crypto.activeAccountId();
+  private readonly switchedAccount$ = toObservable(
+    this.crypto.activeAccountId,
+  ).pipe(filter((active) => active !== this.accountId()));
+  private readonly left$ = new Subject<void>();
+  /**
+   * Closes a prompt opened from here. On a phone this screen is a routed page: a switch
+   * navigates away and destroys it before the Account changes, which would otherwise leave
+   * its prompt open over the other Account's room.
+   */
+  private readonly gone$ = merge(this.switchedAccount$, this.left$);
   private readonly externalBrowser = inject(ExternalBrowserService);
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   // Present only when opened as a dialog (desktop); null on the routed page.
   private readonly dialogRef = inject<TrnDialogRef<void>>(TrnDialogRef, {
     optional: true,
@@ -188,7 +212,33 @@ export class EncryptionUnlockPage {
    */
   readonly offerReset = input(false);
 
+  /**
+   * The Account on screen where the user asked for this screen: an input in the modal,
+   * `?account=` on the routed page. The screen is built later than the press (the dialog's
+   * code is loaded first), when another Account may already be on screen.
+   */
+  readonly requestedAccountId = input<string | null>(null);
+
+  /**
+   * The Account this screen was opened for. The screen outlives an Account switch (a
+   * notification click, a deep link), and nothing it does may reach the Account that
+   * replaced this one. Shown next to a new recovery key, which can outlive the switch too.
+   */
+  readonly accountId = computed(
+    () => this.requestedAccountId() ?? this.builtFor,
+  );
+
   constructor() {
+    this.destroyRef.onDestroy(() => this.left$.next());
+    this.switchedAccount$.pipe(takeUntilDestroyed()).subscribe(() => {
+      // The key was typed for the Account that left the screen.
+      this.clearKey();
+      // A reset in flight and a key shown once both outlive the switch: closing would
+      // throw them away. Only the dialog closes; a routed page is replaced by navigation.
+      if (this.asModal() && !this.closeWouldDiscard()) {
+        this.leave();
+      }
+    });
     // After the view exists, so the confirm dialog has something to sit over. This only
     // opens the gate; the user still has to type the confirmation word.
     afterNextRender(() => {
@@ -207,6 +257,11 @@ export class EncryptionUnlockPage {
     if (!key) {
       return;
     }
+    if (!this.requestedAccount()) {
+      this.clearKey();
+      this.error.set(`Nothing was unlocked: ${SWITCHED_ACCOUNT}`);
+      return;
+    }
     this.withBusy(this.crypto.recoverWithKey(key)).subscribe(() => {
       this.clearKey();
       this.leave();
@@ -221,7 +276,12 @@ export class EncryptionUnlockPage {
    * backup, and a mis-tap must not reach it.
    */
   resetRecovery(): void {
-    confirmResetIntent(this.alert)
+    const asked = this.requestedAccount();
+    if (!asked) {
+      this.error.set(`Nothing was reset: ${SWITCHED_ACCOUNT}`);
+      return;
+    }
+    confirmResetIntent(this.alert, asked, this.gone$)
       .pipe(take(1), takeUntilDestroyed(this.destroyRef))
       .subscribe((intent) => {
         if (intent === 'cancelled') {
@@ -231,18 +291,29 @@ export class EncryptionUnlockPage {
           this.error.set(RESET_MISTYPED_MESSAGE);
           return;
         }
-        this.beginRecoveryReset();
+        const accountId = this.requestedAccount();
+        if (!accountId) {
+          this.error.set(`Nothing was reset: ${SWITCHED_ACCOUNT}`);
+          return;
+        }
+        this.beginRecoveryReset(accountId);
       });
   }
 
-  private beginRecoveryReset(): void {
+  /** The Account this screen was opened for, or null once another one is on screen. */
+  private requestedAccount(): string | null {
+    const accountId = this.accountId();
+    return accountId === this.crypto.activeAccountId() ? accountId : null;
+  }
+
+  private beginRecoveryReset(accountId: string): void {
     // Not runWithBusy: it turns a failure into EMPTY, but this path must inspect WHY it
     // failed.
     this.busy.set(true);
     this.resetting.set(true);
     this.error.set(null);
     this.crypto
-      .resetRecovery(resetPasswordPrompt(this.alert))
+      .resetRecovery(accountId, resetPasswordPrompt(this.alert, this.gone$))
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => {
@@ -255,14 +326,14 @@ export class EncryptionUnlockPage {
           this.clearKey();
           this.newRecoveryKey.set(key);
         },
-        error: (err: unknown) => void this.onResetFailed(err),
+        error: (err: unknown) => void this.onResetFailed(err, accountId),
       });
   }
 
   /** Say what went wrong, and open the provider's page when that is the answer. */
-  private async onResetFailed(err: unknown): Promise<void> {
+  private async onResetFailed(err: unknown, accountId: string): Promise<void> {
     const failure = await describeResetFailure(err, () =>
-      firstValueFrom(this.crypto.providerResetLink()),
+      firstValueFrom(this.crypto.providerResetLink(accountId)),
     );
     if (!failure) {
       return;
