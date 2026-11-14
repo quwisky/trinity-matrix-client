@@ -207,4 +207,11 @@ describe('Matrix crypto WASM', () => {
     );
     expect([...versions]).toHaveLength(1);
   });
+
+  it('leaves the root copy to the SDK pin instead of bumping it alone', () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchPackageNames?.includes('@matrix-org/matrix-sdk-crypto-wasm'),
+    );
+    expect(rule).toMatchObject({ enabled: false });
+  });
 });
