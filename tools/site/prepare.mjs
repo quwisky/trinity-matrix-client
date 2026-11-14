@@ -23,6 +23,8 @@ const isUnsafe = (name) =>
   name.includes('\\') ||
   name.split('/').includes('..');
 
+class UnsafeEntry extends Error {}
+
 const unzip = async (args) =>
   (
     await run('unzip', args, {
@@ -37,7 +39,7 @@ async function extract(zip, shotsDir) {
     .split('\n')
     .filter(Boolean);
   const bad = names.find(isUnsafe);
-  if (bad) throw new Error(`Unsafe entry in ${ASSET}: ${bad}`);
+  if (bad) throw new UnsafeEntry(`Unsafe entry in ${ASSET}: ${bad}`);
   const found = names.filter((n) => SCENE.test(n) || n === 'manifest.json');
   for (const name of found) {
     writeFileSync(join(shotsDir, name), await unzip(['-p', zip, name]));
@@ -45,22 +47,35 @@ async function extract(zip, shotsDir) {
   return scenes.filter((n) => !found.includes(n));
 }
 
+const semver = (tag) =>
+  (/^v(\d+)\.(\d+)\.(\d+)$/.exec(tag) ?? []).slice(1).map(Number);
+const byVersionDesc = (a, b) => {
+  const [x, y] = [semver(a.tag_name), semver(b.tag_name)];
+  return [0, 1, 2].map((i) => (y[i] ?? -1) - (x[i] ?? -1)).find(Boolean) ?? 0;
+};
+
 export async function prepare({ releases, download, outDir }) {
-  const [release] = releases;
-  if (!release) throw new Error('No published stable release found.');
+  const sorted = releases
+    .filter((r) => semver(r.tag_name).length)
+    .sort(byVersionDesc);
   const shotsDir = join(outDir, 'shots');
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(shotsDir, { recursive: true });
+  const [release = null] = sorted;
+  if (!release) return { release, shotsFrom: null, missing: scenes };
   writeFileSync(
     join(outDir, 'release.json'),
     `${JSON.stringify(release, null, 2)}\n`,
   );
 
-  const source = releases.find((r) => r.assets?.some((a) => a.name === ASSET));
+  const source = sorted.find((r) => r.assets?.some((a) => a.name === ASSET));
   if (!source) return { release, shotsFrom: null, missing: scenes };
-  const url = source.assets.find((a) => a.name === ASSET).browser_download_url;
+  const none = { release, shotsFrom: null, missing: scenes };
   const tmp = mkdtempSync(join(tmpdir(), 'site-shots-'));
   try {
+    const url = source.assets.find(
+      (a) => a.name === ASSET,
+    ).browser_download_url;
     const zip = join(tmp, ASSET);
     writeFileSync(zip, await download(url));
     return {
@@ -68,12 +83,22 @@ export async function prepare({ releases, download, outDir }) {
       shotsFrom: source.tag_name,
       missing: await extract(zip, shotsDir),
     };
+  } catch (error) {
+    // A screenshot problem must never block the deploy: build with placeholders.
+    rmSync(shotsDir, { recursive: true, force: true });
+    mkdirSync(shotsDir, { recursive: true });
+    if (error instanceof UnsafeEntry)
+      console.error(`::error::${error.message}`);
+    else console.warn(`::warning::Screenshots skipped: ${error.message}`);
+    return none;
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // A failing releases lookup stops the deploy on purpose, like the user-guide lookup in
+  // docs-pages.yml: stale download links are worse than no deploy.
   const { stdout } = await run(
     'gh',
     ['api', 'repos/{owner}/{repo}/releases', '--paginate', '--slurp'],
@@ -84,7 +109,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     .filter((r) => !r.draft && !r.prerelease);
   const outDir = join(import.meta.dirname, '../../apps/site/.generated');
   const download = async (url) => {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`Download failed (${res.status}): ${url}`);
     return Buffer.from(await res.arrayBuffer());
   };

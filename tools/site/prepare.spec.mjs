@@ -9,7 +9,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { prepare } from './prepare.mjs';
 
 const scene = (n) => `${n}-${n === 'chat' ? 'phone' : 'desktop'}-dark.png`;
@@ -102,17 +102,72 @@ describe('prepare', () => {
   });
 
   it.each(['../evil.png', '/abs/evil.png'])(
-    'rejects unsafe zip entry %s',
+    'builds with placeholders on unsafe zip entry %s',
     async (name) => {
-      // zip(1) strips these, so build the archive with Python's zipfile-free raw writer.
-      const dir = tmp();
-      const py = `import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w');z.writestr(sys.argv[2],'x')`;
-      const zip = join(dir, 'e.zip');
-      execFileSync('python3', ['-I', '-c', py, zip, name]);
+      // zip(1) strips these, so write the archive with Python's zipfile.
+      const zip = join(tmp(), 'e.zip');
+      const py = `import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w');z.writestr(sys.argv[2],'x');z.writestr(sys.argv[3],'y')`;
+      execFileSync('python3', ['-I', '-c', py, zip, name, scene('hero')]);
       const { outDir, download } = setup({ 'v0.7.0': readFileSync(zip) });
-      await expect(
-        prepare({ releases: [release('v0.7.0', true)], download, outDir }),
-      ).rejects.toThrow(/Unsafe entry/);
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const out = await prepare({
+        releases: [release('v0.7.0', true)],
+        download,
+        outDir,
+      });
+      expect(out.shotsFrom).toBeNull();
+      expect(readdirSync(join(outDir, 'shots'))).toEqual([]);
+      expect(error.mock.calls.join()).toContain(name);
+      error.mockRestore();
     },
   );
+
+  it('builds with placeholders when the download fails', async () => {
+    const outDir = join(tmp(), '.generated');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const download = async () => {
+      throw new Error('HTTP 503');
+    };
+    const out = await prepare({
+      releases: [release('v0.7.0', true)],
+      download,
+      outDir,
+    });
+    expect(out.shotsFrom).toBeNull();
+    expect(existsSync(join(outDir, 'release.json'))).toBe(true);
+    expect(readdirSync(join(outDir, 'shots'))).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('builds with placeholders when the zip is corrupt', async () => {
+    const { outDir, download } = setup({ 'v0.7.0': Buffer.from('not a zip') });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const out = await prepare({
+      releases: [release('v0.7.0', true)],
+      download,
+      outDir,
+    });
+    expect(out.shotsFrom).toBeNull();
+    expect(readdirSync(join(outDir, 'shots'))).toEqual([]);
+    warn.mockRestore();
+  });
+
+  it('writes no release.json for an empty list', async () => {
+    const { outDir, download } = setup({});
+    const out = await prepare({ releases: [], download, outDir });
+    expect(out.release).toBeNull();
+    expect(out.shotsFrom).toBeNull();
+    expect(existsSync(join(outDir, 'release.json'))).toBe(false);
+  });
+
+  it('chooses the highest version, not the newest created', async () => {
+    const { outDir, download } = setup({});
+    const releases = [
+      release('v0.7.1', false),
+      release('v0.8.0', false),
+      release('v0.7.9', false),
+    ];
+    const out = await prepare({ releases, download, outDir });
+    expect(out.release.tag_name).toBe('v0.8.0');
+  });
 });
