@@ -21,8 +21,14 @@ const shot = (theme: 'dark' | 'light') =>
   shots[`../../.generated/shots/${scene}-${viewport}-${theme}.png`]?.default;
 const dark = shot('dark');
 const light = shot('light');
+// Captures are full device size; a phone shot shows at most 16rem wide, a desktop shot about 44rem.
+const sizes = viewport === 'desktop' ? '(min-width: 60rem) 44rem, 100vw' : 'min(16rem, 60vw)';
 const webp = (source: ImageMetadata) =>
-  getImage({ src: source, format: 'webp', width: source.width, height: source.height });
+  getImage({
+    src: source,
+    format: 'webp',
+    widths: [...new Set([480, 800, 1200, 1600].map((w) => Math.min(w, source.width)))],
+  });
 const captured =
   dark && light ? { dark: await webp(dark), light: await webp(light), size: dark } : undefined;
 const placeholder = viewport === 'desktop' ? desktop : phone;
@@ -35,12 +41,14 @@ const { width, height } = captured?.size ?? placeholder;
       <>
         <source
           media="(prefers-color-scheme: dark)"
-          srcset={captured.dark.src}
+          srcset={captured.dark.srcSet.attribute}
+          sizes={sizes}
           type="image/webp"
         />
         <source
           media="(prefers-color-scheme: light)"
-          srcset={captured.light.src}
+          srcset={captured.light.srcSet.attribute}
+          sizes={sizes}
           type="image/webp"
         />
       </>
@@ -57,13 +65,42 @@ const { width, height } = captured?.size ?? placeholder;
 </picture>
 
 <style>
-  .shot img {
-    border: 1px solid var(--border);
+  /* Device frames: a window with a title bar for desktop shots, a bezel for phone shots. */
+  .shot {
+    display: block;
+    overflow: hidden;
+    box-shadow:
+      0 2rem 4rem -2rem oklch(0% 0 0deg / 55%),
+      0 0 0 1px var(--frame-edge);
+  }
+
+  .desktop {
+    position: relative;
+    padding-block-start: 1.75rem;
     border-radius: var(--radius);
-    box-shadow: 0 1.5rem 3rem -1.5rem oklch(0% 0 0deg / 50%);
+    background: var(--frame);
+  }
+
+  /* The window's three controls. */
+  .desktop::before {
+    position: absolute;
+    inset-block-start: 0.65rem;
+    inset-inline-start: 0.85rem;
+    inline-size: 2.6rem;
+    block-size: 0.5rem;
+    background:
+      radial-gradient(circle closest-side, var(--frame-dot) 98%, transparent) 0 0 / 0.9rem 100%
+      repeat-x;
+    content: '';
+  }
+
+  .phone {
+    padding: 0.45rem;
+    border-radius: 2.25rem;
+    background: var(--bezel);
   }
 
   .phone img {
-    border-radius: 1.5rem;
+    border-radius: 1.8rem;
   }
 </style>

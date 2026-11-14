@@ -30,14 +30,14 @@ const downloads = resolveDownloads(release);
   <main>
     <Feature title="Multiple accounts">
       <p>
-        Sign in to several Matrix accounts and switch between them from the account switcher.
-        Accounts in the background keep syncing.
+        Sign in to several Matrix accounts in one app and switch between them from the account
+        menu. Add another account, or remove one from this device, in the same place.
       </p>
       <Shot
         slot="media"
         scene="accounts"
         viewport="desktop"
-        alt="The account switcher listing two signed-in accounts."
+        alt="The account menu open on the desktop, listing two signed-in accounts to switch between."
       />
     </Feature>
     <Feature title="End-to-end encryption and verification" flip>
@@ -46,14 +46,14 @@ const downloads = resolveDownloads(release);
         Verify a new device with your recovery key or with another device you have signed in.
       </p>
       <p>
-        Sign in on a new device with a QR code on servers that support it, and export or import
-        your room keys.
+        On servers that support it, sign in on a new device by scanning a QR code. Export and
+        import your room keys.
       </p>
       <Shot
         slot="media"
         scene="encryption"
         viewport="phone"
-        alt="A device verification screen on a phone."
+        alt="Security settings on a phone: this session is verified and message keys are backed up."
       />
     </Feature>
     <Feature title="Every platform">
@@ -66,9 +66,9 @@ const downloads = resolveDownloads(release);
         slot="media"
         scene="hero"
         viewport="desktop"
-        alt="Trinity on the desktop with the room list and a conversation."
+        alt="Trinity on the desktop: the room list beside a conversation."
       />
-      <Shot slot="media" scene="hero" viewport="phone" alt="Trinity on a phone." />
+      <Shot slot="media" scene="hero" viewport="phone" alt="Trinity on a phone: the same conversation." />
     </Feature>
     <Feature title="Spaces, threads and rich chat" flip>
       <p>
@@ -80,7 +80,7 @@ const downloads = resolveDownloads(release);
         slot="media"
         scene="chat"
         viewport="desktop"
-        alt="A conversation in a space with a thread open beside it."
+        alt="A room in a space, with a thread of replies open beside the conversation."
       />
     </Feature>
     <Platforms downloads={downloads} releasePage={release.html_url} />

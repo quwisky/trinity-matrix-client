@@ -34,6 +34,10 @@ const { title, description } = Astro.props;
     --text: oklch(96% 0.012 278deg);
     --muted: oklch(80% 0.025 278deg);
     --on-accent: oklch(18% 0.025 278deg);
+    --frame: oklch(25% 0.03 278deg);
+    --frame-edge: oklch(36% 0.035 278deg);
+    --frame-dot: oklch(45% 0.04 278deg);
+    --bezel: oklch(12% 0.015 278deg);
     --radius: 0.75rem;
   }
 
@@ -46,6 +50,10 @@ const { title, description } = Astro.props;
       --text: oklch(22% 0.03 278deg);
       --muted: oklch(42% 0.03 278deg);
       --on-accent: oklch(100% 0 0deg);
+      --frame: oklch(94% 0.012 278deg);
+      --frame-edge: oklch(84% 0.02 278deg);
+      --frame-dot: oklch(78% 0.025 278deg);
+      --bezel: oklch(20% 0.02 278deg);
       /* The shared theme switches these on Starlight's data-theme; this page follows the OS. */
       --sl-color-accent-low: oklch(94% 0.03 278deg);
       --sl-color-accent: oklch(48% 0.2 278deg);
@@ -120,12 +128,47 @@ const { title, description } = Astro.props;
     text-decoration: none;
   }
 
+  .button:hover {
+    background: var(--sl-color-accent-low);
+  }
+
   .button.primary {
     background: var(--sl-color-accent);
     color: var(--on-accent);
   }
 
+  .button.primary:hover {
+    border-color: var(--sl-color-accent-high);
+    background: var(--sl-color-accent-high);
+  }
+
   .muted {
     color: var(--muted);
+  }
+
+  /* Motion is an enhancement: without it, or without view timelines, everything stays put. */
+  @media (prefers-reduced-motion: no-preference) {
+    .rise {
+      animation: rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+
+    @supports (animation-timeline: view()) {
+      /* Longhands: the minifier folds a shorthand and its timeline into one that Chromium rejects. */
+      .reveal {
+        animation-name: rise;
+        animation-fill-mode: both;
+        animation-timing-function: linear;
+        animation-timeline: view();
+        animation-range: entry 0% entry 80%;
+      }
+    }
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      translate: 0 2.5rem;
+      scale: 0.97;
+    }
   }
 </style>
