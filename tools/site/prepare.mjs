@@ -96,6 +96,14 @@ export async function prepare({ releases, download, outDir }) {
   }
 }
 
+export const summary = ({ release, shotsFrom, missing }) =>
+  [
+    `Downloads from ${release?.tag_name ?? 'none (fallback links)'}; screenshots from ${shotsFrom ?? 'placeholders'}.`,
+    ...(shotsFrom && missing.length
+      ? [`Missing scenes: ${missing.join(', ')}`]
+      : []),
+  ].join('\n');
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // A failing releases lookup stops the deploy on purpose, like the user-guide lookup in
   // docs-pages.yml: stale download links are worse than no deploy.
@@ -118,9 +126,5 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     download,
     outDir,
   });
-  console.log(
-    `Downloads from ${release.tag_name}; screenshots from ${shotsFrom ?? 'placeholders'}.`,
-  );
-  if (shotsFrom && missing.length)
-    console.log(`Missing scenes: ${missing.join(', ')}`);
+  console.log(summary({ release, shotsFrom, missing }));
 }

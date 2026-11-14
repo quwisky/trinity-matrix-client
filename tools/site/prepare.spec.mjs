@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { prepare } from './prepare.mjs';
+import { prepare, summary } from './prepare.mjs';
 
 const scene = (n) => `${n}-${n === 'chat' ? 'phone' : 'desktop'}-dark.png`;
 const tmp = () => mkdtempSync(join(tmpdir(), 'prepare-spec-'));
@@ -169,5 +169,28 @@ describe('prepare', () => {
     ];
     const out = await prepare({ releases, download, outDir });
     expect(out.release.tag_name).toBe('v0.8.0');
+  });
+
+  it('summarises an empty release list without throwing', async () => {
+    const { outDir, download } = setup({});
+    const out = await prepare({ releases: [], download, outDir });
+    expect(summary(out)).toBe(
+      'Downloads from none (fallback links); screenshots from placeholders.',
+    );
+  });
+
+  it('walks semver order for screenshots, not creation order', async () => {
+    const { outDir, download } = setup({
+      'v0.7.0': zipOf({ [scene('hero')]: 'x' }),
+      'v0.6.0': zipOf({ [scene('hero')]: 'y' }),
+    });
+    const releases = [
+      release('v0.6.0', true),
+      release('v0.8.0', false),
+      release('v0.7.0', true),
+    ];
+    const out = await prepare({ releases, download, outDir });
+    expect(out.release.tag_name).toBe('v0.8.0');
+    expect(out.shotsFrom).toBe('v0.7.0');
   });
 });
