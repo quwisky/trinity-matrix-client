@@ -20,8 +20,7 @@
       "options": {
         "command": "astro build",
         "cwd": "{workspaceRoot}/apps/site"
-      },
-      "inputs": ["default", "^production", "{projectRoot}/.generated/**/*"]
+      }
     },
     "check": {
       "executor": "nx:run-commands",
@@ -32,6 +31,7 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "inputs": ["default", "^production", "{workspaceRoot}/tools/site/**/*"],
       "options": {
         "command": "vitest run",
         "cwd": "{workspaceRoot}/apps/site"
