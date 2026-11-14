@@ -1,0 +1,92 @@
+---
+import type { resolveDownloads } from '../lib/downloads.mjs';
+
+interface Props {
+  downloads: ReturnType<typeof resolveDownloads>;
+  releasePage: string;
+}
+const { downloads, releasePage } = Astro.props;
+---
+
+<section id="download" class="wrap platforms" aria-labelledby="download-heading">
+  <h2 id="download-heading">Download</h2>
+  <p class="muted">
+    Every build comes from <a href={releasePage}>the latest release</a> on GitHub.
+  </p>
+  <div class="grid">
+    <article>
+      <h3>macOS</h3>
+      <p class="muted">Apple Silicon, macOS 13 or later. Signed and notarized by Apple.</p>
+      <p>With <a href="https://brew.sh">Homebrew</a>:</p>
+      <pre><code>brew install --cask quwisky/trinity/trinity</code></pre>
+      <a class="button" href={downloads.macDmg}>Download the .dmg</a>
+    </article>
+    <article>
+      <h3>Windows</h3>
+      <p class="muted">
+        The installer is not code-signed yet. When SmartScreen says "Windows protected your
+        PC", choose <strong>More info</strong>, then <strong>Run anyway</strong>.
+      </p>
+      <a class="button" href={downloads.windows}>Download the .exe installer</a>
+    </article>
+    <article>
+      <h3>Linux</h3>
+      <p class="muted">
+        x86-64. On Debian and Ubuntu, prefer the .deb: AppImages need libfuse2.
+      </p>
+      <div class="links">
+        <a class="button" href={downloads.linuxDeb}>Download the .deb</a>
+        <a class="button" href={downloads.linuxAppImage}>Download the AppImage</a>
+      </div>
+    </article>
+    <article>
+      <h3>Web app</h3>
+      <p class="muted">Self-host it on your own server, from the container image:</p>
+      <pre><code>docker run -d -p 8080:8080 ghcr.io/quwisky/trinity-web:latest</code></pre>
+      <p class="muted">
+        Or serve the <a href={downloads.web}>web app archive</a>.{' '}
+        See <a href="/developers/platforms/web-and-pwa/#self-host-release">Self-host a release</a>.
+      </p>
+    </article>
+    <article>
+      <h3>Android and iOS</h3>
+      <p class="muted">Coming soon. Both apps are in development.</p>
+    </article>
+  </div>
+</section>
+
+<style>
+  .platforms {
+    padding-block: 4rem;
+  }
+
+  h2 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(1.75rem, 5vw, 2.25rem);
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: 1rem;
+    margin-block-start: 2rem;
+  }
+
+  article {
+    min-inline-size: 0;
+    padding: 1.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+  }
+
+  h3 {
+    margin: 0 0 0.5rem;
+  }
+
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+</style>

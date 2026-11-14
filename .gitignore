@@ -142,3 +142,6 @@ storybook-static
 *.pem
 !/e2e/electron/fixtures/localhost-*.pem
 /android/key.properties
+
+# Release data and screenshots downloaded by the landing page build
+/apps/site/.generated/

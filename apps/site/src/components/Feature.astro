@@ -1,0 +1,67 @@
+---
+interface Props {
+  title: string;
+  flip?: boolean;
+}
+const { title, flip = false } = Astro.props;
+---
+
+<section class:list={['feature', 'wrap', { flip }]}>
+  <div class="copy">
+    <h2>{title}</h2>
+    <slot />
+  </div>
+  <div class="media">
+    <slot name="media" />
+  </div>
+</section>
+
+<style>
+  .feature {
+    display: grid;
+    gap: 2rem;
+    align-items: center;
+    padding-block: 3rem;
+  }
+
+  h2 {
+    margin: 0 0 1rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+  }
+
+  .copy {
+    color: var(--muted);
+  }
+
+  .media {
+    display: flex;
+    justify-content: center;
+    gap: 1.5rem;
+    align-items: flex-end;
+  }
+
+  .media > :global(.desktop) {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .media > :global(.phone) {
+    inline-size: min(16rem, 30%);
+    flex: none;
+  }
+
+  .media > :global(.phone:only-child) {
+    inline-size: min(15rem, 60%);
+  }
+
+  @media (min-width: 60rem) {
+    .feature {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+      gap: 4rem;
+    }
+
+    .flip .copy {
+      order: 2;
+    }
+  }
+</style>

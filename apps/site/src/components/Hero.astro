@@ -1,0 +1,90 @@
+---
+import Shot from './Shot.astro';
+
+interface Props {
+  releasePage: string;
+  version: string | null;
+}
+const { releasePage, version } = Astro.props;
+---
+
+<header class="hero wrap">
+  <div class="copy">
+    <h1>Trinity</h1>
+    <p class="tagline">Every Matrix account, one encrypted client.</p>
+    <p class="muted">
+      An end-to-end encrypted Matrix client for macOS, Windows, Linux and the web. Sign
+      in to several accounts at once, verify your devices, and keep your spaces and
+      threads in one window.
+    </p>
+    <div class="actions">
+      <a class="button primary" href={releasePage}>Download Trinity</a>
+      <a class="button" href="/users/">Read the user guide</a>
+    </div>
+    {version && <p class="muted version">Version {version}</p>}
+  </div>
+  <div class="shots">
+    <Shot
+      scene="hero"
+      viewport="desktop"
+      alt="Trinity on the desktop: the room list beside an open conversation."
+      eager
+    />
+    <Shot scene="hero" viewport="phone" alt="Trinity on a phone: an open conversation." eager />
+  </div>
+</header>
+
+<style>
+  .hero {
+    display: grid;
+    gap: 2.5rem;
+    padding-block: 4rem 3rem;
+  }
+
+  h1 {
+    margin: 0 0 0.5rem;
+    font-size: clamp(2.5rem, 8vw, 4rem);
+    letter-spacing: -0.02em;
+  }
+
+  .tagline {
+    font-size: clamp(1.25rem, 3.5vw, 1.6rem);
+    font-weight: 600;
+  }
+
+  .copy > .muted {
+    max-inline-size: 36rem;
+    font-size: 1.0625rem;
+  }
+
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-block: 1.5rem 0.75rem;
+  }
+
+  .version {
+    font-size: 0.875rem;
+  }
+
+  .shots {
+    position: relative;
+    padding-inline-end: 12%;
+  }
+
+  .shots > :global(.phone) {
+    position: absolute;
+    inset-block-end: -1.5rem;
+    inset-inline-end: 0;
+    inline-size: 24%;
+  }
+
+  @media (min-width: 60rem) {
+    .hero {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      align-items: center;
+      padding-block: 6rem 5rem;
+    }
+  }
+</style>

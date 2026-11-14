@@ -79,15 +79,92 @@ test('reaches the guides from the landing page by keyboard', async ({
     page.getByRole('heading', { level: 1, name: 'Trinity' }),
   ).toBeVisible();
   const guides = page.getByRole('navigation', { name: 'Guides' });
-  const users = guides.getByRole('link', { name: 'User guide' });
-  const developers = guides.getByRole('link', { name: 'Developer guide' });
-  await expect(users).toHaveAttribute('href', '/users/');
-  await expect(developers).toHaveAttribute('href', '/developers/');
+  await expect(
+    guides.getByRole('link', { name: 'User guide' }),
+  ).toHaveAttribute('href', '/users/');
+  await expect(
+    guides.getByRole('link', { name: 'Developer guide' }),
+  ).toHaveAttribute('href', '/developers/');
 
+  const userGuide = page.getByRole('link', { name: 'Read the user guide' });
   await page.keyboard.press('Tab');
-  await expect(users).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(userGuide).toBeFocused();
+  expect(
+    await userGuide.evaluate((link) => getComputedStyle(link).outlineStyle),
+  ).not.toBe('none');
   await page.keyboard.press('Enter');
   await expect(page).toHaveURL(`${pagesBase}/users/`);
+});
+
+const RELEASES =
+  /^https:\/\/github\.com\/quwisky\/trinity-matrix-client\/releases/;
+
+test('landing page offers downloads and the guides', async ({ page }) => {
+  await page.goto('./');
+
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  const download = page.getByRole('link', { name: /download/i }).first();
+  expect(await download.getAttribute('href')).toMatch(RELEASES);
+  await expect(
+    page.locator('a[href="/users/"]').filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.locator('a[href="/developers/"]').filter({ visible: true }).first(),
+  ).toBeVisible();
+});
+
+test('landing page fits a phone without horizontal scroll', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('./');
+
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});
+
+test('landing page works without JavaScript and motion', async ({
+  browser,
+  baseURL,
+}) => {
+  const context = await browser.newContext({
+    baseURL,
+    javaScriptEnabled: false,
+    reducedMotion: 'reduce',
+  });
+  const page = await context.newPage();
+  await page.goto('./');
+
+  for (const name of [
+    'Multiple accounts',
+    'End-to-end encryption and verification',
+    'Every platform',
+    'Spaces, threads and rich chat',
+  ]) {
+    await expect(
+      page.getByRole('heading', { level: 2, name, exact: true }),
+    ).toBeVisible();
+  }
+  const download = page.getByRole('link', { name: /download/i }).first();
+  expect(await download.getAttribute('href')).toMatch(RELEASES);
+  await context.close();
+});
+
+test('old prefixed links reach the 404 page with root links', async ({
+  page,
+}) => {
+  const response = await page.goto('trinity-matrix-client/users/');
+  expect(response?.status()).toBe(404);
+  await expect(
+    page.getByRole('heading', { level: 1, name: 'Page not found' }),
+  ).toBeVisible();
+  expect(
+    await page
+      .getByRole('link')
+      .evaluateAll((links) => links.map((link) => link.getAttribute('href'))),
+  ).toEqual(['/', '/users/', '/developers/']);
 });
 
 test('shows release users the install guide and links across the Pages base', async ({

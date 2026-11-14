@@ -11,7 +11,13 @@
       "options": {
         "command": "vitest run",
         "cwd": "{workspaceRoot}/tools/docs"
-      }
+      },
+      "dependsOn": [
+        {
+          "projects": ["site"],
+          "target": "test"
+        }
+      ]
     },
     "check": {
       "executor": "nx:run-commands",

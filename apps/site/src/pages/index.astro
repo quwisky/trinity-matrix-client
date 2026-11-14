@@ -1,37 +1,94 @@
 ---
-import desktop from '../placeholders/desktop.svg';
-import phone from '../placeholders/phone.svg';
 import Base from '../layouts/Base.astro';
+import Feature from '../components/Feature.astro';
+import Hero from '../components/Hero.astro';
+import OpenSource from '../components/OpenSource.astro';
+import Platforms from '../components/Platforms.astro';
+import Shot from '../components/Shot.astro';
+import SiteFooter from '../components/SiteFooter.astro';
+import fallback from '../data/release.fallback.json';
+import { resolveDownloads } from '../lib/downloads.mjs';
 
-const features = [
-  'Multiple accounts',
-  'End-to-end encryption and verification',
-  'Every platform',
-  'Spaces, threads and rich chat',
-];
+type Release = Parameters<typeof resolveDownloads>[0];
+
+// The deploy writes the latest stable release here; pull requests and offline builds use the fallback.
+const [generated] = Object.values(
+  import.meta.glob<Release>('../../.generated/release.json', {
+    eager: true,
+    import: 'default',
+  }),
+);
+const release: Release = generated ?? fallback;
+const downloads = resolveDownloads(release);
 ---
 
-<Base title="Trinity">
-  <header>
-    <h1>Trinity</h1>
-    <img src={desktop.src} width={desktop.width} height={desktop.height} alt="" />
-  </header>
+<Base
+  title="Trinity: an end-to-end encrypted Matrix client"
+  description="Trinity is an end-to-end encrypted Matrix client for macOS, Windows, Linux and the self-hosted web, with several accounts in one app."
+>
+  <Hero releasePage={release.html_url} version={downloads.version} />
   <main>
-    {
-      features.map((feature) => (
-        <section>
-          <h2>{feature}</h2>
-          <img src={phone.src} width={phone.width} height={phone.height} alt="" />
-        </section>
-      ))
-    }
-    <section><h2>Download</h2></section>
-    <section><h2>Open source and privacy</h2></section>
+    <Feature title="Multiple accounts">
+      <p>
+        Sign in to several Matrix accounts, on one server or many, and switch between them from
+        the account switcher. Accounts in the background keep syncing.
+      </p>
+      <p>
+        Each account keeps its own sign-in and encryption keys, and an "Unverified" mark shows
+        which one still needs this device verified.
+      </p>
+      <Shot
+        slot="media"
+        scene="accounts"
+        viewport="desktop"
+        alt="The account switcher listing two signed-in accounts."
+      />
+    </Feature>
+    <Feature title="End-to-end encryption and verification" flip>
+      <p>
+        Messages in encrypted rooms can be read only on the devices of the people in them.
+        Verify a new device with your recovery key or with another device you have signed in.
+      </p>
+      <p>
+        Sign in on a new device with a QR code on servers that support it, and export or import
+        your room keys.
+      </p>
+      <Shot
+        slot="media"
+        scene="encryption"
+        viewport="phone"
+        alt="A device verification screen on a phone."
+      />
+    </Feature>
+    <Feature title="Every platform">
+      <p>
+        Trinity runs on macOS, Windows and Linux, and as a web app you host yourself and can
+        install as a PWA. Android and iOS apps are in development.
+      </p>
+      <p>Install it with Homebrew, from the release page, or run the web app's Docker image.</p>
+      <Shot
+        slot="media"
+        scene="hero"
+        viewport="desktop"
+        alt="Trinity on the desktop with the room list and a conversation."
+      />
+      <Shot slot="media" scene="hero" viewport="phone" alt="Trinity on a phone." />
+    </Feature>
+    <Feature title="Spaces, threads and rich chat" flip>
+      <p>
+        Organise rooms in spaces and reply in threads. Send polls, voice messages, stickers,
+        custom emoji and GIFs.
+      </p>
+      <p>Pin messages, jump to a date, and catch up on mentions in the inbox.</p>
+      <Shot
+        slot="media"
+        scene="chat"
+        viewport="desktop"
+        alt="A conversation in a space with a thread open beside it."
+      />
+    </Feature>
+    <Platforms downloads={downloads} releasePage={release.html_url} />
+    <OpenSource />
   </main>
-  <footer>
-    <nav aria-label="Guides">
-      <a href="/users/">User guide</a>
-      <a href="/developers/">Developer guide</a>
-    </nav>
-  </footer>
+  <SiteFooter />
 </Base>
