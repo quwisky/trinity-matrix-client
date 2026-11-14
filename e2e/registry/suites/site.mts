@@ -10,6 +10,8 @@ export const SITE_E2E_SUITES = defineSuites([
     capabilities: ['cross-capability'],
     contractTypes: ['visual'],
     currentTarget: 'trinity-site-shots:capture',
+    // The release workflow serves a tag's own build from www/ instead of building main.
+    delegatingTargets: ['trinity-site-shots:capture-prebuilt'],
     targetProject: 'trinity-site-shots',
     prerequisites: ['docker', 'playwright-chromium'],
     availabilityPolicy: 'optional',

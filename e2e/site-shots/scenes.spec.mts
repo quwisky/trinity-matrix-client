@@ -75,7 +75,10 @@ async function openScene(
         roomUrl(data.launchId, { panel: 'thread', root: data.threadRootId }),
       );
       const thread = page.getByTestId('thread-view');
-      await expect(thread.getByText('we are good to go')).toBeVisible({
+      // Exact, so the live region announcing "Jordan Lee: Perfect, …" does not match too.
+      await expect(
+        thread.getByText('Perfect, then we are good to go.', { exact: true }),
+      ).toBeVisible({
         timeout: 30_000,
       });
       return thread;
@@ -203,11 +206,14 @@ test('writes the manifest', () => {
   expect(shots).toHaveLength(
     SCENES.length * THEMES.length * Object.keys(VIEWPORTS).length,
   );
-  const { version } = JSON.parse(
-    readFileSync(join(workspaceRoot, 'package.json'), 'utf8'),
-  ) as {
-    version: string;
-  };
+  // The release workflow captures a tag's build with main's suite, so it names the tag's version.
+  const version =
+    process.env['TRINITY_SITE_SHOTS_VERSION'] ||
+    (
+      JSON.parse(readFileSync(join(workspaceRoot, 'package.json'), 'utf8')) as {
+        version: string;
+      }
+    ).version;
   writeFileSync(
     join(OUT, 'manifest.json'),
     `${JSON.stringify({ appVersion: version, capturedAt: new Date().toISOString(), shots }, null, 2)}\n`,

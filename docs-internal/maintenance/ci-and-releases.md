@@ -18,6 +18,7 @@ public developer guide.
 | [`homebrew.yml`](../../.github/workflows/homebrew.yml)               | A release is published, or a manual dispatch with a tag input                                           | Signed macOS app verified, cask generated and pushed to `quwisky/homebrew-trinity`                                                                              |
 | [`e2e-ios-nightly.yml`](../../.github/workflows/e2e-ios-nightly.yml) | Daily at 04:13 UTC or a manual dispatch (`specs` input narrows the run)                                 | The installed iOS app on the Simulator against native Synapse, with scrubbed diagnostics                                                                        |
 | [`testflight.yml`](../../.github/workflows/testflight.yml)           | A manual dispatch from `main` with a `-next` `tag` input, then the `release-mobile` reviewer's approval | Archives the signed iOS app and uploads it to TestFlight (see [TestFlight upload](#testflight-upload))                                                          |
+| [`site-shots.yml`](../../.github/workflows/site-shots.yml)           | A manual dispatch from `main` with a stable `tag` input; `docs-pages.yml` sends one per stable release  | The landing-page screenshots, attached to the release as `site-screenshots.zip` (see [Landing-page screenshots](#landing-page-screenshots))                     |
 | [`renovate.yml`](../../.github/workflows/renovate.yml)               | Daily at 00:00 UTC or a manual dispatch                                                                 | Dependency update maintenance through a GitHub App token                                                                                                        |
 | [`release-stable.yml`](../../.github/workflows/release-stable.yml)   | A manual dispatch with `from` and `dry_run` inputs                                                      | Creates `release/X.Y.x` at a published prerelease and opens its stable release PR, through a GitHub App token                                                   |
 | [`backport.yml`](../../.github/workflows/backport.yml)               | A merged `main` pull request is closed or labeled `backport release/X.Y.x`                              | Opens a PR that cherry-picks the fix onto each labeled release branch, through a GitHub App token                                                               |
@@ -1000,6 +1001,39 @@ Watch these on the first run:
   compliance question for each build before testing. The owner decides the answer and whether
   to add the key.
 - A `0.6.0` build is refused once that version's train has been approved for the App Store.
+
+## Landing-page screenshots
+
+[`site-shots.yml`](../../.github/workflows/site-shots.yml) captures the landing page's 16
+scenes from a published stable release and attaches them to that release as
+`site-screenshots.zip`: the PNGs and `manifest.json` at the archive root, with
+`appVersion` set to the tag's version. The capture is `trinity-site-shots`. It seeds a
+disposable homeserver with synthetic accounts and rooms and shoots each scene on desktop
+and phone, in dark and light.
+
+The workflow runs only on a `workflow_dispatch` from `main`. The `redeploy` job of
+`docs-pages.yml` dispatches it for every published stable release. It is not triggered
+by the `release` event, because that event runs the workflow file of the tagged commit,
+and a stable tag on `release/X.Y.x` may not have this file. So `main`'s capture suite and
+harness drive the tag's own app. The workflow checks out the tag under
+`dist/release-source`, builds its production web app there, moves that build to `www/`,
+and runs `trinity-site-shots:capture-prebuilt`.
+
+It refuses a tag that is not `vX.Y.Z`, a draft and a prerelease. Only the `upload` job
+holds `contents: write`, and it runs no checked-out code. A failed capture uploads its
+Playwright traces and leaves the release's earlier archive in place. Running it again
+replaces the archive (`--clobber`).
+
+To capture a release by hand, for example a `v0.7.x` release published before this
+workflow existed:
+
+```bash
+gh workflow run site-shots.yml --ref main -f tag=v0.7.0
+```
+
+Older builds must still have the URLs and test IDs the scenes rely on (see
+`e2e/site-shots/scenes.spec.mts`). If a scene changes in a later release, change the
+suite on `main`, and keep it working for the releases it still captures.
 
 ## Homebrew tap
 
