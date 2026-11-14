@@ -20,6 +20,7 @@ const TARGET_PROJECT_BY_ENVIRONMENT = {
   mobile: 'trinity-e2e-mobile',
   'mobile-ios': 'trinity-e2e-mobile',
   protocol: 'trinity-e2e-protocol',
+  site: 'trinity-site-shots',
   web: 'trinity-e2e-web',
 };
 
@@ -41,6 +42,7 @@ const PROJECT_FILES = {
   'trinity-e2e-mobile': 'e2e/mobile/project.json',
   'trinity-e2e-protocol': 'e2e/protocol/project.json',
   'trinity-e2e-web': 'e2e/web/project.json',
+  'trinity-site-shots': 'e2e/site-shots/project.json',
 };
 
 const resolvedProjects = new Map();
@@ -54,6 +56,7 @@ const ACTIVE_LIFECYCLE_PROJECTS = new Set([
   'trinity-e2e-mobile',
   'trinity-e2e-protocol',
   'trinity-e2e-web',
+  'trinity-site-shots',
 ]);
 
 export const registrySnapshot = () =>

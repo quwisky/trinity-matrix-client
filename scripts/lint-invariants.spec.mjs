@@ -269,6 +269,7 @@ const OUTSIDE_THE_VENDOR_BANS = [
   'e2e/mobile/project.json',
   'e2e/project.json',
   'e2e/protocol/project.json',
+  'e2e/site-shots/project.json',
   'e2e/support/project.json',
   'e2e/web/project.json',
   'scripts/project.json',
@@ -378,6 +379,7 @@ describe('UI vendor boundary', () => {
       'e2e/mobile/project.json',
       'e2e/project.json',
       'e2e/protocol/project.json',
+      'e2e/site-shots/project.json',
       'e2e/web/project.json',
     ]);
   });

@@ -1,0 +1,36 @@
+{
+  "name": "trinity-site-shots",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "e2e/site-shots",
+  "tags": ["type:e2e", "scope:trinity"],
+  "implicitDependencies": ["trinity", "trinity-e2e-support"],
+  "targets": {
+    "capture": {
+      "//": "Writes the landing-page scenes to dist/site-shots from a production build and a seeded disposable homeserver.",
+      "cache": false,
+      "parallelism": false,
+      "outputs": [
+        "{workspaceRoot}/dist/.playwright/trinity-site-shots",
+        "{workspaceRoot}/dist/site-shots"
+      ],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node e2e/support/run-playwright.mts --config=e2e/site-shots/playwright.config.mts --build=trinity:build:production --resource=homeserver",
+        "cwd": "{workspaceRoot}"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "eslint \"**/*.mts\"",
+        "cwd": "{projectRoot}"
+      }
+    },
+    "typecheck": {
+      "options": {
+        "command": "tsc -p tsconfig.json --noEmit"
+      }
+    }
+  }
+}
