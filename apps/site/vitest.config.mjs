@@ -4,7 +4,7 @@ export default defineConfig({
   cacheDir: '../../node_modules/.vite/site',
   test: {
     environment: 'node',
-    include: ['src/**/*.spec.mjs'],
+    include: ['src/**/*.spec.mjs', '../../tools/site/*.spec.mjs'],
     reporters: ['default'],
   },
 });

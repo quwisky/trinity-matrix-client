@@ -1357,7 +1357,10 @@ describe('Landing-page screenshot workflow', () => {
     expect(permissions).toEqual({ contents: 'read' });
     expect(Object.keys(jobs)).toEqual(['capture', 'upload']);
     expect(capture().permissions).toEqual({ contents: 'read' });
-    expect(upload().permissions).toEqual({ contents: 'write' });
+    expect(upload().permissions).toEqual({
+      contents: 'write',
+      actions: 'write',
+    });
     expect(upload().needs).toEqual('capture');
     // The job with the write token runs no checked-out code.
     expect(
@@ -1537,9 +1540,10 @@ describe('Landing-page screenshot workflow', () => {
 
   it('uploads the archive to the tag, replacing an earlier one', () => {
     const last = upload().steps.at(-1);
-    expect(last.run).toBe(
+    expect(last.run.trim().split('\n')).toEqual([
       'gh release upload "$TAG" site-screenshots.zip --clobber',
-    );
+      'gh workflow run docs-pages.yml --ref main',
+    ]);
     expect(last.env.TAG).toBe('${{ needs.capture.outputs.tag }}');
     expect(capture().outputs.tag).toBe('${{ steps.tag.outputs.tag }}');
   });
@@ -1551,5 +1555,18 @@ describe('Landing-page screenshot workflow', () => {
       'gh workflow run site-shots.yml --ref main -f tag="$TAG"',
     );
     expect(dispatch.env.TAG).toBe('${{ github.event.release.tag_name }}');
+  });
+
+  it('prepares the site from the release before the Pages build, never in pull requests', () => {
+    const { build } = loadWorkflow('docs-pages.yml').jobs;
+    const runs = build.steps.map((s) => s.run);
+    const prepare = runs.indexOf('pnpm nx run site:prepare');
+    expect(prepare).toBeGreaterThan(-1);
+    expect(prepare).toBeLessThan(
+      runs.indexOf('pnpm nx run docs-site:assemble'),
+    );
+    expect(build.steps[prepare].env.GH_TOKEN).toBe('${{ github.token }}');
+    for (const [file, workflow] of [['ci.yml', loadWorkflow('ci.yml')]])
+      expect(JSON.stringify(workflow), file).not.toContain('site:prepare');
   });
 });

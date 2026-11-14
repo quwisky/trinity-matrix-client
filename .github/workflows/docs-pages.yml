@@ -49,6 +49,11 @@ jobs:
           browsers: chromium
       - run: pnpm format:check
       - run: pnpm nx test scripts
+      # The latest stable release's downloads and, when a release carries them, its
+      # landing-page screenshots. Pull requests skip this and build placeholders.
+      - run: pnpm nx run site:prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: pnpm nx test docs-site
       # The developer guide always deploys from main. After a back-merge PR brings a
       # stable release's version into main and before that release is published, the user

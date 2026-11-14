@@ -181,6 +181,7 @@ describe('GitHub Pages documentation publication', () => {
     ).toEqual([
       'pnpm format:check',
       'pnpm nx test scripts',
+      'pnpm nx run site:prepare',
       'pnpm nx test docs-site',
       'pnpm nx run docs-site:check',
       'pnpm nx run docs-site:assemble',

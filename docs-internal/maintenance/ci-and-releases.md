@@ -1022,7 +1022,10 @@ and runs `trinity-site-shots:capture-prebuilt`.
 It refuses a tag that is not `vX.Y.Z`, a draft and a prerelease. Only the `upload` job
 holds `contents: write`, and it runs no checked-out code. A failed capture uploads its
 Playwright traces and leaves the release's earlier archive in place. Running it again
-replaces the archive (`--clobber`).
+replaces the archive (`--clobber`). After a successful upload the `upload` job dispatches
+`docs-pages.yml` again (hence `actions: write`), because the deploy started with the release
+ran before the scenes existed; `site:prepare` then takes the shots from the newest release
+that has the archive.
 
 To capture a release by hand, for example a `v0.7.x` release published before this
 workflow existed:
