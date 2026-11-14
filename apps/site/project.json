@@ -31,9 +31,18 @@
     },
     "test": {
       "executor": "nx:run-commands",
+      "inputs": ["default", "^production", "{workspaceRoot}/tools/site/**/*"],
       "options": {
         "command": "vitest run",
         "cwd": "{workspaceRoot}/apps/site"
+      }
+    },
+    "prepare": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "node tools/site/prepare.mjs",
+        "cwd": "{workspaceRoot}"
       }
     }
   }
