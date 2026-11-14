@@ -58,8 +58,8 @@ describe('user guide release version', () => {
         "github.event_name == 'release' && !github.event.release.prerelease",
       );
       expect(job.permissions).toEqual({ actions: 'write' });
-      expect(job.steps.at(-1).run).toBe(
-        'gh workflow run docs-pages.yml --ref main',
+      expect(job.steps.at(-1).run).toMatch(
+        /^gh workflow run docs-pages.yml --ref main$/m,
       );
     });
 

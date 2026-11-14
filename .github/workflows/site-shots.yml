@@ -1,0 +1,127 @@
+name: Landing-page screenshots
+# Captures the landing page's 16 scenes from a published stable release and attaches them to
+# that release as site-screenshots.zip, which the Pages deploy downloads. docs-pages.yml
+# dispatches it for every published stable release; dispatch it by hand to recapture one.
+#
+# Dispatch-only, always from main: a `release` event would run the workflow file of the tagged
+# commit, and stable tags live on release/X.Y.x branches that may predate this file. So main's
+# capture suite and harness drive the tag's own production build.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The published stable release tag to capture, such as v0.7.0
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: site-shots-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  capture:
+    name: Capture the release's scenes
+    runs-on: ubuntu-latest
+    # A production build of the tag, a homeserver start and 16 captures (about a minute).
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - name: Dispatched from main
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != 'refs/heads/main' ]; then
+            echo "::error::Dispatch this workflow from main (--ref main); it was dispatched from '$REF'."
+            exit 1
+          fi
+      # Validated before anything uses it: a dispatch input is free text. `release view` fails
+      # for a missing release; the isDraft/isPrerelease check refuses drafts and prereleases.
+      - name: Tag is a published stable release
+        id: tag
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::The tag is not a vX.Y.Z stable release tag."
+            exit 1
+          fi
+          if ! release=$(gh release view "$TAG" --json isDraft,isPrerelease); then
+            echo "::error::$TAG has no published release."
+            exit 1
+          fi
+          if [ "$(jq -r '.isDraft or .isPrerelease' <<< "$release")" != false ]; then
+            echo "::error::$TAG is a draft or a prerelease; the landing page shows stable releases only."
+            exit 1
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      # The ubuntu image already has the host libraries Chromium needs.
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+          with-deps: 'false'
+      # Under dist/, which is git-ignored, so main's Nx does not discover the tag's projects.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          path: dist/release-source
+          persist-credentials: false
+      - name: Build the release web app
+        working-directory: dist/release-source
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec nx run trinity:build:production --skipNxCache
+      # The harness serves www/ at the workspace root.
+      - name: Serve the release build
+        run: |
+          rm -rf www
+          mv dist/release-source/www www
+      # The harness starts the disposable homeserver in Docker itself (--resource=homeserver).
+      - id: capture
+        env:
+          TRINITY_SITE_SHOTS_VERSION: ${{ steps.tag.outputs.version }}
+        run: pnpm exec nx run trinity-site-shots:capture-prebuilt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() && steps.capture.outcome == 'failure' }}
+        with:
+          name: playwright-${{ github.run_id }}-${{ github.run_attempt }}-site-shots
+          path: dist/.playwright/trinity-site-shots/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Zip the shots
+        run: |
+          cd dist/site-shots
+          zip -q "$GITHUB_WORKSPACE/site-screenshots.zip" ./*
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+          path: site-screenshots.zip
+          if-no-files-found: error
+          retention-days: 1
+
+  upload:
+    name: Attach the scenes to the release
+    needs: capture
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-screenshots-${{ github.run_id }}-${{ github.run_attempt }}
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.capture.outputs.tag }}
+        run: gh release upload "$TAG" site-screenshots.zip --clobber

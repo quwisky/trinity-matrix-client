@@ -1320,3 +1320,236 @@ describe('TestFlight upload workflow', () => {
     });
   });
 });
+
+describe('Landing-page screenshot workflow', () => {
+  const shots = () => loadWorkflow('site-shots.yml');
+  const capture = () => shots().jobs.capture;
+  const upload = () => shots().jobs.upload;
+  const named = (job, name) => job.steps.find((s) => s.name === name);
+  const checkouts = () =>
+    capture().steps.filter((s) => s.uses?.startsWith('actions/checkout@'));
+  const bash = (script, options) =>
+    spawnSync(
+      'bash',
+      ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script],
+      { encoding: 'utf8', ...options },
+    );
+  const inTempDir = (action) => {
+    const dir = mkdtempSync(join(tmpdir(), 'site-shots-'));
+    try {
+      return action(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
+
+  it('runs only when dispatched by hand with a tag', () => {
+    const { on } = shots();
+    expect(Object.keys(on)).toEqual(['workflow_dispatch']);
+    expect(on.workflow_dispatch.inputs.tag).toMatchObject({
+      required: true,
+      type: 'string',
+    });
+  });
+
+  it('grants contents: write to the upload job only', () => {
+    const { jobs, permissions } = shots();
+    expect(permissions).toEqual({ contents: 'read' });
+    expect(Object.keys(jobs)).toEqual(['capture', 'upload']);
+    expect(capture().permissions).toEqual({ contents: 'read' });
+    expect(upload().permissions).toEqual({ contents: 'write' });
+    expect(upload().needs).toEqual('capture');
+    // The job with the write token runs no checked-out code.
+    expect(
+      upload().steps.filter((s) => s.uses?.startsWith('actions/checkout@')),
+    ).toEqual([]);
+  });
+
+  it('pins every action to a digest and bounds every job', () => {
+    for (const job of Object.values(shots().jobs)) {
+      expect(job['timeout-minutes']).toBeGreaterThan(0);
+      for (const { uses } of job.steps.filter((s) => s.uses)) {
+        expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
+      }
+    }
+  });
+
+  it('runs main’s harness and checks out the tag’s app source, never another repository', () => {
+    const [first] = capture().steps;
+    expect(first.env.REF).toBe('${{ github.ref }}');
+    const [main, tag] = checkouts();
+    expect(main.with).toEqual({ 'persist-credentials': false });
+    expect(tag.with).toEqual({
+      ref: 'refs/tags/${{ steps.tag.outputs.tag }}',
+      path: 'dist/release-source',
+      'persist-credentials': false,
+    });
+    expect(checkouts()).toHaveLength(2);
+    const steps = capture().steps;
+    expect(steps.findIndex((s) => s.with?.path)).toBeGreaterThan(
+      steps.findIndex((s) => s.id === 'tag'),
+    );
+  });
+
+  it('accepts only a dispatch from main', () => {
+    const script = capture().steps[0].run;
+    const run = (REF) =>
+      bash(script, { env: { PATH: process.env.PATH, REF } }).status;
+    expect(run('refs/heads/main')).toBe(0);
+    for (const ref of ['refs/heads/release/0.7.x', 'refs/tags/v0.7.0']) {
+      expect(run(ref), ref).not.toBe(0);
+    }
+  });
+
+  describe('the tag', () => {
+    // A fake gh answers `release view` with $RELEASE, or fails when it is unset.
+    const run = (tag, release) =>
+      inTempDir((dir) => {
+        const bin = join(dir, 'bin');
+        const out = join(dir, 'output');
+        const calls = join(dir, 'calls');
+        mkdirSync(bin);
+        writeFileSync(out, '');
+        writeFileSync(calls, '');
+        writeFileSync(
+          join(bin, 'gh'),
+          `#!/bin/bash\necho "$*" >> "${calls}"\n[ -n "$RELEASE" ] || { echo 'release not found' >&2; exit 1; }\necho "$RELEASE"\n`,
+          { mode: 0o755 },
+        );
+        const result = bash(capture().steps.find((s) => s.id === 'tag').run, {
+          env: {
+            PATH: `${bin}:${process.env.PATH}`,
+            GITHUB_OUTPUT: out,
+            TAG: tag,
+            ...(release ? { RELEASE: JSON.stringify(release) } : {}),
+          },
+        });
+        return {
+          status: result.status,
+          text: result.stdout + result.stderr,
+          output: readFileSync(out, 'utf8'),
+          calls: readFileSync(calls, 'utf8'),
+        };
+      });
+    const published = { isDraft: false, isPrerelease: false };
+
+    it('passes a published stable release and outputs its version', () => {
+      const result = run('v0.7.0', published);
+      expect(result.status).toBe(0);
+      expect(result.calls).toBe(
+        'release view v0.7.0 --json isDraft,isPrerelease\n',
+      );
+      expect(result.output).toBe('tag=v0.7.0\nversion=0.7.0\n');
+    });
+
+    it('refuses anything but a stable version tag before using it', () => {
+      for (const bad of [
+        '0.7.0',
+        'v0.7.0-next.6',
+        'v0.7.0;x',
+        'v0.7.0\n',
+        '$(id)',
+        '',
+      ]) {
+        const result = run(bad, published);
+        expect(result.status, JSON.stringify(bad)).not.toBe(0);
+        expect(result.calls, JSON.stringify(bad)).toBe('');
+        expect(result.output, JSON.stringify(bad)).toBe('');
+      }
+    });
+
+    it('refuses a draft, a prerelease and a missing release', () => {
+      for (const release of [
+        { isDraft: true, isPrerelease: false },
+        { isDraft: false, isPrerelease: true },
+        undefined,
+      ]) {
+        const result = run('v0.7.0', release);
+        expect(result.status, JSON.stringify(release)).not.toBe(0);
+        expect(result.output).toBe('');
+        expect(result.text).toContain('v0.7.0');
+      }
+    });
+  });
+
+  it('builds the tag’s app and captures main’s scenes against that build', () => {
+    const job = capture();
+    const { steps } = job;
+    const build = named(job, 'Build the release web app');
+    expect(build['working-directory']).toBe('dist/release-source');
+    expect(build.run).toContain('pnpm install --frozen-lockfile');
+    expect(build.run).toContain(
+      'pnpm exec nx run trinity:build:production --skipNxCache',
+    );
+    const use = named(job, 'Serve the release build');
+    expect(use.run).toBe('rm -rf www\nmv dist/release-source/www www\n');
+    const run = steps.find((s) => s.id === 'capture');
+    expect(run.run).toBe(
+      'pnpm exec nx run trinity-site-shots:capture-prebuilt',
+    );
+    expect(run.env.TRINITY_SITE_SHOTS_VERSION).toBe(
+      '${{ steps.tag.outputs.version }}',
+    );
+    expect(steps.indexOf(build)).toBeLessThan(steps.indexOf(use));
+    expect(steps.indexOf(use)).toBeLessThan(steps.indexOf(run));
+  });
+
+  it('captures the prebuilt app with the same command as the building target', () => {
+    const { targets } = JSON.parse(
+      readFileSync(resolve(root, 'e2e/site-shots/project.json'), 'utf8'),
+    );
+    expect(targets['capture-prebuilt'].options.command).toBe(
+      targets.capture.options.command.replace(
+        ' --build=trinity:build:production',
+        '',
+      ),
+    );
+    expect(targets['capture-prebuilt'].options.command).not.toContain(
+      '--build',
+    );
+    // A previous run's shots must not ship with this run's manifest.
+    expect(targets.capture.options.command).toMatch(
+      /^node -e "require\('node:fs'\)\.rmSync\('dist\/site-shots', \{ recursive: true, force: true \}\)" && /,
+    );
+  });
+
+  it('zips the shots and the manifest at the archive root', () => {
+    const script = named(capture(), 'Zip the shots').run;
+    const entries = inTempDir((dir) => {
+      mkdirSync(join(dir, 'dist/site-shots'), { recursive: true });
+      for (const file of ['hero-desktop-dark.png', 'manifest.json'])
+        writeFileSync(join(dir, 'dist/site-shots', file), 'x');
+      expect(
+        bash(script, {
+          cwd: dir,
+          env: { PATH: process.env.PATH, GITHUB_WORKSPACE: dir },
+        }).status,
+      ).toBe(0);
+      return execFileSync('unzip', ['-Z1', join(dir, 'site-screenshots.zip')], {
+        encoding: 'utf8',
+      });
+    });
+    expect(entries.split('\n').filter(Boolean).sort()).toEqual([
+      'hero-desktop-dark.png',
+      'manifest.json',
+    ]);
+  });
+
+  it('uploads the archive to the tag, replacing an earlier one', () => {
+    const last = upload().steps.at(-1);
+    expect(last.run).toBe(
+      'gh release upload "$TAG" site-screenshots.zip --clobber',
+    );
+    expect(last.env.TAG).toBe('${{ needs.capture.outputs.tag }}');
+    expect(capture().outputs.tag).toBe('${{ steps.tag.outputs.tag }}');
+  });
+
+  it('is dispatched from main for every published stable release', () => {
+    const { redeploy } = loadWorkflow('docs-pages.yml').jobs;
+    const dispatch = redeploy.steps.at(-1);
+    expect(dispatch.run).toContain(
+      'gh workflow run site-shots.yml --ref main -f tag="$TAG"',
+    );
+    expect(dispatch.env.TAG).toBe('${{ github.event.release.tag_name }}');
+  });
+});

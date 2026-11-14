@@ -38,6 +38,7 @@
     "electron/**",
     "mobile/**",
     "protocol/**",
+    "site-shots/**",
     "web/**"
   ]
 }

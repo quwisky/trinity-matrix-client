@@ -510,6 +510,7 @@ export default defineConfig([
           './e2e/electron/tsconfig.json',
           './e2e/mobile/tsconfig.json',
           './e2e/protocol/tsconfig.json',
+          './e2e/site-shots/tsconfig.json',
           './e2e/web/tsconfig.json',
         ],
         tsconfigRootDir: import.meta.dirname,

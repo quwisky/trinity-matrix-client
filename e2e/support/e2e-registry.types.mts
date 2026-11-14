@@ -5,6 +5,7 @@ export type E2EEnvironment =
   | 'mobile'
   | 'mobile-ios'
   | 'protocol'
+  | 'site'
   | 'web';
 
 export type E2EContractType =

@@ -12,12 +12,14 @@ import { BROWSER_E2E_SUITES } from './suites/browser.mts';
 import { COMPONENT_E2E_SUITES } from './suites/components.mts';
 import { HOST_E2E_SUITES } from './suites/hosts.mts';
 import { PROTOCOL_E2E_SUITES } from './suites/protocol.mts';
+import { SITE_E2E_SUITES } from './suites/site.mts';
 
 export const E2E_SUITES = [
   ...BROWSER_E2E_SUITES,
   ...COMPONENT_E2E_SUITES,
   ...HOST_E2E_SUITES,
   ...PROTOCOL_E2E_SUITES,
+  ...SITE_E2E_SUITES,
 ] as const;
 
 export const E2E_INVENTORY = {
@@ -56,6 +58,12 @@ export const E2E_INVENTORY = {
       project: 'trinity-e2e-protocol',
       projectFile: 'e2e/protocol/project.json',
       ignoredTargets: ['e2e', 'lint', 'typecheck', 'test'],
+    },
+    {
+      project: 'trinity-site-shots',
+      projectFile: 'e2e/site-shots/project.json',
+      // `e2e` is the Playwright plugin's inferred target; `capture` owns the lifecycle.
+      ignoredTargets: ['e2e', 'lint', 'typecheck'],
     },
     {
       project: 'trinity-desktop',

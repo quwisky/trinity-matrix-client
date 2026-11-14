@@ -49,5 +49,6 @@ Inspect targets before forwarding runner-specific arguments.
 | `pnpm e2e:browser`                          | Run canonical browser journeys with the disposable homeserver       |
 | `pnpm e2e:components`                       | Run component browser suites                                        |
 | `pnpm e2e:all`                              | Run every available registered E2E suite                            |
+| `pnpm e2e:site-shots`                       | Capture the landing-page scenes into `dist/site-shots`              |
 
 Homeserver-backed commands share fixed ports and run sequentially. See the relevant [testing strategy](../../testing/testing-strategy/) or platform guide before interpreting a result.

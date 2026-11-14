@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **319 dependencies**. No project cycles detected.
+This snapshot contains **81 Nx projects** and **324 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -200,6 +200,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `trinity-e2e-support`               | `e2e/support`                            | unmanaged tooling/test                          |                   0 |
 | `trinity-e2e-web`                   | `e2e/web`                                | unmanaged tooling/test                          |                   6 |
 | `trinity-ios`                       | `ios`                                    | role:app; capability:composition                |                   4 |
+| `trinity-site-shots`                | `e2e/site-shots`                         | unmanaged tooling/test                          |                   5 |
 | `trinity-web-container`             | `container`                              | role:app; capability:composition                |                   1 |
 | `util-matrix`                       | `libs/util/matrix`                       | role:kernel; capability:shared                  |                   0 |
 | `util-ui`                           | `libs/util/ui`                           | role:design-system; capability:design-system    |                   1 |

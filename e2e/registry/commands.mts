@@ -58,6 +58,11 @@ export const E2E_AGGREGATE_TARGETS = [
     unavailablePolicy: 'fail',
     selection: { kind: 'environment', value: 'mobile-ios' },
   },
+  {
+    target: 'e2e-site-shots',
+    unavailablePolicy: 'fail',
+    selection: { kind: 'environment', value: 'site' },
+  },
 ] as const satisfies readonly E2EAggregateTarget[];
 
 export const E2E_PACKAGE_SCRIPTS = [
@@ -149,6 +154,12 @@ export const E2E_PACKAGE_SCRIPTS = [
     command: 'nx run trinity-e2e:e2e-mobile-ios',
     kind: 'canonical',
     suiteIds: ['mobile.ios'],
+  },
+  {
+    name: 'e2e:site-shots',
+    command: 'nx run trinity-e2e:e2e-site-shots',
+    kind: 'canonical',
+    suiteIds: ['site.shots'],
   },
   {
     name: 'e2e:verify',

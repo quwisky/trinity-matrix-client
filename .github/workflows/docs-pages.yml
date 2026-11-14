@@ -27,7 +27,11 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-        run: gh workflow run docs-pages.yml --ref main
+          TAG: ${{ github.event.release.tag_name }}
+        # The release's landing-page scenes; site-shots.yml validates the tag.
+        run: |
+          gh workflow run docs-pages.yml --ref main
+          gh workflow run site-shots.yml --ref main -f tag="$TAG"
 
   build:
     name: Build documentation
