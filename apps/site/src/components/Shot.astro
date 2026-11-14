@@ -21,8 +21,14 @@ const shot = (theme: 'dark' | 'light') =>
   shots[`../../.generated/shots/${scene}-${viewport}-${theme}.png`]?.default;
 const dark = shot('dark');
 const light = shot('light');
+// Captures are full device size; a phone shot shows at most 16rem wide, a desktop shot about 44rem.
+const sizes = viewport === 'desktop' ? '(min-width: 60rem) 44rem, 100vw' : 'min(16rem, 60vw)';
 const webp = (source: ImageMetadata) =>
-  getImage({ src: source, format: 'webp', width: source.width, height: source.height });
+  getImage({
+    src: source,
+    format: 'webp',
+    widths: [...new Set([480, 800, 1200, 1600].map((w) => Math.min(w, source.width)))],
+  });
 const captured =
   dark && light ? { dark: await webp(dark), light: await webp(light), size: dark } : undefined;
 const placeholder = viewport === 'desktop' ? desktop : phone;
@@ -35,12 +41,14 @@ const { width, height } = captured?.size ?? placeholder;
       <>
         <source
           media="(prefers-color-scheme: dark)"
-          srcset={captured.dark.src}
+          srcset={captured.dark.srcSet.attribute}
+          sizes={sizes}
           type="image/webp"
         />
         <source
           media="(prefers-color-scheme: light)"
-          srcset={captured.light.src}
+          srcset={captured.light.srcSet.attribute}
+          sizes={sizes}
           type="image/webp"
         />
       </>
