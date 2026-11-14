@@ -2,7 +2,15 @@ import { lstatSync, readFileSync, readdirSync } from 'node:fs';
 import { extname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const EXPECTED_ROOTS = ['404.html', 'developers', 'index.html', 'users'];
+const EXPECTED_ROOTS = [
+  '404.html',
+  '_astro',
+  'developers',
+  'favicon.svg',
+  'index.html',
+  'users',
+];
+const REQUIRED_ROOTS = ['404.html', 'developers', 'index.html', 'users'];
 export const PAGES_BASE = '/';
 const LEGACY_PREFIX = '/trinity-matrix-client/';
 const SECRET_NAME =
@@ -40,7 +48,7 @@ export const validateArtifact = (root) => {
 
   const roots = readdirSync(rootPath).sort();
   const unexpected = roots.filter((entry) => !EXPECTED_ROOTS.includes(entry));
-  const missing = EXPECTED_ROOTS.filter((entry) => !roots.includes(entry));
+  const missing = REQUIRED_ROOTS.filter((entry) => !roots.includes(entry));
   if (unexpected.length > 0) {
     throw new Error(
       `Documentation artifact has an unexpected top-level entry: ${unexpected.join(', ')}.`,

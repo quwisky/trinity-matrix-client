@@ -1,0 +1,40 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "site",
+  "projectType": "application",
+  "root": "apps/site",
+  "sourceRoot": "apps/site/src",
+  "tags": ["type:tool", "scope:shared"],
+  "targets": {
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "astro dev",
+        "cwd": "{workspaceRoot}/apps/site"
+      }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/dist/site"],
+      "options": {
+        "command": "astro build",
+        "cwd": "{workspaceRoot}/apps/site"
+      }
+    },
+    "check": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "astro check",
+        "cwd": "{workspaceRoot}/apps/site"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "{workspaceRoot}/apps/site"
+      }
+    }
+  }
+}

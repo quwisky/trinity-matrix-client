@@ -1,0 +1,131 @@
+---
+import '@docs/shared-theme/trinity.css';
+import mark from '@docs/shared-assets/trinity-mark.svg';
+
+interface Props {
+  title: string;
+  description: string;
+}
+const { title, description } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="description" content={description} />
+    <link rel="icon" href={mark.src} type="image/svg+xml" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+  </body>
+</html>
+
+<style is:global>
+  /* Accent and focus ring come from the shared docs theme; the page adds its surfaces. */
+  :root {
+    color-scheme: dark;
+    --bg: oklch(18% 0.025 278deg);
+    --surface: oklch(22% 0.03 278deg);
+    --border: oklch(32% 0.035 278deg);
+    --text: oklch(96% 0.012 278deg);
+    --muted: oklch(80% 0.025 278deg);
+    --on-accent: oklch(18% 0.025 278deg);
+    --radius: 0.75rem;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+      --bg: oklch(98.5% 0.005 278deg);
+      --surface: oklch(100% 0 0deg);
+      --border: oklch(88% 0.015 278deg);
+      --text: oklch(22% 0.03 278deg);
+      --muted: oklch(42% 0.03 278deg);
+      --on-accent: oklch(100% 0 0deg);
+      /* The shared theme switches these on Starlight's data-theme; this page follows the OS. */
+      --sl-color-accent-low: oklch(94% 0.03 278deg);
+      --sl-color-accent: oklch(48% 0.2 278deg);
+      --sl-color-accent-high: oklch(28% 0.11 278deg);
+    }
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sl-font);
+    line-height: 1.6;
+  }
+
+  h1,
+  h2,
+  h3 {
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  p {
+    margin: 0 0 1rem;
+  }
+
+  a {
+    color: var(--sl-color-accent);
+    text-underline-offset: 0.18em;
+  }
+
+  code,
+  pre {
+    font-family: var(--sl-font-mono);
+    font-size: 0.875rem;
+  }
+
+  pre {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    /* Wrap rather than scroll: a scroll region would need its own keyboard stop. */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--bg);
+  }
+
+  img {
+    display: block;
+    max-inline-size: 100%;
+    block-size: auto;
+  }
+
+  .wrap {
+    inline-size: min(72rem, 100% - 2rem);
+    margin-inline: auto;
+  }
+
+  .button {
+    display: inline-block;
+    padding: 0.7rem 1.25rem;
+    border: 1px solid var(--sl-color-accent);
+    border-radius: 999px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .button.primary {
+    background: var(--sl-color-accent);
+    color: var(--on-accent);
+  }
+
+  .muted {
+    color: var(--muted);
+  }
+</style>

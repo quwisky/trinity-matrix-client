@@ -261,6 +261,7 @@ const UI_BOUNDARY = [
 const OUTSIDE_THE_VENDOR_BANS = [
   'apps/docs-developers/project.json',
   'apps/docs-users/project.json',
+  'apps/site/project.json',
   'e2e/browser/project.json',
   'e2e/components/project.json',
   'e2e/docs/project.json',

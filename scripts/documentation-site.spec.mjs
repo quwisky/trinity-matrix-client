@@ -54,14 +54,20 @@ describe('documentation site projects', () => {
     expect(project.targets.check).toMatchObject({
       executor: 'nx:run-commands',
       dependsOn: [
-        { projects: ['docs-users', 'docs-developers'], target: 'check' },
+        {
+          projects: ['docs-users', 'docs-developers', 'site'],
+          target: 'check',
+        },
       ],
     });
     expect(project.targets.assemble).toMatchObject({
       executor: 'nx:run-commands',
       outputs: ['{workspaceRoot}/dist/docs-site'],
       dependsOn: expect.arrayContaining([
-        { projects: ['docs-users', 'docs-developers'], target: 'build' },
+        {
+          projects: ['docs-users', 'docs-developers', 'site'],
+          target: 'build',
+        },
       ]),
     });
   });
@@ -106,17 +112,16 @@ describe('documentation site presentation', () => {
     expect(developerConfig).not.toContain('apps/docs-users/src/content');
   });
 
-  it('provides only the two audience destinations at the Pages root', () => {
-    const portal = readFileSync(
-      join(workspaceRoot, 'tools/docs/portal/index.html'),
+  it('builds the landing page at the Pages root', () => {
+    const siteConfig = readFileSync(
+      join(workspaceRoot, 'apps/site/astro.config.mjs'),
       'utf8',
     );
-    const destinations = [...portal.matchAll(/href="([^"]+)"/g)].map(
-      ([, href]) => href,
-    );
 
-    expect(destinations).toEqual(['./users/', './developers/']);
-    expect(portal).toContain('Trinity documentation');
+    expect(siteConfig).toContain("base: '/'");
+    expect(
+      existsSync(join(workspaceRoot, 'tools/docs/portal/index.html')),
+    ).toBe(false);
   });
 });
 
