@@ -2,6 +2,7 @@ import { firstValueFrom } from 'rxjs';
 import type { MatrixClient } from 'matrix-js-sdk';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { MediaService } from './media.service';
+import { heicToJpeg } from './heic-to-jpeg';
 import type { MediaPayload } from '@trinity/util/matrix';
 import {
   createObjectURL,
@@ -44,6 +45,10 @@ vi.mock('./image-metadata/strip-file-metadata', async (importOriginal) => {
     bytesWithoutMediaMetadata: vi.fn(real.bytesWithoutMediaMetadata),
   };
 });
+
+vi.mock('./heic-to-jpeg', () => ({
+  heicToJpeg: vi.fn(async (file: File) => file),
+}));
 
 /** Mirrors the (non-exported) CACHE_LIMIT in media.service.ts. */
 const CACHE_LIMIT = 64;
@@ -1722,5 +1727,70 @@ describe('MediaService', () => {
         expect(storedBlob().type).toBe(expected);
       },
     );
+  });
+
+  describe('HEIC attachments', () => {
+    const heic = new File([new Uint8Array([1, 2, 3])], 'IMG_1.heic', {
+      type: 'image/heic',
+    });
+    const jpeg = new File([new Uint8Array([9, 9])], 'IMG_1.jpg', {
+      type: 'image/jpeg',
+    });
+
+    beforeEach(() => vi.mocked(heicToJpeg).mockClear());
+
+    it('uploads the converted JPEG and describes it in the event', async () => {
+      vi.mocked(heicToJpeg).mockResolvedValueOnce(jpeg);
+      const { svc, client } = setup();
+
+      const sent = await firstValueFrom(
+        svc.uploadMedia(heic, false, undefined, undefined, client as never),
+      );
+
+      expect(sent.body).toBe('IMG_1.jpg');
+      expect(sent.info.mimetype).toBe('image/jpeg');
+      expect(client.uploadContent).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ name: 'IMG_1.jpg', type: 'image/jpeg' }),
+      );
+    });
+
+    it('leaves the file alone when the person keeps photo metadata', async () => {
+      const { svc, client } = setup();
+
+      await firstValueFrom(
+        svc.uploadMedia(
+          heic,
+          false,
+          undefined,
+          undefined,
+          client as never,
+          undefined,
+          'keep',
+        ),
+      );
+
+      expect(heicToJpeg).not.toHaveBeenCalled();
+      expect(client.uploadContent).toHaveBeenCalledWith(
+        heic,
+        expect.objectContaining({ type: 'image/heic' }),
+      );
+    });
+
+    it('uploads nothing when the send is cancelled during the conversion', async () => {
+      const abort = new AbortController();
+      vi.mocked(heicToJpeg).mockImplementationOnce(async () => {
+        abort.abort();
+        return jpeg;
+      });
+      const { svc, client } = setup();
+
+      await expect(
+        firstValueFrom(
+          svc.uploadMedia(heic, false, undefined, abort, client as never),
+        ),
+      ).rejects.toThrow();
+      expect(client.uploadContent).not.toHaveBeenCalled();
+    });
   });
 });
