@@ -54,6 +54,14 @@ compiler output visible and use the developer
 [native testing guide](../../apps/docs-developers/src/content/docs/testing/desktop-and-native-tests.md)
 to reproduce the owning check.
 
+## Classified upstream build exemption
+
+| Boundary            | Classified output                                                                                                                                                                                                                  | Recheck when                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `libheif-js` 1.23.5 | Its non-bundled factory (`libheif-wasm/libheif.js`, used by the HEIC decode worker) requires `fs`, `path` and `crypto` in a Node-only branch. `externalDependencies` in `apps/trinity/project.json` leaves those names unresolved. | The package changes. An application import of one of these names no longer fails the build. |
+
+`scripts/validation-warning-policy.spec.mjs` pins `externalDependencies` to exactly `fs`, `path` and `crypto`, which bounds the exemption.
+
 ## Classified upstream stylelint
 
 | Boundary            | Classified output                                                                                            | Recheck when                                         |

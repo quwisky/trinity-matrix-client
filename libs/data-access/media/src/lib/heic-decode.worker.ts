@@ -4,6 +4,8 @@ import type { HeicDecodeReply, HeicDecodeRequest } from './heic-to-jpeg';
 const scope = self as unknown as {
   postMessage(message: HeicDecodeReply, transfer?: Transferable[]): void;
   onmessage: ((event: MessageEvent<HeicDecodeRequest>) => void) | null;
+  onerror: (() => void) | null;
+  onunhandledrejection: (() => void) | null;
 };
 
 async function decode({
@@ -43,6 +45,9 @@ async function decode({
     );
   });
 }
+
+// A libheif abort or throw after start-up can surface outside the promise chain.
+scope.onerror = scope.onunhandledrejection = () => scope.postMessage(null);
 
 scope.onmessage = ({ data }) => {
   decode(data)

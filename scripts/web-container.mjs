@@ -89,6 +89,7 @@ export function verifyContainerInputs(
     'manifest.webmanifest',
     '3rdpartylicenses.txt',
     'assets/crypto/matrix_sdk_crypto_wasm_bg.wasm',
+    'assets/heif/libheif.wasm',
   ]) {
     if (!manifest.files.some((file) => file.path === path))
       throw new Error('Production container payload is missing ' + path);

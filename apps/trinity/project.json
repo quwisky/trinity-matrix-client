@@ -81,6 +81,7 @@
           "another-json",
           "content-type",
           "events",
+          "libheif-js/libheif-wasm/libheif.js",
           "loglevel",
           "matrix-events-sdk",
           "matrix-widget-api",

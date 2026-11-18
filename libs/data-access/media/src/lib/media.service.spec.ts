@@ -1777,6 +1777,64 @@ describe('MediaService', () => {
       );
     });
 
+    describe('against the homeserver upload limit', () => {
+      const original = new File([new Uint8Array(5)], 'IMG_2.heic', {
+        type: 'image/heic',
+      });
+      const bigger = new File([new Uint8Array(12)], 'IMG_2.jpg', {
+        type: 'image/jpeg',
+      });
+      const sendWithLimit = async (limit: number | null, converted: File) => {
+        vi.mocked(heicToJpeg).mockResolvedValueOnce(converted);
+        const getMediaConfig = vi
+          .fn()
+          .mockResolvedValue(limit === null ? {} : { 'm.upload.size': limit });
+        const { svc, client } = setup({ getMediaConfig });
+        await firstValueFrom(
+          svc.uploadMedia(
+            original,
+            false,
+            undefined,
+            undefined,
+            client as never,
+          ),
+        );
+        return { client, getMediaConfig };
+      };
+
+      it('uploads the original when only the original fits', async () => {
+        const { client } = await sendWithLimit(10, bigger);
+        expect(client.uploadContent).toHaveBeenCalledWith(
+          original,
+          expect.objectContaining({ type: 'image/heic' }),
+        );
+      });
+
+      it('keeps the JPEG when the server states no limit', async () => {
+        const { client } = await sendWithLimit(null, bigger);
+        expect(client.uploadContent).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ type: 'image/jpeg' }),
+        );
+      });
+
+      it('keeps the JPEG when the original is over the limit too', async () => {
+        const { client } = await sendWithLimit(4, bigger);
+        expect(client.uploadContent).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ type: 'image/jpeg' }),
+        );
+      });
+
+      it('does not ask for the limit when the JPEG is the smaller file', async () => {
+        const smaller = new File([new Uint8Array(2)], 'IMG_2.jpg', {
+          type: 'image/jpeg',
+        });
+        const { getMediaConfig } = await sendWithLimit(10, smaller);
+        expect(getMediaConfig).not.toHaveBeenCalled();
+      });
+    });
+
     it('uploads nothing when the send is cancelled during the conversion', async () => {
       const abort = new AbortController();
       vi.mocked(heicToJpeg).mockImplementationOnce(async () => {
