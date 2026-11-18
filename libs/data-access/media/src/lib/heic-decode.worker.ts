@@ -1,29 +1,51 @@
-import libheif from 'libheif-js/wasm-bundle';
-import type { HeicDecodeReply } from './heic-to-jpeg';
+import createLibheif from 'libheif-js/libheif-wasm/libheif.js';
+import type { HeicDecodeReply, HeicDecodeRequest } from './heic-to-jpeg';
 
 const scope = self as unknown as {
   postMessage(message: HeicDecodeReply, transfer?: Transferable[]): void;
-  onmessage: ((event: MessageEvent<ArrayBuffer>) => void) | null;
+  onmessage: ((event: MessageEvent<HeicDecodeRequest>) => void) | null;
 };
 
-scope.onmessage = ({ data }) => {
+async function decode({
+  bytes,
+  wasmUrl,
+}: HeicDecodeRequest): Promise<HeicDecodeReply> {
+  const response = await fetch(wasmUrl);
+  if (!response.ok) {
+    return null;
+  }
+  const wasmBinary = await response.arrayBuffer();
+  // The factory hands back the module before the wasm has started.
+  let libheif!: ReturnType<typeof createLibheif>;
+  await new Promise<void>((ready, failed) => {
+    libheif = createLibheif({
+      wasmBinary,
+      onRuntimeInitialized: ready,
+      onAbort: failed,
+    });
+  });
   // The first image is the primary one; a sequence or burst keeps only it.
-  const image = new libheif.HeifDecoder().decode(data)[0];
+  const image = new libheif.HeifDecoder().decode(bytes)[0];
   if (!image) {
-    scope.postMessage(null);
-    return;
+    return null;
   }
   const width = image.get_width();
   const height = image.get_height();
-  image.display(
-    { data: new Uint8ClampedArray(width * height * 4), width, height },
-    (decoded) => {
-      if (!decoded) {
-        scope.postMessage(null);
-        return;
-      }
-      const rgba = decoded.data.buffer as ArrayBuffer;
-      scope.postMessage({ width, height, rgba }, [rgba]);
-    },
-  );
+  return new Promise<HeicDecodeReply>((resolve) => {
+    image.display(
+      { data: new Uint8ClampedArray(width * height * 4), width, height },
+      (decoded) =>
+        resolve(
+          decoded
+            ? { width, height, rgba: decoded.data.buffer as ArrayBuffer }
+            : null,
+        ),
+    );
+  });
+}
+
+scope.onmessage = ({ data }) => {
+  decode(data)
+    .catch(() => null)
+    .then((reply) => scope.postMessage(reply, reply ? [reply.rgba] : []));
 };

@@ -14,6 +14,7 @@ type FakeWorker = {
   terminate: Mock;
   onmessage: ((event: MessageEvent) => void) | null;
   onerror: ((event: ErrorEvent) => void) | null;
+  onmessageerror: ((event: MessageEvent) => void) | null;
 };
 
 const fakeWorker = (): FakeWorker & Worker =>
@@ -22,6 +23,7 @@ const fakeWorker = (): FakeWorker & Worker =>
     terminate: vi.fn(),
     onmessage: null,
     onerror: null,
+    onmessageerror: null,
   }) as unknown as FakeWorker & Worker;
 
 const heic = (name = 'IMG_1.heic', type = 'image/heic') =>
@@ -103,6 +105,13 @@ describe('heicToJpeg', () => {
     const worker = fakeWorker();
     const pending = heicToJpeg(heic(), () => worker);
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalled());
+    expect(worker.postMessage).toHaveBeenCalledWith(
+      {
+        bytes: expect.any(ArrayBuffer),
+        wasmUrl: expect.stringMatching(/assets\/heif\/libheif\.wasm$/),
+      },
+      [expect.any(ArrayBuffer)],
+    );
     worker.onmessage?.({
       data: { width: 2, height: 1, rgba: new ArrayBuffer(8) },
     } as MessageEvent);
@@ -117,6 +126,10 @@ describe('heicToJpeg', () => {
       (w: FakeWorker) => w.onmessage?.({ data: null } as MessageEvent),
     ],
     ['a worker error', (w: FakeWorker) => w.onerror?.(new ErrorEvent('error'))],
+    [
+      'a message error',
+      (w: FakeWorker) => w.onmessageerror?.(new MessageEvent('messageerror')),
+    ],
   ])('sends the original after %s', async (_label, fail) => {
     bitmapMock.mockRejectedValueOnce(new Error('unsupported'));
     const worker = fakeWorker();

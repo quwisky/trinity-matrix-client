@@ -1,4 +1,4 @@
-declare module 'libheif-js/wasm-bundle' {
+declare module 'libheif-js/libheif-wasm/libheif.js' {
   interface HeifImage {
     get_width(): number;
     get_height(): number;
@@ -8,8 +8,14 @@ declare module 'libheif-js/wasm-bundle' {
     ): void;
   }
 
-  const libheif: {
+  interface Libheif {
     HeifDecoder: new () => { decode(data: ArrayBuffer): HeifImage[] };
-  };
-  export default libheif;
+  }
+
+  const createLibheif: (options: {
+    wasmBinary: ArrayBuffer;
+    onRuntimeInitialized: () => void;
+    onAbort: (reason: unknown) => void;
+  }) => Libheif;
+  export default createLibheif;
 }

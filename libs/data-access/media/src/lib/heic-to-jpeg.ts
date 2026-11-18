@@ -8,6 +8,12 @@ export type HeicDecodeReply = {
   readonly rgba: ArrayBuffer;
 } | null;
 
+/** What the main thread sends the decode worker; `bytes` is transferred. */
+export interface HeicDecodeRequest {
+  readonly bytes: ArrayBuffer;
+  readonly wasmUrl: string;
+}
+
 export const HEIC_DECODE_DEADLINE_MS = 30_000;
 
 const HEIC_TYPES = new Set([
@@ -61,7 +67,12 @@ async function decodeInWorker(
       worker.onmessage = ({ data }: MessageEvent<HeicDecodeReply>) =>
         settle(data);
       worker.onerror = () => settle(null);
-      worker.postMessage(buffer, [buffer]);
+      worker.onmessageerror = () => settle(null);
+      const request: HeicDecodeRequest = {
+        bytes: buffer,
+        wasmUrl: new URL('assets/heif/libheif.wasm', document.baseURI).href,
+      };
+      worker.postMessage(request, [buffer]);
     });
     return reply
       ? new ImageData(

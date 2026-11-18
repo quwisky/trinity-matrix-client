@@ -57,6 +57,11 @@
             "glob": "matrix_sdk_crypto_wasm_bg.wasm",
             "input": "node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg",
             "output": "assets/crypto"
+          },
+          {
+            "glob": "libheif.wasm",
+            "input": "node_modules/libheif-js/libheif-wasm",
+            "output": "assets/heif"
           }
         ],
         "styles": [
@@ -71,6 +76,7 @@
           }
         ],
         "scripts": [],
+        "externalDependencies": ["fs", "path", "crypto"],
         "allowedCommonJsDependencies": [
           "another-json",
           "content-type",
