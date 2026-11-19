@@ -7,7 +7,7 @@ import {
   type Room,
 } from 'matrix-js-sdk';
 import { firstValueFrom, from, timeout } from 'rxjs';
-import { STEP_LIMIT_MS } from './mention-index.service';
+import { STEP_LIMIT_MS } from './step-limit';
 import {
   parseNotificationsPage,
   type NotificationsPage,

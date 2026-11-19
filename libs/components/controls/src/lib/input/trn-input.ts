@@ -13,11 +13,10 @@ import {
 import { BrnInput } from '@spartan-ng/brain/input';
 import { classes } from '@trinity/helm/utils';
 import {
-  trnLockReason,
-  nativeDisabled,
   TRN_LOCKABLE_CONTROL,
   type TrnLockableControl,
 } from './trn-lockable-control';
+import { nativeDisabled, trnLockReason } from './trn-lock-state';
 import {
   trnInputRecipe,
   type TrnTextControlSize,

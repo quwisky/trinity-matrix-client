@@ -13,11 +13,10 @@ import {
 import { BrnTextarea } from '@spartan-ng/brain/textarea';
 import { classes } from '@trinity/helm/utils';
 import {
-  trnLockReason,
-  nativeDisabled,
   TRN_LOCKABLE_CONTROL,
   type TrnLockableControl,
 } from '../input/trn-lockable-control';
+import { nativeDisabled, trnLockReason } from '../input/trn-lock-state';
 import {
   trnTextareaRecipe,
   type TrnTextControlSize,

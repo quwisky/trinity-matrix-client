@@ -1,80 +1,30 @@
-// Domain-neutral interactive controls. Public exports are intentionally named.
-export {
-  TrnActionAvailability,
-  TrnButton,
-  TrnButtonImports,
-  TrnIconButton,
-} from './lib/button/trn-button';
-export { TRN_BUTTON_ROW_CONTEXT } from './lib/button/trn-button-row-context';
-export type {
-  TrnButtonPresentation,
-  TrnButtonShape,
-  TrnButtonSize,
-  TrnButtonVariant,
-} from './lib/button/trn-button-recipe';
-export { TrnCheckboxComponent } from './lib/checkbox/trn-checkbox.component';
-export { TrnEmojiIndex } from './lib/emoji-picker/trn-emoji-index.service';
-export {
-  TrnEmojiPickerComponent,
-  type TrnEmojiPickerLayout,
-  type TrnEmojiPickerSize,
-} from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
-export type {
-  TrnEmojiPick,
-  TrnEmojiSuggestion,
-} from './lib/emoji-picker/trn-emoji.model';
-export { TrnFieldComponent } from './lib/field/field/trn-field.component';
-export {
-  TrnFieldLabelComponent,
-  type TrnFieldLabelEmphasis,
-} from './lib/field/field-label/trn-field-label.component';
-export { TrnInput, type TrnTextControlSize } from './lib/input/trn-input';
-export {
-  TRN_DEFAULT_LOCK_REASON,
-  TRN_LOCKABLE_CONTROL,
-  type TrnLockableControl,
-} from './lib/input/trn-lockable-control';
-export { TrnLabel } from './lib/label/trn-label';
-export { TrnPasswordInputComponent } from './lib/password-input/trn-password-input.component';
-export { QrScannerComponent } from './lib/qr-scanner/qr-scanner/qr-scanner.component';
-export { QR_SCANNER_SUSPENDED } from './lib/qr-scanner/qr-scanner/qr-scanner-suspended';
-export {
-  TrnRadioComponent,
-  TrnRadioGroupComponent,
-  type TrnRadioGroupLayout,
-  type TrnRadioOption,
-} from './lib/radio-group/trn-radio-group.component';
-export {
-  TrnSelectComponent,
-  type TrnSelectOption,
-  type TrnSelectSize,
-} from './lib/select/trn-select.component';
-export { TrnSwitchComponent } from './lib/switch/trn-switch.component';
-export { TrnTab } from './lib/tabs/trn-tab';
-export { TrnTabList } from './lib/tabs/trn-tab-list';
-export { TrnTabPanel } from './lib/tabs/trn-tab-panel';
-export {
-  TrnTabs,
-  type TrnTabsActivation,
-  type TrnTabsAppearance,
-} from './lib/tabs/trn-tabs';
-export { TrnTextarea } from './lib/textarea/trn-textarea';
-
-import { TrnFieldComponent } from './lib/field/field/trn-field.component';
-import { TrnFieldLabelComponent } from './lib/field/field-label/trn-field-label.component';
-import { TrnTab } from './lib/tabs/trn-tab';
-import { TrnTabList } from './lib/tabs/trn-tab-list';
-import { TrnTabPanel } from './lib/tabs/trn-tab-panel';
-import { TrnTabs } from './lib/tabs/trn-tabs';
-
-export const TrnFieldImports = [
-  TrnFieldComponent,
-  TrnFieldLabelComponent,
-] as const;
-
-export const TrnTabsImports = [
-  TrnTabs,
-  TrnTabList,
-  TrnTab,
-  TrnTabPanel,
-] as const;
+// Domain-neutral interactive controls.
+// Only `export *` and `export type *` lines: with `"sideEffects": false` in ../package.json,
+// esbuild leaves the files the startup bundle doesn't use in lazy chunks, and one named
+// re-export pulls every file below back into it. `export type *` publishes a file's types
+// and keeps its helper functions private.
+export * from './lib/button/trn-button';
+export * from './lib/button/trn-button-row-context';
+export type * from './lib/button/trn-button-recipe';
+export * from './lib/checkbox/trn-checkbox.component';
+export * from './lib/emoji-picker/trn-emoji-index.service';
+export * from './lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component';
+export * from './lib/emoji-picker/trn-emoji.model';
+export * from './lib/field/field/trn-field.component';
+export * from './lib/field/field-label/trn-field-label.component';
+export * from './lib/field/trn-field-imports';
+export * from './lib/input/trn-input';
+export * from './lib/input/trn-lockable-control';
+export * from './lib/label/trn-label';
+export * from './lib/password-input/trn-password-input.component';
+export * from './lib/qr-scanner/qr-scanner/qr-scanner.component';
+export * from './lib/qr-scanner/qr-scanner/qr-scanner-suspended';
+export * from './lib/radio-group/trn-radio-group.component';
+export * from './lib/select/trn-select.component';
+export * from './lib/switch/trn-switch.component';
+export * from './lib/tabs/trn-tab';
+export * from './lib/tabs/trn-tab-list';
+export * from './lib/tabs/trn-tab-panel';
+export * from './lib/tabs/trn-tabs';
+export * from './lib/tabs/trn-tabs-imports';
+export * from './lib/textarea/trn-textarea';

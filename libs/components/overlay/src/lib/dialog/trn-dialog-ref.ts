@@ -1,5 +1,6 @@
 import type { Observable } from 'rxjs';
 import type { TrnSheetDetent } from '../sheet-frame/sheet-detent';
+import { dialogTitleId } from './dialog-title-id';
 
 /**
  * The two members of the vendor's ref this wraps, named structurally rather than imported.
@@ -19,13 +20,6 @@ export interface DialogDetents {
   /** Opt in to snapping; the sheet opens at `initialDetent`, or `'medium'` when it is offered. */
   detents?: readonly TrnSheetDetent[];
   initialDetent?: TrnSheetDetent;
-}
-
-let nextTitleId = 0;
-
-/** A document-unique id for a dialog's title heading. */
-export function dialogTitleId(): string {
-  return `trn-dialog-title-${nextTitleId++}`;
 }
 
 /**

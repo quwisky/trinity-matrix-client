@@ -125,7 +125,7 @@ describe('design-system contract', () => {
     );
   });
 
-  it('rejects broad exports from a public entrypoint', () => {
+  it('rejects a wholesale package re-export from a public entrypoint', () => {
     const errors = catalogErrors({
       nodes: {
         controls: {
@@ -151,17 +151,54 @@ describe('design-system contract', () => {
           './libs/components/controls/src/index.ts',
         ],
       },
-      read: () => "export * from './lib/button';",
+      read: () => "export * from '@spartan-ng/brain/select';",
     });
 
     expect(errors).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('public entrypoint must use named exports'),
+        expect.stringContaining('must not re-export another package wholesale'),
       ]),
     );
   });
 
-  it('rejects broad type-only exports from a public entrypoint', () => {
+  it("accepts `export *` of the library's own files", () => {
+    const errors = catalogErrors({
+      nodes: {
+        controls: {
+          data: {
+            root: 'libs/components/controls',
+            tags: ['ui:public'],
+          },
+        },
+      },
+      catalog: {
+        categories: {
+          ...categories,
+          controls: [
+            {
+              project: 'controls',
+              entrypoint: '@trinity/components/controls',
+            },
+          ],
+        },
+      },
+      paths: {
+        '@trinity/components/controls': [
+          './libs/components/controls/src/index.ts',
+        ],
+      },
+      read: () =>
+        "export * from './lib/button';\nexport type * from './lib/recipe';",
+    });
+
+    expect(errors).not.toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('re-export another package wholesale'),
+      ]),
+    );
+  });
+
+  it('rejects a wholesale type-only package re-export from a public entrypoint', () => {
     const errors = catalogErrors({
       nodes: {
         foundations: {
@@ -187,12 +224,12 @@ describe('design-system contract', () => {
           './libs/components/foundations/src/index.ts',
         ],
       },
-      read: () => "export type * from './lib/icon';",
+      read: () => "export type * from '@ng-icons/core';",
     });
 
     expect(errors).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('public entrypoint must use named exports'),
+        expect.stringContaining('must not re-export another package wholesale'),
       ]),
     );
   });

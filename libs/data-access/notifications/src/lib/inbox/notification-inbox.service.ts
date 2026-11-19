@@ -56,7 +56,8 @@ import {
 } from './matrix-inbox.adapter';
 import { MentionInboxPreferences } from './mention-inbox.preferences';
 import type { MentionCursor, MentionRecord } from './mention-index-store';
-import { MentionIndexService, STEP_LIMIT_MS } from './mention-index.service';
+import { MentionIndexService } from './mention-index.service';
+import { STEP_LIMIT_MS } from './step-limit';
 import { isPlainEventId, type NotificationEntry } from './notifications-page';
 
 const SERVER_PAGE_SIZE = 50;

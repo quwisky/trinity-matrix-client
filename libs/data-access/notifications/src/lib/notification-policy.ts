@@ -4,8 +4,8 @@ import type {
   NotificationPolicyDecision,
   NotificationPolicyInput,
 } from './notification-intent';
+import { PREVIEW_LIMIT } from './preview-limit';
 
-export const PREVIEW_LIMIT = 140;
 export const GENERIC_BODY = 'New message';
 
 /** Pure notification policy: no Router, SDK, DOM, or host dependency. */

@@ -18,9 +18,9 @@ import {
 } from '@trinity/helm/select';
 import {
   TRN_LOCKABLE_CONTROL,
-  trnLockReason,
   type TrnLockableControl,
 } from '../input/trn-lockable-control';
+import { trnLockReason } from '../input/trn-lock-state';
 import {
   trnSelectHelmSize,
   trnSelectTriggerRecipe,

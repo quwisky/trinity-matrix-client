@@ -1,3 +1,5 @@
+// Only `export *` lines: ../package.json declares no side effects, so esbuild leaves the files
+// the startup bundle doesn't use in lazy chunks; one named re-export would pull them back in.
 export * from './lib/message-view';
 export * from './lib/message-html';
 export * from './lib/geo-uri';
@@ -5,7 +7,7 @@ export * from './lib/trim-trailing';
 export * from './lib/day-separator';
 export * from './lib/date-format';
 export * from './lib/edit-history';
-export { displayContent, validReplacement } from './lib/replacement';
+export * from './lib/replacement';
 export * from './lib/edit-history-diff';
 export * from './lib/media.model';
 export * from './lib/display-mime';

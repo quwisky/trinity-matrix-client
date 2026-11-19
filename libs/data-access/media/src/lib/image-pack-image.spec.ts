@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ImagePackImageError, prepareImagePackImage } from './image-pack-image';
+import { ImagePackImageError } from './image-pack-image-error';
+import { prepareImagePackImage } from './image-pack-image';
 
 const ONE_MB = 1_048_576;
 

@@ -16,8 +16,11 @@
 #     the same reason.
 #   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
-#   - `libs/data-access/room-administration` carries a nameless `package.json` only for
-#     `"sideEffects": false`, which keeps its on-demand services out of the startup bundle.
+#   - `libs/components/{controls,overlay,generic-content}`,
+#     `libs/data-access/{auth,media,notifications,room-administration,room-library}` and
+#     `libs/util/matrix` carry a nameless `package.json` only for `"sideEffects"`, which keeps
+#     the files the startup bundle doesn't use out of it.
+#     `scripts/side-effect-free-barrels.spec.mjs` keeps their barrels `export *`-only.
 #   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
 #     tree, installed separately via `pnpm electron:install` — intentionally not a member.
 #

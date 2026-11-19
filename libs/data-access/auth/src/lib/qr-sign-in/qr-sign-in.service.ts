@@ -2,7 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import type { MatrixClient } from 'matrix-js-sdk';
 import type { Observable } from 'rxjs';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { QrSignInAdapter, type ExistingDeviceLink } from './qr-sign-in.adapter';
+import type { ExistingDeviceLink } from './existing-device-link';
+import { QrSignInAdapter } from './qr-sign-in.adapter';
 import type { NewDeviceState } from './qr-sign-in.model';
 
 /** Links devices as the one account it was created for. */

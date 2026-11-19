@@ -63,4 +63,13 @@ describe('@trinity/components/overlay vendor surface', () => {
     expect(exported).not.toContain('Dialog');
     expect(exported).not.toContain('DIALOG_DATA');
   });
+
+  it('keeps the services TrnSurfaceService wraps private', () => {
+    // The barrel names no symbols, so only its runtime exports can show an `export *` that
+    // should have been `export type *`.
+    const exported = Object.keys(overlay);
+    expect(exported).not.toContain('TrnDialogService');
+    expect(exported).not.toContain('TrnActionSheetService');
+    expect(exported).not.toContain('TrnActionListComponent');
+  });
 });

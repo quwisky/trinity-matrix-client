@@ -36,6 +36,7 @@ import {
   type MentionCursor,
   type MentionRecord,
 } from './mention-index-store';
+import { STEP_LIMIT_MS } from './step-limit';
 
 /** One account's client plus its bound listeners. */
 interface AccountRecorder {
@@ -52,9 +53,6 @@ interface AccountRecorder {
 
 /** Permanent UTDs stay pending for a later retry, so the set needs a cap. */
 const PENDING_DECRYPTION_CAP = 500;
-
-/** A hung store would otherwise hold every delete and stop queued behind it for good. */
-export const STEP_LIMIT_MS = 10_000;
 
 /**
  * Records which messages mentioned the person, for every signed-in account at once, which is

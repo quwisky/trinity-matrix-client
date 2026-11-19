@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PREVIEW_LIMIT } from '../notification-policy';
+import { PREVIEW_LIMIT } from '../preview-limit';
 import { inboxPreview, mergeInboxRows, type InboxRow } from './inbox-rows';
 
 const row = (eventId: string, ts: number, roomName = 'Room'): InboxRow => ({

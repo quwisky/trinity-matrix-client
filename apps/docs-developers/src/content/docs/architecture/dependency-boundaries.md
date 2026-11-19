@@ -31,6 +31,12 @@ Features never import other feature libraries. Shared behavior moves to the owni
 
 Product UI imports `@trinity/components/*`. The Spartan and vendor layers sit behind that public component tier. Generated Spartan source remains generator-owned and is not a shortcut around the component boundary.
 
+## Keep side-effect-free barrels `export *`-only {#side-effect-free-barrels}
+
+Some libraries carry a nameless `package.json` with `"sideEffects": false`, or with the list of their files that do have top-level side effects (`libs/util/matrix` lists the file that installs its DOMPurify hooks). Their `src/index.ts` contains only `export * from './lib/…'` and `export type * from './lib/…'` lines. Angular emits each component definition as a `static {}` block, which esbuild cannot drop as unused. esbuild leaves a barrel's unused files out of the startup bundle only when the library declares no side effects and the barrel uses no named re-export. One `export { A } from './lib/a'` line puts every file that barrel names back into the startup bundle. The build still passes, and only the bundle grows. Converting nine of these barrels together took about 258 kB out of the JavaScript the app loads at startup.
+
+When a file's public surface is only types, publish it with `export type *`; its functions stay private. When a file mixes public and private values, move the private ones into a file the barrel does not list. Keep a new file in such a library free of top-level side effects, or list it under `"sideEffects"`. `scripts/side-effect-free-barrels.spec.mjs` checks the barrel lines.
+
 ## Check a proposed edge {#check-edge}
 
 Inspect the exact projects and graph before adding an import:

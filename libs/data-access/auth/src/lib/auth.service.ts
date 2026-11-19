@@ -47,8 +47,8 @@ import {
   type OidcGrant,
   type OidcGrantContext,
 } from './oidc-client.service';
+import { ReauthAccountMismatchError } from './account-errors';
 import {
-  ReauthAccountMismatchError,
   accountEstablishment,
   verifyAccountServer,
   type AuthenticatedSessionResponse,
@@ -60,11 +60,8 @@ import {
   NewDeviceSignInCancelledError,
   UnprotectedStorageDeclinedError,
 } from './new-device-sign-in.port';
-import {
-  serverApi,
-  type AccountManagement,
-  type AccountServerApi,
-} from './account-server-api';
+import type { AccountManagement, AccountServerApi } from './account-server-api';
+import { serverApi } from './account-server-api-lookup';
 import type {
   LinkedSecrets,
   QrSignInCompletion,

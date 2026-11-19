@@ -140,10 +140,16 @@ export function validateDesignSystemCatalog(
       );
     }
     const entrypointSource = readSource(`${node.data.root}/src/index.ts`);
+    // `export *` of the library's own files keeps unused components out of the startup
+    // bundle (see `side-effect-free-barrels.spec.mjs`); of a package it hands out its API.
     if (
-      /\bexport(?:\s+type)?\s*\*/u.test(codeWithoutComments(entrypointSource))
+      /\bexport(?:\s+type)?\s*\*(?:\s+as\s+\w+)?\s*from\s*['"](?!\.\.?\/)/u.test(
+        codeWithoutComments(entrypointSource),
+      )
     ) {
-      errors.push(`${entry.project} public entrypoint must use named exports`);
+      errors.push(
+        `${entry.project} public entrypoint must not re-export another package wholesale`,
+      );
     }
     if (entry.category === 'migration-exception') {
       for (const field of ['targetOwner', 'removeBy', 'reason']) {

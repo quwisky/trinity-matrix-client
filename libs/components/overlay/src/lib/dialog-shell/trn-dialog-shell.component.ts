@@ -16,7 +16,8 @@ import {
 } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { Subject } from 'rxjs';
-import { TrnDialogRef, dialogTitleId } from '../dialog/trn-dialog-ref';
+import { dialogTitleId } from '../dialog/dialog-title-id';
+import { TrnDialogRef } from '../dialog/trn-dialog-ref';
 import { TrnInsetGroup, TrnInsetRow } from '../inset-group/trn-inset-group';
 import { TrnSheetFrameComponent } from '../sheet-frame/trn-sheet-frame.component';
 import { TrnOverlaySurfaceDirective } from '../surface/trn-overlay-surface.directive';

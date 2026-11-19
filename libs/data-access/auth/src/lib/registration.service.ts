@@ -49,8 +49,8 @@ import {
   AccountRuntimeService,
   type AccountEstablishmentOutcome,
 } from '@trinity/data-access/accounts';
+import { UnacceptableAccountError } from './account-errors';
 import {
-  UnacceptableAccountError,
   accountEstablishment,
   verifyAccountServer,
   type LoginMode,

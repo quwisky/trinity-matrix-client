@@ -1,97 +1,29 @@
-// Domain-neutral overlays. The vendor implementation stays private and this API stays explicit.
-export { provideTrnOverlayDefaults } from './lib/provide-overlay-defaults';
-export { type TrnDialogAutoFocus } from './lib/dialog/trn-dialog.service';
-export {
-  TrnDialogRef,
-  type TrnDialogPresentation,
-} from './lib/dialog/trn-dialog-ref';
-export { type TrnSheetDetent } from './lib/sheet-frame/sheet-detent';
-export {
-  TrnDialogActions,
-  TrnDialogShellComponent,
-} from './lib/dialog-shell/trn-dialog-shell.component';
-export { TrnDialogDismiss } from './lib/dialog-shell/trn-dialog-dismiss';
-export {
-  TrnSurfaceService,
-  type TrnActionsOptions,
-  type TrnSurfaceKind,
-  type TrnSurfaceOptions,
-} from './lib/surface-service/trn-surface.service';
-export {
-  TrnAlertService,
-  type ChooseOptions,
-  type ConfirmOptions,
-  type PromptOptions,
-  type TrnAlertChoice,
-  type TrnAlertVariant,
-} from './lib/alert/trn-alert.service';
-export {
-  TrnAlertDialogComponent,
-  type AlertDialogData,
-  type AlertDialogResult,
-} from './lib/alert/trn-alert-dialog.component';
-export {
-  type ActionSheetButton,
-  type ActionSheetData,
-  type ActionSheetReaction,
-  type TrnActionSheetButtonVariant,
-} from './lib/action-sheet/trn-action-list.component';
-export {
-  TrnInsetDividerComponent,
-  TrnInsetGroup,
-  TrnInsetRow,
-} from './lib/inset-group/trn-inset-group';
-export { TrnActionSheetRef } from './lib/action-sheet/trn-action-sheet-ref';
-export {
-  TrnToastService,
-  type ToastOptions,
-  type TrnToastVariant,
-} from './lib/toast/trn-toast.service';
-export { TrnToasterComponent } from './lib/toast/trn-toaster.component';
-export { TrnOverlaySurfaceDirective } from './lib/surface/trn-overlay-surface.directive';
-export {
-  lastInputTarget,
-  releaseInputTargetOnDestroy,
-} from './lib/input-target/release-input-target';
-export {
-  TrnSettingsLayoutComponent,
-  type TrnSettingsLayoutSection,
-} from './lib/settings-layout/trn-settings-layout.component';
-export type {
-  TrnOverlaySurfaceLayout,
-  TrnOverlaySurfaceSize,
-  TrnOverlaySurfaceVariant,
-} from './lib/surface/trn-overlay-surface-recipe';
-export {
-  TrnDropdownMenu,
-  TrnDropdownMenuCheckbox,
-  TrnDropdownMenuCheckboxIndicatorComponent,
-  TrnDropdownMenuImports,
-  TrnDropdownMenuItem,
-  TrnDropdownMenuItemSubIndicatorComponent,
-  TrnDropdownMenuLabel,
-  TrnLockedSelectionDirective,
-  TrnDropdownMenuRadio,
-  TrnDropdownMenuRadioIndicatorComponent,
-  TrnDropdownMenuSeparator,
-  TrnDropdownMenuSub,
-  TrnDropdownMenuSubTrigger,
-  TrnDropdownMenuTrigger,
-  type TrnDropdownMenuItemVariant,
-} from './lib/dropdown/trn-dropdown-menu';
-export {
-  TrnAnchoredOverlayDirective,
-  type TrnAnchoredAlign,
-  type TrnAnchoredSide,
-} from './lib/anchored/trn-anchored-overlay.directive';
-export type {
-  TrnOverlayAlign,
-  TrnOverlaySide,
-} from './lib/position/trn-overlay-position';
-export { TrnSettingsGroupComponent } from './lib/settings-layout/trn-settings-group.component';
-export { TrnSettingsRowComponent } from './lib/settings-layout/trn-settings-row.component';
-export {
-  TrnSettingsParts,
-  slugify,
-  type SettingsPart,
-} from './lib/settings-layout/trn-settings-parts';
+// Domain-neutral overlays. The vendor implementation stays private.
+// Only `export *` and `export type *` lines: with `"sideEffects": false` in ../package.json,
+// esbuild leaves the files the startup bundle doesn't use in lazy chunks, and one named
+// re-export pulls every file below back into it. `export type *` publishes a file's types
+// and keeps its helpers and the services `TrnSurfaceService` wraps private.
+export * from './lib/provide-overlay-defaults';
+export type * from './lib/dialog/trn-dialog.service';
+export * from './lib/dialog/trn-dialog-ref';
+export type * from './lib/sheet-frame/sheet-detent';
+export * from './lib/dialog-shell/trn-dialog-shell.component';
+export * from './lib/dialog-shell/trn-dialog-dismiss';
+export * from './lib/surface-service/trn-surface.service';
+export * from './lib/alert/trn-alert.service';
+export * from './lib/alert/trn-alert-dialog.component';
+export type * from './lib/action-sheet/trn-action-list.component';
+export * from './lib/inset-group/trn-inset-group';
+export * from './lib/action-sheet/trn-action-sheet-ref';
+export * from './lib/toast/trn-toast.service';
+export * from './lib/toast/trn-toaster.component';
+export * from './lib/surface/trn-overlay-surface.directive';
+export * from './lib/input-target/release-input-target';
+export * from './lib/settings-layout/trn-settings-layout.component';
+export type * from './lib/surface/trn-overlay-surface-recipe';
+export * from './lib/dropdown/trn-dropdown-menu';
+export * from './lib/anchored/trn-anchored-overlay.directive';
+export * from './lib/position/trn-overlay-position';
+export * from './lib/settings-layout/trn-settings-group.component';
+export * from './lib/settings-layout/trn-settings-row.component';
+export * from './lib/settings-layout/trn-settings-parts';

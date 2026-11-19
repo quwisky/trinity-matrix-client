@@ -45,7 +45,13 @@ describe('surface service usage', () => {
     );
 
     expect(barrel).not.toMatch(internal);
-    expect(barrel).toMatch(/\bTrnSurfaceService\b/u);
+    // The barrel names files, not symbols: their services stay private behind `export type *`.
+    expect(barrel).toMatch(
+      /^export \* from '\.\/lib\/surface-service\/trn-surface\.service';$/mu,
+    );
+    expect(barrel).not.toMatch(
+      /^export \* from '[^']*\/(?:trn-dialog|trn-action-sheet)\.service';$/mu,
+    );
   });
 
   describe('detector', () => {
