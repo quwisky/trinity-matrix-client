@@ -1,3 +1,168 @@
+diff --git a/lib/client.js b/lib/client.js
+index 9b5dac4f0b3d4cf7948ab07c84f04bd4135601e9..9d411082ba8e2f409f55b2dc68572800dba436a7 100644
+--- a/lib/client.js
++++ b/lib/client.js
+@@ -25,10 +25,7 @@ limitations under the License.
+ import { SyncApi, SyncState } from "./sync.js";
+ import { EventStatus, MatrixEvent, MatrixEventEvent } from "./models/event.js";
+ import { StubStore } from "./store/stub.js";
+-import { createNewMatrixCall, supportsMatrixCall } from "./webrtc/call.js";
+ import { Filter } from "./filter.js";
+-import { CallEventHandler } from "./webrtc/callEventHandler.js";
+-import { GroupCallEventHandler } from "./webrtc/groupCallEventHandler.js";
+ import * as utils from "./utils.js";
+ import { deepCompare, noUnsafeEventProps, replaceParam, safeSet, sleep } from "./utils.js";
+ import { Direction, EventTimeline } from "./models/event-timeline.js";
+@@ -53,8 +50,6 @@ import { secureRandomString } from "./randomstring.js";
+ import { DEFAULT_TREE_POWER_LEVELS_TEMPLATE, MSC3089TreeSpace } from "./models/MSC3089TreeSpace.js";
+ import { SearchOrderBy } from "./@types/search.js";
+ import { PushRuleActionName, PushRuleKind } from "./@types/PushRules.js";
+-import { GroupCall } from "./webrtc/groupCall.js";
+-import { MediaHandler } from "./webrtc/mediaHandler.js";
+ import { TypedEventEmitter } from "./models/typed-event-emitter.js";
+ import { MAIN_ROOM_TIMELINE, ReceiptType } from "./@types/read_receipts.js";
+ import { SlidingSyncSdk } from "./sliding-sync-sdk.js";
+@@ -67,17 +62,18 @@ import { buildFeatureSupportMap, Feature, ServerSupport } from "./feature.js";
+ import { RUST_SDK_STORE_PREFIX } from "./rust-crypto/constants.js";
+ import { CryptoEvent } from "./crypto-api/index.js";
+ import { ServerSideSecretStorageImpl } from "./secret-storage.js";
+-import { MatrixRTCSessionManager } from "./matrixrtc/MatrixRTCSessionManager.js";
+ import { getRelationsThreadFilter } from "./thread-utils.js";
+ import { KnownMembership } from "./@types/membership.js";
+ import { ServerCapabilities } from "./serverCapabilities.js";
+ import { sha256 } from "./digest.js";
+ import { OAuth2Error, isValidAuthMetadata } from "./oauth/index.js";
+ import { UnsupportedDelayedEventsEndpointError, UnsupportedStickyEventsEndpointError } from "./errors.js";
+-import { RTC_NOTIFICATION_MAX_LIFETIME_MS } from "./matrixrtc/types.js";
+ import { RetentionPolicyService } from "./retentionPolicy.js";
+ import { fetchRoomSummary } from "./room-summary-api.js";
+ import { createRtcTransportsCachedValue } from "./rtcTransportsCachedValue.js";
++// Trinity patch: no calls. client.js imported webrtc/ and matrixrtc/ (about 180 kB) though Trinity
++// never calls; the methods that need them throw this instead.
++const callsNotBuiltIn = () => new Error("calls are not built into this client");
+ import { createWellKnownCachedValue } from "./wellKnownCachedValue.js";
+ const SCROLLBACK_DELAY_MS = 3000;
+ const TURN_CHECK_INTERVAL = 10 * 60 * 1000; // poll for turn credentials every 10 minutes
+@@ -418,7 +414,6 @@ export class MatrixClient extends TypedEventEmitter {
+     _defineProperty(this, "turnServersExpiry", 0);
+     _defineProperty(this, "checkTurnServersIntervalID", void 0);
+     _defineProperty(this, "txnCtr", 0);
+-    _defineProperty(this, "mediaHandler", new MediaHandler(this));
+     _defineProperty(this, "sessionId", void 0);
+     /** IDs of events which are currently being encrypted.
+      *
+@@ -438,21 +433,6 @@ export class MatrixClient extends TypedEventEmitter {
+     _defineProperty(this, "_unstable_shouldApplyMessageRetention", void 0);
+     _defineProperty(this, "cachedRtcTransports", void 0);
+     _defineProperty(this, "cachedWellKnown", void 0);
+-    _defineProperty(this, "startCallEventHandler", () => {
+-      if (this.isInitialSyncComplete()) {
+-        if (supportsMatrixCall()) {
+-          this.callEventHandler.start();
+-          void this.groupCallEventHandler.start();
+-        }
+-        this.off(ClientEvent.Sync, this.startCallEventHandler);
+-      }
+-    });
+-    _defineProperty(this, "startMatrixRTC", () => {
+-      if (this.isInitialSyncComplete()) {
+-        this.matrixRTC.start();
+-        this.off(ClientEvent.Sync, this.startMatrixRTC);
+-      }
+-    });
+     /**
+      * Once the client has been initialised, we want to clear notifications we
+      * know for a fact should be here.
+@@ -537,19 +517,6 @@ export class MatrixClient extends TypedEventEmitter {
+       });
+     }
+     this.disableVoip = opts.disableVoip ?? false;
+-    if (!this.disableVoip && supportsMatrixCall()) {
+-      this.callEventHandler = new CallEventHandler(this);
+-      this.groupCallEventHandler = new GroupCallEventHandler(this);
+-      this.canSupportVoip = true;
+-      // Start listening for calls after the initial sync is done
+-      // We do not need to backfill the call event buffer
+-      // with encrypted events that might never get decrypted
+-      this.on(ClientEvent.Sync, this.startCallEventHandler);
+-    }
+-
+-    // NB. We initialise MatrixRTC whether we have call support or not: this is just
+-    // the underlying session management and doesn't use any actual media capabilities
+-    this.matrixRTC = new MatrixRTCSessionManager(this.logger, this);
+     this.serverCapabilitiesService = new ServerCapabilities(this.logger, this.http);
+     this.retentionPolicyService = new RetentionPolicyService(this.logger, this.http);
+     this._unstable_shouldApplyMessageRetention = opts.unstableMSC1763Retention ?? false;
+@@ -605,7 +572,6 @@ export class MatrixClient extends TypedEventEmitter {
+       return;
+     }
+     this.clientRunning = true;
+-    this.on(ClientEvent.Sync, this.startMatrixRTC);
+ 
+     // Create our own user object artificially (instead of waiting for sync)
+     // so it's always available, even if the user is not in any rooms etc.
+@@ -686,7 +652,6 @@ export class MatrixClient extends TypedEventEmitter {
+   stopClient() {
+     this.cryptoBackend?.stop(); // crypto might have been initialised even if the client wasn't fully started
+ 
+-    this.off(ClientEvent.Sync, this.startMatrixRTC);
+     if (!this.clientRunning) return; // already stopped
+ 
+     this.logger.debug("stopping MatrixClient");
+@@ -701,7 +666,6 @@ export class MatrixClient extends TypedEventEmitter {
+     globalThis.clearInterval(this.checkTurnServersIntervalID);
+     this.checkTurnServersIntervalID = undefined;
+     this.toDeviceMessageQueue.stop();
+-    this.matrixRTC.stop();
+     this.serverCapabilitiesService.stop();
+     this.retentionPolicyService?.stop();
+     this.cachedRtcTransports.stop();
+@@ -832,7 +796,7 @@ export class MatrixClient extends TypedEventEmitter {
+    * @returns
+    */
+   getMediaHandler() {
+-    return this.mediaHandler;
++    throw callsNotBuiltIn();
+   }
+ 
+   /**
+@@ -870,7 +834,7 @@ export class MatrixClient extends TypedEventEmitter {
+    * @returns the call or null if the browser doesn't support calling.
+    */
+   createCall(roomId) {
+-    return createNewMatrixCall(this, roomId);
++    throw callsNotBuiltIn();
+   }
+ 
+   /**
+@@ -880,17 +844,7 @@ export class MatrixClient extends TypedEventEmitter {
+    * @param roomId - The room the call is to be placed in.
+    */
+   async createGroupCall(roomId, type, isPtt, intent, dataChannelsEnabled, dataChannelOptions) {
+-    if (this.getGroupCallForRoom(roomId)) {
+-      throw new Error(`${roomId} already has an existing group call`);
+-    }
+-    const room = this.getRoom(roomId);
+-    if (!room) {
+-      throw new Error(`Cannot find room ${roomId}`);
+-    }
+-
+-    // Because without Media section a WebRTC connection is not possible, so need a RTCDataChannel to set up a
+-    // no media WebRTC connection anyway.
+-    return new GroupCall(this, room, type, isPtt, intent, undefined, dataChannelsEnabled || this.isVoipWithNoMediaAllowed, dataChannelOptions, this.isVoipWithNoMediaAllowed, this.useLivekitForGroupCalls, this.livekitServiceURL).create();
++    throw callsNotBuiltIn();
+   }
+   getLivekitServiceURL() {
+     return this.livekitServiceURL;
+@@ -2634,7 +2588,7 @@ export class MatrixClient extends TypedEventEmitter {
+    * @throws May throw a `MatrixSafetyError` if content is deemed unsafe.
+    * @see MatrixSafetyError
+    */
+-  async sendRtcDecline(roomId, notificationEventId, stickyDurationMs = RTC_NOTIFICATION_MAX_LIFETIME_MS) {
++  async sendRtcDecline(roomId, notificationEventId, stickyDurationMs = 2 * 60 * 1000 /* Trinity patch: RTC_NOTIFICATION_MAX_LIFETIME_MS */) {
+     const content = {
+       "m.relates_to": {
+         event_id: notificationEventId,
 diff --git a/lib/http-api/fetch.d.ts b/lib/http-api/fetch.d.ts
 index 70dc3337d28e22f122bb05b221ed9d1823c25f75..b6b1f630027dc6e39b02864f0310fcd894989088 100644
 --- a/lib/http-api/fetch.d.ts
@@ -354,7 +519,7 @@ index 847c2910715bb7d6b12f11872beb4102f39b1b10..171239d83a1af802292a3a3b4d0e07b4
  //# sourceMappingURL=matrix.d.ts.map
 \ No newline at end of file
 diff --git a/lib/matrix.js b/lib/matrix.js
-index d48e3a17c0e732e390ecb85ad90052335445018d..f128752e62e37ae35f49b392a27104a0f3cc287e 100644
+index d48e3a17c0e732e390ecb85ad90052335445018d..faf577f24489b05dc0e97103fade230e5a1b216d 100644
 --- a/lib/matrix.js
 +++ b/lib/matrix.js
 @@ -18,10 +18,10 @@ import { MemoryCryptoStore } from "./crypto/store/memory-crypto-store.js";
@@ -370,7 +535,22 @@ index d48e3a17c0e732e390ecb85ad90052335445018d..f128752e62e37ae35f49b392a27104a0
  export * from "./http-api/index.js";
  export * from "./autodiscovery.js";
  export * from "./sync-accumulator.js";
-@@ -121,21 +121,5 @@ export function createClient(opts) {
+@@ -75,13 +75,9 @@ export * from "./models/related-relations.js";
+ export { RoomStickyEventsEvent } from "./models/room-sticky-events.js";
+ export * as ContentHelpers from "./content-helpers.js";
+ export * as SecretStorage from "./secret-storage.js";
+-export { createNewMatrixCall, CallEvent } from "./webrtc/call.js";
+-export { GroupCall, GroupCallEvent, GroupCallIntent, GroupCallState, GroupCallType, GroupCallStatsReportEvent } from "./webrtc/groupCall.js";
++// Trinity patch: no webrtc/ re-exports; calls are left out (see client.js).
+ export { SyncState, SetPresence } from "./sync.js";
+ export { SlidingSyncEvent } from "./sliding-sync.js";
+-export { MediaHandlerEvent } from "./webrtc/mediaHandler.js";
+-export { CallFeedEvent } from "./webrtc/callFeed.js";
+-export { StatsReport } from "./webrtc/stats/statsReport.js";
+ export { Relations, RelationsEvent } from "./models/relations.js";
+ export { TypedEventEmitter } from "./models/typed-event-emitter.js";
+ export { LocalStorageErrors, localStorageErrorsEventsEmitter } from "./store/local-storage-events-emitter.js";
+@@ -121,21 +117,5 @@ export function createClient(opts) {
    return new MatrixClient(amendClientOpts(opts));
  }
  

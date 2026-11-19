@@ -1202,6 +1202,21 @@ its own: a shipped runtime package, a major version, an Actions digest, a native
 it closes each Renovate pull request it supersedes with "Integrated into main in #N.". It ticks
 Dependency Dashboard approvals only when the maintainer asks.
 
+### The matrix-js-sdk patch
+
+`patches/matrix-js-sdk@45.0.0.patch` is named for one SDK version, so a `matrix-js-sdk`
+update must carry it forward: `pnpm patch matrix-js-sdk@<new>`, re-apply each change by hand
+where a hunk no longer fits, then `pnpm patch-commit`, which registers the new patch file.
+Its token-refresh changes are described in the [push notification reference](push-notifications.md).
+Two of its changes remove code Trinity never runs from the startup bundle. The root entry no longer re-exports
+`embedded.js`, which kept `matrix-widget-api` in it. `client.js` and the root entry no longer
+import the call code in `webrtc/` and `matrixrtc/` (with `sdp-transform`, about 180 kB):
+the client never sets up VoIP or MatrixRTC, `supportsVoip()` is false, no TURN servers are
+polled, and incoming call events stay ordinary timeline events, which Trinity has always
+ignored. `createCall`, `createGroupCall` and `getMediaHandler` throw "calls are not built
+into this client", and `client.matrixRTC` is undefined. `scripts/lazy-vendor-imports.spec.mjs`
+fails if a refreshed patch loses either removal.
+
 ## Source of truth
 
 The executable contracts are [`ci.yml`](../../.github/workflows/ci.yml),

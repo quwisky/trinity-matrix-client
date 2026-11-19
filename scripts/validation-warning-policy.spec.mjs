@@ -18,7 +18,6 @@ const COMMONJS_ALLOWLIST = [
   'loglevel',
   'matrix-events-sdk',
   'matrix-widget-api',
-  'sdp-transform',
   'unhomoglyph',
 ];
 
