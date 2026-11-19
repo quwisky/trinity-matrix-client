@@ -2,8 +2,8 @@
 import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-// Measured 2026-11-19 with action sheets loaded on demand: 2,426,660 bytes in 24 files,
-// rounded up to the next 10 kB. Lower it when a reduction lands; raise it only in the pull request that grows the
+// Measured 2026-11-19 at 18a4a436: 2,427,050 bytes in 24 files, rounded up to the next
+// 10 kB. Lower it when a reduction lands; raise it only in the pull request that grows the
 // closure, with the reason.
 export const CEILING_BYTES = 2_430_000;
 
