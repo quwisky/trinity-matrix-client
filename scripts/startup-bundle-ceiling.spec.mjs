@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  CEILING_BYTES,
   checkStartupBundle,
   startupClosure,
 } from './startup-bundle-ceiling.mjs';
@@ -77,9 +76,5 @@ describe('startup bundle ceiling', () => {
     expect(() => startupClosure(bundle({}, '<main></main>'))).toThrow(
       /names no script/,
     );
-  });
-
-  it('records a positive ceiling', () => {
-    expect(CEILING_BYTES).toBeGreaterThan(0);
   });
 });

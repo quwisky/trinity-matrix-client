@@ -19,17 +19,17 @@ for reproducible invocation and check selection.
 
 ## Repository controls to preserve
 
-| Diagnostic area                   | Current control                                                                                             |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Conflicting color variables       | The repository Nx wrapper removes inherited `NO_COLOR` before starting Nx.                                  |
-| Deprecated Nx lint executor       | Projects use the inferred lint target; the source guard rejects explicit `@nx/eslint:lint` executors.       |
-| Vite path resolution              | The ESM configs use `import.meta.dirname` and the shared Vite alias configuration.                          |
-| Missing layout APIs in unit tests | The shared setup supplies an explicit no-layout `ResizeObserver`; browser behavior needs separate evidence. |
-| Browser support                   | `.browserslistrc` owns configured floors; installed-browser runs own execution evidence.                    |
-| Build budgets                     | `apps/trinity/project.json` owns thresholds; `CEILING_BYTES` caps the startup closure.                      |
-| Matrix CommonJS packages          | The Angular build allowlist is exact and must be rechecked when the SDK dependency graph changes.           |
-| Android repository metadata       | The tracked application must not add a `flatDir` repository.                                                |
-| Android native-library stripping  | The application preserves debug symbols only for its three named native libraries.                          |
+| Diagnostic area                   | Current control                                                                                                       |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Conflicting color variables       | The repository Nx wrapper removes inherited `NO_COLOR` before starting Nx.                                            |
+| Deprecated Nx lint executor       | Projects use the inferred lint target; the source guard rejects explicit `@nx/eslint:lint` executors.                 |
+| Vite path resolution              | The ESM configs use `import.meta.dirname` and the shared Vite alias configuration.                                    |
+| Missing layout APIs in unit tests | The shared setup supplies an explicit no-layout `ResizeObserver`; browser behavior needs separate evidence.           |
+| Browser support                   | `.browserslistrc` owns configured floors; installed-browser runs own execution evidence.                              |
+| Build budgets                     | `apps/trinity/project.json` owns the script and component-style thresholds; `CEILING_BYTES` caps the startup closure. |
+| Matrix CommonJS packages          | The Angular build allowlist is exact and must be rechecked when the SDK dependency graph changes.                     |
+| Android repository metadata       | The tracked application must not add a `flatDir` repository.                                                          |
+| Android native-library stripping  | The application preserves debug symbols only for its three named native libraries.                                    |
 
 `CEILING_BYTES` in `scripts/startup-bundle-ceiling.mjs` caps the startup closure (`main` plus
 its static imports, raw bytes); the renderer build job fails above it. Defer the new code behind a dynamic
