@@ -16,6 +16,10 @@ import { stripSourceComments as stripComments } from './source-style-blocks.mjs'
  * entry re-exports `embedded.js` (the client a Matrix widget runs inside), which imports
  * `matrix-widget-api` statically. Trinity's matrix-js-sdk patch drops that re-export.
  *
+ * The SDK's voice and video call code (`webrtc/`, `matrixrtc/` and `sdp-transform`, about
+ * 180 KB) is never needed: Trinity makes no calls. `client.js` and the root entry imported it
+ * statically, so the same patch removes those imports.
+ *
  * Type-only imports are erased and stay allowed. Specs and stories are not part of the
  * application bundle.
  */
@@ -115,5 +119,19 @@ describe('lazy vendor imports', () => {
     );
 
     expect(stripComments(root)).not.toMatch(/['"]\.\/embedded\.js['"]/);
+  });
+
+  it('keeps every SDK module outside the call code from importing it', () => {
+    const lib = join(workspaceRoot, 'node_modules/matrix-js-sdk/lib');
+    const importers = globSync('**/*.js', {
+      cwd: lib,
+      exclude: ['webrtc/**', 'matrixrtc/**'],
+    }).filter((file) =>
+      /['"](?:\.\.?\/)+(?:webrtc|matrixrtc)\//.test(
+        stripComments(readFileSync(join(lib, file), 'utf8')),
+      ),
+    );
+
+    expect(importers).toEqual([]);
   });
 });
