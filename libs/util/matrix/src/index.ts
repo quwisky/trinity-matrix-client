@@ -1,5 +1,7 @@
-// Only `export *` lines: ../package.json declares no side effects, so esbuild leaves the files
-// the startup bundle doesn't use in lazy chunks; one named re-export would pull them back in.
+// Only `export *` lines: ../package.json marks only this barrel and message-html.ts (DOMPurify
+// hooks) as side-effectful, so esbuild leaves the other files the startup bundle doesn't use in
+// lazy chunks; one named re-export would pull them back in. The barrel must stay listed, or
+// esbuild skips it without reaching message-html.ts and drops the hooks.
 export * from './lib/message-view';
 export * from './lib/message-html';
 export * from './lib/geo-uri';
