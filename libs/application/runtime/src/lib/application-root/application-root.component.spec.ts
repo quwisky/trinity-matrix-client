@@ -78,15 +78,29 @@ function blocked(
   return { phase: 'blocked', attempt, failure, settlements: [] };
 }
 
+/** Press `trigger` and wait for the System status surface, whose chunk loads on first open. */
+async function openSystemStatusFrom(
+  trigger: HTMLElement,
+  fixture: { detectChanges(): void },
+): Promise<void> {
+  trigger.click();
+  await vi.waitFor(() => {
+    settle(fixture);
+    expect(screen.getByTestId('system-status')).toBeTruthy();
+  });
+}
+
 /** Open System status through the entry button the capability banner and startup screens share. */
 function openSystemStatus(fixture: {
   nativeElement: HTMLElement;
   detectChanges(): void;
-}): void {
-  [...fixture.nativeElement.querySelectorAll('button')]
-    .find((item) => item.textContent?.includes('System status'))!
-    .click();
-  settle(fixture);
+}): Promise<void> {
+  return openSystemStatusFrom(
+    [...fixture.nativeElement.querySelectorAll('button')].find((item) =>
+      item.textContent?.includes('System status'),
+    )!,
+    fixture,
+  );
 }
 
 describe('ApplicationRootComponent', () => {
@@ -633,8 +647,7 @@ describe('ApplicationRootComponent', () => {
 
   it('presents System status as a surface that Escape closes', async () => {
     const { fixture, getByTestId } = await setup(READY);
-    getByTestId('system-status-access').click();
-    settle(fixture);
+    await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
     expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Overview' })).toBe(
       document.activeElement,
@@ -657,8 +670,7 @@ describe('ApplicationRootComponent', () => {
 
   it('closes the System status surface when its state closes', async () => {
     const { fixture, getByTestId } = await setup(READY);
-    getByTestId('system-status-access').click();
-    settle(fixture);
+    await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
 
     fixture.debugElement.injector.get(SystemStatusVisibilityService).close();
     settle(fixture);
@@ -666,13 +678,55 @@ describe('ApplicationRootComponent', () => {
     expect(screen.queryByRole('dialog', { name: 'System status' })).toBeNull();
   });
 
+  it('does not open System status when it closes while its chunk loads', async () => {
+    const { fixture, getByTestId } = await setup(READY);
+    const visibility = fixture.debugElement.injector.get(
+      SystemStatusVisibilityService,
+    );
+    getByTestId('system-status-access').click();
+    settle(fixture);
+    visibility.close();
+    await import('./system-status/system-status.component');
+    await new Promise((resolve) => setTimeout(resolve));
+    settle(fixture);
+
+    expect(screen.queryByRole('dialog', { name: 'System status' })).toBeNull();
+    expect(visibility.open()).toBe(false);
+  });
+
+  it('reports a System status chunk that fails to load and clears its state', async () => {
+    vi.doMock('./system-status/system-status.component', () => {
+      throw new Error('chunk unavailable');
+    });
+    try {
+      const { fixture, getByTestId, showToast } = await setup(READY);
+      getByTestId('system-status-access').click();
+      settle(fixture);
+
+      await vi.waitFor(() =>
+        expect(showToast).toHaveBeenCalledWith(
+          'Could not open System status. Please try again.',
+          expect.objectContaining({ variant: 'danger' }),
+        ),
+      );
+      settle(fixture);
+      expect(
+        screen.queryByRole('dialog', { name: 'System status' }),
+      ).toBeNull();
+      expect(
+        fixture.debugElement.injector.get(SystemStatusVisibilityService).open(),
+      ).toBe(false);
+    } finally {
+      vi.doUnmock('./system-status/system-status.component');
+    }
+  });
+
   it('stacks System status over an open dialog and closes it first', async () => {
     const { fixture, getByTestId } = await setup(READY);
     const surfaces = TestBed.inject(TrnSurfaceService);
     surfaces.open(ProbeDialogComponent, { ariaLabel: 'Probe' });
     settle(fixture);
-    getByTestId('system-status-access').click();
-    settle(fixture);
+    await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
     expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
 
     expect(surfaces.closeTopmost()).toBe(true);
@@ -707,7 +761,7 @@ describe('ApplicationRootComponent', () => {
     expect(getByTestId('app-capability-summary').textContent).toContain(
       'A background Account needs attention.',
     );
-    openSystemStatus(fixture);
+    await openSystemStatus(fixture);
     const status = screen.getByTestId('system-status');
     expect(status.textContent).toContain('Accounts');
     expect(status.textContent).toContain('Alice');
@@ -748,8 +802,10 @@ describe('ApplicationRootComponent', () => {
       }),
     );
     // The startup entry point is available independently of a ready Workspace.
-    getByRole('button', { name: 'System status' }).click();
-    settle(fixture);
+    await openSystemStatusFrom(
+      getByRole('button', { name: 'System status' }),
+      fixture,
+    );
     const navigation = screen.getByRole('navigation', {
       name: 'System status sections',
     });
@@ -784,8 +840,10 @@ describe('ApplicationRootComponent', () => {
       }),
     );
 
-    getByRole('button', { name: 'System status' }).click();
-    settle(fixture);
+    await openSystemStatusFrom(
+      getByRole('button', { name: 'System status' }),
+      fixture,
+    );
     screen.getByRole('button', { name: 'Support details' }).click();
     settle(fixture);
     screen.getByTestId('system-status-report-bug').click();
@@ -804,8 +862,10 @@ describe('ApplicationRootComponent', () => {
     });
     health.report(fact, () => of({ kind: 'success' as const }));
     fixture.detectChanges();
-    getByRole('button', { name: 'System status' }).click();
-    settle(fixture);
+    await openSystemStatusFrom(
+      getByRole('button', { name: 'System status' }),
+      fixture,
+    );
     screen.getByRole('button', { name: 'Accounts' }).click();
     settle(fixture);
     expect(screen.queryByRole('heading', { name: 'Overview' })).toBeNull();
@@ -832,8 +892,7 @@ describe('ApplicationRootComponent', () => {
     });
     try {
       const { fixture, getByTestId } = await setup(READY);
-      getByTestId('system-status-access').click();
-      settle(fixture);
+      await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
       screen.getByRole('button', { name: 'Back to sections' }).click();
       settle(fixture);
       expect(screen.getByTestId('system-status-detail')).toHaveClass(
@@ -861,8 +920,7 @@ describe('ApplicationRootComponent', () => {
       expect(TestBed.inject(TrnSurfaceService).closeTopmost()).toBe(true);
       settle(fixture);
       expect(screen.queryByTestId('system-status')).toBeNull();
-      getByTestId('system-status-access').click();
-      settle(fixture);
+      await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
       expect(screen.getByRole('heading', { name: 'Overview' })).toBeTruthy();
     } finally {
       Object.defineProperty(window, 'innerWidth', width);
@@ -871,8 +929,7 @@ describe('ApplicationRootComponent', () => {
 
   it('keeps an all-working System status entry point available', async () => {
     const { fixture, getByTestId } = await setup(READY);
-    getByTestId('system-status-access').click();
-    settle(fixture);
+    await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
     expect(
       screen.getByTestId('system-status-all-working').textContent,
     ).toContain('All systems are working');
@@ -891,7 +948,7 @@ describe('ApplicationRootComponent', () => {
       () => of({ kind: 'unavailable' as const }),
     );
     fixture.detectChanges();
-    openSystemStatus(fixture);
+    await openSystemStatus(fixture);
     expect(screen.getByTestId('system-status').textContent).toContain(
       'A feature needs attention',
     );
