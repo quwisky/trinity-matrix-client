@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -298,20 +299,36 @@ export class ApplicationRootComponent {
         this.status.close();
       });
     };
+    let chunk:
+      | Promise<typeof import('./system-status/system-status.component')>
+      | undefined;
+    // One fetch shared by the warm-up and the open; a failed one is forgotten so the next open retries.
+    const load = () =>
+      (chunk ??= import('./system-status/system-status.component').catch(
+        (error: unknown) => {
+          chunk = undefined;
+          throw error;
+        },
+      ));
+    // Fetched once the first screen is up, so a start that stalls or loses its network later
+    // can still open it; a failure here is retried by the open below.
+    afterNextRender(() => void load().catch(() => undefined), {
+      injector: this.injector,
+    });
     effect(() => {
       const open = this.status.open();
       untracked(() => {
         if (open && !ref && !loading) {
           loading = true;
-          // Loaded on first open so it and the settings layout stay out of the startup bundle.
-          import('./system-status/system-status.component').then(
-            (module) => {
+          // Loaded on first open so it stays out of the startup bundle.
+          load()
+            .then((module) => {
               loading = false;
               if (this.destroyRef.destroyed || ref || !this.status.open())
                 return;
               present(module.SystemStatusComponent);
-            },
-            () => {
+            })
+            .catch(() => {
               loading = false;
               if (this.destroyRef.destroyed) return;
               this.status.close();
@@ -319,8 +336,7 @@ export class ApplicationRootComponent {
                 'Could not open System status. Please try again.',
                 { duration: 5000, variant: 'danger' },
               );
-            },
-          );
+            });
         } else if (!open && ref) {
           const closing = ref;
           ref = null;
