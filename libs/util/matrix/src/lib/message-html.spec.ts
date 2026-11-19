@@ -767,12 +767,16 @@ describe('DOMPurify hooks on first use', () => {
 
   it('applies them when sanitizeOutgoingHtml is the first call in a fresh module', async () => {
     vi.resetModules();
+    // resetModules keeps dompurify, and with it the hooks earlier tests installed.
+    (await import('dompurify')).default.removeAllHooks();
     const fresh = await import('./message-html');
     expect(fresh.sanitizeOutgoingHtml(html)).toBe(hooked);
   });
 
   it('applies them when sanitizeMatrixHtml is the first call in a fresh module', async () => {
     vi.resetModules();
+    // resetModules keeps dompurify, and with it the hooks earlier tests installed.
+    (await import('dompurify')).default.removeAllHooks();
     const fresh = await import('./message-html');
     expect(fresh.sanitizeMatrixHtml(html)).toBe(hooked);
   });
