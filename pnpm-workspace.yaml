@@ -16,6 +16,8 @@
 #     the same reason.
 #   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
+#   - `libs/data-access/room-administration` carries a nameless `package.json` only for
+#     `"sideEffects": false`, which keeps its on-demand services out of the startup bundle.
 #   - `electron/` (name `trinity-desktop`) is a standalone app with its own dependency
 #     tree, installed separately via `pnpm electron:install` — intentionally not a member.
 #

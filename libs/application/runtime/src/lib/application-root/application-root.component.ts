@@ -3,6 +3,7 @@ import {
   Component,
   DestroyRef,
   Injector,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -31,6 +32,7 @@ import {
 import {
   TrnDialogRef,
   TrnSurfaceService,
+  TrnToastService,
   TrnToasterComponent,
 } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
@@ -54,7 +56,7 @@ import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
 import { AppLockCoverComponent } from './app-lock-cover/app-lock-cover.component';
 import { SessionLockNoticeComponent } from './session-lock-notice/session-lock-notice.component';
 import { sessionLockNotice } from './session-lock-notice/session-lock-notice.model';
-import { SystemStatusComponent } from './system-status/system-status.component';
+import type { SystemStatusComponent } from './system-status/system-status.component';
 import { TitleBarComponent } from './title-bar/title-bar.component';
 import { TrinityApplicationSessionAdapter } from '../composition/trinity-application-session.adapter';
 import { AppLockLifecycleBinding } from '../composition/app-lock-lifecycle.binding';
@@ -94,6 +96,7 @@ export class ApplicationRootComponent {
   private readonly session = inject(TrinityApplicationSessionAdapter);
   private readonly router = inject(Router);
   private readonly surfaces = inject(TrnSurfaceService);
+  private readonly toast = inject(TrnToastService);
   private readonly sessionLock = inject(SessionLockService);
   private readonly showStartupDetail = signal(false);
   private readonly waitingNoticeDue = signal(false);
@@ -279,24 +282,61 @@ export class ApplicationRootComponent {
   /** System status follows its state as a surface; any close of the surface clears the state. */
   private presentSystemStatus(): void {
     let ref: TrnDialogRef<void> | null = null;
+    let loading = false;
+    const present = (component: typeof SystemStatusComponent): void => {
+      const opened = this.surfaces.open<void, SystemStatusComponent>(
+        component,
+        {
+          ariaLabel: 'System status',
+          autoFocus: '[data-autofocus]',
+          detents: ['medium', 'large'],
+        },
+      );
+      ref = opened;
+      opened.closed.subscribe(() => {
+        if (ref !== opened) return;
+        ref = null;
+        this.status.close();
+      });
+    };
+    let chunk:
+      | Promise<typeof import('./system-status/system-status.component')>
+      | undefined;
+    // One fetch shared by the warm-up and the open; a failed one is forgotten so the next open retries.
+    const load = () =>
+      (chunk ??= import('./system-status/system-status.component').catch(
+        (error: unknown) => {
+          chunk = undefined;
+          throw error;
+        },
+      ));
+    // Fetched once the first screen is up, so a start that stalls or loses its network later
+    // can still open it; a failure here is retried by the open below.
+    afterNextRender(() => void load().catch(() => undefined), {
+      injector: this.injector,
+    });
     effect(() => {
       const open = this.status.open();
       untracked(() => {
-        if (open && !ref) {
-          const opened = this.surfaces.open<void, SystemStatusComponent>(
-            SystemStatusComponent,
-            {
-              ariaLabel: 'System status',
-              autoFocus: '[data-autofocus]',
-              detents: ['medium', 'large'],
-            },
-          );
-          ref = opened;
-          opened.closed.subscribe(() => {
-            if (ref !== opened) return;
-            ref = null;
-            this.status.close();
-          });
+        if (open && !ref && !loading) {
+          loading = true;
+          // Loaded on first open so it stays out of the startup bundle.
+          load()
+            .then((module) => {
+              loading = false;
+              if (this.destroyRef.destroyed || ref || !this.status.open())
+                return;
+              present(module.SystemStatusComponent);
+            })
+            .catch(() => {
+              loading = false;
+              if (this.destroyRef.destroyed) return;
+              this.status.close();
+              this.toast.show(
+                'Could not open System status. Please try again.',
+                { duration: 5000, variant: 'danger' },
+              );
+            });
         } else if (!open && ref) {
           const closing = ref;
           ref = null;

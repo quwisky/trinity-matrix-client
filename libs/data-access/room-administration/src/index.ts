@@ -1,3 +1,6 @@
+// Only `export *` here: with `sideEffects: false` in ../package.json, esbuild then keeps the
+// files the startup bundle doesn't use (room settings, upgrade, moderation…) in lazy chunks.
+// One named re-export makes every file below part of the startup bundle again.
 export * from './lib/room-action-permissions.service';
 export * from './lib/room-administration-error';
 export * from './lib/room-administration-lifetime';
