@@ -38,6 +38,7 @@ export class TrnActionSheetService {
   private readonly destroyRef = inject(DestroyRef);
   private list: typeof TrnActionListComponent | undefined;
   private chunk: Promise<typeof TrnActionListComponent> | undefined;
+  private pending: TrnActionSheetRef | undefined;
 
   constructor() {
     // Fetched once the first screen is up, so the first menu opens at once and one opened
@@ -73,9 +74,20 @@ export class TrnActionSheetService {
       present(this.list);
       return sheet;
     }
+    // One list at a time while the code loads: a second request replaces the first, as most
+    // openers drop their handle and could not close the earlier one themselves.
+    this.pending?.close();
+    this.pending = sheet;
+    sheet.closed.subscribe(() => {
+      if (this.pending === sheet) this.pending = undefined;
+    });
     this.load().then(
       (list) => {
-        if (!sheet.isClosed && !this.destroyRef.destroyed) present(list);
+        if (sheet.isClosed || this.destroyRef.destroyed) return;
+        this.pending = undefined;
+        // A menu whose button left the page while the code loaded has nothing to hang off.
+        if (options.anchor?.isConnected === false) sheet.close();
+        else present(list);
       },
       () => {
         if (sheet.isClosed || this.destroyRef.destroyed) return;
@@ -90,6 +102,18 @@ export class TrnActionSheetService {
       },
     );
     return sheet;
+  }
+
+  /** Whether a list was asked for and its code has not arrived yet. */
+  hasPending(): boolean {
+    return this.pending !== undefined;
+  }
+
+  /** Ends the list still waiting for its code, returning whether there was one. */
+  closePending(): boolean {
+    const pending = this.pending;
+    pending?.close();
+    return pending !== undefined;
   }
 
   /** One fetch shared by the warm-up and every open; a failed one is forgotten so the next retries. */

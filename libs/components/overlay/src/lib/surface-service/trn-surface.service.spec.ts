@@ -153,6 +153,27 @@ describe('TrnSurfaceService', () => {
     expect(surfaces.hasOpen()).toBe(false);
   });
 
+  it('counts an action list still loading its code as the open, topmost overlay', () => {
+    const below = surfaces.open(PlainComponent);
+    tick();
+    const closed = vi.fn();
+    surfaces
+      .openActions({ buttons: [{ text: 'Reply' }] })
+      .closed.subscribe(closed);
+
+    expect(surfaces.isTopmost(below)).toBe(false);
+    expect(surfaces.closeTopmost()).toBe(true);
+    expect(closed).toHaveBeenCalledOnce();
+    expect(surfaces.isTopmost(below)).toBe(true);
+
+    surfaces.closeAll();
+    expect(surfaces.hasOpen()).toBe(false);
+    surfaces.openActions({ buttons: [{ text: 'Reply' }] });
+    expect(surfaces.hasOpen()).toBe(true);
+    surfaces.closeAll();
+    expect(surfaces.hasOpen()).toBe(false);
+  });
+
   it('resolves openAndWait$ with null on a bare dismissal', async () => {
     const result = firstValueFrom(surfaces.openAndWait$(PlainComponent));
     tick();
