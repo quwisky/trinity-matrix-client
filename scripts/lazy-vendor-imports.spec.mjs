@@ -121,16 +121,17 @@ describe('lazy vendor imports', () => {
     expect(stripComments(root)).not.toMatch(/['"]\.\/embedded\.js['"]/);
   });
 
-  it('keeps the SDK client and root entry from importing call code', () => {
-    for (const entry of ['client.js', 'matrix.js']) {
-      const source = readFileSync(
-        join(workspaceRoot, 'node_modules/matrix-js-sdk/lib', entry),
-        'utf8',
-      );
+  it('keeps every SDK module outside the call code from importing it', () => {
+    const lib = join(workspaceRoot, 'node_modules/matrix-js-sdk/lib');
+    const importers = globSync('**/*.js', {
+      cwd: lib,
+      exclude: ['webrtc/**', 'matrixrtc/**'],
+    }).filter((file) =>
+      /['"](?:\.\.?\/)+(?:webrtc|matrixrtc)\//.test(
+        stripComments(readFileSync(join(lib, file), 'utf8')),
+      ),
+    );
 
-      expect(stripComments(source)).not.toMatch(
-        /['"]\.\/(?:webrtc|matrixrtc)\//,
-      );
-    }
+    expect(importers).toEqual([]);
   });
 });
