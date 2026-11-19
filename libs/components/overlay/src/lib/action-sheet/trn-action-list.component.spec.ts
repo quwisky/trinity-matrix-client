@@ -52,7 +52,7 @@ describe('TrnActionListComponent', () => {
   let opener: HTMLButtonElement;
   const tick = () => TestBed.inject(ApplicationRef).tick();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.spyOn(window, 'matchMedia').mockImplementation(
       (query: string) =>
         ({
@@ -69,6 +69,9 @@ describe('TrnActionListComponent', () => {
     document.body.append(opener);
     opener.focus();
     surfaces = TestBed.inject(TrnSurfaceService);
+    // The list's code loads on first use; load it so each test's list opens within the call.
+    surfaces.openActions({ buttons: [] }).close();
+    await vi.dynamicImportSettled();
   });
 
   afterEach(() => {

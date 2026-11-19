@@ -89,6 +89,8 @@ describe('MessageComposerComponent — the emoji picker, GIFs, the insert tray a
     container
       .querySelector<HTMLButtonElement>('[data-testid=composer-insert]')
       ?.click();
+    // The action list's code loads on first use, so the sheet may arrive after this click.
+    await vi.dynamicImportSettled();
     await fixture.whenStable();
     document
       .querySelector<HTMLButtonElement>('[data-testid=insert-poll]')
