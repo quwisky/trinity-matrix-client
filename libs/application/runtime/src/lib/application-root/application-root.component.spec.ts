@@ -721,6 +721,24 @@ describe('ApplicationRootComponent', () => {
     }
   });
 
+  it('retries a failed System status chunk on the next open', async () => {
+    vi.doMock('./system-status/system-status.component', () => {
+      throw new Error('chunk unavailable');
+    });
+    const { fixture, getByTestId, showToast } = await setup(READY);
+    try {
+      getByTestId('system-status-access').click();
+      settle(fixture);
+      await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
+    } finally {
+      vi.doUnmock('./system-status/system-status.component');
+    }
+
+    await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
+
+    expect(screen.getByRole('dialog', { name: 'System status' })).toBeTruthy();
+  });
+
   it('stacks System status over an open dialog and closes it first', async () => {
     const { fixture, getByTestId } = await setup(READY);
     const surfaces = TestBed.inject(TrnSurfaceService);
