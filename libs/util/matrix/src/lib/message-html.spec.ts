@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   firstUrl,
   linkedUserIds,
@@ -757,5 +757,34 @@ describe('mention pill text', () => {
     );
 
     expect(names).toEqual({ '@a:hs': 'Ann', '@b:hs': 'Bob' });
+  });
+});
+
+// The hooks register on first use, not at import: each sanitiser must install them itself.
+describe('DOMPurify hooks on first use', () => {
+  const html = '<p title="t"><code class="language-js mx-spoiler">x</code></p>';
+  const hooked = '<p><code class="language-js">x</code></p>';
+
+  it('applies them when sanitizeOutgoingHtml is the first call in a fresh module', async () => {
+    vi.resetModules();
+    const fresh = await import('./message-html');
+    expect(fresh.sanitizeOutgoingHtml(html)).toBe(hooked);
+  });
+
+  it('applies them when sanitizeMatrixHtml is the first call in a fresh module', async () => {
+    vi.resetModules();
+    const fresh = await import('./message-html');
+    expect(fresh.sanitizeMatrixHtml(html)).toBe(hooked);
+  });
+
+  it('registers them once across calls', async () => {
+    vi.resetModules();
+    const { default: purify } = await import('dompurify');
+    const addHook = vi.spyOn(purify, 'addHook');
+    const fresh = await import('./message-html');
+    fresh.sanitizeOutgoingHtml(html);
+    fresh.sanitizeMatrixHtml(html);
+    fresh.sanitizeOutgoingHtml(html);
+    expect(addHook).toHaveBeenCalledTimes(2);
   });
 });

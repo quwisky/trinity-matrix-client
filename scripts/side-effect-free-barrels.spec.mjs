@@ -81,9 +81,6 @@ describe('side-effect-free barrels', () => {
         'libs/util/matrix',
       ]),
     );
-    expect(listingLibraries.map(({ root }) => root)).toContain(
-      'libs/util/matrix',
-    );
   });
 
   it.each(libraries.map(({ root }) => root))(
