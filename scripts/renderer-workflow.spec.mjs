@@ -52,6 +52,12 @@ describe('verified renderer workflow boundary', () => {
         run: 'pnpm nx build trinity --configuration=production --skipNxCache',
       },
     ]);
+    const build = job.steps.findIndex((step) =>
+      step.run?.includes('nx build trinity'),
+    );
+    expect(job.steps[build + 1].run).toBe(
+      'node scripts/startup-bundle-ceiling.mjs www',
+    );
     expect(job.steps.find((step) => step.id === 'manifest').run).toBe(
       'pnpm nx run scripts:record-renderer',
     );

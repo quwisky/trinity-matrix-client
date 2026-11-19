@@ -51,6 +51,7 @@ jobs:
           RENDERER_ARTIFACT_NAME: ${{ inputs.artifact-name }}
         run: node scripts/renderer-artifact.mjs assert-source
       - run: pnpm nx build trinity --configuration=production --skipNxCache
+      - run: node scripts/startup-bundle-ceiling.mjs www
       - id: manifest
         run: pnpm nx run scripts:record-renderer
       - id: upload
