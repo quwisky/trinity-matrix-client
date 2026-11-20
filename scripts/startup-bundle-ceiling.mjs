@@ -2,10 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-// Measured 2026-11-19 at 18a4a436: 2,427,050 bytes in 24 files, rounded up to the next
+// Measured 2026-11-20 on 1468a1ba: 2,405,157 bytes in 26 files, rounded up to the next
 // 10 kB. Lower it when a reduction lands; raise it only in the pull request that grows the
 // closure, with the reason.
-export const CEILING_BYTES = 2_430_000;
+export const CEILING_BYTES = 2_410_000;
 
 const SCRIPT_TAG = /<script\b[^>]*\bsrc=["']([^"']+\.js)["']/g;
 // Static imports and re-exports only: `import("./x.js")` has a paren, so it never matches.
