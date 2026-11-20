@@ -25,7 +25,7 @@ import {
   type Subscriber,
 } from 'rxjs';
 import { verifyAccountServer } from '../account-establishment';
-import { lacksAuthMetadata } from '../account-server-api';
+import { lacksAuthMetadata } from '../account-server-api-lookup';
 import { AUTHENTICATION_HOMESERVER_DISCOVERY } from '../homeserver-discovery.port';
 import {
   QR_LINK_IDENTITY_CHECK,
@@ -39,6 +39,7 @@ import {
   type NewDeviceState,
   type QrSignInFailure,
 } from './qr-sign-in.model';
+import type { ExistingDeviceLink } from './existing-device-link';
 
 // The message of the SDK's OAuth2Error.OpSupport, thrown for metadata that fails validation.
 const INVALID_AUTH_METADATA =
@@ -119,12 +120,6 @@ export class QrRendezvousFactory {
     const channel = new MSC4108SecureChannel(session, qr.publicKey, onFailure);
     return new MSC4108SignInWithQR(channel, true, client, onFailure);
   }
-}
-
-/** The existing device's side of a link, with the check-code answer as its input. */
-export interface ExistingDeviceLink {
-  readonly state$: Observable<ExistingDeviceState>;
-  confirmCheckCode(match: boolean): void;
 }
 
 /** The seam to the SDK's QR sign-in (MSC4108) support. */

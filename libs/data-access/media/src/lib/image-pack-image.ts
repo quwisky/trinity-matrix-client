@@ -1,19 +1,11 @@
 import { mimeEssence } from '@trinity/util/matrix';
+import { ImagePackImageError } from './image-pack-image-error';
 import type { ImagePackUsage } from './image-pack.model';
 import { downscaleImage, isAnimatedPng } from './media-processing';
 
 const EMOTICON_EDGE_PX = 256;
 const STICKER_EDGE_PX = 512;
 const MAX_ANIMATED_BYTES = 1_048_576;
-
-export type ImagePackImageErrorCode = 'unsupported-type' | 'animated-too-large';
-
-export class ImagePackImageError extends Error {
-  constructor(readonly code: ImagePackImageErrorCode) {
-    super(code);
-    this.name = 'ImagePackImageError';
-  }
-}
 
 /** Resize a pack image to its usage limit, or reject an unsupported or oversized animated one. */
 export async function prepareImagePackImage(

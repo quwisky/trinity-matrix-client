@@ -1,6 +1,7 @@
 import type { MatrixEvent } from 'matrix-js-sdk';
 import { UNDECRYPTABLE_BODY, renderTextBody } from './message-view';
-import { isEditOf, newContentOf, validReplacement } from './replacement';
+import { isEditOf, newContentOf } from './edit-relation';
+import { validReplacement } from './replacement';
 
 /**
  * The versions of an edited message, for the edit-history view. Kept out of

@@ -1,3 +1,5 @@
+// Only `export *` lines: ../package.json declares no side effects, so esbuild leaves the files
+// the startup bundle doesn't use in lazy chunks; one named re-export would pull them back in.
 export * from './lib/room-library.service';
 export * from './lib/spaces.service';
 export * from './lib/space-children.service';

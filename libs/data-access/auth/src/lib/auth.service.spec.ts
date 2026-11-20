@@ -34,7 +34,7 @@ import { deletionLink } from './account-server-api';
 import {
   ReauthAccountMismatchError,
   UnacceptableAccountError,
-} from './account-establishment';
+} from './account-errors';
 import { AUTHENTICATION_HOMESERVER_DISCOVERY } from './homeserver-discovery.port';
 import {
   NEW_DEVICE_SIGN_IN,

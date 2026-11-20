@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import ts from 'typescript';
 
 const workspaceRoot = join(import.meta.dirname, '..');
 const catalogPath = join(workspaceRoot, 'architecture/design-system.json');
@@ -48,6 +49,70 @@ function importSpecifiers(source) {
 
 function codeWithoutComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//gu, '').replace(/\/\/[^\n]*/gu, '');
+}
+
+function declaresSideEffects(readSource, root) {
+  try {
+    return 'sideEffects' in JSON.parse(readSource(`${root}/package.json`));
+  } catch {
+    // No manifest, or an unreadable one: the library keeps the named-export rule.
+    return false;
+  }
+}
+
+/**
+ * Names a converted library's barrel hands out from another package: `export … from '<package>'`,
+ * or an imported package name exported again, in the barrel or any local file it re-exports,
+ * transitively. `export *` hides those names from the barrel itself.
+ */
+function packageReExports(readSource, barrel) {
+  const leaks = [];
+  const pending = [barrel];
+  const seen = new Set();
+  while (pending.length > 0) {
+    const file = pending.pop();
+    if (seen.has(file)) continue;
+    seen.add(file);
+    const statements = ts.createSourceFile(
+      file,
+      readSource(file),
+      ts.ScriptTarget.Latest,
+    ).statements;
+    const packageImports = new Set(
+      statements
+        .filter(
+          (statement) =>
+            ts.isImportDeclaration(statement) &&
+            !statement.moduleSpecifier.text.startsWith('.'),
+        )
+        .flatMap(({ importClause }) => [
+          ...(importClause?.name ? [importClause.name.text] : []),
+          ...(importClause?.namedBindings
+            ? ts.isNamespaceImport(importClause.namedBindings)
+              ? [importClause.namedBindings.name.text]
+              : importClause.namedBindings.elements.map(({ name }) => name.text)
+            : []),
+        ]),
+    );
+    for (const statement of statements.filter(ts.isExportDeclaration)) {
+      const specifier = statement.moduleSpecifier?.text;
+      if (specifier?.startsWith('.')) {
+        pending.push(join(dirname(file), `${specifier}.ts`));
+      } else if (specifier) {
+        leaks.push(`${file}: ${specifier}`);
+      } else if (
+        statement.exportClause &&
+        ts.isNamedExports(statement.exportClause)
+      ) {
+        for (const { name, propertyName } of statement.exportClause.elements) {
+          if (packageImports.has((propertyName ?? name).text)) {
+            leaks.push(`${file}: ${(propertyName ?? name).text}`);
+          }
+        }
+      }
+    }
+  }
+  return leaks;
 }
 
 function markupWithoutComments(source) {
@@ -139,9 +204,19 @@ export function validateDesignSystemCatalog(
         `${entry.project} entrypoint ${entry.entrypoint} must resolve to ${expectedTarget}`,
       );
     }
-    const entrypointSource = readSource(`${node.data.root}/src/index.ts`);
-    if (
-      /\bexport(?:\s+type)?\s*\*/u.test(codeWithoutComments(entrypointSource))
+    const barrel = `${node.data.root}/src/index.ts`;
+    // A library that declares `sideEffects` keeps its barrel `export *`-only so the startup
+    // bundle can leave unused files out (`side-effect-free-barrels.spec.mjs`); every other
+    // entrypoint names its public API.
+    if (declaresSideEffects(readSource, node.data.root)) {
+      const leaks = packageReExports(readSource, barrel);
+      if (leaks.length > 0) {
+        errors.push(
+          `${entry.project} public entrypoint must not re-export another package: ${leaks.join(', ')}`,
+        );
+      }
+    } else if (
+      /\bexport(?:\s+type)?\s*\*/u.test(codeWithoutComments(readSource(barrel)))
     ) {
       errors.push(`${entry.project} public entrypoint must use named exports`);
     }

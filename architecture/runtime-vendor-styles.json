@@ -94,9 +94,9 @@
         }
       ],
       "seamMarkers": [
-        "TrnSurfaceService",
-        "TrnDropdownMenuImports",
-        "TrnToastService"
+        "export * from './lib/surface-service/trn-surface.service';",
+        "export * from './lib/dropdown/trn-dropdown-menu';",
+        "export * from './lib/toast/trn-toast.service';"
       ]
     },
     {

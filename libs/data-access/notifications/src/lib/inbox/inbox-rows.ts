@@ -1,4 +1,4 @@
-import { PREVIEW_LIMIT } from '../notification-policy';
+import { PREVIEW_LIMIT } from '../preview-limit';
 import type { NotificationTextMode } from '../notification-text.port';
 
 export type InboxTab = 'mentions' | 'all';

@@ -125,14 +125,12 @@ describe('design-system contract', () => {
     );
   });
 
-  it('rejects broad exports from a public entrypoint', () => {
-    const errors = catalogErrors({
+  /** Errors for a `controls` entrypoint whose files are `files`, keyed by workspace path. */
+  function controlsEntrypointErrors(files) {
+    return catalogErrors({
       nodes: {
         controls: {
-          data: {
-            root: 'libs/components/controls',
-            tags: ['ui:public'],
-          },
+          data: { root: 'libs/components/controls', tags: ['ui:public'] },
         },
       },
       catalog: {
@@ -151,51 +149,72 @@ describe('design-system contract', () => {
           './libs/components/controls/src/index.ts',
         ],
       },
-      read: () => "export * from './lib/button';",
-    });
+      read: (path) => {
+        if (path in files) return files[path];
+        throw new Error(`ENOENT: ${path}`);
+      },
+    }).filter((error) => error.includes('public entrypoint'));
+  }
 
-    expect(errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('public entrypoint must use named exports'),
-      ]),
-    );
+  const converted = {
+    'libs/components/controls/package.json': '{ "sideEffects": false }',
+  };
+
+  it.each([
+    "export * from './lib/button';",
+    "export type * from './lib/icon';",
+  ])('rejects %j from a library that declares no sideEffects', (barrel) => {
+    expect(
+      controlsEntrypointErrors({
+        'libs/components/controls/src/index.ts': barrel,
+      }),
+    ).toEqual(['controls public entrypoint must use named exports']);
   });
 
-  it('rejects broad type-only exports from a public entrypoint', () => {
-    const errors = catalogErrors({
-      nodes: {
-        foundations: {
-          data: {
-            root: 'libs/components/foundations',
-            tags: ['ui:public'],
-          },
-        },
-      },
-      catalog: {
-        categories: {
-          ...categories,
-          foundations: [
-            {
-              project: 'foundations',
-              entrypoint: '@trinity/components/foundations',
-            },
-          ],
-        },
-      },
-      paths: {
-        '@trinity/components/foundations': [
-          './libs/components/foundations/src/index.ts',
-        ],
-      },
-      read: () => "export type * from './lib/icon';",
-    });
-
-    expect(errors).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('public entrypoint must use named exports'),
-      ]),
-    );
+  it('accepts a converted library whose barrel re-exports only its own clean files', () => {
+    expect(
+      controlsEntrypointErrors({
+        ...converted,
+        'libs/components/controls/src/index.ts':
+          "export * from './lib/button';\nexport type * from './lib/recipe';",
+        'libs/components/controls/src/lib/button.ts':
+          "import { BrnButton } from '@spartan-ng/brain/button';\nexport { TrnButton } from './trn-button';\nexport const button = BrnButton;",
+        'libs/components/controls/src/lib/trn-button.ts':
+          'export class TrnButton {}',
+        'libs/components/controls/src/lib/recipe.ts':
+          'export type Recipe = string;',
+      }),
+    ).toEqual([]);
   });
+
+  it.each([
+    ['the barrel', "export * from '@spartan-ng/brain/select';", ''],
+    [
+      'a file the barrel lists',
+      "export * from './lib/select';",
+      "export { BrnSelect } from '@spartan-ng/brain/select';",
+    ],
+    [
+      'a file the barrel lists, by import',
+      "export * from './lib/select';",
+      "import { BrnSelect } from '@spartan-ng/brain/select';\nexport { BrnSelect };",
+    ],
+  ])(
+    'rejects a package re-export from %s of a converted library',
+    (_, barrel, select) => {
+      expect(
+        controlsEntrypointErrors({
+          ...converted,
+          'libs/components/controls/src/index.ts': barrel,
+          'libs/components/controls/src/lib/select.ts': select,
+        }),
+      ).toEqual([
+        expect.stringContaining(
+          'controls public entrypoint must not re-export another package',
+        ),
+      ]);
+    },
+  );
 
   it('keeps retired public styling and Promise compatibility APIs deleted', () => {
     const authored = publicComponentRoots

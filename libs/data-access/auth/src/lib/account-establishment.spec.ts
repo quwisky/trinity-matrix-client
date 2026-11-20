@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { UnacceptableAccountError } from './account-errors';
 import {
-  UnacceptableAccountError,
   accountEstablishment,
   type AuthenticatedSessionResponse,
 } from './account-establishment';

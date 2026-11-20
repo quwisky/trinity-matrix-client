@@ -11,11 +11,11 @@ import { BELOW_MD_QUERY, matchesQuery } from '@trinity/util/ui';
 import { defer, map, merge, take, type Observable } from 'rxjs';
 import {
   TrnDialogRef,
-  dialogTitleId,
   type ClosableRef,
   type DialogDetents,
   type TrnDialogPresentation,
 } from './trn-dialog-ref';
+import { dialogTitleId } from './dialog-title-id';
 import { SHEET_LARGE_HEIGHT } from '../sheet-frame/sheet-detent';
 import { TrnDialogOpenerService } from './trn-dialog-opener.service';
 

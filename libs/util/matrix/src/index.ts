@@ -1,3 +1,7 @@
+// Only `export *` lines. ../package.json lists this barrel and message-html.ts (DOMPurify hooks)
+// as side-effectful: the barrel must stay listed, or esbuild skips it without reaching
+// message-html.ts and drops the hooks. Listing it keeps every file a lazy chunk uses in the
+// startup bundle, so this library gains nothing until the hooks register on first use.
 export * from './lib/message-view';
 export * from './lib/message-html';
 export * from './lib/geo-uri';
@@ -5,7 +9,7 @@ export * from './lib/trim-trailing';
 export * from './lib/day-separator';
 export * from './lib/date-format';
 export * from './lib/edit-history';
-export { displayContent, validReplacement } from './lib/replacement';
+export * from './lib/replacement';
 export * from './lib/edit-history-diff';
 export * from './lib/media.model';
 export * from './lib/display-mime';

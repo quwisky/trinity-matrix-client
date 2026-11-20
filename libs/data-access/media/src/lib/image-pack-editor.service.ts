@@ -19,7 +19,8 @@ import {
   isValidMxcUri,
   type ImagePackUsage,
 } from './image-pack.model';
-import { ImagePackImageError, prepareImagePackImage } from './image-pack-image';
+import { ImagePackImageError } from './image-pack-image-error';
+import { prepareImagePackImage } from './image-pack-image';
 import {
   AccountPackTarget,
   RoomPackTarget,

@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./src/index.ts",
+    "./src/lib/message-html.ts"
+  ]
+}
