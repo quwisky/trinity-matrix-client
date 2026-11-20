@@ -320,7 +320,7 @@ export class ApplicationRootComponent {
       untracked(() => {
         if (open && !ref && !loading) {
           loading = true;
-          // Loaded on first open so it stays out of the startup bundle.
+          // A dynamic import keeps it out of the startup bundle; the warm-up has usually fetched it.
           load()
             .then((module) => {
               loading = false;
