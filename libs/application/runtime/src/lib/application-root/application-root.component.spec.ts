@@ -732,6 +732,10 @@ describe('ApplicationRootComponent', () => {
     vi.doMock('./system-status/system-status.component', () => {
       throw new Error('chunk unavailable');
     });
+    // As above: settle the mock, and later the unmock, on this import.
+    await expect(
+      import('./system-status/system-status.component'),
+    ).rejects.toThrow();
     const { fixture, getByTestId, showToast } = await setup(READY);
     try {
       getByTestId('system-status-access').click();
@@ -739,6 +743,7 @@ describe('ApplicationRootComponent', () => {
       await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
     } finally {
       vi.doUnmock('./system-status/system-status.component');
+      await import('./system-status/system-status.component');
     }
 
     await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
