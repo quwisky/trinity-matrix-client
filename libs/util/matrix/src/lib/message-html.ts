@@ -120,50 +120,63 @@ const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
 // tracking pixel nor embed a `data:` payload; such an image becomes its alt text.
 const MXC_SCHEME = /^mxc:\/\//i;
 
-// A sender's `<img src>` must BE an `mxc://` URI, not merely become one. DOMPurify trims every
-// attribute value before its attribute hooks see it, so the raw value is checked here, first:
-// ` mxc://…` or `\u0001mxc://…` loses its source instead of being trimmed into a valid one.
-DOMPurify.addHook('beforeSanitizeAttributes', (node) => {
-  if (
-    node.nodeName === 'IMG' &&
-    !MXC_SCHEME.test(node.getAttribute('src') ?? '')
-  ) {
-    node.removeAttribute('src');
-  }
-});
-
 // The only `class` tokens Matrix sanctions: `language-*`, on `code` (syntax highlighting). Every
 // class the renderer needs (mx-spoiler, mx-emoticon, colour tokens, …) is added after this
 // filter by a render-only pass, so a sender can borrow none of them, nor app/Ionic classes.
 const ALLOWED_CLASS = /^language-[\w-]+$/;
 
-// A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`, which the browser
-// would fetch on render, leaking the viewer's IP and acting as a read receipt. The hook above
-// strips the `src` of any non-`mxc:` image; this one enforces the per-tag attribute list and
-// filters `class` to the Matrix-sanctioned tokens.
-//
-// Registered once at module load and shared by BOTH {@link sanitizeMatrixHtml} and
-// {@link sanitizeOutgoingHtml}, so only security belongs here: attributes set in
-// `afterSanitizeAttributes` are not re-filtered against ALLOWED_ATTR and would ride out onto
-// the wire. It sits on the default DOMPurify instance, so any other sanitizer in the app must
-// create its own (`DOMPurify(window)`), as the maths renderer does, or this per-tag table would
-// strip its markup too.
-DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-  const allowed = MATRIX_TAG_ATTRIBUTES.get(node.nodeName) ?? NO_ATTRIBUTES;
-  for (const name of node.getAttributeNames()) {
-    if (!allowed.has(name)) node.removeAttribute(name);
+let purifier: typeof DOMPurify | undefined;
+
+/**
+ * The default DOMPurify instance with the Matrix hooks on it. They register on the first call
+ * rather than at import, so this library has no load-time side effect and the bundler can
+ * leave its unused files out of the startup bundle.
+ */
+function matrixPurifier(): typeof DOMPurify {
+  if (!purifier) {
+    purifier = DOMPurify;
+    // A sender's `<img src>` must BE an `mxc://` URI, not merely become one. DOMPurify trims
+    // every attribute value before its attribute hooks see it, so the raw value is checked
+    // here, first: ` mxc://…` or `\u0001mxc://…` loses its source instead of being trimmed into
+    // a valid one.
+    purifier.addHook('beforeSanitizeAttributes', (node) => {
+      if (
+        node.nodeName === 'IMG' &&
+        !MXC_SCHEME.test(node.getAttribute('src') ?? '')
+      ) {
+        node.removeAttribute('src');
+      }
+    });
+
+    // A sender's `formatted_body` can embed `<img src="https://attacker/x.gif">`, which the
+    // browser would fetch on render, leaking the viewer's IP and acting as a read receipt. The
+    // hook above strips the `src` of any non-`mxc:` image; this one enforces the per-tag
+    // attribute list and filters `class` to the Matrix-sanctioned tokens.
+    //
+    // Shared by BOTH {@link sanitizeMatrixHtml} and {@link sanitizeOutgoingHtml}, so only
+    // security belongs here: attributes set in `afterSanitizeAttributes` are not re-filtered
+    // against ALLOWED_ATTR and would ride out onto the wire. It sits on the default DOMPurify
+    // instance, so any other sanitizer in the app must create its own (`DOMPurify(window)`), as
+    // the maths renderer does, or this per-tag table would strip its markup too.
+    purifier.addHook('afterSanitizeAttributes', (node) => {
+      const allowed = MATRIX_TAG_ATTRIBUTES.get(node.nodeName) ?? NO_ATTRIBUTES;
+      for (const name of node.getAttributeNames()) {
+        if (!allowed.has(name)) node.removeAttribute(name);
+      }
+      if (node.hasAttribute('class')) {
+        const kept = (node.getAttribute('class') ?? '')
+          .split(/\s+/)
+          .filter((token) => ALLOWED_CLASS.test(token));
+        if (kept.length > 0) {
+          node.setAttribute('class', kept.join(' '));
+        } else {
+          node.removeAttribute('class');
+        }
+      }
+    });
   }
-  if (node.hasAttribute('class')) {
-    const kept = (node.getAttribute('class') ?? '')
-      .split(/\s+/)
-      .filter((token) => ALLOWED_CLASS.test(token));
-    if (kept.length > 0) {
-      node.setAttribute('class', kept.join(' '));
-    } else {
-      node.removeAttribute('class');
-    }
-  }
-});
+  return purifier;
+}
 
 // Pure in its inputs (`html`, `addressedViewerId`); FIFO-bounded so a long session can't grow it.
 const SANITIZED_HTML_CACHE_MAX = 1000;
@@ -298,7 +311,7 @@ export function sanitizeMatrixHtml(
   // `as const` keeps DOMPurify's typed overload (spread into a plain object it widens to
   // `boolean` and the return falls back to `string`), so dropping RETURN_DOM later is a compile
   // error rather than `innerHTML` being undefined and every body rendering as "undefined".
-  const body = DOMPurify.sanitize(html, {
+  const body = matrixPurifier().sanitize(html, {
     ...RENDER_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
@@ -577,7 +590,7 @@ function markMentionPills(
  * every composed message is distinct, so caching would only evict useful timeline entries.
  */
 export function sanitizeOutgoingHtml(html: string): string {
-  const body = DOMPurify.sanitize(html, {
+  const body = matrixPurifier().sanitize(html, {
     ...MATRIX_PURIFY_CONFIG,
     RETURN_DOM: true as const,
   }) as HTMLElement;
