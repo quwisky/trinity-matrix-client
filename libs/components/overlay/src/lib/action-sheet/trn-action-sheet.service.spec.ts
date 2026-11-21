@@ -7,6 +7,14 @@ function render(): void {
   TestBed.inject(ApplicationRef).tick();
 }
 
+/** The service with its list code already loaded, as it is after the app's first render. */
+async function loadedService(): Promise<TrnActionSheetService> {
+  const svc = TestBed.inject(TrnActionSheetService);
+  svc.open({ buttons: [] }).close();
+  await vi.dynamicImportSettled();
+  return svc;
+}
+
 function clickButton(text: string): void {
   [...document.querySelectorAll<HTMLButtonElement>('button[trnBtn]')]
     .find((b) => b.textContent?.trim() === text)
@@ -14,8 +22,8 @@ function clickButton(text: string): void {
 }
 
 describe('TrnActionSheetService', () => {
-  it('renders the header + buttons and runs a picked handler', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('renders the header + buttons and runs a picked handler', async () => {
+    const svc = await loadedService();
     const handler = vi.fn();
     svc.open({
       header: 'New message',
@@ -31,8 +39,8 @@ describe('TrnActionSheetService', () => {
     expect(handler).toHaveBeenCalledOnce();
   });
 
-  it('titles the sheet in the shared dialog shell style', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('titles the sheet in the shared dialog shell style', async () => {
+    const svc = await loadedService();
     svc.open({ header: 'New message', buttons: [{ text: 'Cancel' }] });
     render();
 
@@ -42,8 +50,8 @@ describe('TrnActionSheetService', () => {
     expect(title).toHaveClass('text-[17px]', 'font-bold');
   });
 
-  it('does not run a handler for the cancel button', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('does not run a handler for the cancel button', async () => {
+    const svc = await loadedService();
     const handler = vi.fn();
     svc.open({ buttons: [{ text: 'Cancel', role: 'cancel', handler }] });
     render();
@@ -52,8 +60,8 @@ describe('TrnActionSheetService', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('keeps a disabled row visible but unfocusable and inert', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('keeps a disabled row visible but unfocusable and inert', async () => {
+    const svc = await loadedService();
     const handler = vi.fn();
     svc.open({
       buttons: [
@@ -86,11 +94,11 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
       .forEach((el) => el.remove());
   });
 
-  it('hands back a ref the opener can close', () => {
+  it('hands back a ref the opener can close', async () => {
     // A sheet that only closes itself outlives what it acts on: the timeline destroys a
     // row when it is redacted, edited, or scrolled out of the virtual window, and a sheet
     // still standing over a dead row offers actions that quietly do nothing.
-    const svc = TestBed.inject(TrnActionSheetService);
+    const svc = await loadedService();
     const ref = svc.open({ buttons: [{ text: 'Reply' }] });
     render();
     expect(document.body.textContent).toContain('Reply');
@@ -104,8 +112,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(document.querySelector('trn-action-list')).toBeNull();
   });
 
-  it('names the dialog, so a screen reader does not just say "dialog"', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('names the dialog, so a screen reader does not just say "dialog"', async () => {
+    const svc = await loadedService();
     svc.open({ buttons: [{ text: 'Reply' }] }, 'Message actions');
     render();
 
@@ -113,8 +121,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(pane?.getAttribute('aria-label')).toBe('Message actions');
   });
 
-  it('falls back to the header for the accessible name', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('falls back to the header for the accessible name', async () => {
+    const svc = await loadedService();
     svc.open({ header: 'New message', buttons: [{ text: 'Create a room' }] });
     render();
 
@@ -122,8 +130,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(pane?.getAttribute('aria-label')).toBe('New message');
   });
 
-  it('offers reactions as a strip, and picking one closes the sheet', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('offers reactions as a strip, and picking one closes the sheet', async () => {
+    const svc = await loadedService();
     const react = vi.fn();
     svc.open({
       reactions: [
@@ -154,10 +162,10 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(document.querySelector('trn-action-list')).toBeNull();
   });
 
-  it('marks a destructive row with text-danger, not text-destructive', () => {
+  it('marks a destructive row with text-danger, not text-destructive', async () => {
     // `--destructive` is a FILL token — a near-black maroon in dark mode, 1.26:1 as text.
     // Alert text is `--trinity-danger`, which the `text-danger` utility maps to.
-    const svc = TestBed.inject(TrnActionSheetService);
+    const svc = await loadedService();
     svc.open({
       buttons: [{ text: 'Delete message', variant: 'danger', testId: 'del' }],
     });
@@ -168,8 +176,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(row?.classList.contains('text-destructive')).toBe(false);
   });
 
-  it('keeps semantic appearance separate from cancel behavior', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('keeps semantic appearance separate from cancel behavior', async () => {
+    const svc = await loadedService();
     const handler = vi.fn();
     svc.open({
       buttons: [
@@ -190,14 +198,14 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('puts every row in a scroller rather than clipping the list', () => {
+  it('puts every row in a scroller rather than clipping the list', async () => {
     // Thirteen rows is what a message sheet actually offers. The component was one
     // `overflow-hidden` box with no height bound, and CDK clamps the pane to the
     // viewport — so at 360x640 the last row fell outside with no scrollbar and no
     // affordance. jsdom has no layout, so this asserts the STRUCTURE that fixes it:
     // every row inside an element that can scroll. The geometry is measured in
     // `e2e/browser/journeys/conversations/message-action-sheet.spec.mts`.
-    const svc = TestBed.inject(TrnActionSheetService);
+    const svc = await loadedService();
     svc.open({
       buttons: Array.from({ length: 13 }, (_, i) => ({
         text: `Action ${i}`,
@@ -213,8 +221,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(scroller?.querySelectorAll('button[trnBtn]').length).toBe(13);
   });
 
-  it('draws a rule before a row that asks for one', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('draws a rule before a row that asks for one', async () => {
+    const svc = await loadedService();
     svc.open({
       buttons: [
         { text: 'Edit message' },
@@ -226,8 +234,8 @@ describe('TrnActionSheetService — the message-sheet surface', () => {
     expect(document.querySelector('[role=separator]')).not.toBeNull();
   });
 
-  it('renders a drag handle that closes the sheet when swiped down', () => {
-    const svc = TestBed.inject(TrnActionSheetService);
+  it('renders a drag handle that closes the sheet when swiped down', async () => {
+    const svc = await loadedService();
     const ref = svc.open({ buttons: [{ text: 'Edit message' }] });
     const closed = vi.fn();
     ref.closed.subscribe(closed);

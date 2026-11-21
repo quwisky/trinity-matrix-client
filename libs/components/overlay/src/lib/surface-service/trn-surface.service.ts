@@ -106,20 +106,22 @@ export class TrnSurfaceService {
     });
   }
 
+  /** An action list still loading its code counts as open, and as the topmost overlay. */
   hasOpen(): boolean {
-    return this.dialogs.hasOpen();
+    return this.actionSheets.hasPending() || this.dialogs.hasOpen();
   }
 
   isTopmost(ref: TrnDialogRef<unknown>): boolean {
-    return this.dialogs.isTopmost(ref);
+    return !this.actionSheets.hasPending() && this.dialogs.isTopmost(ref);
   }
 
   /** The Back primitive: closes the top overlay unless it is `disableClose` or refuses. */
   closeTopmost(): boolean {
-    return this.dialogs.closeTopmost();
+    return this.actionSheets.closePending() || this.dialogs.closeTopmost();
   }
 
   closeAll(): void {
+    this.actionSheets.closePending();
     this.dialogs.closeAll();
   }
 

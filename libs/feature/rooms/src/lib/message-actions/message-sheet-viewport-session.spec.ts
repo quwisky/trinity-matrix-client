@@ -49,6 +49,7 @@ describe('MessageSheetViewportSession', () => {
     pressY: number;
     sheetTop: number;
     sheetHeight: number;
+    surfaceLate?: boolean;
   }) {
     const scroller = document.createElement('div');
     scroller.setAttribute('data-message-scroller', '');
@@ -75,12 +76,58 @@ describe('MessageSheetViewportSession', () => {
       return rect(options.sheetTop + options.sheetHeight - height, height);
     };
 
+    let attached = !options.surfaceLate;
     const session = new MessageSheetViewportSession(
       { anchor, clientY: options.pressY },
-      () => surface,
+      () => (attached ? surface : null),
     );
-    return { anchor, scroller, session, surface, scrollTop: () => scrollTop };
+    return {
+      anchor,
+      scroller,
+      session,
+      surface,
+      scrollTop: () => scrollTop,
+      attach: () => (attached = true),
+    };
   }
+
+  it('waits for a sheet whose code is still loading, then lifts the row above it', () => {
+    const { anchor, session, attach } = build({
+      rowTop: 500,
+      rowHeight: 50,
+      pressY: 525,
+      sheetTop: 100,
+      sheetHeight: 500,
+      surfaceLate: true,
+    });
+
+    session.start();
+    for (let frame = 0; frame < 10; frame++) flushFrame();
+    expect(anchor.getBoundingClientRect().top).toBe(500);
+
+    attach();
+    flushFrame();
+    flushFrame();
+
+    expect(anchor.getBoundingClientRect().bottom + 8).toBeLessThanOrEqual(100);
+  });
+
+  it('stops waiting for a sheet that closed before it appeared', () => {
+    const { session } = build({
+      rowTop: 500,
+      rowHeight: 50,
+      pressY: 525,
+      sheetTop: 100,
+      sheetHeight: 500,
+      surfaceLate: true,
+    });
+
+    session.start();
+    flushFrame();
+    session.release();
+
+    expect(frames.size).toBe(0);
+  });
 
   it('adds measured tail range, clears the whole row, and restores on release', () => {
     const { anchor, scroller, session, scrollTop } = build({

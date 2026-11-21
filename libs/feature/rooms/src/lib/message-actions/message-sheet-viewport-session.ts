@@ -61,7 +61,6 @@ export class MessageSheetViewportSession {
   private originalSurfaceMaxHeight = '';
   private originalOverflowY = '';
   private surfaceHeightChanged = false;
-  private surfaceAttempts = 0;
 
   constructor(
     context: MessageLongPressContext,
@@ -138,11 +137,9 @@ export class MessageSheetViewportSession {
     }
     const surface = this.resolveSurface();
     if (!surface?.isConnected) {
-      // A bounded retry covers a frame where CDK has attached the pane but Angular has not
-      // populated the sheet view yet.
-      if (++this.surfaceAttempts < 3) {
-        this.schedule(() => this.position());
-      }
+      // The sheet's code loads on first use, so its surface can be many frames away. The
+      // opener releases this session when the sheet closes, which ends the wait.
+      this.schedule(() => this.position());
       return;
     }
     this.surface = surface;

@@ -699,6 +699,11 @@ describe('ApplicationRootComponent', () => {
       throw new Error('chunk unavailable');
     });
     try {
+      // Vitest applies a pending mock on the next import to resolve; make that this one, not
+      // whichever of the root's on-demand chunks happens to be fetched first.
+      await expect(
+        import('./system-status/system-status.component'),
+      ).rejects.toThrow();
       const { fixture, getByTestId, showToast } = await setup(READY);
       getByTestId('system-status-access').click();
       settle(fixture);
@@ -718,6 +723,8 @@ describe('ApplicationRootComponent', () => {
       ).toBe(false);
     } finally {
       vi.doUnmock('./system-status/system-status.component');
+      // The same for the unmock, so the next test's first open gets the real component.
+      await import('./system-status/system-status.component');
     }
   });
 
@@ -725,6 +732,10 @@ describe('ApplicationRootComponent', () => {
     vi.doMock('./system-status/system-status.component', () => {
       throw new Error('chunk unavailable');
     });
+    // As above: settle the mock, and later the unmock, on this import.
+    await expect(
+      import('./system-status/system-status.component'),
+    ).rejects.toThrow();
     const { fixture, getByTestId, showToast } = await setup(READY);
     try {
       getByTestId('system-status-access').click();
@@ -732,6 +743,7 @@ describe('ApplicationRootComponent', () => {
       await vi.waitFor(() => expect(showToast).toHaveBeenCalled());
     } finally {
       vi.doUnmock('./system-status/system-status.component');
+      await import('./system-status/system-status.component');
     }
 
     await openSystemStatusFrom(getByTestId('system-status-access'), fixture);
