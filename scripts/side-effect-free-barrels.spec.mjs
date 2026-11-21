@@ -50,11 +50,16 @@ const listingLibraries = libraries.filter(({ sideEffects }) =>
   Array.isArray(sideEffects),
 );
 
-/** Production sources of a library, as `./src/…` paths relative to its root. */
+/**
+ * Production sources of a library, as `./src/…` paths relative to its root. A `*.worker.ts`
+ * file is a bundle entry of its own (`new Worker(new URL(…))`), so its top-level code is never
+ * an unused import the bundler could drop.
+ */
 function librarySources(root) {
   return globSync('src/**/*.ts', {
     cwd: join(workspaceRoot, root),
     exclude: [
+      'src/**/*.worker.ts',
       'src/**/*.spec.ts',
       'src/**/*.spec-harness.ts',
       'src/**/*.stories.ts',
