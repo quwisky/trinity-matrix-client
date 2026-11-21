@@ -1,6 +1,6 @@
 {
   "name": "trinity",
-  "version": "0.7.0-next.6",
+  "version": "0.8.0-next.0",
   "license": "MIT",
   "type": "module",
   "author": "quwisky <quwisky@qwky.eu>",
@@ -190,7 +190,7 @@
     "angular-eslint": "22.6.0",
     "appium": "3.9.1",
     "astro": "7.4.12",
-    "axe-core": "4.14.1",
+    "axe-core": "4.14.0",
     "eslint": "^10.14.0",
     "eslint-plugin-tailwindcss": "^4.2.0",
     "husky": "^9.1.7",
