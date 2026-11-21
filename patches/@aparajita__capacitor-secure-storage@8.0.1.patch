@@ -1,0 +1,31 @@
+diff --git a/ios/Sources/SecureStoragePlugin/Plugin.swift b/ios/Sources/SecureStoragePlugin/Plugin.swift
+index 7f8795b455a484125704e5b1ec45e4008152dca2..10ddc57f90d40855b8bcc887b0958ba79e35c917 100644
+--- a/ios/Sources/SecureStoragePlugin/Plugin.swift
++++ b/ios/Sources/SecureStoragePlugin/Plugin.swift
+@@ -47,7 +47,7 @@ public class SecureStorage: CAPPlugin, CAPBridgedPlugin {
+     }
+ 
+     tryKeychainOp(call, getSyncParam(from: call)) {
+-      let data = getData(withKey: key)
++      let data = try getData(withKey: key)
+       call.resolve(["data": data])
+     }
+   }
+@@ -177,8 +177,15 @@ public class SecureStorage: CAPPlugin, CAPBridgedPlugin {
+     }
+   }
+ 
+-  func getData(withKey key: String) -> Any {
+-    keychain.get(key) as Any
++  func getData(withKey key: String) throws -> Any {
++    let data = keychain.get(key)
++
++    // nil is also what a refused read returns (device locked): only "not found" is absent.
++    if data == nil && keychain.lastResultCode != 0 && keychain.lastResultCode != errSecItemNotFound {
++      throw KeychainError(.osError, status: keychain.lastResultCode)
++    }
++
++    return data as Any
+   }
+ 
+   func deleteData(withKey key: String) throws -> Bool {
