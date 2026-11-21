@@ -34,12 +34,21 @@
       }
     },
     {
+      "name": "heif-decoder",
+      "installMode": "lazy",
+      "updateMode": "lazy",
+      "resources": {
+        "files": ["/assets/heif/**"]
+      }
+    },
+    {
       "name": "assets",
       "installMode": "prefetch",
       "updateMode": "prefetch",
       "resources": {
         "files": [
           "/assets/**",
+          "!/assets/heif/**",
           "/*.(svg|cur|jpg|jpeg|png|apng|webp|avif|gif|otf|ttf|woff|woff2|wasm)"
         ]
       }

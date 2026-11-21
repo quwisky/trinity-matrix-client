@@ -33,7 +33,12 @@ afterEach(() => {
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'trinity-container-contract-'));
   temporaryRoots.push(root);
-  for (const directory of ['container', 'electron', 'www/assets/crypto'])
+  for (const directory of [
+    'container',
+    'electron',
+    'www/assets/crypto',
+    'www/assets/heif',
+  ])
     mkdirSync(join(root, directory), { recursive: true });
   for (const file of ['Dockerfile', 'sws.toml', '.dockerignore'])
     copyFileSync(
@@ -50,6 +55,7 @@ function fixture() {
     'manifest.webmanifest',
     '3rdpartylicenses.txt',
     'assets/crypto/matrix_sdk_crypto_wasm_bg.wasm',
+    'assets/heif/libheif.wasm',
   ]) {
     writeFileSync(
       join(root, 'www', file),

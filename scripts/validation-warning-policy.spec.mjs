@@ -15,6 +15,7 @@ const COMMONJS_ALLOWLIST = [
   'another-json',
   'content-type',
   'events',
+  'libheif-js/libheif-wasm/libheif.js',
   'loglevel',
   'matrix-events-sdk',
   'matrix-widget-api',
@@ -100,6 +101,11 @@ describe('validation warning policy', () => {
     expect(build.options.allowedCommonJsDependencies).toEqual(
       COMMONJS_ALLOWLIST,
     );
+    expect(build.options.externalDependencies).toEqual([
+      'fs',
+      'path',
+      'crypto',
+    ]);
     expect(build.configurations.production.budgets).toEqual(
       expect.arrayContaining([
         {

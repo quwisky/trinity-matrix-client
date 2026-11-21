@@ -260,11 +260,12 @@ export async function downscaleImage(
 }
 
 /** Draw a bitmap on an off-screen (else regular) canvas and encode it; null if it cannot. */
-async function encodeBitmap(
+export async function encodeBitmap(
   bitmap: ImageBitmap,
   w: number,
   h: number,
   type: string,
+  quality: number = THUMBNAIL_QUALITY,
 ): Promise<Blob | null> {
   if (typeof OffscreenCanvas === 'function') {
     const canvas = new OffscreenCanvas(w, h);
@@ -273,7 +274,7 @@ async function encodeBitmap(
       return null;
     }
     context.drawImage(bitmap, 0, 0, w, h);
-    return canvas.convertToBlob({ type, quality: THUMBNAIL_QUALITY });
+    return canvas.convertToBlob({ type, quality });
   }
   if (typeof document === 'undefined') {
     return null;
@@ -286,7 +287,7 @@ async function encodeBitmap(
     return null;
   }
   context.drawImage(bitmap, 0, 0, w, h);
-  return canvasToBlob(canvas, type, THUMBNAIL_QUALITY);
+  return canvasToBlob(canvas, type, quality);
 }
 
 /** Scale (w, h) to fit within a max edge, preserving aspect; never upscales. */

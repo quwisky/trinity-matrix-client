@@ -5,6 +5,7 @@ import {
   catchError,
   defer,
   finalize,
+  firstValueFrom,
   from,
   map,
   merge,
@@ -27,6 +28,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import { fetchMediaBytes } from '@trinity/util/matrix';
 import type { EncryptedFileInfo, MediaPayload } from '@trinity/util/matrix';
+import { heicToJpeg } from './heic-to-jpeg';
 import type { ImageMetadataPolicy, MediaHints } from './media-pipeline.models';
 import {
   bytesWithoutMediaMetadata,
@@ -237,7 +239,10 @@ export class MediaService {
    * descriptor {@link TimelineService} turns into an event. A JPEG, PNG, WebP or HEIF image
    * first loses its identifying metadata (location, camera, capture time; orientation is
    * kept), and an MP4/MOV/3GP movie its location and device, on the plaintext before any
-   * encryption; anything else, or a file whose structure is in doubt, goes up as picked. An
+   * encryption; anything else, or a file whose structure is in doubt, goes up as picked. A
+   * HEIC/HEIF image is first re-encoded as a JPEG so other clients can show it (unless
+   * `imageMetadata` is `'keep'`); if that conversion fails, or the JPEG would exceed the
+   * homeserver's upload limit while the original fits, it goes up as picked. An
    * encrypted upload sends the ciphertext with no filename/MIME (those leak) and `info.url`
    * is filled with the resulting `mxc://`. `progress` reports a fraction in [0, 1].
    * `hints` (from a camera capture) win over the probe, which fills only what they leave out.
@@ -308,6 +313,20 @@ export class MediaService {
     imageMetadata: ImageMetadataPolicy = 'strip',
   ): Promise<UploadedMedia> {
     abortController?.signal.throwIfAborted();
+    const keep = imageMetadata === 'keep';
+    // A re-encode drops all metadata, so the opt-in to keep it also keeps the HEIC.
+    if (!keep) {
+      let converted = await heicToJpeg(file);
+      // The JPEG can be larger than the HEIC; it must not break a send the HEIC would have made.
+      if (converted !== file && converted.size > file.size) {
+        const limit = await firstValueFrom(this.uploadLimit(client));
+        if (limit !== null && converted.size > limit && file.size <= limit) {
+          converted = file;
+        }
+      }
+      file = converted;
+      abortController?.signal.throwIfAborted();
+    }
     const msgtype = msgTypeFor(file.type);
     // Host-measured values win; the WebView probe runs only for what is missing. For E2EE rooms
     // the thumbnail is the only one the timeline can show: the server can't scale an encrypted
@@ -328,7 +347,6 @@ export class MediaService {
     // Stripping happens on the plaintext, before encryption; anything it cannot handle with
     // certainty uploads as picked. Keeping metadata (the opt-in) uploads the file untouched,
     // never a partial strip.
-    const keep = imageMetadata === 'keep';
     if (encrypt) {
       const plaintext = keep
         ? await file.arrayBuffer()
