@@ -188,7 +188,7 @@
     "@wdio/spec-reporter": "10.1.0",
     "@wdio/types": "10.1.0",
     "angular-eslint": "22.6.0",
-    "appium": "3.9.0",
+    "appium": "3.9.1",
     "astro": "7.4.12",
     "axe-core": "4.14.0",
     "eslint": "^10.14.0",
