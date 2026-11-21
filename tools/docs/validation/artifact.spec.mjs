@@ -22,19 +22,15 @@ const fixture = () => {
     '<a href="./users/">Users</a><a href="./developers/">Developers</a>',
     'utf8',
   );
-  writeFileSync(
-    join(root, '404.html'),
-    '<a href="/trinity-matrix-client/">Home</a>',
-    'utf8',
-  );
+  writeFileSync(join(root, '404.html'), '<a href="/">Home</a>', 'utf8');
   writeFileSync(
     join(root, 'users', 'index.html'),
-    '<link href="/trinity-matrix-client/users/site.css">',
+    '<link href="/users/site.css">',
     'utf8',
   );
   writeFileSync(
     join(root, 'developers', 'index.html'),
-    '<a href="/trinity-matrix-client/developers/start/">Start</a>',
+    '<a href="/developers/start/">Start</a>',
     'utf8',
   );
   return root;
@@ -71,11 +67,11 @@ describe('assembled Pages artifact', () => {
     expect(() => validateArtifact(root)).toThrow(new RegExp(message));
   });
 
-  it('rejects a local URL outside the GitHub Pages base', () => {
+  it('rejects a link that keeps the old /trinity-matrix-client/ prefix', () => {
     const root = fixture();
     writeFileSync(
       join(root, 'users', 'index.html'),
-      '<link href="/wrong-base/site.css">',
+      '<a href="/trinity-matrix-client/users/">Users</a>',
       'utf8',
     );
 

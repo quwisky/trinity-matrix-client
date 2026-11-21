@@ -129,7 +129,7 @@ export const validateMarkdownLinks = async (sites) => {
       if (EXTERNAL_URL.test(rawTarget)) continue;
       const target = targetRoute(rawTarget, page.route);
 
-      if (target.route === '/trinity-matrix-client/') continue;
+      if (target.route === '/') continue;
       const destination = pages.get(target.route);
       if (!destination) {
         throw new Error(`${page.path} links to missing page ${target.route}.`);
@@ -149,12 +149,12 @@ if (import.meta.main) {
     {
       name: 'users',
       root: join(workspaceRoot, 'apps/docs-users/src/content/docs'),
-      base: '/trinity-matrix-client/users',
+      base: '/users',
     },
     {
       name: 'developers',
       root: join(workspaceRoot, 'apps/docs-developers/src/content/docs'),
-      base: '/trinity-matrix-client/developers',
+      base: '/developers',
     },
   ]);
   console.log('Documentation links and heading IDs are valid.');

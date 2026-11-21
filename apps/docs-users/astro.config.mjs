@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 const docsRoot = fileURLToPath(new URL('../../tools/docs/', import.meta.url));
 
 export default defineConfig({
-  site: 'https://docs.trinityproject.dev',
-  base: '/trinity-matrix-client/users',
+  site: 'https://trinity.trinityproject.dev',
+  base: '/users',
   outDir: fileURLToPath(new URL('../../dist/docs/users/', import.meta.url)),
   markdown: {
     processor: unified({ remarkPlugins: [explicitHeadingIds] }),

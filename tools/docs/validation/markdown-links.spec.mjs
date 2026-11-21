@@ -22,7 +22,7 @@ const site = (root) => [
   {
     name: 'developers',
     root,
-    base: '/trinity-matrix-client/developers',
+    base: '/developers',
   },
 ];
 

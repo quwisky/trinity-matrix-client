@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const port = 4178;
-const pagesBase = '/trinity-matrix-client';
+const pagesBase = '';
 const workspaceRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 export default defineConfig({
@@ -37,7 +37,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm nx run docs-site:assemble && node tools/docs/serve-static.mjs --root dist/docs-site --base ${pagesBase} --port ${port}`,
+    command: `pnpm nx run docs-site:assemble && node tools/docs/serve-static.mjs --root dist/docs-site --base ${pagesBase || '/'} --port ${port}`,
     url: `http://127.0.0.1:${port}${pagesBase}/`,
     reuseExistingServer: false,
     timeout: 120_000,
