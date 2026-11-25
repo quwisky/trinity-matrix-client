@@ -356,6 +356,25 @@ for (const mobile of [false, true]) {
           body: await page.screenshot({ animations: 'disabled' }),
           contentType: 'image/png',
         });
+
+        // A new session sends the remembered status with its syncs.
+        const awaySync = page.waitForRequest(
+          (r) =>
+            r.url().includes('/_matrix/client/v3/sync') &&
+            r.url().includes('set_presence=unavailable'),
+          { timeout: 60_000 },
+        );
+        await page.reload();
+        await (await awaySync).response();
+        // The reload reopens the same room.
+        await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
+          timeout: 30_000,
+        });
+        const afterReload = await request.get(
+          `${session.hs}/_matrix/client/v3/presence/${encodeURIComponent(observer.userId)}/status`,
+          { headers: observer.headers },
+        );
+        expect((await afterReload.json()).presence).toBe('unavailable');
       });
     },
   );

@@ -2,7 +2,11 @@ import { ApplicationRef, computed, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MockProvider, ngMocks } from 'ng-mocks';
 import { UserEvent, type MatrixClient } from 'matrix-js-sdk';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
+import {
+  PREFERENCE_STORAGE_ADAPTER,
+  type PreferenceStorageAdapter,
+} from '@trinity/runtime/preferences';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { toPresenceState } from '@trinity/util/matrix';
 import { IdentityPresenceService } from './identity-presence.service';
@@ -47,15 +51,51 @@ function fakeClient(
   };
 }
 
+/** Device preferences in memory, keyed by storage key and account. */
+function memoryStorage() {
+  const saved = new Map<string, string>();
+  const keyOf = (request: { key: string; context: unknown }) =>
+    `${request.key} ${JSON.stringify(request.context)}`;
+  const adapter: PreferenceStorageAdapter = {
+    read: (request) => {
+      const payload = saved.get(keyOf(request));
+      return of(
+        payload === undefined
+          ? { kind: 'missing' as const }
+          : { kind: 'found' as const, payload },
+      );
+    },
+    write: (request) => {
+      saved.set(keyOf(request), request.payload);
+      return of({ kind: 'completed' as const });
+    },
+  };
+  const ownPresenceKey = keyOf({
+    key: 'trinity.identity.own-presence',
+    context: { kind: 'account', accountId: SELF },
+  });
+  return {
+    adapter,
+    ownPresence: () => {
+      const payload = saved.get(ownPresenceKey);
+      return payload === undefined ? undefined : JSON.parse(payload).value;
+    },
+    saveOwnPresence: (value: unknown) =>
+      saved.set(ownPresenceKey, JSON.stringify({ version: 1, value })),
+  };
+}
+
 function setup(
   users: Record<string, string> = {},
   statuses: Record<string, string> = {},
 ) {
   const client = fakeClient(users, statuses);
   const activeUserId = signal<string | null>(SELF);
+  const storage = memoryStorage();
   TestBed.configureTestingModule({
     providers: [
       IdentityPresenceService,
+      { provide: PREFERENCE_STORAGE_ADAPTER, useValue: storage.adapter },
       MockProvider(MatrixClientService, {
         activeUserId: activeUserId.asReadonly(),
       }),
@@ -69,6 +109,7 @@ function setup(
     client,
     matrix,
     activeUserId,
+    storage,
   };
 }
 
@@ -586,6 +627,42 @@ describe('IdentityPresenceService', () => {
       const { svc, client } = setup();
       await firstValueFrom(svc.setOwnPresence('unavailable', ''));
       expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable');
+    });
+
+    it('remembers the chosen status for the next session', async () => {
+      const { svc, storage } = setup();
+      await firstValueFrom(svc.setOwnPresence('unavailable', 'lunch'));
+      expect(storage.ownPresence()).toEqual({
+        presence: 'unavailable',
+        statusMessage: 'lunch',
+      });
+      await firstValueFrom(svc.setOwnPresence('online', ''));
+      expect(storage.ownPresence()).toBeNull();
+    });
+
+    it('sends the remembered status when the account connects', async () => {
+      const { svc, client, storage } = setup();
+      storage.saveOwnPresence({
+        presence: 'unavailable',
+        statusMessage: 'lunch',
+      });
+      svc.runProjection().subscribe();
+      await vi.waitFor(() =>
+        expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable'),
+      );
+      expect(client.setPresence).toHaveBeenCalledWith({
+        presence: 'unavailable',
+        status_msg: 'lunch',
+      });
+      expect(svc.myPresence()).toBe('unavailable');
+    });
+
+    it('sends nothing on connect when no status was chosen', async () => {
+      const { svc, client } = setup();
+      svc.runProjection().subscribe();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(client.setPresence).not.toHaveBeenCalled();
     });
 
     it('leaves syncs alone when the server rejects the status', async () => {

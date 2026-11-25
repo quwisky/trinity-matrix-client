@@ -67,6 +67,7 @@ import {
   TrustDevicesService,
   type TrustProviderRecoveryPort,
 } from '@trinity/data-access/trust';
+import { OWN_PRESENCE_PREFERENCE } from '@trinity/data-access/identity';
 import {
   WIDGET_APPEARANCE_PROJECTION,
   type WidgetAppearanceProjection,
@@ -266,7 +267,10 @@ export function applicationCapabilityProviders(
           clearDrafts: () => drafts.clearAll(),
           forgetAccountPreferences: (accountId) =>
             preferences
-              .forgetAccount(accountId, TRUST_ACCOUNT_PREFERENCES)
+              .forgetAccount(accountId, [
+                ...TRUST_ACCOUNT_PREFERENCES,
+                OWN_PRESENCE_PREFERENCE,
+              ])
               .pipe(
                 map((outcome) => {
                   if (outcome.kind !== 'completed') {

@@ -9,6 +9,7 @@ export type ConfigOwner =
   | 'data-access/room-library'
   | 'data-access/app-lock'
   | 'data-access/trust'
+  | 'data-access/identity'
   | 'runtime/projection'
   | 'feature/settings';
 
@@ -408,6 +409,16 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     reason:
       'Per-device memory of which encryption prompt this device last needed, used only to ' +
       'reserve the banner space at start-up. Another device has its own trust state.',
+  },
+
+  // — data-access/identity —
+  {
+    disposition: 'excluded',
+    key: 'trinity.identity.own-presence',
+    owner: 'data-access/identity',
+    reason:
+      'The presence this device restores for an account when it signs in again. Each ' +
+      'device keeps its own choice.',
   },
 
   // — runtime/projection —

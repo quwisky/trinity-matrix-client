@@ -1,5 +1,16 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { Observable, Subscription, defer, from, switchMap, tap } from 'rxjs';
+import {
+  EMPTY,
+  Observable,
+  Subscription,
+  catchError,
+  defer,
+  from,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
+import { PreferenceStoreService } from '@trinity/runtime/preferences';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { type PresenceState, toPresenceState } from '@trinity/util/matrix';
 import {
@@ -12,6 +23,10 @@ import {
   identityNotReady,
   recoverIdentityOperation,
 } from './identity-operation-error';
+import {
+  OWN_PRESENCE_PREFERENCE,
+  type SavedOwnPresence,
+} from './own-presence.preference';
 
 export interface PresenceDetails {
   readonly state: PresenceState;
@@ -50,6 +65,7 @@ function reportedStatusMessage(user: IdentitySdkUser): string {
 export class IdentityPresenceService {
   private readonly matrix = inject(IdentityMatrixPort);
   private readonly runtime = inject(ProjectionRuntime);
+  private readonly preferences = inject(PreferenceStoreService);
   private readonly available = signal(false);
   /** Whether presence is known at all; false while it is loading or the server has it off. */
   readonly presenceAvailable = this.available.asReadonly();
@@ -145,6 +161,7 @@ export class IdentityPresenceService {
   private readonly projection = this.matrix.project({
     id: 'identity.presence',
     events: [IDENTITY_MATRIX_EVENTS.presence],
+    bind: (client) => this.restoreOwnPresence(client),
     // Re-seed tracked users: a re-login brings a fresh client whose users may differ.
     rebuild: (client) => {
       this.seedOwnPresence(client);
@@ -235,9 +252,52 @@ export class IdentityPresenceService {
             this._myStatusMessage.set(trimmed);
             this.ownWrittenAt = Date.now();
           }
+          this.saveOwnPresence(accountId, presence, trimmed);
         }),
       );
     }).pipe(recoverIdentityOperation('set-presence'));
+  }
+
+  /**
+   * Re-send the presence this Account last chose on this device: every new session starts
+   * online on the server otherwise. Best effort, and a choice made meanwhile wins.
+   */
+  private restoreOwnPresence(client: IdentityMatrixClient): void {
+    const accountId = client.getUserId();
+    if (!accountId) return;
+    this.preferences
+      .readSaved(OWN_PRESENCE_PREFERENCE, { kind: 'account', accountId })
+      .pipe(
+        switchMap((saved) =>
+          saved &&
+          this.ownWrittenAt === 0 &&
+          this.matrix.activeAccountId() === accountId
+            ? this.setOwnPresence(saved.presence, saved.statusMessage)
+            : EMPTY,
+        ),
+        catchError(() => EMPTY),
+      )
+      .subscribe();
+  }
+
+  private saveOwnPresence(
+    accountId: string,
+    presence: PresenceState,
+    statusMessage: string,
+  ): void {
+    const saved: SavedOwnPresence =
+      presence === 'online' && !statusMessage
+        ? null
+        : { presence, statusMessage };
+    // Best effort: a failed write only means the next session starts online.
+    this.preferences
+      .setPreference(
+        OWN_PRESENCE_PREFERENCE,
+        { kind: 'account', accountId },
+        saved,
+      )
+      .pipe(catchError(() => of(undefined)))
+      .subscribe();
   }
 
   /**
