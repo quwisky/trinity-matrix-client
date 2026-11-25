@@ -69,6 +69,12 @@ describe('CallService', () => {
     });
   });
 
+  // The service's import began earlier on the same module promise, so its continuation has run.
+  const loaded = async () => {
+    await import('./call-runtime');
+    await Promise.resolve();
+  };
+
   const opts = { video: true, dm: false, theme: 'dark' } as const;
 
   it('starts a call in the loading state', () => {
@@ -111,7 +117,8 @@ describe('CallService', () => {
     const service = TestBed.inject(CallService);
     service.start('!A', opts);
     service.attach(iframe).subscribe();
-    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+    await loaded();
+    expect(runtime.sessions).toHaveLength(1);
     service.start('!B', opts);
     expect(runtime.sessions[0].hangUp).toHaveBeenCalled();
     expect(service.activeCall()?.roomId).toBe('!B');
@@ -125,7 +132,8 @@ describe('CallService', () => {
     const done = firstValueFrom(service.attach(iframe), {
       defaultValue: null,
     });
-    await vi.waitFor(() => expect(runtime.start).toHaveBeenCalledTimes(1));
+    await loaded();
+    expect(runtime.start).toHaveBeenCalledTimes(1);
     expect(runtime.start.mock.calls[0][1]).toBe(
       service.activeCall()!.widgetUrl,
     );
@@ -142,7 +150,8 @@ describe('CallService', () => {
     const service = TestBed.inject(CallService);
     service.start('!r', opts);
     const subscription = service.attach(iframe).subscribe();
-    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+    await loaded();
+    expect(runtime.sessions).toHaveLength(1);
     subscription.unsubscribe();
     expect(runtime.sessions[0].hangUp).toHaveBeenCalled();
   });
@@ -153,7 +162,8 @@ describe('CallService', () => {
       const service = TestBed.inject(CallService);
       service.start('!r', opts);
       service.attach(iframe).subscribe();
-      await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+      await loaded();
+      expect(runtime.sessions).toHaveLength(1);
       activeUserId.set(next);
       TestBed.tick();
       expect(runtime.sessions[0].hangUp).toHaveBeenCalled();
@@ -161,14 +171,37 @@ describe('CallService', () => {
     },
   );
 
-  it('starts one session for two attaches of the same call', async () => {
+  it('starts one session for a second attach after the first bound', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    await loaded();
+    expect(runtime.sessions).toHaveLength(1);
+    service.attach(iframe).subscribe();
+    await loaded();
+    expect(runtime.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts one session for two concurrent attaches', async () => {
+    let open!: () => void;
+    runtime.gate = new Promise<void>((resolve) => (open = resolve));
     const service = TestBed.inject(CallService);
     service.start('!r', opts);
     service.attach(iframe).subscribe();
     service.attach(iframe).subscribe();
-    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    open();
+    await loaded();
     expect(runtime.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the call when the bound subscription is dropped', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    const subscription = service.attach(iframe).subscribe();
+    await loaded();
+    subscription.unsubscribe();
+    expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
+    expect(service.activeCall()).toBeNull();
   });
 
   it('ends the call when attach is dropped before the chunk resolves', async () => {
@@ -179,7 +212,7 @@ describe('CallService', () => {
     service.attach(iframe).subscribe().unsubscribe();
     expect(service.activeCall()).toBeNull();
     open();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await loaded();
     expect(runtime.start).not.toHaveBeenCalled();
   });
 
@@ -191,7 +224,7 @@ describe('CallService', () => {
     service.attach(iframe).subscribe();
     activeUserId.set('@you:hs');
     open();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await loaded();
     expect(runtime.start).not.toHaveBeenCalled();
   });
 
@@ -213,7 +246,8 @@ describe('CallService', () => {
     const service = TestBed.inject(CallService);
     service.start('!r', opts);
     const subscription = service.attach(iframe).subscribe();
-    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+    await loaded();
+    expect(runtime.sessions).toHaveLength(1);
     service.hangUp();
     subscription.unsubscribe();
     expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);

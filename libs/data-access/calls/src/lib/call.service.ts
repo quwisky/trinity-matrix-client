@@ -125,7 +125,10 @@ export class CallService {
               },
             );
             this.session.set(session);
-            return () => this.hangUpOnce(session);
+            return () => {
+              this.hangUpOnce(session);
+              if (this.call() === call) this.clear();
+            };
           });
         }),
         catchError(() => {
