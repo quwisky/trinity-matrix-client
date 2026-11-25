@@ -283,8 +283,8 @@ export class IdentityPresenceService {
     const accountId = client.getUserId();
     // Once per client: switching back to an Account must not undo a status set elsewhere since.
     // A restore cut short by a switch is not done, so it runs again on the way back.
-    if (!accountId || this.restoredClients.has(client)) return;
     this.restore.unsubscribe();
+    if (!accountId || this.restoredClients.has(client)) return;
     this.restore = this.preferences
       .readSaved(OWN_PRESENCE_PREFERENCE, { kind: 'account', accountId })
       .pipe(
