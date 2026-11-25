@@ -41,12 +41,30 @@
     border: 1px solid var(--trinity-border-control);
   }
 
+  /* Laid out as if the zoom buttons were direct children of the actions row. */
+  .lightbox__zoom {
+    display: contents;
+  }
+
   .lightbox__image {
     max-width: 100%;
     max-height: 100%;
     border-radius: var(--trinity-shape-container-radius);
     object-fit: contain;
     transition: transform var(--trinity-duration-overlay) ease-out;
+  }
+
+  /* A click on the image zooms in, and at the maximum back to fit; a zoomed image is dragged. */
+  .lightbox__image {
+    cursor: zoom-in;
+  }
+
+  :host(.lightbox--zoomed) .lightbox__image {
+    cursor: grab;
+  }
+
+  :host(.lightbox--max) .lightbox__image {
+    cursor: zoom-out;
   }
 
   /* A finger is down: the image follows it without easing. */
@@ -85,6 +103,11 @@
   /* A phone: the image takes the whole screen and the fingers own the surface. Gestures
    * need the browser to leave touches to the page. */
   @media (pointer: coarse) {
+    /* Fingers pinch; the buttons would crowd the bar that also frames the status area. */
+    .lightbox__zoom {
+      display: none;
+    }
+
     :host {
       padding: 0;
       cursor: default;
@@ -92,6 +115,12 @@
       user-select: none;
       -webkit-touch-callout: none;
       overflow: hidden;
+    }
+
+    .lightbox__image,
+    :host(.lightbox--zoomed) .lightbox__image,
+    :host(.lightbox--max) .lightbox__image {
+      cursor: default;
     }
 
     .lightbox__image {

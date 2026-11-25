@@ -18,7 +18,9 @@ import { FileSaveService } from '@trinity/platform-native';
 import { HostFileExportService } from '@trinity/runtime/host';
 import { MediaSaveService } from '../media-save.service';
 import {
+  MAX_SCALE,
   REST_VIEW,
+  ZOOM_STEP,
   backdropOpacity,
   clampScale,
   clampView,
@@ -27,6 +29,7 @@ import {
   isDoubleTap,
   isTap,
   shouldDismiss,
+  wheelScale,
   zoomAbout,
   type ImageView,
   type ViewPoint,
@@ -34,6 +37,8 @@ import {
 
 /** A finger's own click follows its lift within this long; a click much later is not its. */
 const FINGER_CLICK_WINDOW_MS = 500;
+/** A mouse press that moves further than this is a pan, and its click does not zoom. */
+const MOUSE_CLICK_TRAVEL_PX = 4;
 
 /**
  * A full-resolution image, filling the viewport over a dark backdrop.
@@ -42,9 +47,11 @@ const FINGER_CLICK_WINDOW_MS = 500;
  * gets the CDK dialog's focus trap, inert page behind it and top-of-stack overlay that a
  * row whose ancestors may clip it or open a stacking context cannot give.
  *
- * With a mouse the viewer fills the dialog pane and closes on any click (`zoom-out`). Its
- * padded surround is therefore the usable backdrop; CDK's own backdrop sits behind the
- * full-viewport pane and still owns modal isolation.
+ * With a mouse the viewer fills the dialog pane. A click on the image zooms in (back to fit at
+ * the maximum), the wheel or a trackpad pinch zooms at the pointer, a drag pans a zoomed image,
+ * and `+`, `-` and `0` zoom from the keyboard. A click on the padded surround closes it, so that
+ * surround is the usable backdrop; CDK's own backdrop sits behind the full-viewport pane and
+ * still owns modal isolation.
  *
  * Touch works the way a phone's photo viewer does: a tap shows or hides the controls, a double
  * tap or pinch zooms, a zoomed image pans, and a swipe down drags the image away to dismiss.
@@ -60,8 +67,12 @@ const FINGER_CLICK_WINDOW_MS = 500;
     class: 'lightbox',
     '[class.lightbox--bare]': '!controls()',
     '[class.lightbox--touching]': 'touching()',
+    '[class.lightbox--zoomed]': 'scale() > 1',
+    '[class.lightbox--max]': 'scale() >= maxScale',
     '(click)': 'hostClick($event)',
-    '(keydown)': 'revealControls()',
+    // The dialog around the viewer holds focus after a click, so keys are read from the page.
+    '(document:keydown)': 'keydown($event)',
+    '(wheel)': 'wheel($event)',
     '(focusin)': 'revealControls()',
     '(window:resize)': 'refit()',
     '(pointerdown)': 'pointerDown($event)',
@@ -100,6 +111,14 @@ export class LightboxComponent {
   private fingerLiftedAt = -Infinity;
   /** The viewer's box, read once per touch rather than on every move. */
   private rect: DOMRect | null = null;
+  /** A mouse drag panning a zoomed image; the click that ends it must not zoom. */
+  private mouseDrag: {
+    from: ViewPoint;
+    view: ImageView;
+    moved: boolean;
+  } | null = null;
+  /** When a mouse drag that moved ended; the click it produces follows at once, a later one is new. */
+  private draggedAt = -Infinity;
 
   /** Whether THIS item is being saved; other items' saves do not affect the button. */
   protected readonly busy = computed(() =>
@@ -108,6 +127,9 @@ export class LightboxComponent {
   /** The phone shows the controls only until a tap hides them; a mouse always has them. */
   protected readonly controls = signal(true);
   protected readonly touching = signal(false);
+  protected readonly scale = signal(1);
+  protected readonly maxScale = MAX_SCALE;
+  protected readonly zoomStep = ZOOM_STEP;
   /** Natively the host's save is the system share sheet, so name the action for what it does. */
   protected readonly shares = computed(
     () => this.exportSupported() && this.files.nativeAvailable,
@@ -132,10 +154,64 @@ export class LightboxComponent {
 
   protected hostClick(event: MouseEvent): void {
     if (event.timeStamp - this.fingerLiftedAt < FINGER_CLICK_WINDOW_MS) return;
-    this.close();
+    if (event.target !== this.image().nativeElement) {
+      this.close();
+    } else if (event.timeStamp - this.draggedAt < FINGER_CLICK_WINDOW_MS) {
+      this.draggedAt = -Infinity;
+    } else if (this.view.scale >= MAX_SCALE) {
+      this.resetZoom();
+    } else {
+      // An assistive click has no pointer position (detail 0): zoom about the centre.
+      this.zoomBy(ZOOM_STEP, event.detail ? this.point(event) : undefined);
+    }
   }
 
-  /** Hidden controls come back for a keyboard or screen reader user reaching for them. */
+  /** Zoom by a factor about a point measured from the viewer's centre. */
+  protected zoomBy(factor: number, focal: ViewPoint = { x: 0, y: 0 }): void {
+    const scale = clampScale(this.view.scale * factor);
+    this.show(
+      scale === 1
+        ? REST_VIEW
+        : clampView(zoomAbout(this.view, scale, focal), this.displayed()),
+    );
+  }
+
+  protected resetZoom(): void {
+    this.show(REST_VIEW);
+  }
+
+  /** Zoom buttons: the host closes on any click outside the image, so stop it here. */
+  protected zoomButton(event: Event, factor: number): void {
+    event.stopPropagation();
+    this.zoomBy(factor);
+  }
+
+  protected keydown(event: KeyboardEvent): void {
+    // Hidden controls come back for a keyboard or screen reader user reaching for them.
+    this.revealControls();
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const zoom: Record<string, () => void> = {
+      '+': () => this.zoomBy(ZOOM_STEP),
+      '=': () => this.zoomBy(ZOOM_STEP),
+      '-': () => this.zoomBy(1 / ZOOM_STEP),
+      '0': () => this.resetZoom(),
+    };
+    const action = zoom[event.key];
+    if (!action) return;
+    event.preventDefault();
+    action();
+  }
+
+  /** The wheel, and a trackpad pinch (a ctrl+wheel), zoom at the pointer instead of the page. */
+  protected wheel(event: WheelEvent): void {
+    event.preventDefault();
+    this.rect = null;
+    this.zoomBy(
+      wheelScale(this.view.scale, event.deltaY) / this.view.scale,
+      this.point(event),
+    );
+  }
+
   protected revealControls(): void {
     this.controls.set(true);
   }
@@ -147,11 +223,23 @@ export class LightboxComponent {
   }
 
   protected pointerDown(event: PointerEvent): void {
-    if (
-      event.pointerType === 'mouse' ||
-      (event.target as Element).closest('button') ||
-      this.dismissing
-    ) {
+    if (event.pointerType === 'mouse') {
+      const image = this.image().nativeElement;
+      if (event.target === image && event.button === 0 && this.view.scale > 1) {
+        this.rect = null;
+        this.mouseDrag = {
+          from: this.point(event),
+          view: this.view,
+          moved: false,
+        };
+        // On the image, not the host: a captured pointer's click goes to the capturing element,
+        // and a click on the host closes the viewer.
+        image.setPointerCapture?.(event.pointerId);
+        this.touching.set(true);
+      }
+      return;
+    }
+    if ((event.target as Element).closest('button') || this.dismissing) {
       return;
     }
     if (this.pointers.size === 0) {
@@ -171,6 +259,20 @@ export class LightboxComponent {
   }
 
   protected pointerMove(event: PointerEvent): void {
+    const drag = this.mouseDrag;
+    if (drag && event.pointerType === 'mouse') {
+      const here = this.point(event);
+      const dx = here.x - drag.from.x;
+      const dy = here.y - drag.from.y;
+      drag.moved ||= Math.hypot(dx, dy) > MOUSE_CLICK_TRAVEL_PX;
+      this.show(
+        clampView(
+          { ...drag.view, x: drag.view.x + dx, y: drag.view.y + dy },
+          this.displayed(),
+        ),
+      );
+      return;
+    }
     if (!this.pointers.has(event.pointerId)) return;
     this.pointers.set(event.pointerId, this.point(event));
     const box = this.displayed();
@@ -217,11 +319,21 @@ export class LightboxComponent {
   }
 
   protected pointerUp(event: PointerEvent): void {
+    if (this.endMouseDrag(event)) return;
     this.release(event, false);
   }
 
   protected pointerCancel(event: PointerEvent): void {
+    if (this.endMouseDrag(event)) return;
     this.release(event, true);
+  }
+
+  private endMouseDrag(event: PointerEvent): boolean {
+    if (event.pointerType !== 'mouse') return false;
+    if (this.mouseDrag?.moved) this.draggedAt = event.timeStamp;
+    if (this.mouseDrag) this.touching.set(false);
+    this.mouseDrag = null;
+    return true;
   }
 
   private release(event: PointerEvent, cancelled: boolean): void {
@@ -291,6 +403,7 @@ export class LightboxComponent {
 
   private show(view: ImageView): void {
     this.view = view;
+    this.scale.set(view.scale);
     this.image().nativeElement.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
   }
 
@@ -309,7 +422,7 @@ export class LightboxComponent {
   }
 
   /** Finger positions are kept relative to the viewer's centre, where the zoom is anchored. */
-  private point(event: PointerEvent): ViewPoint {
+  private point(event: MouseEvent): ViewPoint {
     const rect = (this.rect ??=
       this.host.nativeElement.getBoundingClientRect());
     return {

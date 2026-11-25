@@ -214,3 +214,157 @@ describe('LightboxComponent touch', () => {
     expect(document.activeElement).not.toBe(closeButton);
   });
 });
+
+describe('LightboxComponent zoom', () => {
+  const parts = (root: HTMLElement) => {
+    const image = root.querySelector<HTMLImageElement>('.lightbox__image')!;
+    const button = (id: string) =>
+      root.querySelector<HTMLButtonElement>(`[data-testid="lightbox-${id}"]`)!;
+    const scale = () =>
+      Number(/scale\(([\d.]+)\)/.exec(image.style.transform)?.[1] ?? 1);
+    return { image, button, scale };
+  };
+  const mouse = (target: Element, type: string, x: number, button = 0) =>
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        pointerType: 'mouse',
+        pointerId: 1,
+        clientX: x,
+        clientY: 0,
+        button,
+        bubbles: true,
+      }),
+    );
+  const drag = (image: Element, button = 0) => {
+    mouse(image, 'pointerdown', 0, button);
+    mouse(image, 'pointermove', 30, button);
+    mouse(image, 'pointerup', 30, button);
+  };
+  // From the document: after a click, focus is on the dialog around the viewer, not inside it.
+  const key = (_root: Element, value: string) =>
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: value, bubbles: true }),
+    );
+
+  it('zooms in on a click on the image and closes on a click on the matte', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image, scale } = parts(root);
+    image.click();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+    root.click();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes back to fit on a click at the maximum', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, scale } = parts(fixture.nativeElement);
+    for (let i = 0; i < 4; i++) image.click();
+    expect(scale()).toBe(4);
+    image.click();
+    expect(scale()).toBe(1);
+  });
+
+  it('zooms on the wheel and keeps it from the page', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const wheel = new WheelEvent('wheel', {
+      deltaY: -200,
+      ctrlKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    parts(root).image.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(parts(root).scale()).toBeGreaterThan(1);
+  });
+
+  it('zooms with + and - and resets with 0', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { scale } = parts(root);
+    key(root, '+');
+    expect(scale()).toBe(1.5);
+    key(root, '-');
+    expect(scale()).toBe(1);
+    key(root, '=');
+    key(root, '+');
+    key(root, '0');
+    expect(scale()).toBe(1);
+  });
+
+  it('steps with the zoom buttons and marks them at their limits', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { button, scale } = parts(root);
+    fixture.detectChanges();
+    expect(button('zoom-out').getAttribute('aria-disabled')).toBe('true');
+    button('zoom-in').click();
+    fixture.detectChanges();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+    expect(button('zoom-out').getAttribute('aria-disabled')).toBeNull();
+    for (let i = 0; i < 4; i++) button('zoom-in').click();
+    fixture.detectChanges();
+    expect(scale()).toBe(4);
+    expect(button('zoom-in').getAttribute('aria-disabled')).toBe('true');
+    button('zoom-in').click();
+    expect(scale()).toBe(4);
+  });
+
+  it('pans a zoomed image with a mouse drag without zooming or closing', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image, button, scale } = parts(root);
+    button('zoom-in').click();
+    mouse(image, 'pointerdown', 0);
+    mouse(image, 'pointermove', 30);
+    mouse(image, 'pointerup', 30);
+    image.click();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it('zooms on the next click once a drag whose own click never came is over', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, button, scale } = parts(fixture.nativeElement);
+    button('zoom-in').click();
+    drag(image);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    image.click();
+    expect(scale()).toBe(2.25);
+  });
+
+  it('does not pan with the right mouse button', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, button, scale } = parts(fixture.nativeElement);
+    button('zoom-in').click();
+    drag(image, 2);
+    image.click();
+    expect(scale()).toBe(2.25);
+  });
+
+  it('zooms an assistive click, which has no pointer position, about the centre', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image } = parts(root);
+    for (const [name, value] of [
+      ['clientWidth', 400],
+      ['clientHeight', 800],
+    ] as const) {
+      Object.defineProperty(image, name, { value, configurable: true });
+    }
+    root.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 400, height: 800 }) as DOMRect;
+    image.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        detail: 0,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+    expect(image.style.transform).toBe('translate(0px, 0px) scale(1.5)');
+  });
+});

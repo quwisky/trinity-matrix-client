@@ -27,6 +27,16 @@ const FLICK_MIN_PX = 40;
 export const clampScale = (scale: number): number =>
   Math.min(MAX_SCALE, Math.max(1, scale));
 
+/** One click, button press or key press of zoom. */
+export const ZOOM_STEP = 1.5;
+
+/**
+ * The scale after a wheel turn. Exponential, so a mouse wheel's large steps and a trackpad
+ * pinch's many small ones (sent as ctrl+wheel) zoom at the same rate, and scrolling back undoes it.
+ */
+export const wheelScale = (scale: number, deltaY: number): number =>
+  clampScale(scale * Math.exp(-deltaY * 0.002));
+
 /** The size a `contain`-fitted image really occupies inside its element box. */
 export function containedSize(
   box: { readonly width: number; readonly height: number },

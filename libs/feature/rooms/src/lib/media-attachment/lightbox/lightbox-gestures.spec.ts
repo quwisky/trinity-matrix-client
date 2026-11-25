@@ -11,6 +11,7 @@ import {
   isDoubleTap,
   isTap,
   shouldDismiss,
+  wheelScale,
   zoomAbout,
 } from './lightbox-gestures';
 
@@ -82,5 +83,13 @@ describe('lightbox gestures', () => {
     expect(backdropOpacity(0, 800)).toBe(1);
     expect(backdropOpacity(400, 800)).toBe(0.5);
     expect(backdropOpacity(800, 800)).toBe(0.3);
+  });
+
+  it('zooms with the wheel within the limits, and a scroll back undoes it', () => {
+    expect(wheelScale(1, -100)).toBeGreaterThan(1);
+    expect(wheelScale(2, 100)).toBeLessThan(2);
+    expect(wheelScale(1, 500)).toBe(1);
+    expect(wheelScale(MAX_SCALE, -500)).toBe(MAX_SCALE);
+    expect(wheelScale(wheelScale(2, -50), 50)).toBeCloseTo(2);
   });
 });
