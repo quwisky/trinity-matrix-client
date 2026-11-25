@@ -113,6 +113,33 @@ describe('CallService', () => {
     expect(service.activeCall()).toBeNull();
   });
 
+  it('gives each started call its own id, even in the same room', () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    const first = service.activeCall()!.id;
+    service.start('!r', opts);
+    expect(service.activeCall()!.id).not.toBe(first);
+  });
+
+  it('keeps the id while the call state changes', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    const id = service.activeCall()!.id;
+    service.attach(iframe).subscribe();
+    await loaded();
+    runtime.sessions[0].state.set('joined');
+    expect(service.activeCall()).toMatchObject({ id, state: 'joined' });
+  });
+
+  it('keeps the current call and its id when a start does nothing', () => {
+    const service = TestBed.inject(CallService);
+    service.start('!A', opts);
+    const id = service.activeCall()!.id;
+    hasClient.set(false);
+    service.start('!B', opts);
+    expect(service.activeCall()).toMatchObject({ id, roomId: '!A' });
+  });
+
   it('hangs up the current call before starting another room', async () => {
     const service = TestBed.inject(CallService);
     service.start('!A', opts);

@@ -439,15 +439,14 @@ export class RoomsPage {
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
 
-  /** Bumped per started call: a new call needs a new frame, never the old one's iframe. */
-  private readonly callGeneration = signal(0);
   /**
-   * One key per frame. `start` ends the old call and sets the new one in one task, so
+   * One frame per call id. `start` ends the old call and sets the new one in one task, so
    * `@if (activeCall())` alone would keep the old frame and never attach the new call.
    */
-  protected readonly callFrames = computed(() =>
-    this.calls.activeCall() ? [this.callGeneration()] : [],
-  );
+  protected readonly callFrames = computed(() => {
+    const id = this.calls.activeCall()?.id;
+    return id === undefined ? [] : [id];
+  });
 
   /** The call frame fills the conversation area only in the call's own room. */
   protected readonly callExpanded = computed(
@@ -489,14 +488,12 @@ export class RoomsPage {
     const running = active && active.state !== 'failed' ? active : null;
     // Already in this room's call: the frame is expanded here.
     if (running?.roomId === room.id) return;
-    const start = () => {
+    const start = () =>
       this.calls.start(room.id, {
         video,
         dm: !!room.directUserId,
         theme: this.rootTheme.key().startsWith('dark') ? 'dark' : 'light',
       });
-      this.callGeneration.update((generation) => generation + 1);
-    };
     if (!running) return start();
     const callRoom =
       this.nav.knownRooms().find((known) => known.id === running.roomId)

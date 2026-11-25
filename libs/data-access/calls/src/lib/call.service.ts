@@ -16,6 +16,8 @@ import type { CallSession, CallSessionState } from './call-runtime';
 import { matrixCallTransport } from './matrix-call-transport';
 
 export interface ActiveCall {
+  /** New for every started call, so a view can give each call its own frame. */
+  readonly id: number;
   readonly roomId: string;
   readonly accountId: string;
   readonly widgetUrl: string;
@@ -23,6 +25,7 @@ export interface ActiveCall {
 }
 
 interface Call {
+  readonly id: number;
   readonly roomId: string;
   readonly accountId: string;
   readonly widgetUrl: string;
@@ -43,15 +46,16 @@ export class CallService {
   private readonly session = signal<CallSession | null>(null);
   private readonly hungUp = new WeakSet<CallSession>();
   private readonly loadFailed = signal(false);
+  private lastId = 0;
 
   readonly activeCall = computed<ActiveCall | null>(() => {
     const call = this.call();
     if (!call) return null;
-    const { roomId, accountId, widgetUrl } = call;
+    const { id, roomId, accountId, widgetUrl } = call;
     const state = this.loadFailed()
       ? 'failed'
       : (this.session()?.state() ?? 'loading');
-    return { roomId, accountId, widgetUrl, state };
+    return { id, roomId, accountId, widgetUrl, state };
   });
 
   constructor() {
@@ -86,7 +90,13 @@ export class CallService {
       theme: options.theme,
     });
     this.loadFailed.set(false);
-    this.call.set({ roomId, accountId, widgetUrl, transport });
+    this.call.set({
+      id: ++this.lastId,
+      roomId,
+      accountId,
+      widgetUrl,
+      transport,
+    });
   }
 
   /**

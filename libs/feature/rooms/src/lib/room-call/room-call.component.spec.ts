@@ -8,6 +8,7 @@ import { RoomShellNavigationService } from '../rooms/room-shell-navigation.servi
 import { RoomCallComponent } from './room-call.component';
 
 const CALL: ActiveCall = {
+  id: 1,
   roomId: '!call:hs',
   accountId: '@me:hs',
   widgetUrl: 'trinity://app/element-call/index.html#?roomId=!call:hs',

@@ -704,7 +704,9 @@ describe('RoomsPage body for a room the client holds but the user has not joined
 });
 
 describe('RoomsPage calls', () => {
+  let lastId = 0;
   const ongoing = (roomId: string): ActiveCall => ({
+    id: ++lastId,
     roomId,
     accountId: '@me:hs',
     widgetUrl: 'trinity://app/element-call/index.html',
