@@ -6,6 +6,7 @@ import type {
   RawCallEvent,
 } from './call-transport';
 import {
+  CALL_CLOSE_GRACE_MS,
   CALL_LEAVE_TIMEOUT_MS,
   CALL_LOAD_TIMEOUT_MS,
   startCallSession,
@@ -46,14 +47,14 @@ const { FakeClientWidgetApi, apis } = vi.hoisted(() => {
     }
 
     /** Mirrors ClientWidgetApi: an `action:*` CustomEvent the listener may cancel. */
-    fromWidget(action: string): CustomEvent {
+    fromWidget(action: string, data: object = {}): CustomEvent {
       const ev = new CustomEvent(`action:${action}`, {
         detail: {
           api: 'fromWidget',
           widgetId: 'w',
           requestId: 'r',
           action,
-          data: {},
+          data,
         },
         cancelable: true,
       });
@@ -169,8 +170,110 @@ describe('startCallSession', () => {
     expect(session.state()).toBe('joined');
   });
 
+  it.each([
+    ['io.element.join', {}],
+    ['set_always_on_screen', { value: true }],
+    ['io.element.device_mute', { audio_enabled: true, video_enabled: true }],
+  ])('answers %s with an empty reply', (action, data) => {
+    const { api } = setup();
+
+    const ev = api.fromWidget(action, data);
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(api.transport.reply).toHaveBeenCalledWith(ev.detail, {});
+  });
+
+  it('marks the session joined once Element Call joins the call', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session } = setup();
+
+      api.fromWidget('io.element.join');
+      vi.advanceTimersByTime(CALL_LOAD_TIMEOUT_MS);
+
+      expect(session.state()).toBe('joined');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails a session that Element Call closes before joining', () => {
+    const { api, session, onEnded } = setup();
+    api.fromWidget('content_loaded');
+
+    api.fromWidget('io.element.close');
+
+    expect(session.state()).toBe('failed');
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a session hung up before joining once Element Call closes', async () => {
+    const { api, session } = setup();
+    api.fromWidget('content_loaded');
+
+    session.hangUp();
+    await Promise.resolve();
+    api.fromWidget('io.element.close');
+
+    expect(session.state()).toBe('ended');
+  });
+
+  // Element Call 0.28 leaves on a fatal error without asking to close: it only gives up
+  // always-on-screen and shows its own error screen.
+  it('fails a joined session that stops showing without asking to close', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session, onEnded } = setup();
+      api.fromWidget('io.element.join');
+
+      api.fromWidget('set_always_on_screen', { value: false });
+      vi.advanceTimersByTime(CALL_CLOSE_GRACE_MS - 1);
+      expect(session.state()).toBe('joined');
+      vi.advanceTimersByTime(1);
+
+      expect(session.state()).toBe('failed');
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ends a joined session that stops showing and then asks to close', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session, onEnded } = setup();
+      api.fromWidget('io.element.join');
+
+      api.fromWidget('set_always_on_screen', { value: false });
+      api.fromWidget('io.element.close');
+      vi.advanceTimersByTime(CALL_CLOSE_GRACE_MS);
+
+      expect(session.state()).toBe('ended');
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps waiting for the leave of a hung-up session that stops showing', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session } = setup();
+      api.fromWidget('io.element.join');
+      api.fromWidget('im.vector.hangup');
+
+      api.fromWidget('set_always_on_screen', { value: false });
+      vi.advanceTimersByTime(CALL_CLOSE_GRACE_MS);
+
+      expect(session.state()).toBe('joined');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ends the session when Element Call asks to be closed', () => {
     const { api, session, onEnded, roomEvents, toDevice } = setup();
+    api.fromWidget('io.element.join');
 
     const ev = api.fromWidget('io.element.close');
     api.fromWidget('io.element.close');
@@ -188,6 +291,7 @@ describe('startCallSession', () => {
   it('keeps the session after Element Call reports its own hang-up until it asks to close', () => {
     const { api, session, onEnded } = setup();
     api.fromWidget('content_loaded');
+    api.fromWidget('io.element.join');
 
     const ev = api.fromWidget('im.vector.hangup');
 

@@ -31,12 +31,22 @@ export interface CallSession {
  */
 const CLOSE_ACTION = 'io.element.close';
 const HANGUP_ACTION = 'im.vector.hangup';
+/** Sent once Element Call enters the call, before it reaches its media service. */
+const JOIN_ACTION = 'io.element.join';
+const ALWAYS_ON_SCREEN_ACTION = 'set_always_on_screen';
+const DEVICE_MUTE_ACTION = 'io.element.device_mute';
 
 /** How long Element Call may take to report `content_loaded` before the call fails. */
 export const CALL_LOAD_TIMEOUT_MS = 25_000;
 
 /** How long Element Call may take, once hung up, to leave and ask to be closed. */
 export const CALL_LEAVE_TIMEOUT_MS = 10_000;
+
+/**
+ * How long Element Call may take, once it gives up always-on-screen without a hang-up, to ask
+ * to be closed. On a fatal error (LiveKit or its token service unreachable) it never asks.
+ */
+export const CALL_CLOSE_GRACE_MS = 2_000;
 
 /** Bind a call-scoped client Widget API to a frame, then load Element Call into it. */
 export function startCallSession(
@@ -76,28 +86,48 @@ class ActiveCallSession implements CallSession {
   private readonly currentState = signal<CallSessionState>('loading');
   private readonly subscriptions: Subscription[];
   private finished = false;
+  private joinedCall = false;
+  private hungUp = false;
   private readonly loadTimer = setTimeout(
     () => this.finish('failed'),
     CALL_LOAD_TIMEOUT_MS,
   );
   private leaveTimer: ReturnType<typeof setTimeout> | undefined;
+  private closeTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly onContentLoaded = (): void => {
     clearTimeout(this.loadTimer);
     if (!this.finished) this.currentState.set('joined');
   };
   private readonly onClose = (ev: CustomEvent<IWidgetApiRequest>): void => {
-    ev.preventDefault();
-    this.api.transport.reply(ev.detail, {});
-    this.finish('ended');
+    this.answer(ev);
+    this.finish(this.joinedCall || this.hungUp ? 'ended' : 'failed');
   };
   private readonly onWidgetHangUp = (
     ev: CustomEvent<IWidgetApiRequest>,
   ): void => {
-    ev.preventDefault();
-    this.api.transport.reply(ev.detail, {});
+    this.answer(ev);
+    this.hungUp = true;
     this.awaitLeave();
   };
+  private readonly onJoin = (ev: CustomEvent<IWidgetApiRequest>): void => {
+    this.answer(ev);
+    this.joinedCall = true;
+    this.onContentLoaded();
+  };
+  private readonly onAlwaysOnScreen = (
+    ev: CustomEvent<IWidgetApiRequest>,
+  ): void => {
+    this.answer(ev);
+    if (ev.detail.data['value'] === false && !this.hungUp && !this.finished) {
+      this.closeTimer ??= setTimeout(
+        () => this.finish('failed'),
+        CALL_CLOSE_GRACE_MS,
+      );
+    }
+  };
+  private readonly onDeviceMute = (ev: CustomEvent<IWidgetApiRequest>): void =>
+    this.answer(ev);
   private readonly onPreparingError = (): void => this.finish('failed');
 
   readonly state = this.currentState.asReadonly();
@@ -126,19 +156,40 @@ class ActiveCallSession implements CallSession {
       `action:${WidgetApiFromWidgetAction.ContentLoaded}`,
       this.onContentLoaded,
     );
-    api.on(`action:${CLOSE_ACTION}`, this.onClose);
-    api.on(`action:${HANGUP_ACTION}`, this.onWidgetHangUp);
+    for (const [action, listener] of this.actionListeners()) {
+      api.on(`action:${action}`, listener);
+    }
     api.on('error:preparing', this.onPreparingError);
   }
 
   hangUp(): void {
     if (this.finished) return;
+    this.hungUp = true;
     clearTimeout(this.loadTimer);
     // A widget that cannot answer cannot leave either, so end at once.
     this.api.transport.send(HANGUP_ACTION, {}).then(
       () => this.awaitLeave(),
       () => this.finish('ended'),
     );
+  }
+
+  private actionListeners(): [
+    string,
+    (ev: CustomEvent<IWidgetApiRequest>) => void,
+  ][] {
+    return [
+      [CLOSE_ACTION, this.onClose],
+      [HANGUP_ACTION, this.onWidgetHangUp],
+      [JOIN_ACTION, this.onJoin],
+      [ALWAYS_ON_SCREEN_ACTION, this.onAlwaysOnScreen],
+      [DEVICE_MUTE_ACTION, this.onDeviceMute],
+    ];
+  }
+
+  /** Claims a widget request so ClientWidgetApi does not also reject it as unsupported. */
+  private answer(ev: CustomEvent<IWidgetApiRequest>): void {
+    ev.preventDefault();
+    this.api.transport.reply(ev.detail, {});
   }
 
   private awaitLeave(): void {
@@ -154,14 +205,16 @@ class ActiveCallSession implements CallSession {
     this.finished = true;
     clearTimeout(this.loadTimer);
     clearTimeout(this.leaveTimer);
+    clearTimeout(this.closeTimer);
     this.currentState.set(state);
     for (const subscription of this.subscriptions) subscription.unsubscribe();
     this.api.removeListener(
       `action:${WidgetApiFromWidgetAction.ContentLoaded}`,
       this.onContentLoaded,
     );
-    this.api.removeListener(`action:${CLOSE_ACTION}`, this.onClose);
-    this.api.removeListener(`action:${HANGUP_ACTION}`, this.onWidgetHangUp);
+    for (const [action, listener] of this.actionListeners()) {
+      this.api.removeListener(`action:${action}`, listener);
+    }
     this.api.removeListener('error:preparing', this.onPreparingError);
     this.api.stop();
     this.onEnded();
