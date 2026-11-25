@@ -196,6 +196,23 @@ test.describe('Image viewer on a desktop', () => {
     await page.getByTestId('lightbox-zoom-in').click();
     await expect.poll(() => imageScale(page)).toBeCloseTo(1.5);
     await expect(dialog).toBeVisible();
+
+    // A zoomed image pans under a drag, without easing, and stays open; a click zooms further.
+    const box = (await image.boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await page.mouse.move(centre.x, centre.y);
+    await page.mouse.down();
+    await page.mouse.move(centre.x + 60, centre.y + 40, { steps: 4 });
+    await expect(page.locator('trn-lightbox')).toHaveClass(
+      /lightbox--touching/,
+    );
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => imageScale(page)).toBeCloseTo(1.5);
+    await image.click();
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => imageScale(page)).toBeCloseTo(2.25);
+    await page.keyboard.press('0');
     await testInfo.attach('image-viewer-zoomed', {
       body: await page.screenshot({ animations: 'disabled' }),
       contentType: 'image/png',

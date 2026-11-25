@@ -224,16 +224,22 @@ describe('LightboxComponent zoom', () => {
       Number(/scale\(([\d.]+)\)/.exec(image.style.transform)?.[1] ?? 1);
     return { image, button, scale };
   };
-  const mouse = (target: Element, type: string, x: number) =>
+  const mouse = (target: Element, type: string, x: number, button = 0) =>
     target.dispatchEvent(
       new PointerEvent(type, {
         pointerType: 'mouse',
         pointerId: 1,
         clientX: x,
         clientY: 0,
+        button,
         bubbles: true,
       }),
     );
+  const drag = (image: Element, button = 0) => {
+    mouse(image, 'pointerdown', 0, button);
+    mouse(image, 'pointermove', 30, button);
+    mouse(image, 'pointerup', 30, button);
+  };
   // From the document: after a click, focus is on the dialog around the viewer, not inside it.
   const key = (_root: Element, value: string) =>
     document.body.dispatchEvent(
@@ -318,5 +324,47 @@ describe('LightboxComponent zoom', () => {
     image.click();
     expect(scale()).toBe(1.5);
     expect(close).not.toHaveBeenCalled();
+  });
+
+  it('zooms on the next click once a drag whose own click never came is over', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, button, scale } = parts(fixture.nativeElement);
+    button('zoom-in').click();
+    drag(image);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    image.click();
+    expect(scale()).toBe(2.25);
+  });
+
+  it('does not pan with the right mouse button', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, button, scale } = parts(fixture.nativeElement);
+    button('zoom-in').click();
+    drag(image, 2);
+    image.click();
+    expect(scale()).toBe(2.25);
+  });
+
+  it('zooms an assistive click, which has no pointer position, about the centre', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image } = parts(root);
+    for (const [name, value] of [
+      ['clientWidth', 400],
+      ['clientHeight', 800],
+    ] as const) {
+      Object.defineProperty(image, name, { value, configurable: true });
+    }
+    root.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 400, height: 800 }) as DOMRect;
+    image.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        detail: 0,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+    expect(image.style.transform).toBe('translate(0px, 0px) scale(1.5)');
   });
 });

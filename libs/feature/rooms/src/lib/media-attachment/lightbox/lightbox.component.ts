@@ -117,7 +117,8 @@ export class LightboxComponent {
     view: ImageView;
     moved: boolean;
   } | null = null;
-  private dragClick = false;
+  /** When a mouse drag that moved ended; the click it produces follows at once, a later one is new. */
+  private draggedAt = -Infinity;
 
   /** Whether THIS item is being saved; other items' saves do not affect the button. */
   protected readonly busy = computed(() =>
@@ -155,12 +156,13 @@ export class LightboxComponent {
     if (event.timeStamp - this.fingerLiftedAt < FINGER_CLICK_WINDOW_MS) return;
     if (event.target !== this.image().nativeElement) {
       this.close();
-    } else if (this.dragClick) {
-      this.dragClick = false;
+    } else if (event.timeStamp - this.draggedAt < FINGER_CLICK_WINDOW_MS) {
+      this.draggedAt = -Infinity;
     } else if (this.view.scale >= MAX_SCALE) {
       this.resetZoom();
     } else {
-      this.zoomBy(ZOOM_STEP, this.point(event));
+      // An assistive click has no pointer position (detail 0): zoom about the centre.
+      this.zoomBy(ZOOM_STEP, event.detail ? this.point(event) : undefined);
     }
   }
 
@@ -222,14 +224,18 @@ export class LightboxComponent {
 
   protected pointerDown(event: PointerEvent): void {
     if (event.pointerType === 'mouse') {
-      if (event.target === this.image().nativeElement && this.view.scale > 1) {
+      const image = this.image().nativeElement;
+      if (event.target === image && event.button === 0 && this.view.scale > 1) {
         this.rect = null;
         this.mouseDrag = {
           from: this.point(event),
           view: this.view,
           moved: false,
         };
-        this.host.nativeElement.setPointerCapture?.(event.pointerId);
+        // On the image, not the host: a captured pointer's click goes to the capturing element,
+        // and a click on the host closes the viewer.
+        image.setPointerCapture?.(event.pointerId);
+        this.touching.set(true);
       }
       return;
     }
@@ -324,7 +330,8 @@ export class LightboxComponent {
 
   private endMouseDrag(event: PointerEvent): boolean {
     if (event.pointerType !== 'mouse') return false;
-    this.dragClick = this.mouseDrag?.moved ?? false;
+    if (this.mouseDrag?.moved) this.draggedAt = event.timeStamp;
+    if (this.mouseDrag) this.touching.set(false);
     this.mouseDrag = null;
     return true;
   }
