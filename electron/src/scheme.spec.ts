@@ -280,6 +280,22 @@ describe('registerAppProtocol — streaming', () => {
     expect(res.headers.get('x-frame-options')).toBe('DENY');
   });
 
+  it('keeps look-alike paths unframeable', async () => {
+    for (const rel of [
+      'element-call-evil/index.html',
+      'x/element-call/index.html',
+    ]) {
+      fakeFiles.set(path.join(WWW_ROOT, rel), Buffer.from('<p>x</p>'));
+
+      const res = await handler({ url: `trinity://app/${rel}` });
+
+      expect(res.headers.get('content-security-policy')).toBe(
+        "frame-ancestors 'none'",
+      );
+      expect(res.headers.get('x-frame-options')).toBe('DENY');
+    }
+  });
+
   it('answers 404 when the file vanishes between stat and open', async () => {
     const gone = path.join(WWW_ROOT, 'gone.js');
     fakeFiles.set(gone, Buffer.from('x'));
