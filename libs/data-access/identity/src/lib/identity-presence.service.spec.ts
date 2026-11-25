@@ -657,6 +657,47 @@ describe('IdentityPresenceService', () => {
       expect(svc.myPresence()).toBe('unavailable');
     });
 
+    it('sends the remembered status only once per client, not on every account switch', async () => {
+      const { svc, client, matrix, storage, activeUserId } = setup();
+      storage.saveOwnPresence({ presence: 'unavailable', statusMessage: '' });
+      svc.runProjection().subscribe();
+      TestBed.inject(ApplicationRef).tick();
+      await vi.waitFor(() => expect(client.setPresence).toHaveBeenCalledOnce());
+      const other = fakeClient();
+      other.getUserId.mockReturnValue('@other:hs');
+      ngMocks.stubMember(matrix, 'instance', asClient(other));
+      activeUserId.set('@other:hs');
+      TestBed.inject(ApplicationRef).tick();
+      ngMocks.stubMember(matrix, 'instance', asClient(client));
+      activeUserId.set(SELF);
+      TestBed.inject(ApplicationRef).tick();
+      expect(client.on.mock.calls.length).toBeGreaterThan(1); // re-bound to it
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(client.setPresence).toHaveBeenCalledOnce();
+    });
+
+    it('keeps a status chosen while the remembered one is being sent', async () => {
+      const { svc, client, storage } = setup();
+      storage.saveOwnPresence({ presence: 'unavailable', statusMessage: '' });
+      let finishRestore!: () => void;
+      client.setPresence.mockReturnValueOnce(
+        new Promise<void>((resolve) => (finishRestore = resolve)),
+      );
+      svc.runProjection().subscribe();
+      await vi.waitFor(() => expect(client.setPresence).toHaveBeenCalledOnce());
+      await firstValueFrom(svc.setOwnPresence('offline', ''));
+      finishRestore();
+      await vi.waitFor(() =>
+        expect(client.setSyncPresence).toHaveBeenCalledTimes(2),
+      );
+      expect(svc.myPresence()).toBe('offline');
+      expect(storage.ownPresence()).toEqual({
+        presence: 'offline',
+        statusMessage: '',
+      });
+    });
+
     it('sends nothing on connect when no status was chosen', async () => {
       const { svc, client } = setup();
       svc.runProjection().subscribe();
