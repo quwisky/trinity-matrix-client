@@ -344,8 +344,8 @@ for (const mobile of [false, true]) {
         const observer = await apiLogin(
           request,
           session.hs as string,
-          reader.user,
-          reader.pass,
+          reader.user as string,
+          reader.pass as string,
         );
         const status = await request.get(
           `${session.hs}/_matrix/client/v3/presence/${encodeURIComponent(observer.userId)}/status`,
