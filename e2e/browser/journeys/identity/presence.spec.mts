@@ -216,14 +216,22 @@ for (const mobile of [false, true]) {
           testResourceId('avatar-presence'),
         );
         const body = `Avatar presence ${testResourceId('message')}`;
-        await request.put(
-          `${hs}/_matrix/client/v3/presence/${encodeURIComponent(member.userId)}/status`,
-          { headers: member.headers, data: { presence: 'unavailable' } },
-        );
-        await request.put(
+        // The member never syncs, so the server lets their presence lapse; set it again
+        // before each check that needs it known.
+        const setMemberAway = async (): Promise<void> => {
+          const response = await request.put(
+            `${hs}/_matrix/client/v3/presence/${encodeURIComponent(member.userId)}/status`,
+            { headers: member.headers, data: { presence: 'unavailable' } },
+          );
+          expect(response.ok()).toBe(true);
+        };
+        const sent = await request.put(
           `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${testResourceId('txn')}`,
           { headers: member.headers, data: { msgtype: 'm.text', body } },
         );
+        expect(sent.ok()).toBe(true);
+        // After the send: sending marks the member active, which would read as online.
+        await setMemberAway();
 
         await page.emulateMedia({ colorScheme: 'dark' });
         await login(page, reader);
@@ -241,14 +249,22 @@ for (const mobile of [false, true]) {
           contentType: 'image/png',
         });
 
-        // A phone opens Settings from the room list, not from inside a room.
-        await page.goto('/rooms');
-        await openSettingsSection(page, 'appearance');
         const setting = page.getByTestId('timeline-avatar-presence');
-        await setting.scrollIntoViewIfNeeded();
-        await expect(setting).toContainText('Show presence on message avatars');
-        await setting.locator('trn-switch').click();
-        await expect(setting.getByRole('switch')).not.toBeChecked();
+        const switchSetting = async (on: boolean): Promise<void> => {
+          // A phone opens Settings from the room list, not from inside a room.
+          await page.goto('/rooms');
+          await openSettingsSection(page, 'appearance');
+          await setting.scrollIntoViewIfNeeded();
+          await expect(setting).toContainText(
+            'Show presence on message avatars',
+          );
+          await setting.locator('trn-switch').click();
+          await expect(setting.getByRole('switch')).toBeChecked({
+            checked: on,
+          });
+        };
+
+        await switchSetting(false);
         await testInfo.attach('timeline-avatar-presence-setting', {
           body: await page.screenshot({ animations: 'disabled' }),
           contentType: 'image/png',
@@ -262,6 +278,16 @@ for (const mobile of [false, true]) {
         await testInfo.attach('timeline-avatar-presence-off', {
           body: await page.screenshot({ animations: 'disabled' }),
           contentType: 'image/png',
+        });
+
+        // Switching back on brings the dot back, so the empty check above was the setting
+        // at work and not presence that had lapsed.
+        await setMemberAway();
+        await switchSetting(true);
+        await page.goto('/rooms');
+        await openNamedRoom(page, roomName);
+        await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
+          timeout: 30_000,
         });
       });
     },
