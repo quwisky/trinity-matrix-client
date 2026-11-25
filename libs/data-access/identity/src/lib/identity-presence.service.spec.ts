@@ -132,6 +132,9 @@ describe('IdentityPresenceService', () => {
         lastActiveAgo: 7_200_000,
         lastPresenceTs: NOW,
         currentlyActive: false,
+        events: {
+          presence: presenceEvent({ presence, status_msg: 'On holiday' }),
+        },
       });
 
     beforeEach(() => {
@@ -202,6 +205,21 @@ describe('IdentityPresenceService', () => {
           '@a:hs',
         ),
       ).toBe(false);
+    });
+
+    // The SDK only overwrites presenceStatusMsg when an event carries a message.
+    it('reads a message the member cleared as cleared', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'online',
+        presenceStatusMsg: 'On holiday',
+        lastPresenceTs: NOW,
+        events: { presence: presenceEvent({ presence: 'online' }) },
+      });
+      svc.runProjection().subscribe();
+
+      expect(svc.peekDetails('@a:hs')?.statusMessage).toBe('');
     });
 
     it('peeks null for a user the server never reported (SDK default offline)', () => {

@@ -6,6 +6,7 @@ import {
   IDENTITY_MATRIX_EVENTS,
   IdentityMatrixPort,
   type IdentityMatrixClient,
+  type IdentitySdkUser,
 } from '@trinity/data-access/matrix-client';
 import {
   identityNotReady,
@@ -33,6 +34,15 @@ function samePresenceDetails(
       a.lastActiveAt === b.lastActiveAt &&
       a.currentlyActive === b.currentlyActive)
   );
+}
+
+/**
+ * The status message in the user's last presence event. Not `presenceStatusMsg`: the SDK only
+ * overwrites that when an event carries a message, so a cleared one would linger.
+ */
+function reportedStatusMessage(user: IdentitySdkUser): string {
+  const message = user.events?.presence?.getContent().status_msg;
+  return typeof message === 'string' ? message : '';
 }
 
 /** Projects authoritative Matrix presence; unavailable or unseen status remains unknown. */
@@ -241,9 +251,7 @@ export class IdentityPresenceService {
       return;
     }
     this._myPresence.set(toPresenceState(user.presence ?? 'online'));
-    // From the event itself: the SDK's presenceStatusMsg keeps a message the user cleared.
-    const message = user.events?.presence?.getContent().status_msg;
-    this._myStatusMessage.set(typeof message === 'string' ? message : '');
+    this._myStatusMessage.set(reportedStatusMessage(user));
   }
 
   private currentDetails(
@@ -261,7 +269,9 @@ export class IdentityPresenceService {
       statusMessage:
         userId === client.getUserId()
           ? this._myStatusMessage()
-          : (user?.presenceStatusMsg ?? ''),
+          : user
+            ? reportedStatusMessage(user)
+            : '',
       // Same anchor as the SDK's getLastActiveTs().
       lastActiveAt:
         user?.lastPresenceTs && user.lastActiveAgo != null
