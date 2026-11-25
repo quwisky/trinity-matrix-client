@@ -1,4 +1,5 @@
 import {
+  AutoDiscovery,
   ClientEvent,
   Direction,
   EventTimeline,
@@ -231,15 +232,18 @@ export function matrixCallTransport(
           Method.Get,
           '/rtc/transports',
         );
-        return response.rtc_transports ?? [];
+        if (response.rtc_transports?.length) return response.rtc_transports;
       } catch (error) {
         if (!(error instanceof MatrixError) || !isUnsupported(error)) {
           throw error;
         }
-        const foci =
-          client.getClientWellKnown()?.['org.matrix.msc4143.rtc_foci'];
-        return Array.isArray(foci) ? foci : [];
       }
+      // The client never polls its own well-known copy, so read the server name's afresh.
+      const wellKnown = await AutoDiscovery.getRawClientConfig(
+        client.getDomain() ?? '',
+      ).catch(() => undefined);
+      const foci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
+      return Array.isArray(foci) ? foci : [];
     },
 
     livekitToken(body) {

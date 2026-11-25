@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import {
+  AutoDiscovery,
   ClientEvent,
   Direction,
   MatrixError,
@@ -11,7 +12,7 @@ import {
   type IEvent,
   type MatrixClient,
 } from 'matrix-js-sdk';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RawCallEvent } from './call-transport';
 import { matrixCallTransport } from './matrix-call-transport';
 
@@ -96,9 +97,7 @@ function setup() {
       prevBatch: null,
     }),
     getOpenIdToken: vi.fn().mockResolvedValue({ access_token: 't' }),
-    getClientWellKnown: vi.fn(() => ({
-      'org.matrix.msc4143.rtc_foci': [{ type: 'livekit' }],
-    })),
+    getDomain: () => 'example.org',
     http: { authedRequest: vi.fn() },
   };
   const client = stub as unknown as MatrixClient;
@@ -120,6 +119,14 @@ function collect<T>(source: {
 }
 
 describe('matrixCallTransport', () => {
+  // The well-known is fetched afresh: Trinity never polls the client's cached copy.
+  const wellKnown = vi.spyOn(AutoDiscovery, 'getRawClientConfig');
+  beforeEach(() =>
+    wellKnown.mockReset().mockResolvedValue({
+      'org.matrix.msc4143.rtc_foci': [{ type: 'livekit' }],
+    } as never),
+  );
+
   it('exposes the session identity', () => {
     const { transport } = setup();
     expect(transport).toMatchObject({
@@ -323,6 +330,7 @@ describe('matrixCallTransport', () => {
     await expect(transport.rtcTransports()).resolves.toEqual([
       { type: 'livekit' },
     ]);
+    expect(wellKnown).toHaveBeenCalledWith('example.org');
     const failure = new MatrixError({ errcode: 'M_UNKNOWN' }, 500);
     stub.http.authedRequest.mockRejectedValueOnce(failure);
     await expect(transport.rtcTransports()).rejects.toBe(failure);
@@ -338,6 +346,34 @@ describe('matrixCallTransport', () => {
     await expect(transport.rtcTransports()).resolves.toEqual([
       { type: 'livekit' },
     ]);
+  });
+
+  it.each([[{}], [{ rtc_transports: [] }]])(
+    'falls back to well-known when the endpoint answers %j',
+    async (answer) => {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockResolvedValueOnce(answer);
+      await expect(transport.rtcTransports()).resolves.toEqual([
+        { type: 'livekit' },
+      ]);
+    },
+  );
+
+  it.each([
+    ['no rtc_foci', {}],
+    ['a non-array rtc_foci', { 'org.matrix.msc4143.rtc_foci': 'x' }],
+  ])('reads no transports from a well-known with %s', async (_l, config) => {
+    const { stub, transport } = setup();
+    wellKnown.mockResolvedValueOnce(config as never);
+    stub.http.authedRequest.mockRejectedValueOnce(new MatrixError({}, 404));
+    await expect(transport.rtcTransports()).resolves.toEqual([]);
+  });
+
+  it('reads no transports when the well-known cannot be fetched', async () => {
+    const { stub, transport } = setup();
+    wellKnown.mockRejectedValueOnce(new Error('offline'));
+    stub.http.authedRequest.mockRejectedValueOnce(new MatrixError({}, 404));
+    await expect(transport.rtcTransports()).resolves.toEqual([]);
   });
 
   it('rejects a 400 other than M_UNRECOGNIZED', async () => {
