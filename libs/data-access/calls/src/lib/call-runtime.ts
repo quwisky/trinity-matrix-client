@@ -23,12 +23,20 @@ export interface CallSession {
   hangUp(): void;
 }
 
-/** Element Call 0.28 reports its own hang-up with `io.element.close`. */
-const WIDGET_CLOSE_ACTIONS = ['io.element.close', 'im.vector.hangup'];
+/*
+ * Element Call 0.28 (CallViewModel, CallView) answers a host hang-up at once, then leaves:
+ * it sends its membership leave and `im.vector.hangup` together, plays the leave sound and
+ * only then sends `io.element.close`, its signal that the host may dispose of it. Its own
+ * hang-up takes the same path. So the session ends on the close, not on either hang-up.
+ */
+const CLOSE_ACTION = 'io.element.close';
 const HANGUP_ACTION = 'im.vector.hangup';
 
 /** How long Element Call may take to report `content_loaded` before the call fails. */
 export const CALL_LOAD_TIMEOUT_MS = 25_000;
+
+/** How long Element Call may take, once hung up, to leave and ask to be closed. */
+export const CALL_LEAVE_TIMEOUT_MS = 10_000;
 
 /** Bind a call-scoped client Widget API to a frame, then load Element Call into it. */
 export function startCallSession(
@@ -72,6 +80,7 @@ class ActiveCallSession implements CallSession {
     () => this.finish('failed'),
     CALL_LOAD_TIMEOUT_MS,
   );
+  private leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly onContentLoaded = (): void => {
     clearTimeout(this.loadTimer);
@@ -81,6 +90,13 @@ class ActiveCallSession implements CallSession {
     ev.preventDefault();
     this.api.transport.reply(ev.detail, {});
     this.finish('ended');
+  };
+  private readonly onWidgetHangUp = (
+    ev: CustomEvent<IWidgetApiRequest>,
+  ): void => {
+    ev.preventDefault();
+    this.api.transport.reply(ev.detail, {});
+    this.awaitLeave();
   };
   private readonly onPreparingError = (): void => this.finish('failed');
 
@@ -110,33 +126,42 @@ class ActiveCallSession implements CallSession {
       `action:${WidgetApiFromWidgetAction.ContentLoaded}`,
       this.onContentLoaded,
     );
-    for (const action of WIDGET_CLOSE_ACTIONS) {
-      api.on(`action:${action}`, this.onClose);
-    }
+    api.on(`action:${CLOSE_ACTION}`, this.onClose);
+    api.on(`action:${HANGUP_ACTION}`, this.onWidgetHangUp);
     api.on('error:preparing', this.onPreparingError);
   }
 
   hangUp(): void {
     if (this.finished) return;
-    this.api.transport
-      .send(HANGUP_ACTION, {})
-      .catch(ignore)
-      .finally(() => this.finish('ended'));
+    clearTimeout(this.loadTimer);
+    // A widget that cannot answer cannot leave either, so end at once.
+    this.api.transport.send(HANGUP_ACTION, {}).then(
+      () => this.awaitLeave(),
+      () => this.finish('ended'),
+    );
+  }
+
+  private awaitLeave(): void {
+    if (this.finished || this.leaveTimer !== undefined) return;
+    this.leaveTimer = setTimeout(
+      () => this.finish('ended'),
+      CALL_LEAVE_TIMEOUT_MS,
+    );
   }
 
   private finish(state: 'ended' | 'failed'): void {
     if (this.finished) return;
     this.finished = true;
     clearTimeout(this.loadTimer);
+    clearTimeout(this.leaveTimer);
     this.currentState.set(state);
     for (const subscription of this.subscriptions) subscription.unsubscribe();
     this.api.removeListener(
       `action:${WidgetApiFromWidgetAction.ContentLoaded}`,
       this.onContentLoaded,
     );
-    for (const action of WIDGET_CLOSE_ACTIONS) {
-      this.api.removeListener(`action:${action}`, this.onClose);
-    }
+    this.api.removeListener(`action:${CLOSE_ACTION}`, this.onClose);
+    this.api.removeListener(`action:${HANGUP_ACTION}`, this.onWidgetHangUp);
     this.api.removeListener('error:preparing', this.onPreparingError);
     this.api.stop();
     this.onEnded();

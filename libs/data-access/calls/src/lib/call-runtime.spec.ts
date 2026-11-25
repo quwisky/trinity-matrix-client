@@ -5,7 +5,11 @@ import type {
   CallTransport,
   RawCallEvent,
 } from './call-transport';
-import { CALL_LOAD_TIMEOUT_MS, startCallSession } from './call-runtime';
+import {
+  CALL_LEAVE_TIMEOUT_MS,
+  CALL_LOAD_TIMEOUT_MS,
+  startCallSession,
+} from './call-runtime';
 
 const { FakeClientWidgetApi, apis } = vi.hoisted(() => {
   class FakeClientWidgetApi {
@@ -165,23 +169,54 @@ describe('startCallSession', () => {
     expect(session.state()).toBe('joined');
   });
 
-  it.each(['io.element.close', 'im.vector.hangup'])(
-    'ends the session when the widget sends %s',
-    (action) => {
-      const { api, session, onEnded, roomEvents, toDevice } = setup();
+  it('ends the session when Element Call asks to be closed', () => {
+    const { api, session, onEnded, roomEvents, toDevice } = setup();
 
-      const ev = api.fromWidget(action);
-      api.fromWidget(action);
+    const ev = api.fromWidget('io.element.close');
+    api.fromWidget('io.element.close');
 
-      expect(ev.defaultPrevented).toBe(true);
-      expect(api.transport.reply).toHaveBeenCalledWith(ev.detail, {});
-      expect(session.state()).toBe('ended');
-      expect(roomEvents.observed).toBe(false);
-      expect(toDevice.observed).toBe(false);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(api.transport.reply).toHaveBeenCalledWith(ev.detail, {});
+    expect(session.state()).toBe('ended');
+    expect(roomEvents.observed).toBe(false);
+    expect(toDevice.observed).toBe(false);
+    expect(api.stop).toHaveBeenCalledTimes(1);
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  // Element Call sends its hang-up together with its leave, and asks to be closed after.
+  it('keeps the session after Element Call reports its own hang-up until it asks to close', () => {
+    const { api, session, onEnded } = setup();
+    api.fromWidget('content_loaded');
+
+    const ev = api.fromWidget('im.vector.hangup');
+
+    expect(ev.defaultPrevented).toBe(true);
+    expect(api.transport.reply).toHaveBeenCalledWith(ev.detail, {});
+    expect(api.stop).not.toHaveBeenCalled();
+    expect(session.state()).toBe('joined');
+    api.fromWidget('io.element.close');
+    expect(session.state()).toBe('ended');
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a session whose widget hung up but never asks to close', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, onEnded } = setup();
+      api.fromWidget('content_loaded');
+      api.fromWidget('im.vector.hangup');
+
+      vi.advanceTimersByTime(CALL_LEAVE_TIMEOUT_MS - 1);
+      expect(api.stop).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+
       expect(api.stop).toHaveBeenCalledTimes(1);
       expect(onEnded).toHaveBeenCalledTimes(1);
-    },
-  );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('fails the session when capability negotiation fails', () => {
     const { api, session, onEnded } = setup();
@@ -226,7 +261,41 @@ describe('startCallSession', () => {
     }
   });
 
-  it('asks the widget to hang up, then tears down even if that fails', async () => {
+  it('waits after a hang-up reply for Element Call to leave and ask to close', async () => {
+    const { api, session, onEnded } = setup();
+    api.fromWidget('content_loaded');
+
+    session.hangUp();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.transport.send).toHaveBeenCalledWith('im.vector.hangup', {});
+    expect(api.stop).not.toHaveBeenCalled();
+    expect(session.state()).toBe('joined');
+    api.fromWidget('io.element.close');
+    expect(api.stop).toHaveBeenCalledTimes(1);
+    expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a hung-up session that never asks to close', async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session, onEnded } = setup();
+      api.fromWidget('content_loaded');
+
+      session.hangUp();
+      await vi.advanceTimersByTimeAsync(CALL_LEAVE_TIMEOUT_MS - 1);
+      expect(api.stop).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(session.state()).toBe('ended');
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('asks the widget to hang up, then tears down at once if that fails', async () => {
     const { api, session, onEnded, roomEvents, toDevice } = setup();
     api.transport.send.mockRejectedValue(new Error('gone'));
 
