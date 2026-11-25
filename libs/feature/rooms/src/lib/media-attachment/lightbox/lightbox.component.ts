@@ -210,14 +210,13 @@ export class LightboxComponent {
   private ownsKey(event: KeyboardEvent): boolean {
     if (event.defaultPrevented || event.isComposing) return false;
     const target = event.target;
-    if (target === document.body || target === document.documentElement) {
-      return true;
-    }
+    const host = this.host.nativeElement;
+    // Nothing focused (the page itself) or the dialog around the viewer.
+    if (target instanceof Node && target.contains(host)) return true;
     if (!(target instanceof HTMLElement) || target.isContentEditable) {
       return false;
     }
     if (target.closest('input, textarea, select')) return false;
-    const host = this.host.nativeElement;
     return (host.closest('[role="dialog"]') ?? host).contains(target);
   }
 
