@@ -237,6 +237,18 @@ describe('container host configuration', () => {
     ])
       expect(config).toContain(value);
     expect(config).not.toContain('page-fallback');
+    // SWS applies every matching rule in order and a later rule replaces a header,
+    // so the Element Call frame rule must follow the deny-all rule to win.
+    const callFrameRule = config.indexOf('source = "/element-call/**"');
+    expect(callFrameRule).toBeGreaterThan(config.indexOf('source = "**"'));
+    const callFrameHeaders = config.slice(
+      callFrameRule,
+      config.indexOf('[[', callFrameRule),
+    );
+    expect(callFrameHeaders).toContain(
+      'Content-Security-Policy = "frame-ancestors \'self\'"',
+    );
+    expect(callFrameHeaders).toContain('X-Frame-Options = "SAMEORIGIN"');
     expect(config).toContain('source = "/rooms/**/*.*"');
     expect(config).toContain(
       'source = "/*-' + '[A-Za-z0-9_-]'.repeat(8) + '.{js,css}"',

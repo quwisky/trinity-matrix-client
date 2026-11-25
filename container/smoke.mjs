@@ -269,6 +269,18 @@ async function assertHttpContract(baseURL, indexBytes, wasmBytes) {
   ])
     await assertResponse(`${baseURL}${path}`, 404, path, { headers: security });
 
+  await assertResponse(
+    `${baseURL}/element-call/index.html`,
+    200,
+    'Element Call frame',
+    {
+      headers: {
+        ...security,
+        'content-security-policy': "frame-ancestors 'self'",
+        'x-frame-options': 'SAMEORIGIN',
+      },
+    },
+  );
   const wasm = await assertResponse(
     `${baseURL}/assets/crypto/matrix_sdk_crypto_wasm_bg.wasm`,
     200,

@@ -115,6 +115,15 @@ headers = {
   Cache-Control = "no-cache"
 }
 
+# The rooms page embeds Element Call from this origin. SWS cannot remove a header
+# set by the rule above, so this later rule replaces both framing headers.
+[[advanced.headers]]
+source = "/element-call/**"
+headers = {
+  Content-Security-Policy = "frame-ancestors 'self'",
+  X-Frame-Options = "SAMEORIGIN"
+}
+
 # Content-hashed Angular output can be cached immutably. Fixed-name files below
 # are listed after this rule so they retain the revalidation baseline.
 [[advanced.headers]]
