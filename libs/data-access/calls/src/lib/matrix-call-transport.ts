@@ -28,6 +28,7 @@ type ToDeviceMessage = Parameters<
 
 const RTC_TRANSPORTS_PREFIX = '/_matrix/client/unstable/org.matrix.msc4143';
 const LIVEKIT_PREFIX = '/_matrix/client/unstable/io.element.msc4195';
+const WELL_KNOWN_TIMEOUT_MS = 5_000;
 
 // SDK send methods are typed against its known event map; call events are arbitrary types.
 type AnyType = never;
@@ -239,9 +240,18 @@ export function matrixCallTransport(
         }
       }
       // The client never polls its own well-known copy, so read the server name's afresh.
-      const wellKnown = await AutoDiscovery.getRawClientConfig(
-        client.getDomain() ?? '',
-      ).catch(() => undefined);
+      const domain = client.getDomain();
+      if (!domain) return [];
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      // Answer before the widget API's 10 s request timeout; discovery retries take longer.
+      const wellKnown = await Promise.race([
+        AutoDiscovery.getRawClientConfig(domain),
+        new Promise<undefined>((resolve) => {
+          timer = setTimeout(() => resolve(undefined), WELL_KNOWN_TIMEOUT_MS);
+        }),
+      ])
+        .catch(() => undefined)
+        .finally(() => clearTimeout(timer));
       const foci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
       return Array.isArray(foci) ? foci : [];
     },

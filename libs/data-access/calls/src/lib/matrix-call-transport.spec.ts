@@ -376,6 +376,29 @@ describe('matrixCallTransport', () => {
     await expect(transport.rtcTransports()).resolves.toEqual([]);
   });
 
+  it('reads no transports for a client without a server name', async () => {
+    const { stub, transport } = setup();
+    Object.assign(stub, { getDomain: () => null });
+    stub.http.authedRequest.mockRejectedValueOnce(new MatrixError({}, 404));
+    await expect(transport.rtcTransports()).resolves.toEqual([]);
+    expect(wellKnown).not.toHaveBeenCalled();
+  });
+
+  // The widget API times its requests out after 10 s; discovery retries may take ~20 s.
+  it('reads no transports from a well-known that takes over 5 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const { stub, transport } = setup();
+      wellKnown.mockReturnValueOnce(new Promise(() => undefined));
+      stub.http.authedRequest.mockRejectedValueOnce(new MatrixError({}, 404));
+      const answer = transport.rtcTransports();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await expect(answer).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('rejects a 400 other than M_UNRECOGNIZED', async () => {
     const { stub, transport } = setup();
     const failure = new MatrixError({ errcode: 'M_BAD_JSON' }, 400);
