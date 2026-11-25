@@ -99,7 +99,8 @@ async function fileResponse(
     // The app permits remote HTTPS widget frames. Stop one from navigating its subframe
     // back to the privileged app document and obtaining a same-origin page.
     if (filePath.startsWith(ELEMENT_CALL_ROOT + path.sep)) {
-      // `frame-ancestors` checks every ancestor, so a remote widget frame still cannot host it.
+      // A remote widget frame cannot nest it, since `frame-ancestors` checks every ancestor.
+      // It could still navigate itself here; hardenContents in window.ts blocks that.
       headers['content-security-policy'] = "frame-ancestors 'self'";
     } else {
       headers['content-security-policy'] = "frame-ancestors 'none'";

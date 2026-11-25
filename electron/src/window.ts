@@ -69,6 +69,20 @@ export function hardenContents(contents: Electron.WebContents): void {
     }
   });
 
+  // A subframe gets an app document only from the app itself: a remote widget frame that
+  // navigated itself here would be same-origin with the app, and `frame-ancestors`, which
+  // checks only its parent, would not stop it.
+  contents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame || !isAppUrl(event.url)) return;
+    const parent = event.frame?.parent;
+    const initiator = event.initiator;
+    const appMainFrame =
+      !!parent && parent.parent === null && isAppUrl(parent.url);
+    if (!appMainFrame || !initiator || !isAppUrl(initiator.url)) {
+      event.preventDefault();
+    }
+  });
+
   // Defense in depth: never attach a webview.
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }

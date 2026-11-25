@@ -116,6 +116,58 @@ describe('hardenContents', () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
+  describe('subframe navigation to the app origin', () => {
+    const main = { url: 'trinity://app/rooms', parent: null };
+    const callUrl = 'trinity://app/element-call/index.html?widgetId=w';
+
+    function navigate(frame: unknown, initiator: unknown, url = callUrl) {
+      const c = fakeContents();
+      hardenContents(c as never);
+      const event = {
+        preventDefault: vi.fn(),
+        url,
+        isMainFrame: false,
+        frame,
+        initiator,
+      };
+      c.emit('will-frame-navigate', event);
+      return event.preventDefault;
+    }
+
+    it('lets the app document load the call into its own iframe', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(navigate(frame, main)).not.toHaveBeenCalled();
+    });
+
+    it('lets the call frame navigate itself', () => {
+      const frame = { url: callUrl, parent: main };
+      expect(navigate(frame, frame)).not.toHaveBeenCalled();
+    });
+
+    it('stops a remote widget frame navigating itself to the app', () => {
+      const frame = { url: 'https://widgets.example/w', parent: main };
+      expect(navigate(frame, frame)).toHaveBeenCalled();
+    });
+
+    it('stops an app page loading in a frame nested under a remote one', () => {
+      const remote = { url: 'https://widgets.example/w', parent: main };
+      const frame = { url: 'about:blank', parent: remote };
+      expect(navigate(frame, remote)).toHaveBeenCalled();
+    });
+
+    it('stops an app-origin subframe navigation with no initiator', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(navigate(frame, null)).toHaveBeenCalled();
+    });
+
+    it('leaves remote subframe navigations alone', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(
+        navigate(frame, frame, 'https://widgets.example/w'),
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   it('blocks webview attachment', () => {
     const c = fakeContents();
     hardenContents(c as never);
