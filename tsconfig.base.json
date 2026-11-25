@@ -85,6 +85,7 @@
       "@trinity/helm/card": ["./libs/spartan/card/src/index.ts"],
       "@trinity/helm/select": ["./libs/spartan/select/src/index.ts"],
       "@trinity/components/overlay": ["./libs/components/overlay/src/index.ts"],
+      "@trinity/data-access/calls": ["./libs/data-access/calls/src/index.ts"],
       "@trinity/data-access/widgets": [
         "./libs/data-access/widgets/src/index.ts"
       ],
