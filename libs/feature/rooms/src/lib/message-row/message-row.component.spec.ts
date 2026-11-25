@@ -4,16 +4,19 @@ import { TestBed } from '@angular/core/testing';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { fireEvent, render, waitFor } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import {
   MediaPipeline,
   type PresentedMediaReference,
 } from '@trinity/data-access/media';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
+  TimelineAvatarPresencePreference,
   UrlPreviewService,
   type ThreadSummary,
 } from '@trinity/data-access/timeline';
+import { type PresenceState } from '@trinity/util/matrix';
 import {
   DateTimeFormatService,
   PrivacySettingsService,
@@ -77,7 +80,19 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
   };
 }
 
+const presenceEnabled = signal(true);
+const senderState = signal<PresenceState | null>(null);
+const myPresence = signal<PresenceState>('online');
+const presenceFor = vi.fn((_userId: string) => senderState.asReadonly());
+
 describe('MessageRowComponent', () => {
+  beforeEach(() => {
+    presenceEnabled.set(true);
+    senderState.set(null);
+    myPresence.set('online');
+    presenceFor.mockClear();
+  });
+
   function renderRow(
     inputs: {
       row: MessageRow;
@@ -109,6 +124,13 @@ describe('MessageRowComponent', () => {
         MockProvider(PrivacySettingsService, {
           linkPreviews: signal(true).asReadonly(),
           linkPreviewsInEncrypted: signal(false).asReadonly(),
+        }),
+        MockProvider(TimelineAvatarPresencePreference, {
+          enabled: presenceEnabled.asReadonly(),
+        }),
+        MockProvider(IdentityPresenceService, {
+          presenceFor,
+          myPresence: myPresence.asReadonly(),
         }),
         ...extraProviders,
       ],
@@ -1545,6 +1567,62 @@ describe('MessageRowComponent', () => {
 
       expect(barRevealed(container)).toBe(false);
       vi.useRealTimers();
+    });
+  });
+  describe('sender presence', () => {
+    const dot = (container: Element) =>
+      container.querySelector('.msg__avatar .presence-dot');
+
+    it.each(['online', 'unavailable'] as const)(
+      'shows a %s dot on the group avatar',
+      async (state) => {
+        senderState.set(state);
+        const { container } = await renderRow({
+          row: row({ showHeader: true }),
+        });
+        expect(dot(container)?.getAttribute('data-presence')).toBe(state);
+        expect(presenceFor).toHaveBeenCalledWith('@a:hs');
+      },
+    );
+
+    it.each(['offline', null] as const)(
+      'shows no dot when presence is %s',
+      async (state) => {
+        senderState.set(state);
+        const { container } = await renderRow({
+          row: row({ showHeader: true }),
+        });
+        expect(dot(container)).toBeNull();
+      },
+    );
+
+    // The service always reports the signed-in user as online; the status they chose wins.
+    it.each([
+      ['unavailable', 'unavailable'],
+      ['offline', null],
+    ] as const)(
+      'shows your own %s status on your messages',
+      async (mine, shown) => {
+        senderState.set('online');
+        myPresence.set(mine);
+        const { container } = await renderRow({
+          row: row({ showHeader: true, isOwn: true }),
+        });
+        expect(dot(container)?.getAttribute('data-presence') ?? null).toBe(
+          shown,
+        );
+      },
+    );
+
+    it('removes the dot when the setting is turned off', async () => {
+      senderState.set('online');
+      const { container, fixture } = await renderRow({
+        row: row({ showHeader: true }),
+      });
+      expect(dot(container)).not.toBeNull();
+      presenceEnabled.set(false);
+      fixture.detectChanges();
+      expect(dot(container)).toBeNull();
     });
   });
 });

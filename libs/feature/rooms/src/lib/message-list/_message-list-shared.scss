@@ -20,6 +20,9 @@
       --room-pane-surface,
       var(--trinity-surface-workspace)
     );
+
+    // Presence dots on sender avatars ring in the pane they sit on, not the canvas.
+    --trn-presence-ring: var(--trinity-message-surface);
   }
 
   // Anchors the jump-to-latest pill just above the composer (the scroll region's bottom edge),
