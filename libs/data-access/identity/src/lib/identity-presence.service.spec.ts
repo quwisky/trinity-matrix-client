@@ -38,6 +38,7 @@ function fakeClient(
         : null,
     ),
     setPresence: vi.fn(() => Promise.resolve()),
+    setSyncPresence: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -386,8 +387,84 @@ describe('IdentityPresenceService', () => {
   });
 
   describe('own presence', () => {
+    it('reports the status the signed-in user chose, everywhere self is read', async () => {
+      const { svc } = setup();
+      const state = svc.presenceFor(SELF);
+      const details = svc.presenceDetailsFor(SELF);
+      svc.runProjection().subscribe();
+      expect(state()).toBe('online');
+
+      await firstValueFrom(svc.setOwnPresence('unavailable', 'lunch'));
+
+      expect(state()).toBe('unavailable');
+      expect(details()).toEqual(
+        expect.objectContaining({
+          state: 'unavailable',
+          statusMessage: 'lunch',
+        }),
+      );
+      expect(svc.peekDetails(SELF)?.state).toBe('unavailable');
+    });
+
+    it('restores the status the server reports for the signed-in user on connect', () => {
+      const { svc, client } = setup();
+      client.getUser.mockImplementation((id: string) =>
+        id === SELF
+          ? {
+              userId: SELF,
+              presence: 'unavailable',
+              presenceStatusMsg: 'away for the day',
+              lastPresenceTs: 1_000,
+            }
+          : null,
+      );
+      const state = svc.presenceFor(SELF);
+      svc.runProjection().subscribe();
+
+      expect(state()).toBe('unavailable');
+      expect(svc.myPresence()).toBe('unavailable');
+      expect(svc.myStatusMessage()).toBe('away for the day');
+    });
+
+    it('ignores the SDK placeholder offline the server never reported', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'offline',
+        lastPresenceTs: 0,
+      });
+      svc.runProjection().subscribe();
+      svc.loadOwnPresence();
+
+      expect(svc.myPresence()).toBe('online');
+      expect(svc.presenceFor(SELF)()).toBe('online');
+    });
+
+    it('keeps a status the user just set over an older server report', async () => {
+      const { svc, client } = setup();
+      const state = svc.presenceFor(SELF);
+      svc.runProjection().subscribe();
+      await firstValueFrom(svc.setOwnPresence('unavailable', ''));
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'online',
+        lastPresenceTs: 1,
+      });
+
+      presenceHandler(client)(undefined, { userId: SELF, presence: 'online' });
+      await Promise.resolve();
+
+      expect(state()).toBe('unavailable');
+    });
+
     it('seeds myPresence and myStatusMessage from the client', () => {
-      const { svc } = setup({ [SELF]: 'unavailable' }, { [SELF]: 'brb' });
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'unavailable',
+        presenceStatusMsg: 'brb',
+        lastPresenceTs: 1_000,
+      });
       svc.loadOwnPresence();
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('brb');
@@ -409,6 +486,23 @@ describe('IdentityPresenceService', () => {
       });
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('heads down');
+    });
+
+    // Per the spec, a sync that omits set_presence marks the user online, which would undo the choice
+    // within seconds.
+    it('keeps the chosen status in the client’s own syncs', async () => {
+      const { svc, client } = setup();
+      await firstValueFrom(svc.setOwnPresence('unavailable', ''));
+      expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable');
+    });
+
+    it('leaves syncs alone when the server rejects the status', async () => {
+      const { svc, client } = setup();
+      client.setPresence.mockReturnValueOnce(Promise.reject(new Error('nope')));
+      await firstValueFrom(svc.setOwnPresence('unavailable', '')).catch(
+        () => undefined,
+      );
+      expect(client.setSyncPresence).not.toHaveBeenCalled();
     });
 
     it('omits an empty status message', async () => {

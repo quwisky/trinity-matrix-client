@@ -43,6 +43,7 @@ export type IdentityMatrixClient = Pick<
   | 'setDisplayName'
   | 'setIgnoredUsers'
   | 'setPresence'
+  | 'setSyncPresence'
 > & {
   getUser(userId: string): IdentitySdkUser | null;
 };
