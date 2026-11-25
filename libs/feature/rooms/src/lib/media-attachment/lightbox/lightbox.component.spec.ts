@@ -234,8 +234,9 @@ describe('LightboxComponent zoom', () => {
         bubbles: true,
       }),
     );
-  const key = (root: Element, value: string) =>
-    root.dispatchEvent(
+  // From the document: after a click, focus is on the dialog around the viewer, not inside it.
+  const key = (_root: Element, value: string) =>
+    document.body.dispatchEvent(
       new KeyboardEvent('keydown', { key: value, bubbles: true }),
     );
 

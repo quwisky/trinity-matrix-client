@@ -174,4 +174,34 @@ test.describe('Image viewer on a desktop', () => {
     await dialog.click({ position: { x: 4, y: 4 } });
     await expect(dialog).toBeHidden();
   });
+
+  test('a click, the wheel, the keys and the buttons zoom; the matte still closes', async ({
+    page,
+    request,
+  }, testInfo) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const dialog = await openViewer(page, request);
+    const image = page.locator('img.lightbox__image');
+
+    await image.click();
+    await expect.poll(() => imageScale(page)).toBeCloseTo(1.5);
+    await expect(dialog).toBeVisible();
+
+    await image.hover();
+    await page.mouse.wheel(0, -300);
+    await expect.poll(() => imageScale(page)).toBeGreaterThan(1.6);
+    await page.keyboard.press('0');
+    await expect.poll(() => imageScale(page)).toBe(1);
+
+    await page.getByTestId('lightbox-zoom-in').click();
+    await expect.poll(() => imageScale(page)).toBeCloseTo(1.5);
+    await expect(dialog).toBeVisible();
+    await testInfo.attach('image-viewer-zoomed', {
+      body: await page.screenshot({ animations: 'disabled' }),
+      contentType: 'image/png',
+    });
+
+    await dialog.click({ position: { x: 4, y: 4 } });
+    await expect(dialog).toBeHidden();
+  });
 });

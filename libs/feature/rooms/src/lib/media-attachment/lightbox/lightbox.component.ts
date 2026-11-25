@@ -70,7 +70,8 @@ const MOUSE_CLICK_TRAVEL_PX = 4;
     '[class.lightbox--zoomed]': 'scale() > 1',
     '[class.lightbox--max]': 'scale() >= maxScale',
     '(click)': 'hostClick($event)',
-    '(keydown)': 'keydown($event)',
+    // The dialog around the viewer holds focus after a click, so keys are read from the page.
+    '(document:keydown)': 'keydown($event)',
     '(wheel)': 'wheel($event)',
     '(focusin)': 'revealControls()',
     '(window:resize)': 'refit()',
