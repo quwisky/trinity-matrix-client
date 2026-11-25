@@ -231,6 +231,9 @@ export class IdentityPresenceService {
     return defer(() => {
       // The user's choice wins: a restore still in flight must not send the old status after it.
       this.restore.unsubscribe();
+      if (this.matrix.isAvailable()) {
+        this.restoredClients.add(this.matrix.active().client);
+      }
       return this.publishOwnPresence(presence, statusMsg, false);
     });
   }
@@ -279,8 +282,8 @@ export class IdentityPresenceService {
   private restoreOwnPresence(client: IdentityMatrixClient): void {
     const accountId = client.getUserId();
     // Once per client: switching back to an Account must not undo a status set elsewhere since.
+    // A restore cut short by a switch is not done, so it runs again on the way back.
     if (!accountId || this.restoredClients.has(client)) return;
-    this.restoredClients.add(client);
     this.restore.unsubscribe();
     this.restore = this.preferences
       .readSaved(OWN_PRESENCE_PREFERENCE, { kind: 'account', accountId })
@@ -294,7 +297,7 @@ export class IdentityPresenceService {
         ),
         catchError(() => EMPTY),
       )
-      .subscribe();
+      .subscribe({ complete: () => this.restoredClients.add(client) });
   }
 
   private saveOwnPresence(

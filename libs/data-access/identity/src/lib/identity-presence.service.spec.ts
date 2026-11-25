@@ -662,7 +662,9 @@ describe('IdentityPresenceService', () => {
       storage.saveOwnPresence({ presence: 'unavailable', statusMessage: '' });
       svc.runProjection().subscribe();
       TestBed.inject(ApplicationRef).tick();
-      await vi.waitFor(() => expect(client.setPresence).toHaveBeenCalledOnce());
+      await vi.waitFor(() =>
+        expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable'),
+      );
       const other = fakeClient();
       other.getUserId.mockReturnValue('@other:hs');
       ngMocks.stubMember(matrix, 'instance', asClient(other));
@@ -675,6 +677,29 @@ describe('IdentityPresenceService', () => {
       await Promise.resolve();
       await Promise.resolve();
       expect(client.setPresence).toHaveBeenCalledOnce();
+    });
+
+    it('sends the remembered status again when a switch cut it short', async () => {
+      const { svc, client, matrix, storage, activeUserId } = setup();
+      storage.saveOwnPresence({ presence: 'unavailable', statusMessage: '' });
+      client.setPresence.mockReturnValueOnce(
+        new Promise<void>(() => undefined),
+      );
+      svc.runProjection().subscribe();
+      TestBed.inject(ApplicationRef).tick();
+      await vi.waitFor(() => expect(client.setPresence).toHaveBeenCalledOnce());
+      const other = fakeClient();
+      other.getUserId.mockReturnValue('@other:hs');
+      ngMocks.stubMember(matrix, 'instance', asClient(other));
+      activeUserId.set('@other:hs');
+      TestBed.inject(ApplicationRef).tick();
+      ngMocks.stubMember(matrix, 'instance', asClient(client));
+      activeUserId.set(SELF);
+      TestBed.inject(ApplicationRef).tick();
+      await vi.waitFor(() =>
+        expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable'),
+      );
+      expect(client.setPresence).toHaveBeenCalledTimes(2);
     });
 
     it('keeps a status chosen while the remembered one is being sent', async () => {
