@@ -1,35 +1,37 @@
 <div class="lightbox__actions">
-  <button
-    trnBtn
-    type="button"
-    variant="secondary"
-    presentation="solid"
-    shape="icon"
-    size="lg"
-    class="lightbox__action"
-    aria-label="Zoom out"
-    [attr.aria-disabled]="scale() <= 1 ? 'true' : null"
-    (click)="zoomButton($event, 1 / zoomStep)"
-    data-testid="lightbox-zoom-out"
-  >
-    <trn-icon name="zoom-out" motion="pop" />
-  </button>
+  <span class="lightbox__zoom">
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="solid"
+      shape="icon"
+      size="lg"
+      class="lightbox__action"
+      aria-label="Zoom out"
+      [attr.aria-disabled]="scale() <= 1 ? 'true' : null"
+      (click)="zoomButton($event, 1 / zoomStep)"
+      data-testid="lightbox-zoom-out"
+    >
+      <trn-icon name="zoom-out" motion="pop" />
+    </button>
 
-  <button
-    trnBtn
-    type="button"
-    variant="secondary"
-    presentation="solid"
-    shape="icon"
-    size="lg"
-    class="lightbox__action"
-    aria-label="Zoom in"
-    [attr.aria-disabled]="scale() >= maxScale ? 'true' : null"
-    (click)="zoomButton($event, zoomStep)"
-    data-testid="lightbox-zoom-in"
-  >
-    <trn-icon name="zoom-in" motion="pop" />
-  </button>
+    <button
+      trnBtn
+      type="button"
+      variant="secondary"
+      presentation="solid"
+      shape="icon"
+      size="lg"
+      class="lightbox__action"
+      aria-label="Zoom in"
+      [attr.aria-disabled]="scale() >= maxScale ? 'true' : null"
+      (click)="zoomButton($event, zoomStep)"
+      data-testid="lightbox-zoom-in"
+    >
+      <trn-icon name="zoom-in" motion="pop" />
+    </button>
+  </span>
 
   <button
     trnBtn

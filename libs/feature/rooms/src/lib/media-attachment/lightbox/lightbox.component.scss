@@ -41,6 +41,11 @@
     border: 1px solid var(--trinity-border-control);
   }
 
+  /* Laid out as if the zoom buttons were direct children of the actions row. */
+  .lightbox__zoom {
+    display: contents;
+  }
+
   .lightbox__image {
     max-width: 100%;
     max-height: 100%;
@@ -98,6 +103,11 @@
   /* A phone: the image takes the whole screen and the fingers own the surface. Gestures
    * need the browser to leave touches to the page. */
   @media (pointer: coarse) {
+    /* Fingers pinch; the buttons would crowd the bar that also frames the status area. */
+    .lightbox__zoom {
+      display: none;
+    }
+
     :host {
       padding: 0;
       cursor: default;
