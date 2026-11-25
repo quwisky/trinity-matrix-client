@@ -784,6 +784,54 @@ describe('RoomsPage calls', () => {
     );
   });
 
+  it('starts a fresh call in this room when its call failed', () => {
+    const { start, confirm, click } = renderCalls({
+      ...ongoing('!r:hs'),
+      state: 'failed',
+    });
+    click('start-video-call');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith('!r:hs', {
+      video: true,
+      dm: false,
+      theme: 'light',
+    });
+  });
+
+  it('attaches a new frame when the call moves to another room', async () => {
+    const activeCall = signal<ActiveCall | null>(ongoing('!call:hs'));
+    const frames: HTMLIFrameElement[] = [];
+    const root = renderHeader(0, {
+      calls: {
+        activeCall,
+        // As CallService does: end the old call and set the new one in the same task.
+        start: (roomId: string) => {
+          activeCall.set(null);
+          activeCall.set(ongoing(roomId));
+        },
+        attach: (iframe: HTMLIFrameElement) => {
+          frames.push(iframe);
+          return NEVER;
+        },
+      },
+    });
+    await lastFixture.whenStable();
+    expect(frames).toHaveLength(1);
+    vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$').mockReturnValue(
+      of(true),
+    );
+
+    root
+      .querySelector<HTMLElement>('[data-testid="start-video-call"]')
+      ?.click();
+    lastFixture.detectChanges();
+    await lastFixture.whenStable();
+
+    expect(frames).toHaveLength(2);
+    expect(frames[1]).not.toBe(frames[0]);
+    expect(root.querySelector('iframe')).toBe(frames[1]);
+  });
+
   it('collapses the call frame while another room is open', () => {
     const { root } = renderCalls(ongoing('!call:hs'));
     const call = root.querySelector('trn-room-call');

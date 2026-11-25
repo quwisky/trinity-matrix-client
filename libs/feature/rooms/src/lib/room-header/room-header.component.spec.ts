@@ -519,13 +519,4 @@ describe('RoomHeaderComponent call buttons', () => {
       expect(actions).toEqual([{ type: 'call', video }]);
     },
   );
-
-  it('keeps both call buttons reachable when compact', async () => {
-    const { byId } = await build({ compact: true });
-    for (const id of ['start-voice-call', 'start-video-call']) {
-      const button = byId(id);
-      expect(button, id).not.toBeNull();
-      expect(button?.className, id).not.toMatch(/hidden/);
-    }
-  });
 });

@@ -200,7 +200,7 @@
 
       <!-- Expanded, the call replaces this room's timeline. Collapsed it is a bar, and its
            frame keeps running off-screen. Leaving this page ends the call. -->
-      @if (calls.activeCall()) {
+      @for (frame of callFrames(); track frame) {
         <trn-room-call [expanded]="callExpanded()" />
       }
 
