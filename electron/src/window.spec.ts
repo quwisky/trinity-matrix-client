@@ -317,6 +317,29 @@ describe('installPermissionPolicy', () => {
   });
 
   it.each([
+    'geolocation',
+    'persistent-storage',
+    'clipboard-sanitized-write',
+    'fullscreen',
+  ])('gives the bundled call frame no %s', (permission) => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0];
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+    const granted = vi.fn();
+    const details = {
+      isMainFrame: false,
+      requestingUrl: 'trinity://app/element-call/index.html',
+    };
+
+    request(appContents, permission, granted, details);
+    expect(granted).toHaveBeenCalledWith(false);
+    expect(check(appContents, permission, 'trinity://app', details)).toBe(
+      false,
+    );
+  });
+
+  it.each([
     ['the bundled call frame', 'trinity://app/element-call/index.html', true],
     ['a remote widget frame', 'https://widget.example/', false],
     ['an app frame outside the call', 'trinity://app/index.html', false],
