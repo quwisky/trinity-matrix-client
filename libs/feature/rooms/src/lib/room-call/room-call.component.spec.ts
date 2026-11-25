@@ -86,6 +86,14 @@ describe('RoomCallComponent', () => {
     expect(container.querySelector('trn-spinner')).not.toBeNull();
   });
 
+  it('shows nothing but keeps the frame while the call ends', async () => {
+    const { iframe, container } = await build(false, 'ending');
+    expect(iframe()).not.toBeNull();
+    expect(screen.queryByText('Call in progress')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(container.querySelector('trn-spinner')).toBeNull();
+  });
+
   it('says when the call could not start and closes it', async () => {
     const { hangUp, container } = await build(true, 'failed');
     expect(screen.getByText('The call could not start')).toBeTruthy();

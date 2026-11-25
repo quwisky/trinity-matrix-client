@@ -800,13 +800,31 @@ describe('RoomsPage calls', () => {
     });
   });
 
+  it('hides an ending call in its room and starts the next call without asking', () => {
+    const { root, start, confirm, click } = renderCalls({
+      ...ongoing('!r:hs'),
+      state: 'ending',
+    });
+    expect(root.querySelector('trn-room-call')?.className).not.toContain(
+      'room-call--expanded',
+    );
+    expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
+    click('start-video-call');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith('!r:hs', {
+      video: true,
+      dm: false,
+      theme: 'light',
+    });
+  });
+
   it('attaches a new frame when the call moves to another room', async () => {
     const activeCall = signal<ActiveCall | null>(ongoing('!call:hs'));
     const frames: HTMLIFrameElement[] = [];
     const root = renderHeader(0, {
       calls: {
         activeCall,
-        // As CallService does: end the old call and set the new one in the same task.
+        // The worst case for the frame: the old call ends and the new one starts in one task.
         start: (roomId: string) => {
           activeCall.set(null);
           activeCall.set(ongoing(roomId));

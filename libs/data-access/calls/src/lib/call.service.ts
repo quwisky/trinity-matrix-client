@@ -21,7 +21,8 @@ export interface ActiveCall {
   readonly roomId: string;
   readonly accountId: string;
   readonly widgetUrl: string;
-  readonly state: CallSessionState;
+  /** `ending`: hung up, and the hidden frame stays until Element Call has left the call. */
+  readonly state: CallSessionState | 'ending';
 }
 
 interface Call {
@@ -46,15 +47,20 @@ export class CallService {
   private readonly session = signal<CallSession | null>(null);
   private readonly hungUp = new WeakSet<CallSession>();
   private readonly loadFailed = signal(false);
+  private readonly ending = signal(false);
+  /** A call started while the previous one was ending; it starts once that one has left. */
+  private next: Call | null = null;
   private lastId = 0;
 
   readonly activeCall = computed<ActiveCall | null>(() => {
     const call = this.call();
     if (!call) return null;
     const { id, roomId, accountId, widgetUrl } = call;
-    const state = this.loadFailed()
-      ? 'failed'
-      : (this.session()?.state() ?? 'loading');
+    const state = this.ending()
+      ? 'ending'
+      : this.loadFailed()
+        ? 'failed'
+        : (this.session()?.state() ?? 'loading');
     return { id, roomId, accountId, widgetUrl, state };
   });
 
@@ -89,14 +95,9 @@ export class CallService {
       intent: callIntent({ dm: options.dm, ongoing, video: options.video }),
       theme: options.theme,
     });
-    this.loadFailed.set(false);
-    this.call.set({
-      id: ++this.lastId,
-      roomId,
-      accountId,
-      widgetUrl,
-      transport,
-    });
+    const call = { id: ++this.lastId, roomId, accountId, widgetUrl, transport };
+    if (this.ending()) this.next = call;
+    else this.call.set(call);
   }
 
   /**
@@ -123,19 +124,25 @@ export class CallService {
               subscriber.complete();
               return;
             }
+            let ended = false;
             const session = startCallSession(
               call.transport,
               call.widgetUrl,
               CALL_WIDGET_ID,
               iframe,
               () => {
+                ended = true;
                 // A late end from a replaced session must not clear the newer call.
-                if (this.call() === call) this.clear();
+                if (this.call() === call) this.settle();
                 subscriber.complete();
               },
             );
             this.session.set(session);
             return () => {
+              if (ended) return;
+              // shortcut: leaving the rooms page destroys the frame before Element Call can
+              // leave the call, so its membership lingers until it expires; slice 2's
+              // app-level call host keeps the frame mounted and removes this.
               this.hangUpOnce(session);
               if (this.call() === call) this.clear();
             };
@@ -157,10 +164,24 @@ export class CallService {
     this.end();
   }
 
+  /** Hang up, keeping a live session's frame until Element Call has left the call. */
   private end(): void {
+    this.next = null;
     const session = this.session();
-    if (session) this.hangUpOnce(session);
+    const state = session?.state();
+    if (session && (state === 'loading' || state === 'joined')) {
+      this.ending.set(true);
+      this.hangUpOnce(session);
+    } else {
+      this.clear();
+    }
+  }
+
+  /** The session finished: start any call queued behind it. */
+  private settle(): void {
+    const next = this.next;
     this.clear();
+    if (next) this.call.set(next);
   }
 
   private hangUpOnce(session: CallSession): void {
@@ -173,5 +194,7 @@ export class CallService {
     this.call.set(null);
     this.session.set(null);
     this.loadFailed.set(false);
+    this.ending.set(false);
+    this.next = null;
   }
 }

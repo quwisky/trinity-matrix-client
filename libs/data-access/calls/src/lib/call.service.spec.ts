@@ -148,9 +148,53 @@ describe('CallService', () => {
     expect(runtime.sessions).toHaveLength(1);
     service.start('!B', opts);
     expect(runtime.sessions[0].hangUp).toHaveBeenCalled();
-    expect(service.activeCall()?.roomId).toBe('!B');
+    // Element Call must leave before its frame goes, so the next call waits for it.
+    expect(service.activeCall()).toMatchObject({
+      roomId: '!A',
+      state: 'ending',
+    });
     runtime.sessions[0].onEnded();
-    expect(service.activeCall()?.roomId).toBe('!B');
+    expect(service.activeCall()).toMatchObject({
+      roomId: '!B',
+      state: 'loading',
+    });
+    service.attach(iframe).subscribe();
+    await loaded();
+    expect(runtime.sessions).toHaveLength(2);
+  });
+
+  it('keeps the call ending until Element Call has left after a hang-up', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    await loaded();
+    const id = service.activeCall()!.id;
+    runtime.sessions[0].state.set('joined');
+    service.hangUp();
+    expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
+    expect(service.activeCall()).toMatchObject({ id, state: 'ending' });
+    runtime.sessions[0].onEnded();
+    expect(service.activeCall()).toBeNull();
+  });
+
+  it('starts only the latest call queued behind an ending one', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!A', opts);
+    service.attach(iframe).subscribe();
+    await loaded();
+    service.start('!B', opts);
+    service.start('!C', opts);
+    runtime.sessions[0].onEnded();
+    expect(service.activeCall()?.roomId).toBe('!C');
+  });
+
+  it('clears at once a call hung up before its session started', () => {
+    runtime.gate = new Promise<void>(() => undefined);
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    service.hangUp();
+    expect(service.activeCall()).toBeNull();
   });
 
   it('binds the widget, mirrors session state and clears on end', async () => {
@@ -194,6 +238,8 @@ describe('CallService', () => {
       activeUserId.set(next);
       TestBed.tick();
       expect(runtime.sessions[0].hangUp).toHaveBeenCalled();
+      expect(service.activeCall()?.state).toBe('ending');
+      runtime.sessions[0].onEnded();
       expect(service.activeCall()).toBeNull();
     },
   );
@@ -269,6 +315,7 @@ describe('CallService', () => {
     }
   });
 
+  // Leaving the rooms page during the ending still drops the frame (slice 1).
   it('sends one hang-up when ending then dropping the subscription', async () => {
     const service = TestBed.inject(CallService);
     service.start('!r', opts);

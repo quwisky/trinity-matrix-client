@@ -440,7 +440,7 @@ export class RoomsPage {
   );
 
   /**
-   * One frame per call id. `start` ends the old call and sets the new one in one task, so
+   * One frame per call id. A new call can replace the old one in a single task, so
    * `@if (activeCall())` alone would keep the old frame and never attach the new call.
    */
   protected readonly callFrames = computed(() => {
@@ -448,10 +448,13 @@ export class RoomsPage {
     return id === undefined ? [] : [id];
   });
 
-  /** The call frame fills the conversation area only in the call's own room. */
-  protected readonly callExpanded = computed(
-    () => this.calls.activeCall()?.roomId === this.store.activeRoomId(),
-  );
+  /** The call frame fills the conversation area only in the call's own room, until it ends. */
+  protected readonly callExpanded = computed(() => {
+    const call = this.calls.activeCall();
+    return (
+      call?.roomId === this.store.activeRoomId() && call.state !== 'ending'
+    );
+  });
 
   protected onHeaderAction(action: RoomHeaderAction): void {
     switch (action.type) {
@@ -485,7 +488,10 @@ export class RoomsPage {
     const room = this.vm.activeRoom();
     if (!room) return;
     const active = this.calls.activeCall();
-    const running = active && active.state !== 'failed' ? active : null;
+    const running =
+      active && active.state !== 'failed' && active.state !== 'ending'
+        ? active
+        : null;
     // Already in this room's call: the frame is expanded here.
     if (running?.roomId === room.id) return;
     const start = () =>

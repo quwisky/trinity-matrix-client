@@ -6,7 +6,7 @@
       <button trnBtn size="sm" (click)="hangUp()">Close</button>
     </span>
   </trn-banner>
-} @else if (!expanded()) {
+} @else if (call()?.state !== 'ending' && !expanded()) {
   <trn-banner variant="accent" data-testid="call-bar">
     <trn-icon trnBannerIcon name="phone" />
     Call in progress
