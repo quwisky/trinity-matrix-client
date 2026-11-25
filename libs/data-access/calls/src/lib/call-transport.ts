@@ -57,6 +57,7 @@ export interface CallTransport {
     messages: Record<string, Record<string, unknown>>,
   ): Promise<void>;
   readState(type: string, stateKey?: string): RawCallEvent[];
+  /** Newest first; `limit` 0 means no limit. */
   readTimeline(type: string, limit: number): RawCallEvent[];
   readStickyEvents(): RawCallEvent[];
   readRelations(
