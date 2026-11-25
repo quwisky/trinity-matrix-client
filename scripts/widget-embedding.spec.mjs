@@ -20,7 +20,7 @@ describe('widget iframe boundary', () => {
       )?.[1];
 
     expect(policy).toBeDefined();
-    expect(policy).toContain('frame-src https:');
+    expect(policy).toContain("frame-src 'self' https:");
     expect(policy).not.toMatch(/frame-src[^;]*(?:http:|data:|blob:|\*)/);
   });
 

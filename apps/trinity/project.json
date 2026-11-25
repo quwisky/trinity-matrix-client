@@ -59,6 +59,17 @@
             "output": "assets/crypto"
           },
           {
+            "glob": "**/*",
+            "input": "node_modules/@element-hq/element-call-embedded/dist",
+            "output": "element-call",
+            "ignore": ["**/*.map"]
+          },
+          {
+            "glob": "config.json",
+            "input": "apps/trinity/src/element-call",
+            "output": "element-call"
+          },
+          {
             "glob": "libheif.wasm",
             "input": "node_modules/libheif-js/libheif-wasm",
             "output": "assets/heif"
