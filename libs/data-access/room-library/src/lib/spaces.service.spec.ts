@@ -486,9 +486,11 @@ function setupWrites() {
     // `@me:hs.example` → the `via` homeserver is `hs.example`.
     getUserId: () => '@me:hs.example',
     createRoom,
-    getCapabilities: vi
-      .fn()
-      .mockResolvedValue({ 'm.room_versions': { default: '12' } }),
+    getStateEvent: vi.fn().mockResolvedValue({
+      events: { 'm.room.power_levels': 100 },
+      state_default: 50,
+      users_default: 0,
+    }),
     sendStateEvent,
     leave,
     joinRoom,
@@ -546,20 +548,6 @@ describe('SpacesService writes', () => {
     expect(createRoom).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'general',
-        // Any member may publish call membership, as Element Web lets them.
-        power_level_content_override: {
-          events: {
-            'm.room.name': 50,
-            'm.room.power_levels': 100,
-            'm.room.history_visibility': 100,
-            'm.room.canonical_alias': 50,
-            'm.room.avatar': 50,
-            'm.room.tombstone': 150,
-            'm.room.server_acl': 100,
-            'm.room.encryption': 100,
-            'org.matrix.msc3401.call.member': 0,
-          },
-        },
         initial_state: [
           {
             type: 'm.room.encryption',
@@ -568,6 +556,21 @@ describe('SpacesService writes', () => {
           },
         ],
       }),
+    );
+    await vi.waitFor(() =>
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!new:hs',
+        'm.room.power_levels',
+        {
+          events: {
+            'm.room.power_levels': 100,
+            'org.matrix.msc3401.call.member': 0,
+          },
+          state_default: 50,
+          users_default: 0,
+        },
+        '',
+      ),
     );
     // Child link on the space, parent link back on the child — both carry `via`.
     expect(sendStateEvent).toHaveBeenCalledWith(

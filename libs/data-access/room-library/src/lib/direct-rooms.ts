@@ -1,8 +1,6 @@
-import { EventType, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of, switchMap } from 'rxjs';
+import { EventTimeline, EventType, type MatrixClient } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, tap } from 'rxjs';
 import {
-  callPowerLevelOverride,
-  defaultRoomVersion,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
@@ -13,21 +11,64 @@ export function createEncryptedRoom(
   client: MatrixClient,
   options: CreateRoomOptions,
 ): Observable<string> {
-  return from(client.getCapabilities()).pipe(
-    switchMap((capabilities) =>
-      client.createRoom({
-        name: options.name.trim(),
-        ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-        ...visibilityOptions(options.isPublic),
-        ...callPowerLevelOverride({
-          roomVersion: defaultRoomVersion(capabilities),
-          isPublic: options.isPublic,
-        }),
-        initial_state: [roomEncryptionInitialState()],
-      }),
-    ),
+  return from(
+    client.createRoom({
+      name: options.name.trim(),
+      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+      ...visibilityOptions(options.isPublic),
+      initial_state: [roomEncryptionInitialState()],
+    }),
+  ).pipe(
     map((response) => response.room_id),
+    tap((roomId) => openCallsToMembers(client, roomId)),
   );
+}
+
+const CALL_MEMBER = 'org.matrix.msc3401.call.member';
+
+/**
+ * Lets every member of a room Trinity just created publish MatrixRTC call membership, as
+ * Element Web does, by merging one key into the server's own power levels: an override at
+ * creation would replace the server's whole default `events` map. Best-effort and not
+ * awaited; on failure the room keeps the server's levels, so only moderators can join calls.
+ * shortcut: a power-level edit sent before this lands could be overwritten by it; it runs
+ * right after creation, before the room's settings can open.
+ */
+export function openCallsToMembers(client: MatrixClient, roomId: string): void {
+  const synced = client
+    .getRoom(roomId)
+    ?.getLiveTimeline()
+    .getState(EventTimeline.FORWARDS)
+    ?.getStateEvents(EventType.RoomPowerLevels, '')
+    ?.getContent<PowerLevels>();
+  (synced
+    ? Promise.resolve(synced)
+    : (client.getStateEvent(
+        roomId,
+        EventType.RoomPowerLevels,
+        '',
+      ) as Promise<PowerLevels>)
+  )
+    .then((content) => {
+      const level =
+        content.events?.[CALL_MEMBER] ?? content.state_default ?? 50;
+      if (level <= (content.users_default ?? 0)) return;
+      const next = structuredClone(content);
+      next.events = { ...next.events, [CALL_MEMBER]: 0 };
+      return client.sendStateEvent(
+        roomId,
+        EventType.RoomPowerLevels,
+        next as never,
+        '',
+      );
+    })
+    .catch(() => undefined);
+}
+
+interface PowerLevels {
+  events?: Record<string, number>;
+  state_default?: number;
+  users_default?: number;
 }
 
 /**
