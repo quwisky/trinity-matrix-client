@@ -787,10 +787,15 @@ describe('RoomsPage calls', () => {
   });
 
   it('starts a fresh call in this room when its call failed', () => {
-    const { start, confirm, click } = renderCalls({
+    const { root, start, confirm, click } = renderCalls({
       ...ongoing('!r:hs'),
       state: 'failed',
     });
+    // The stopped frame stays out of sight: only the failure banner and the room show.
+    expect(root.querySelector('trn-room-call')?.className).not.toContain(
+      'room-call--expanded',
+    );
+    expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
     click('start-video-call');
     expect(confirm).not.toHaveBeenCalled();
     expect(start).toHaveBeenCalledWith('!r:hs', {

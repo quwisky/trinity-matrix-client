@@ -448,11 +448,15 @@ export class RoomsPage {
     return id === undefined ? [] : [id];
   });
 
-  /** The call frame fills the conversation area only in the call's own room, until it ends. */
+  /**
+   * The call frame fills the conversation area only in the call's own room, and only while
+   * the call runs: an ending or failed call's frame stays out of sight.
+   */
   protected readonly callExpanded = computed(() => {
     const call = this.calls.activeCall();
     return (
-      call?.roomId === this.store.activeRoomId() && call.state !== 'ending'
+      call?.roomId === this.store.activeRoomId() &&
+      (call.state === 'loading' || call.state === 'joined')
     );
   });
 
