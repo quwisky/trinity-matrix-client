@@ -18,8 +18,8 @@ import { stripSourceComments as stripComments } from './source-style-blocks.mjs'
  * `matrix-widget-api` statically. Trinity's matrix-js-sdk patch drops that re-export.
  *
  * The SDK's voice and video call code (`webrtc/`, `matrixrtc/` and `sdp-transform`, about
- * 180 KB) is never needed: Trinity makes no calls. `client.js` and the root entry imported it
- * statically, so the same patch removes those imports.
+ * 180 KB) is never used: Trinity's calls run inside Element Call. `client.js` and the root
+ * entry imported it statically, so the same patch removes those imports.
  *
  * Type-only imports are erased and stay allowed. Specs and stories are not part of the
  * application bundle.

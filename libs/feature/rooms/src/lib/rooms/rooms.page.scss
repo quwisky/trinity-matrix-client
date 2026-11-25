@@ -303,11 +303,10 @@
   // than under it, so the two 48px bars share one row. The row of [timeline, panel] becomes
   // a grid: the header, up to three banners and the call bar in the first column's rows, the
   // timeline (or the expanded call) in the last row, and the divider and panel spanning them
-  // all. The panel's track grows to
-  // the stored width only from what the first column's floor leaves, so a wide stored
-  // panel is squeezed rather than clipped. That track exists only while a panel is open:
-  // an empty `minmax(0, 360px)` track would still take its 360px. Narrower windows keep the
-  // panel in the row under the header.
+  // all. The panel's track grows to the stored width only from what the first column's floor
+  // leaves, so a wide stored panel is squeezed rather than clipped. That track exists only
+  // while a panel is open: an empty `minmax(0, 360px)` track would still take its 360px.
+  // Narrower windows keep the panel in the row under the header.
   @media #{$xl} {
     .main {
       display: grid;
