@@ -45,6 +45,12 @@ export interface CallTransport {
     type: string,
     content: unknown,
   ): Promise<{ eventId: string }>;
+  sendDelayedStickyEvent(
+    delay: { delayMs?: number; parentDelayId?: string },
+    durationMs: number,
+    type: string,
+    content: unknown,
+  ): Promise<{ delayId?: string; eventId?: string }>;
   sendToDevice(
     type: string,
     encrypted: boolean,
@@ -52,6 +58,7 @@ export interface CallTransport {
   ): Promise<void>;
   readState(type: string, stateKey?: string): RawCallEvent[];
   readTimeline(type: string, limit: number): RawCallEvent[];
+  readStickyEvents(): RawCallEvent[];
   readRelations(
     eventId: string,
     opts: {

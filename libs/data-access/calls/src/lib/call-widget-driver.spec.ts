@@ -29,17 +29,24 @@ function fakeTransport(): CallTransport {
     sendDelayedEvent: vi.fn().mockResolvedValue({ delayId: 'd1' }),
     updateDelayedEvent: vi.fn().mockResolvedValue(undefined),
     sendStickyEvent: vi.fn().mockResolvedValue({ eventId: '$s' }),
+    sendDelayedStickyEvent: vi.fn().mockResolvedValue({ delayId: 'ds' }),
     sendToDevice: vi.fn().mockResolvedValue(undefined),
     readState: vi.fn().mockReturnValue([memberEvent]),
     readTimeline: vi.fn().mockReturnValue([memberEvent]),
-    readRelations: vi.fn(),
+    readStickyEvents: vi.fn().mockReturnValue([memberEvent]),
+    readRelations: vi.fn().mockResolvedValue({
+      chunk: [memberEvent],
+      nextBatch: 'n',
+    }),
     openIdToken: vi.fn().mockResolvedValue({
       access_token: 'tok',
       token_type: 'Bearer',
       matrix_server_name: 'hs',
       expires_in: 3600,
     }),
-    rtcTransports: vi.fn().mockResolvedValue([{ type: 'livekit' }]),
+    rtcTransports: vi
+      .fn()
+      .mockResolvedValue([{ type: 'livekit' }, { url: 'no-type' }, null]),
     livekitToken: vi.fn().mockResolvedValue({ jwt: 'jwt' }),
     delegateLivekitDelayedLeave: vi.fn().mockResolvedValue(undefined),
     roomEvents: () => NEVER,
@@ -98,6 +105,80 @@ describe('CallWidgetDriver', () => {
       'org.matrix.msc4143.rtc.member',
       {},
     );
+  });
+
+  it('schedules delayed sticky events in the call room', async () => {
+    const { driver, transport } = setup();
+    const type = 'org.matrix.msc4143.rtc.member';
+
+    await expect(
+      driver.sendDelayedStickyEvent(5000, 60_000, type, {}, null),
+    ).resolves.toEqual({ roomId: '!r:hs', delayId: 'ds' });
+    expect(transport.sendDelayedStickyEvent).toHaveBeenCalledWith(
+      { delayMs: 5000 },
+      60_000,
+      type,
+      {},
+    );
+  });
+
+  it('refuses sticky and delayed sends to another room', async () => {
+    const { driver, transport } = setup();
+    const type = 'org.matrix.msc4143.rtc.member';
+
+    await expect(
+      driver.sendStickyEvent(60_000, type, {}, '!other:hs'),
+    ).rejects.toThrow();
+    await expect(
+      driver.sendDelayedEvent(5000, type, {}, null, '!other:hs'),
+    ).rejects.toThrow();
+    await expect(
+      driver.sendDelayedStickyEvent(5000, 60_000, type, {}, '!other:hs'),
+    ).rejects.toThrow();
+    expect(transport.sendStickyEvent).not.toHaveBeenCalled();
+    expect(transport.sendDelayedEvent).not.toHaveBeenCalled();
+    expect(transport.sendDelayedStickyEvent).not.toHaveBeenCalled();
+  });
+
+  it('reads sticky events of the call room only', async () => {
+    const { driver, transport } = setup();
+
+    await expect(driver.readStickyEvents('!r:hs')).resolves.toEqual([
+      { ...memberEvent, unsigned: {} },
+    ]);
+    await expect(driver.readStickyEvents('!other:hs')).resolves.toEqual([]);
+    expect(transport.readStickyEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads relations in the call room only', async () => {
+    const { driver, transport } = setup();
+
+    await expect(
+      driver.readEventRelations(
+        '$m',
+        '!r:hs',
+        'm.annotation',
+        'm.reaction',
+        'f1',
+        undefined,
+        20,
+        'b',
+      ),
+    ).resolves.toEqual({
+      chunk: [{ ...memberEvent, unsigned: {} }],
+      nextBatch: 'n',
+    });
+    expect(transport.readRelations).toHaveBeenCalledWith('$m', {
+      relType: 'm.annotation',
+      eventType: 'm.reaction',
+      from: 'f1',
+      limit: 20,
+      direction: 'b',
+    });
+    await expect(driver.readEventRelations('$m', '!other:hs')).resolves.toEqual(
+      { chunk: [] },
+    );
+    expect(transport.readRelations).toHaveBeenCalledTimes(1);
   });
 
   it('schedules and updates delayed events', async () => {
@@ -253,5 +334,21 @@ describe('CallWidgetDriver', () => {
     ).resolves.toEqual([]);
     expect(transport.readState).toHaveBeenCalledTimes(1);
     expect(transport.readTimeline).toHaveBeenCalledTimes(1);
+  });
+
+  it('filters the timeline by state key before applying the limit', async () => {
+    const { driver, transport } = setup();
+    const type = 'org.matrix.msc3401.call.member';
+    const other = { ...memberEvent, event_id: '$o', state_key: '@b:hs' };
+    vi.mocked(transport.readTimeline).mockReturnValue([
+      other,
+      memberEvent,
+      { ...memberEvent, event_id: '$m2' },
+    ]);
+
+    await expect(
+      driver.readRoomTimeline('!r:hs', type, undefined, '@a:hs', 1, undefined),
+    ).resolves.toEqual([{ ...memberEvent, unsigned: {} }]);
+    expect(transport.readTimeline).toHaveBeenCalledWith(type, 0);
   });
 });

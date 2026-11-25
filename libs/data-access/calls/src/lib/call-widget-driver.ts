@@ -4,6 +4,7 @@ import {
   WidgetDriver,
   type Capability,
   type IOpenIDUpdate,
+  type IReadEventRelationsResult,
   type IRoomEvent,
   type IRtcLivekitDelegateDelayedLeaveFromWidgetRequestData,
   type IRtcLivekitDelegateDelayedLeaveFromWidgetResponseData,
@@ -16,6 +17,11 @@ import {
   type SimpleObservable,
 } from 'matrix-widget-api';
 import type { CallTransport, RawCallEvent } from './call-transport';
+
+const isRtcTransport = (value: unknown): value is IRtcTransport =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { type?: unknown }).type === 'string';
 
 export const toRoomEvent = (event: RawCallEvent): IRoomEvent => ({
   ...event,
@@ -91,6 +97,24 @@ export class CallWidgetDriver extends WidgetDriver {
     return { roomId: callRoom, delayId };
   }
 
+  override async sendDelayedStickyEvent(
+    delay: number,
+    stickyDurationMs: number,
+    eventType: string,
+    content: unknown,
+    roomId?: string | null,
+  ): Promise<ISendDelayedEventDetails> {
+    const callRoom = this.callRoom(roomId);
+    const { delayId } = await this.transport.sendDelayedStickyEvent(
+      { delayMs: delay },
+      stickyDurationMs,
+      eventType,
+      content,
+    );
+    if (!delayId) throw new Error('The homeserver returned no delay ID');
+    return { roomId: callRoom, delayId };
+  }
+
   override cancelScheduledDelayedEvent(delayId: string): Promise<void> {
     return this.transport.updateDelayedEvent(
       delayId,
@@ -144,14 +168,46 @@ export class CallWidgetDriver extends WidgetDriver {
     _since: string | undefined,
   ): Promise<IRoomEvent[]> {
     if (roomId !== this.transport.roomId) return Promise.resolve([]);
+    if (stateKey === undefined) {
+      return Promise.resolve(
+        this.transport.readTimeline(eventType, limit).map(toRoomEvent),
+      );
+    }
+    // Filter before limiting; 0 means "as many as possible" in widget-api.
+    const matching = this.transport
+      .readTimeline(eventType, 0)
+      .filter((event) => event.state_key === stateKey);
     return Promise.resolve(
-      this.transport
-        .readTimeline(eventType, limit)
-        .filter(
-          (event) => stateKey === undefined || event.state_key === stateKey,
-        )
-        .map(toRoomEvent),
+      (limit > 0 ? matching.slice(0, limit) : matching).map(toRoomEvent),
     );
+  }
+
+  override readStickyEvents(roomId: string): Promise<IRoomEvent[]> {
+    if (roomId !== this.transport.roomId) return Promise.resolve([]);
+    return Promise.resolve(this.transport.readStickyEvents().map(toRoomEvent));
+  }
+
+  override async readEventRelations(
+    eventId: string,
+    roomId?: string,
+    relationType?: string,
+    eventType?: string,
+    from?: string,
+    _to?: string,
+    limit?: number,
+    direction?: 'f' | 'b',
+  ): Promise<IReadEventRelationsResult> {
+    if (roomId !== undefined && roomId !== this.transport.roomId) {
+      return { chunk: [] };
+    }
+    const result = await this.transport.readRelations(eventId, {
+      relType: relationType,
+      eventType,
+      from,
+      limit,
+      direction,
+    });
+    return { ...result, chunk: result.chunk.map(toRoomEvent) };
   }
 
   override askOpenID(observer: SimpleObservable<IOpenIDUpdate>): void {
@@ -163,7 +219,9 @@ export class CallWidgetDriver extends WidgetDriver {
 
   override async getRtcTransports(): Promise<IRtcTransportsResult> {
     return {
-      rtc_transports: (await this.transport.rtcTransports()) as IRtcTransport[],
+      rtc_transports: (await this.transport.rtcTransports()).filter(
+        isRtcTransport,
+      ),
     };
   }
 

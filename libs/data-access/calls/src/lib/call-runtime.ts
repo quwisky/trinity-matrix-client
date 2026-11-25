@@ -66,8 +66,6 @@ class ActiveCallSession implements CallSession {
   private readonly subscriptions: Subscription[];
   private finished = false;
 
-  readonly state = this.currentState.asReadonly();
-
   private readonly onContentLoaded = (): void => {
     if (!this.finished) this.currentState.set('joined');
   };
@@ -77,6 +75,8 @@ class ActiveCallSession implements CallSession {
     this.finish('ended');
   };
   private readonly onPreparingError = (): void => this.finish('failed');
+
+  readonly state = this.currentState.asReadonly();
 
   constructor(
     private readonly api: ClientWidgetApi,
