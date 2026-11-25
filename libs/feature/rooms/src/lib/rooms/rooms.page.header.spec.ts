@@ -721,7 +721,8 @@ describe('RoomsPage calls', () => {
     });
     const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
     const click = (id: string) => {
-      root.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
+      root.querySelector<HTMLElement>('[data-testid="start-call"]')?.click();
+      document.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
       lastFixture.detectChanges();
     };
     return { root, start, confirm, click };
@@ -846,7 +847,8 @@ describe('RoomsPage calls', () => {
       of(true),
     );
 
-    root
+    root.querySelector<HTMLElement>('[data-testid="start-call"]')?.click();
+    document
       .querySelector<HTMLElement>('[data-testid="start-video-call"]')
       ?.click();
     lastFixture.detectChanges();

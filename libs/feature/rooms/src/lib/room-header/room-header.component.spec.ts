@@ -449,8 +449,7 @@ describe('RoomHeaderComponent actions and search field', () => {
 
 describe('RoomHeaderComponent for a linked room the client does not hold yet', () => {
   const roomActions = [
-    'start-voice-call',
-    'start-video-call',
+    'start-call',
     'search-messages',
     'open-threads',
     'open-pinned',
@@ -502,20 +501,29 @@ describe('RoomHeaderComponent back arrow', () => {
   });
 });
 
-describe('RoomHeaderComponent call buttons', () => {
+describe('RoomHeaderComponent call menu', () => {
+  it('is one ghost icon button named "Start call"', async () => {
+    const { byId } = await build();
+    const button = byId('start-call') as HTMLButtonElement;
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('aria-label')).toBe('Start call');
+    expect(button.getAttribute('presentation')).toBe('ghost');
+    expect(button.querySelector('trn-icon')?.getAttribute('name')).toBe(
+      'phone',
+    );
+  });
+
   it.each([
-    ['start-voice-call', 'Start voice call', 'phone', false],
-    ['start-video-call', 'Start video call', 'video', true],
+    ['start-voice-call', 'Voice call', false],
+    ['start-video-call', 'Video call', true],
   ] as const)(
-    '%s is a ghost icon button named "%s" that asks for a call',
-    async (id, label, icon, video) => {
+    'opens a menu whose %s item, "%s", asks for a call',
+    async (id, label, video) => {
       const { byId, actions } = await build();
-      const button = byId(id) as HTMLButtonElement;
-      expect(button.tagName).toBe('BUTTON');
-      expect(button.getAttribute('aria-label')).toBe(label);
-      expect(button.getAttribute('presentation')).toBe('ghost');
-      expect(button.querySelector('trn-icon')?.getAttribute('name')).toBe(icon);
-      button.click();
+      byId('start-call')?.click();
+      const item = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      expect(item?.textContent?.trim()).toBe(label);
+      item?.click();
       expect(actions).toEqual([{ type: 'call', video }]);
     },
   );

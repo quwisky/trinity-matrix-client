@@ -314,12 +314,12 @@
       grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
     }
 
-    // 480px rather than the timeline's 320px floor: this column also holds the room header
-    // (avatar, six actions, search field and menu), and the room name must stay readable
+    // 520px rather than the timeline's 320px floor: this column also holds the room header
+    // (avatar, five actions, search field and menu), and the room name must keep ~120px
     // beside them.
     .main:has(> .chat-body:not(.hidden) > [data-right-panel-surface]) {
       grid-template-columns:
-        minmax(min(480px, 100%), 1fr) auto
+        minmax(min(520px, 100%), 1fr) auto
         minmax(0, var(--shell-right-panel-w, 360px));
     }
 

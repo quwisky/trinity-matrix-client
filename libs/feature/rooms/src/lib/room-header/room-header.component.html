@@ -117,25 +117,34 @@
         presentation="ghost"
         size="md"
         shape="icon"
-        (click)="action.emit({ type: 'call', video: false })"
-        trnTooltip="Start voice call"
-        aria-label="Start voice call"
-        data-testid="start-voice-call"
+        [trnDropdownMenuTrigger]="callMenu"
+        align="end"
+        trnTooltip="Start call"
+        aria-label="Start call"
+        data-testid="start-call"
       >
         <trn-icon size="lg" name="phone" motion="pop" />
       </button>
-      <button
-        trnBtn
-        presentation="ghost"
-        size="md"
-        shape="icon"
-        (click)="action.emit({ type: 'call', video: true })"
-        trnTooltip="Start video call"
-        aria-label="Start video call"
-        data-testid="start-video-call"
-      >
-        <trn-icon size="lg" name="video" motion="pop" />
-      </button>
+      <ng-template #callMenu>
+        <div trnDropdownMenu aria-label="Start call">
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'call', video: false })"
+            data-testid="start-voice-call"
+          >
+            <trn-icon name="phone" />
+            Voice call
+          </button>
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'call', video: true })"
+            data-testid="start-video-call"
+          >
+            <trn-icon name="video" />
+            Video call
+          </button>
+        </div>
+      </ng-template>
       <button
         trnBtn
         presentation="ghost"
