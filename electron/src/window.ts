@@ -73,6 +73,11 @@ export function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
+/** The bundled Element Call page, the one subframe trusted with app permissions. */
+function isCallFrameUrl(url: string): boolean {
+  return isAppUrl(url) && new URL(url).pathname.startsWith('/element-call/');
+}
+
 /** Electron emits persistent-storage at runtime but omits it from its permission union. */
 function isAllowedAppPermission(permission: string): boolean {
   return (
@@ -88,16 +93,18 @@ function isAllowedAppPermission(permission: string): boolean {
  * Restrict renderer permission requests to what the app uses: media (microphone for voice
  * messages, camera for QR verification), geolocation (location sharing), persistent
  * storage, sanitized clipboard writes for explicit copy actions, and element fullscreen
- * (the video player). Without a handler Electron would auto-approve every other powerful
- * permission. Clipboard reads remain denied.
+ * (the video player). Of subframes, only the bundled call frame gets them, for calls.
+ * Without a handler Electron would auto-approve every other powerful permission.
+ * Clipboard reads remain denied.
  */
 export function installPermissionPolicy(session: Electron.Session): void {
   session.setPermissionRequestHandler(
     (contents, permission, callback, details) => {
       if (
-        !details.isMainFrame ||
         !isAppUrl(contents.getURL()) ||
-        !isAppUrl(details.requestingUrl)
+        !(details.isMainFrame
+          ? isAppUrl(details.requestingUrl)
+          : isCallFrameUrl(details.requestingUrl))
       ) {
         callback(false);
         return;
@@ -109,9 +116,10 @@ export function installPermissionPolicy(session: Electron.Session): void {
     (contents, permission, requestingOrigin, details) =>
       Boolean(
         contents &&
-        details.isMainFrame &&
         isAppUrl(contents.getURL()) &&
-        isAppUrl(details.requestingUrl ?? requestingOrigin) &&
+        (details.isMainFrame
+          ? isAppUrl(details.requestingUrl ?? requestingOrigin)
+          : isCallFrameUrl(details.requestingUrl ?? '')) &&
         isAllowedAppPermission(permission),
       ),
   );

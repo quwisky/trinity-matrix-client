@@ -315,6 +315,25 @@ describe('installPermissionPolicy', () => {
       check(appContents, 'midi', 'trinity://app', { isMainFrame: true }),
     ).toBe(false);
   });
+
+  it.each([
+    ['the bundled call frame', 'trinity://app/element-call/index.html', true],
+    ['a remote widget frame', 'https://widget.example/', false],
+    ['an app frame outside the call', 'trinity://app/index.html', false],
+  ])('lets %s use the camera and microphone: %s', (_name, url, allowed) => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0];
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+    const granted = vi.fn();
+    const details = { isMainFrame: false, requestingUrl: url };
+
+    request(appContents, 'media', granted, details);
+    expect(granted).toHaveBeenCalledWith(allowed);
+    expect(check(appContents, 'media', new URL(url).origin, details)).toBe(
+      allowed,
+    );
+  });
 });
 
 describe('titleBarOptions', () => {
