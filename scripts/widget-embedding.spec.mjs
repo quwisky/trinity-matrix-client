@@ -11,6 +11,8 @@ const indexHtml = readFileSync(
 const frameTemplate =
   'libs/feature/rooms/src/lib/room-settings/room-widget-frame/' +
   'room-widget-frame.component.html';
+const callFrameTemplate =
+  'libs/feature/rooms/src/lib/room-call/room-call.component.html';
 
 describe('widget iframe boundary', () => {
   it('allows only HTTPS frames in the document CSP', () => {
@@ -46,6 +48,6 @@ describe('widget iframe boundary', () => {
       .split('\n')
       .filter(Boolean);
 
-    expect(matches).toEqual([frameTemplate]);
+    expect(matches).toEqual([callFrameTemplate, frameTemplate]);
   });
 });

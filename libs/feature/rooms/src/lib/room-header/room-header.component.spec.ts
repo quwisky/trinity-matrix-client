@@ -449,6 +449,8 @@ describe('RoomHeaderComponent actions and search field', () => {
 
 describe('RoomHeaderComponent for a linked room the client does not hold yet', () => {
   const roomActions = [
+    'start-voice-call',
+    'start-video-call',
     'search-messages',
     'open-threads',
     'open-pinned',
@@ -497,5 +499,33 @@ describe('RoomHeaderComponent back arrow', () => {
     expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
       'Back to inbox',
     );
+  });
+});
+
+describe('RoomHeaderComponent call buttons', () => {
+  it.each([
+    ['start-voice-call', 'Start voice call', 'phone', false],
+    ['start-video-call', 'Start video call', 'video', true],
+  ] as const)(
+    '%s is a ghost icon button named "%s" that asks for a call',
+    async (id, label, icon, video) => {
+      const { byId, actions } = await build();
+      const button = byId(id) as HTMLButtonElement;
+      expect(button.tagName).toBe('BUTTON');
+      expect(button.getAttribute('aria-label')).toBe(label);
+      expect(button.getAttribute('presentation')).toBe('ghost');
+      expect(button.querySelector('trn-icon')?.getAttribute('name')).toBe(icon);
+      button.click();
+      expect(actions).toEqual([{ type: 'call', video }]);
+    },
+  );
+
+  it('keeps both call buttons reachable when compact', async () => {
+    const { byId } = await build({ compact: true });
+    for (const id of ['start-voice-call', 'start-video-call']) {
+      const button = byId(id);
+      expect(button, id).not.toBeNull();
+      expect(button?.className, id).not.toMatch(/hidden/);
+    }
   });
 });

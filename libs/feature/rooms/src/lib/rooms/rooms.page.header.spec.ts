@@ -79,6 +79,7 @@ import { ShellStatusService } from './shell-status.service';
 import { SpaceActionsService } from './space-actions.service';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { roomSummary } from '../testing/room-summary.fixture';
+import { CallService, type ActiveCall } from '@trinity/data-access/calls';
 import { compileBeforeTests } from '../testing/test-bed';
 
 const BOB: MemberSummary = {
@@ -95,6 +96,13 @@ const ROOM: RoomSummary = roomSummary({
   accountId: '@me:hs',
   name: 'General',
   memberCount: 2,
+});
+
+const CALL_ROOM: RoomSummary = roomSummary({
+  id: '!call:hs',
+  accountId: '@me:hs',
+  name: 'Standup',
+  memberCount: 3,
 });
 
 beforeEach(() => setRouteRoom(null));
@@ -115,6 +123,7 @@ function renderHeader(
     routeRoom?: string;
     loadState?: TimelineLoadState;
     presenceByUser?: Record<string, WritableSignal<PresenceState | null>>;
+    calls?: Partial<CallService>;
   } = {},
 ) {
   windowingFlag.set(false);
@@ -177,7 +186,11 @@ function renderHeader(
       avatarMxc: null,
     }),
   };
-  const nav = { bindFocus: vi.fn(), releaseOpenRoom: vi.fn() };
+  const nav = {
+    bindFocus: vi.fn(),
+    releaseOpenRoom: vi.fn(),
+    knownRooms: () => [ROOM, CALL_ROOM],
+  };
   const status = { error: signal<string | null>(null), showError: vi.fn() };
 
   TestBed.configureTestingModule({
@@ -250,6 +263,7 @@ function renderHeader(
       }),
       MockProvider(TrnAlertService),
       MockProvider(TrnToastService),
+      ...(opts.calls ? [MockProvider(CallService, opts.calls)] : []),
     ],
   });
   TestBed.overrideComponent(RoomsPage, {
@@ -687,4 +701,93 @@ describe('RoomsPage body for a room the client holds but the user has not joined
       ).toHaveLength(0);
     });
   }
+});
+
+describe('RoomsPage calls', () => {
+  const ongoing = (roomId: string): ActiveCall => ({
+    roomId,
+    accountId: '@me:hs',
+    widgetUrl: 'trinity://app/element-call/index.html',
+    state: 'joined',
+  });
+
+  function renderCalls(activeCall: ActiveCall | null, room = ROOM) {
+    const start = vi.fn();
+    const root = renderHeader(0, {
+      room,
+      calls: { activeCall: signal(activeCall), start, attach: () => NEVER },
+    });
+    const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
+    const click = (id: string) => {
+      root.querySelector<HTMLElement>(`[data-testid="${id}"]`)?.click();
+      lastFixture.detectChanges();
+    };
+    return { root, start, confirm, click };
+  }
+
+  it('starts a video call in the open room with no call running', () => {
+    const { start, confirm, click } = renderCalls(null);
+    click('start-video-call');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(start).toHaveBeenCalledWith('!r:hs', {
+      video: true,
+      dm: false,
+      theme: 'light',
+    });
+  });
+
+  it('starts a voice call as a DM call in a direct room', () => {
+    const { start, click } = renderCalls(
+      null,
+      roomSummary({ ...ROOM, directUserId: '@bob:hs' }),
+    );
+    click('start-voice-call');
+    expect(start).toHaveBeenCalledWith('!r:hs', {
+      video: false,
+      dm: true,
+      theme: 'light',
+    });
+  });
+
+  it('asks before leaving a call in another room, and Cancel starts nothing', () => {
+    const { start, confirm, click } = renderCalls(ongoing('!call:hs'));
+    confirm.mockReturnValue(of(false));
+    click('start-video-call');
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        header: 'Leave the call in Standup?',
+        confirmText: 'Leave',
+        cancelText: 'Cancel',
+      }),
+    );
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('leaves the other call and starts this one when confirmed', () => {
+    const { start, confirm, click } = renderCalls(ongoing('!call:hs'));
+    confirm.mockReturnValue(of(true));
+    click('start-voice-call');
+    expect(start).toHaveBeenCalledWith('!r:hs', {
+      video: false,
+      dm: false,
+      theme: 'light',
+    });
+  });
+
+  it('only expands the frame when the call is already in this room', () => {
+    const { root, start, confirm, click } = renderCalls(ongoing('!r:hs'));
+    click('start-video-call');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(root.querySelector('trn-room-call')?.className).toContain(
+      'room-call--expanded',
+    );
+  });
+
+  it('collapses the call frame while another room is open', () => {
+    const { root } = renderCalls(ongoing('!call:hs'));
+    const call = root.querySelector('trn-room-call');
+    expect(call).not.toBeNull();
+    expect(call?.className).not.toContain('room-call--expanded');
+  });
 });

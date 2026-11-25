@@ -80,6 +80,17 @@ describe('resolveWidgetEmbed', () => {
     },
   );
 
+  it('keeps a room-state call widget pointing at the bundled call page blocked', () => {
+    const url = 'trinity://app/element-call/index.html';
+    expect(
+      resolveWidgetEmbed(
+        { ...WIDGET, type: 'm.call', rawUrl: url },
+        { ...LAUNCH, url, origin: 'trinity://app' },
+        'trinity://app',
+      ),
+    ).toEqual({ url: null, origin: null, failure: 'call-widget' });
+  });
+
   it('rejects a launch whose recorded origin does not match its final URL', () => {
     expect(
       resolveWidgetEmbed(

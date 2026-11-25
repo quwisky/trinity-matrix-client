@@ -301,8 +301,9 @@
 
   // On a wide window the panel runs the full height of the room beside its header rather
   // than under it, so the two 48px bars share one row. The row of [timeline, panel] becomes
-  // a grid: the header and up to three banners in the first column's rows, the timeline in
-  // the last row, and the divider and panel spanning them all. The panel's track grows to
+  // a grid: the header, up to three banners and the call bar in the first column's rows, the
+  // timeline (or the expanded call) in the last row, and the divider and panel spanning them
+  // all. The panel's track grows to
   // the stored width only from what the first column's floor leaves, so a wide stored
   // panel is squeezed rather than clipped. That track exists only while a panel is open:
   // an empty `minmax(0, 360px)` track would still take its 360px. Narrower windows keep the
@@ -311,13 +312,13 @@
     .main {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto auto auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
     }
 
     // 480px rather than the timeline's 320px floor: this column also holds the room header,
     // whose avatar, four actions, search field and menu need about 376px, plus ~120px so the
     // room name stays readable.
-    .main:has(> .chat-body > [data-right-panel-surface]) {
+    .main:has(> .chat-body:not(.hidden) > [data-right-panel-surface]) {
       grid-template-columns:
         minmax(min(480px, 100%), 1fr) auto
         minmax(0, var(--shell-right-panel-w, 360px));
@@ -332,8 +333,9 @@
       display: contents;
     }
 
-    .chat-body > * {
-      grid-row: 5;
+    .chat-body > *,
+    .main > .room-call--expanded {
+      grid-row: 6;
       min-height: 0;
     }
 

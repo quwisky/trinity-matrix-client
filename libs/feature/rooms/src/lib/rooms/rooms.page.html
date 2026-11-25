@@ -198,8 +198,15 @@
         />
       }
 
+      <!-- Expanded, the call replaces this room's timeline. Collapsed it is a bar, and its
+           frame keeps running off-screen. Leaving this page ends the call. -->
+      @if (calls.activeCall()) {
+        <trn-room-call [expanded]="callExpanded()" />
+      }
+
       <div
         class="chat-body"
+        [class.hidden]="callExpanded()"
         data-right-panel-slot
         trnDrawerSwipe
         [drawerEnabled]="roomSurfaces.membersAreDrawer() && !panelPage()"
