@@ -119,11 +119,13 @@ class ActiveCallSession implements CallSession {
     ev: CustomEvent<IWidgetApiRequest>,
   ): void => {
     this.answer(ev);
-    if (ev.detail.data['value'] === false && !this.hungUp && !this.finished) {
-      this.closeTimer ??= setTimeout(
-        () => this.finish('failed'),
-        CALL_CLOSE_GRACE_MS,
-      );
+    if (ev.detail.data['value'] !== false) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = undefined;
+    } else if (!this.hungUp && !this.finished) {
+      this.closeTimer ??= setTimeout(() => {
+        if (!this.hungUp) this.finish('failed');
+      }, CALL_CLOSE_GRACE_MS);
     }
   };
   private readonly onDeviceMute = (ev: CustomEvent<IWidgetApiRequest>): void =>

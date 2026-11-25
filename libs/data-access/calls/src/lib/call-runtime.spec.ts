@@ -238,6 +238,41 @@ describe('startCallSession', () => {
     }
   });
 
+  // Element Call's Reconnect asks for always-on-screen again.
+  it('keeps a session that shows again after it stopped showing', () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session } = setup();
+      api.fromWidget('io.element.join');
+
+      api.fromWidget('set_always_on_screen', { value: false });
+      api.fromWidget('set_always_on_screen', { value: true });
+      vi.advanceTimersByTime(CALL_CLOSE_GRACE_MS);
+
+      expect(session.state()).toBe('joined');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for the leave of a session hung up while it stopped showing', async () => {
+    vi.useFakeTimers();
+    try {
+      const { api, session } = setup();
+      api.fromWidget('io.element.join');
+
+      api.fromWidget('set_always_on_screen', { value: false });
+      session.hangUp();
+      await vi.advanceTimersByTimeAsync(CALL_CLOSE_GRACE_MS);
+
+      expect(session.state()).toBe('joined');
+      api.fromWidget('io.element.close');
+      expect(session.state()).toBe('ended');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('ends a joined session that stops showing and then asks to close', () => {
     vi.useFakeTimers();
     try {
