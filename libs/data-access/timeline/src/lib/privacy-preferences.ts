@@ -165,7 +165,7 @@ export function provideConversationPrivacyPreferences() {
   return providePreferenceDescriptors(() => PRIVACY_PREFERENCE_DESCRIPTORS);
 }
 
-function validateBoolean(value: unknown): PreferenceValidation<boolean> {
+export function validateBoolean(value: unknown): PreferenceValidation<boolean> {
   return typeof value === 'boolean'
     ? { kind: 'accepted', value }
     : {
@@ -174,7 +174,7 @@ function validateBoolean(value: unknown): PreferenceValidation<boolean> {
       };
 }
 
-function booleanMigration() {
+export function booleanMigration() {
   return {
     currentVersion: 1,
     migrate: (stored: StoredPreference): PreferenceValidation<boolean> => {

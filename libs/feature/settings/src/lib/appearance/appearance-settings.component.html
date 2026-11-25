@@ -167,7 +167,7 @@
 
 <trn-settings-group
   title="Timeline"
-  description="Reduce membership and profile churn in busy or bridged rooms without changing unread counts."
+  description="Choose what the timeline shows. Hiding activity lines does not change unread counts."
 >
   <trn-settings-row
     label="Show joins and leaves"
@@ -206,6 +206,7 @@
       (checkedChange)="systemLines.setShowRoomChanges($event)"
     />
   </trn-settings-row>
+  <trn-preference-catalog-section section="timeline" />
 </trn-settings-group>
 
 <trn-message-gestures-block />

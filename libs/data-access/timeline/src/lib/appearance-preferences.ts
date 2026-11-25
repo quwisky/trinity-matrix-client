@@ -7,6 +7,7 @@ import {
   type PreferenceValue,
   type StoredPreference,
 } from '@trinity/runtime/preferences';
+import { TIMELINE_AVATAR_PRESENCE_PREFERENCE } from './timeline-avatar-presence.preference';
 
 export const CODE_SIZE_OPTIONS = Object.freeze([
   Object.freeze({ id: 'smaller', label: 'Smaller', factor: 0.875 }),
@@ -83,7 +84,11 @@ export const CODE_LINE_PRESENTATION_PREFERENCE = definePreference({
 } satisfies PreferenceDescriptor<CodeLinePresentation>);
 
 export const CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS: readonly PreferenceDescriptor<PreferenceValue>[] =
-  [CODE_SIZE_PREFERENCE, CODE_LINE_PRESENTATION_PREFERENCE];
+  [
+    CODE_SIZE_PREFERENCE,
+    CODE_LINE_PRESENTATION_PREFERENCE,
+    TIMELINE_AVATAR_PRESENCE_PREFERENCE,
+  ];
 
 /** Contributes Conversations-owned presentation policy to the preference catalog. */
 export function provideConversationAppearancePreferences(): EnvironmentProviders {

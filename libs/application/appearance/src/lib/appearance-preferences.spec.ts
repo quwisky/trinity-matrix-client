@@ -293,7 +293,7 @@ describe('AppearancePreferences', () => {
 
     expect(outcome).toEqual({
       kind: 'partial',
-      hydrated: 6,
+      hydrated: 7,
       // True black reads the unknown Theme as its predecessor, so it fails with it.
       failures: [
         {
@@ -387,7 +387,7 @@ describe('AppearancePreferences', () => {
 
       await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
         kind: 'ready',
-        hydrated: 8,
+        hydrated: 9,
       });
       expect(appearance.value()).toEqual(
         expect.objectContaining({ theme: 'trinity', trueBlack }),
@@ -454,7 +454,7 @@ describe('AppearancePreferences', () => {
     );
   });
 
-  it('contributes all eight descriptors once and returns no warning when ready', async () => {
+  it('contributes all nine descriptors once and returns no warning when ready', async () => {
     const adapter: PreferenceStorageAdapter = {
       read: () => of({ kind: 'missing' }),
       write: () => of({ kind: 'completed' }),
@@ -469,12 +469,12 @@ describe('AppearancePreferences', () => {
 
     await expect(firstValueFrom(appearance.hydrate())).resolves.toEqual({
       kind: 'ready',
-      hydrated: 8,
+      hydrated: 9,
     });
     expect([
       ...DESIGN_SYSTEM_APPEARANCE_PREFERENCE_DESCRIPTORS,
       ...CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS,
-    ]).toHaveLength(8);
+    ]).toHaveLength(9);
   });
 
   it('exposes descriptor editors and commits an axis only after persistence succeeds', async () => {
@@ -555,7 +555,7 @@ describe('AppearancePreferences', () => {
 
     await expect(
       firstValueFrom(appearance.recoverHydration(outcome.failures)),
-    ).resolves.toEqual({ kind: 'ready', hydrated: 8 });
+    ).resolves.toEqual({ kind: 'ready', hydrated: 9 });
     expect(appearance.axes.theme.value()).toBe(THEME_PREFERENCE.defaultValue);
     expect(appearance.axes.mode.value()).toBe('light');
   });

@@ -74,7 +74,7 @@ export interface AppearanceStartupWarning {
 }
 
 export type AppearanceHydrationOutcome =
-  | { readonly kind: 'ready'; readonly hydrated: 8 }
+  | { readonly kind: 'ready'; readonly hydrated: 9 }
   | {
       readonly kind: 'partial';
       readonly hydrated: number;
@@ -128,7 +128,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 8 }
+            ? { kind: 'ready', hydrated: 9 }
             : {
                 ...outcome,
                 warning: {
@@ -171,7 +171,7 @@ export class AppearancePreferences {
       .pipe(
         map((outcome): AppearanceHydrationOutcome =>
           outcome.kind === 'ready'
-            ? { kind: 'ready', hydrated: 8 }
+            ? { kind: 'ready', hydrated: 9 }
             : {
                 ...outcome,
                 warning: {
@@ -215,7 +215,7 @@ export class AppearancePreferences {
   }
 }
 
-/** Contributes all eight descriptors without moving their capability ownership. */
+/** Contributes all nine descriptors without moving their capability ownership. */
 export function provideAppearancePreferences(): EnvironmentProviders {
   return makeEnvironmentProviders([
     provideDesignSystemAppearancePreferences(),

@@ -31,7 +31,9 @@ import {
   type MessageToolbarCaps,
 } from '../message-toolbar/message-toolbar.component';
 import { TrnTooltip } from '@trinity/components/generic-content';
+import { IdentityPresenceService } from '@trinity/data-access/identity';
 import {
+  TimelineAvatarPresencePreference,
   type MessageShield,
   type MessageView,
   type ThreadSummary,
@@ -193,6 +195,8 @@ export class MessageRowComponent {
 
   private readonly host = inject(ElementRef<HTMLElement>);
   private readonly injector = inject(Injector);
+  private readonly presence = inject(IdentityPresenceService);
+  private readonly avatarPresence = inject(TimelineAvatarPresencePreference);
   /** The rooms page's Show more state; absent outside the rooms page. */
   private readonly expandedBodies = inject(ExpandedBodiesStore, {
     optional: true,
@@ -570,6 +574,19 @@ export class MessageRowComponent {
   }
 
   readonly row = input.required<MessageRow>();
+  /** The sender's dot on the group avatar; null when the setting is off or nothing to show. */
+  protected readonly senderPresence = computed(() => {
+    if (!this.avatarPresence.enabled() || !this.presence.presenceAvailable()) {
+      return null;
+    }
+    const { isOwn, senderId } = this.row();
+    // presenceFor reports the signed-in user as always online; the status they chose wins.
+    const state = isOwn
+      ? this.presence.myPresence()
+      : this.presence.presenceFor(senderId)();
+    // The SDK seeds everyone as offline, so offline is indistinguishable from presence being off.
+    return state === 'offline' ? null : state;
+  });
   /** Thread summary for this row's event (main timeline only), else null. */
   readonly threadSummary = input<ThreadSummary | null>(null);
   readonly threadContinues = input(false);

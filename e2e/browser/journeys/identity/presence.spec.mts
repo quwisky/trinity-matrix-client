@@ -12,7 +12,11 @@ import {
   type HomeserverSession,
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
-import { openSystemStatusFromRooms } from '../../../support/journeys/navigation.mts';
+import {
+  openSettingsSection,
+  openSystemStatusFromRooms,
+} from '../../../support/journeys/navigation.mts';
+import { openNamedRoom } from '../../../support/message-composer.mts';
 import { createRoom } from '../../support/space-journey.mts';
 
 // End-to-end for member online-status (presence): the room member list renders a
@@ -31,7 +35,12 @@ async function seedRoomWithMember(
   request: APIRequestContext,
   hs: string,
   runId: string,
-): Promise<{ reader: HomeserverSession; roomName: string }> {
+): Promise<{
+  reader: HomeserverSession;
+  member: Awaited<ReturnType<typeof apiLogin>>;
+  roomId: string;
+  roomName: string;
+}> {
   const readerUser = `presence-reader-${runId}`;
   const readerPass = `presence-reader-pass-${runId}`;
   const memberUser = `presence-member-${runId}`;
@@ -53,6 +62,8 @@ async function seedRoomWithMember(
 
   return {
     reader: { available: true, hs, user: readerUser, pass: readerPass },
+    member,
+    roomId,
     roomName,
   };
 }
@@ -173,6 +184,115 @@ test.describe('Member online status', () => {
     });
   });
 });
+
+for (const mobile of [false, true]) {
+  test.describe(
+    mobile
+      ? 'Presence on timeline avatars on mobile'
+      : 'Presence on timeline avatars on desktop',
+    () => {
+      test.skip(!session.available, 'needs a Synapse homeserver (Docker)');
+      if (mobile) {
+        const profile = devices['Pixel 5'];
+        test.use({
+          viewport: { width: 390, height: 844 },
+          userAgent: profile.userAgent,
+          deviceScaleFactor: profile.deviceScaleFactor,
+          isMobile: profile.isMobile,
+          hasTouch: profile.hasTouch,
+        });
+      } else {
+        test.use({ viewport: { width: 1280, height: 800 } });
+      }
+
+      test('shows the sender’s presence on their message avatar until switched off', async ({
+        page,
+        request,
+      }, testInfo) => {
+        const hs = session.hs as string;
+        const { reader, member, roomId, roomName } = await seedRoomWithMember(
+          request,
+          hs,
+          testResourceId('avatar-presence'),
+        );
+        const body = `Avatar presence ${testResourceId('message')}`;
+        // The member never syncs, so the server lets their presence lapse; set it again
+        // before each check that needs it known.
+        const setMemberAway = async (): Promise<void> => {
+          const response = await request.put(
+            `${hs}/_matrix/client/v3/presence/${encodeURIComponent(member.userId)}/status`,
+            { headers: member.headers, data: { presence: 'unavailable' } },
+          );
+          expect(response.ok()).toBe(true);
+        };
+        const sent = await request.put(
+          `${hs}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${testResourceId('txn')}`,
+          { headers: member.headers, data: { msgtype: 'm.text', body } },
+        );
+        expect(sent.ok()).toBe(true);
+        // After the send: sending marks the member active, which would read as online.
+        await setMemberAway();
+
+        await page.emulateMedia({ colorScheme: 'dark' });
+        await login(page, reader);
+        await openNamedRoom(page, roomName);
+
+        const message = page
+          .locator('trn-message-row')
+          .filter({ hasText: body });
+        const dot = message.locator('.msg__avatar .presence-dot');
+        await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
+          timeout: 30_000,
+        });
+        await testInfo.attach('timeline-avatar-presence-on', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
+
+        const setting = page.getByTestId('timeline-avatar-presence');
+        const switchSetting = async (on: boolean): Promise<void> => {
+          // A phone opens Settings from the room list, not from inside a room.
+          await page.goto('/rooms');
+          await openSettingsSection(page, 'appearance');
+          await setting.scrollIntoViewIfNeeded();
+          await expect(setting).toContainText(
+            'Show presence on message avatars',
+          );
+          await setting.locator('trn-switch').click();
+          await expect(setting.getByRole('switch')).toBeChecked({
+            checked: on,
+          });
+        };
+
+        await switchSetting(false);
+        await testInfo.attach('timeline-avatar-presence-setting', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
+
+        await page.goto('/rooms');
+        await openNamedRoom(page, roomName);
+        await expect(message).toBeVisible({ timeout: 30_000 });
+        await expect(message.locator('.msg__avatar')).toBeVisible();
+        await expect(dot).toHaveCount(0);
+        await testInfo.attach('timeline-avatar-presence-off', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
+        });
+
+        // Switching back on brings the dot back, so the empty check above was the setting
+        // at work and not presence that had lapsed.
+        await setMemberAway();
+        await switchSetting(true);
+        await page.goto('/rooms');
+        await openNamedRoom(page, roomName);
+        await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
+          timeout: 30_000,
+        });
+      });
+    },
+  );
+}
 
 // Inject at the producer read seam using Angular's development-only debug API.
 // The actual Projection Runtime, Identity lifetime, health policy and UI retry run unchanged.

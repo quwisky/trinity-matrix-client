@@ -11,6 +11,7 @@ import {
 } from '@trinity/runtime/preferences';
 import { firstValueFrom, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
+import { TimelineAvatarPresencePreference } from '@trinity/data-access/timeline';
 import { provideAppearanceConfigEntries } from './appearance-config-entries';
 import {
   APPEARANCE_PREFERENCE_DESCRIPTORS,
@@ -53,7 +54,7 @@ async function setup() {
 }
 
 describe('Appearance config entries', () => {
-  it('derives eight portable paths, keys, choices, and defaults from descriptors', async () => {
+  it('derives nine portable paths, keys, choices, and defaults from descriptors', async () => {
     const { config } = await setup();
     const descriptorKeys = APPEARANCE_PREFERENCE_DESCRIPTORS.map(
       ({ persistence }) => persistence.key,
@@ -68,6 +69,7 @@ describe('Appearance config entries', () => {
       'appearance.textSize',
       'appearance.theme',
       'appearance.trueBlack',
+      'timeline.avatarPresence',
     ]);
     expect(config.entries.map(({ key }) => key).sort()).toEqual(descriptorKeys);
     expect(configSchemaDrift(config.entries)).toEqual([]);
@@ -93,6 +95,7 @@ describe('Appearance config entries', () => {
         theme: 'trinity',
         trueBlack: false,
       },
+      timeline: { avatarPresence: true },
     });
     expect(config.exportJson()).not.toContain('palette');
     expect(config.exportJson()).not.toContain('textScale');
@@ -112,6 +115,7 @@ describe('Appearance config entries', () => {
           codeLinePresentation: 'always',
           trueBlack: true,
         },
+        timeline: { avatarPresence: false },
       },
     });
     if (!plan.ok) {
@@ -129,6 +133,9 @@ describe('Appearance config entries', () => {
       codeLinePresentation: 'always',
       trueBlack: true,
     });
+    expect(TestBed.inject(TimelineAvatarPresencePreference).enabled()).toBe(
+      false,
+    );
     expect(write.mock.calls.map(([request]) => request.key).sort()).toEqual(
       APPEARANCE_PREFERENCE_DESCRIPTORS.map(
         ({ persistence }) => persistence.key,

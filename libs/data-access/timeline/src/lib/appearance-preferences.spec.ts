@@ -6,7 +6,7 @@ import {
 } from './appearance-preferences';
 
 describe('Conversations Appearance preference descriptors', () => {
-  it('owns code size and code-line presentation as portable installation preferences', () => {
+  it('owns code size, code-line presentation and avatar presence as portable installation preferences', () => {
     expect(CONVERSATION_APPEARANCE_PREFERENCE_DESCRIPTORS).toEqual([
       expect.objectContaining({
         id: 'conversations.appearance.code-size',
@@ -37,6 +37,11 @@ describe('Conversations Appearance preference descriptors', () => {
           kind: 'select',
           testId: 'code-lines-select',
         }),
+      }),
+      expect.objectContaining({
+        id: 'conversations.timeline.avatar-presence',
+        section: 'timeline',
+        defaultValue: true,
       }),
     ]);
   });
