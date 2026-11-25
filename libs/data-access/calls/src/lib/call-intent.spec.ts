@@ -58,6 +58,28 @@ describe('hasOngoingCall', () => {
     expect(hasOngoingCall([member({ expires: 5000 }, 1000)], 5000)).toBe(true);
   });
 
+  it('treats malformed content as not ongoing', () => {
+    const bad = { ...member({}), content: null } as unknown as RawCallEvent;
+    expect(hasOngoingCall([bad], 5000)).toBe(false);
+  });
+
+  it('ignores non-numeric expiry fields', () => {
+    expect(
+      hasOngoingCall([member({ expires_ts: '1', expires: 'x' })], 5000),
+    ).toBe(true);
+  });
+
+  it('reads the legacy memberships array', () => {
+    expect(hasOngoingCall([member({ memberships: [] })], 5000)).toBe(false);
+    expect(hasOngoingCall([member({ memberships: [{ a: 1 }] })], 5000)).toBe(
+      true,
+    );
+  });
+
+  it('keeps a member whose expiry equals now', () => {
+    expect(hasOngoingCall([member({ expires_ts: 5000 })], 5000)).toBe(true);
+  });
+
   it('ignores other event types', () => {
     expect(
       hasOngoingCall([{ ...member({ a: 1 }), type: 'm.room.member' }], 5000),

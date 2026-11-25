@@ -28,13 +28,17 @@ export function hasOngoingCall(
 ): boolean {
   return memberEvents.some((event) => {
     if (event.type !== CALL_MEMBER_TYPE) return false;
-    const { content } = event;
-    if (Object.keys(content).length === 0) return false;
+    const content: unknown = event.content;
+    if (typeof content !== 'object' || content === null) return false;
+    const fields = content as Record<string, unknown>;
+    if (Object.keys(fields).length === 0) return false;
+    const memberships = fields['memberships'];
+    if (Array.isArray(memberships)) return memberships.length > 0;
     const expiresTs =
-      typeof content['expires_ts'] === 'number'
-        ? content['expires_ts']
-        : typeof content['expires'] === 'number'
-          ? event.origin_server_ts + content['expires']
+      typeof fields['expires_ts'] === 'number'
+        ? fields['expires_ts']
+        : typeof fields['expires'] === 'number'
+          ? event.origin_server_ts + fields['expires']
           : undefined;
     return expiresTs === undefined || expiresTs >= nowMs;
   });
