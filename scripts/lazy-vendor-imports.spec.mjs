@@ -10,9 +10,10 @@ import { stripSourceComments as stripComments } from './source-style-blocks.mjs'
  * `QrCodeService` loads it with a dynamic `import()`. A single static value import anywhere
  * in the app graph pulls it back into the first download, and no unit test would notice.
  *
- * `matrix-widget-api` (about 110 KB minified) is only needed once a room widget opens.
- * `widget-bridge-runtime.ts` is the one module that imports it, and `WidgetBridgeService`
- * loads that module with a dynamic `import()`. The SDK used to pull it in anyway: its root
+ * `matrix-widget-api` (about 110 KB minified) is only needed once a room widget or a call
+ * opens. `widget-bridge-runtime.ts` and the call runtime (`call-runtime.ts` and the
+ * `call-widget-driver.ts` only it imports) are the modules that import it, and each runtime
+ * is loaded with a dynamic `import()`. The SDK used to pull it in anyway: its root
  * entry re-exports `embedded.js` (the client a Matrix widget runs inside), which imports
  * `matrix-widget-api` statically. Trinity's matrix-js-sdk patch drops that re-export.
  *
@@ -33,6 +34,9 @@ const staticImportOf = (specifier) =>
 const staticImport = staticImportOf(String.raw`qr(?:\/[^'"]*)?`);
 const WIDGET_RUNTIME =
   'libs/data-access/widgets/src/lib/widget-bridge-runtime.ts';
+const CALL_RUNTIME = 'libs/data-access/calls/src/lib/call-runtime.ts';
+const CALL_DRIVER = 'libs/data-access/calls/src/lib/call-widget-driver.ts';
+const WIDGET_API_IMPORTERS = [WIDGET_RUNTIME, CALL_RUNTIME, CALL_DRIVER];
 
 const staticLazyImports = (source, pattern = staticImport) =>
   [...stripComments(source).matchAll(pattern)].map((match) => match[0]);
@@ -85,14 +89,23 @@ describe('lazy vendor imports', () => {
     expect(service).toContain("import('qr/decode.js')");
   });
 
-  it('imports matrix-widget-api only from the lazily loaded widget runtime', () => {
+  it('imports matrix-widget-api only from the lazily loaded widget and call runtimes', () => {
     const files = applicationSources();
-    expect(files).toContain(WIDGET_RUNTIME);
+    expect(files).toEqual(expect.arrayContaining(WIDGET_API_IMPORTERS));
 
     expect(
       offendersOf(
         staticImportOf(String.raw`matrix-widget-api(?:\/[^'"]*)?`),
-        files.filter((file) => file !== WIDGET_RUNTIME),
+        files.filter((file) => !WIDGET_API_IMPORTERS.includes(file)),
+      ),
+    ).toEqual([]);
+    expect(
+      offendersOf(staticImportOf(String.raw`[^'"]*call-runtime`), files),
+    ).toEqual([]);
+    expect(
+      offendersOf(
+        staticImportOf(String.raw`[^'"]*call-widget-driver`),
+        files.filter((file) => file !== CALL_RUNTIME),
       ),
     ).toEqual([]);
     expect(
