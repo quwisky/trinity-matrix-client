@@ -328,6 +328,25 @@ describe('matrixCallTransport', () => {
     await expect(transport.rtcTransports()).rejects.toBe(failure);
   });
 
+  it.each([
+    ['400 M_UNRECOGNIZED', new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 400)],
+    ['405', new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 405)],
+    ['405 without an errcode', new MatrixError({}, 405)],
+  ])('falls back to well-known RTC transports on %s', async (_label, error) => {
+    const { stub, transport } = setup();
+    stub.http.authedRequest.mockRejectedValueOnce(error);
+    await expect(transport.rtcTransports()).resolves.toEqual([
+      { type: 'livekit' },
+    ]);
+  });
+
+  it('rejects a 400 other than M_UNRECOGNIZED', async () => {
+    const { stub, transport } = setup();
+    const failure = new MatrixError({ errcode: 'M_BAD_JSON' }, 400);
+    stub.http.authedRequest.mockRejectedValueOnce(failure);
+    await expect(transport.rtcTransports()).rejects.toBe(failure);
+  });
+
   it('posts LiveKit requests verbatim', async () => {
     const { stub, transport } = setup();
     const prefix = { prefix: '/_matrix/client/unstable/io.element.msc4195' };

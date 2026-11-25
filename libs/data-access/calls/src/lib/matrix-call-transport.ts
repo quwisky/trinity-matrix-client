@@ -233,7 +233,7 @@ export function matrixCallTransport(
         );
         return response.rtc_transports ?? [];
       } catch (error) {
-        if (!(error instanceof MatrixError) || error.httpStatus !== 404) {
+        if (!(error instanceof MatrixError) || !isUnsupported(error)) {
           throw error;
         }
         const foci =
@@ -333,4 +333,13 @@ export function matrixCallTransport(
       });
     },
   };
+}
+
+/** How a homeserver without an endpoint answers: 404, 405, or 400 `M_UNRECOGNIZED`. */
+function isUnsupported(error: MatrixError): boolean {
+  return (
+    error.httpStatus === 404 ||
+    error.httpStatus === 405 ||
+    (error.httpStatus === 400 && error.errcode === 'M_UNRECOGNIZED')
+  );
 }
