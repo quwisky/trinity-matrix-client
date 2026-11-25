@@ -28,7 +28,8 @@ type ToDeviceMessage = Parameters<
 
 const RTC_TRANSPORTS_PREFIX = '/_matrix/client/unstable/org.matrix.msc4143';
 const LIVEKIT_PREFIX = '/_matrix/client/unstable/io.element.msc4195';
-const WELL_KNOWN_TIMEOUT_MS = 5_000;
+const RTC_TRANSPORTS_TIMEOUT_MS = 2_000;
+const WELL_KNOWN_TIMEOUT_MS = 4_000;
 
 // SDK send methods are typed against its known event map; call events are arbitrary types.
 type AnyType = never;
@@ -226,14 +227,18 @@ export function matrixCallTransport(
       return client.getOpenIdToken();
     },
 
+    // Bounded so Element Call gets an answer before the widget API's 10 s request timeout.
     async rtcTransports() {
       try {
-        const response = await unstable<{ rtc_transports?: unknown[] }>(
-          RTC_TRANSPORTS_PREFIX,
-          Method.Get,
-          '/rtc/transports',
+        const response = await withTimeout(
+          unstable<{ rtc_transports?: unknown[] }>(
+            RTC_TRANSPORTS_PREFIX,
+            Method.Get,
+            '/rtc/transports',
+          ),
+          RTC_TRANSPORTS_TIMEOUT_MS,
         );
-        if (response.rtc_transports?.length) return response.rtc_transports;
+        if (response?.rtc_transports?.length) return response.rtc_transports;
       } catch (error) {
         if (!(error instanceof MatrixError) || !isUnsupported(error)) {
           throw error;
@@ -242,16 +247,11 @@ export function matrixCallTransport(
       // The client never polls its own well-known copy, so read the server name's afresh.
       const domain = client.getDomain();
       if (!domain) return [];
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      // Answer before the widget API's 10 s request timeout; discovery retries take longer.
-      const wellKnown = await Promise.race([
+      // Discovery retries a failing well-known for up to ~20 s.
+      const wellKnown = await withTimeout(
         AutoDiscovery.getRawClientConfig(domain),
-        new Promise<undefined>((resolve) => {
-          timer = setTimeout(() => resolve(undefined), WELL_KNOWN_TIMEOUT_MS);
-        }),
-      ])
-        .catch(() => undefined)
-        .finally(() => clearTimeout(timer));
+        WELL_KNOWN_TIMEOUT_MS,
+      ).catch(() => undefined);
       const foci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
       return Array.isArray(foci) ? foci : [];
     },
@@ -347,6 +347,24 @@ export function matrixCallTransport(
       });
     },
   };
+}
+
+/** `promise`'s value, or undefined once `ms` pass without one. */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+): Promise<T | undefined> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** How a homeserver without an endpoint answers: 404, 405, or 400 `M_UNRECOGNIZED`. */

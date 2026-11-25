@@ -385,14 +385,41 @@ describe('matrixCallTransport', () => {
   });
 
   // The widget API times its requests out after 10 s; discovery retries may take ~20 s.
-  it('reads no transports from a well-known that takes over 5 s', async () => {
+  it('reads no transports from a well-known that takes over 4 s', async () => {
     vi.useFakeTimers();
     try {
       const { stub, transport } = setup();
       wellKnown.mockReturnValueOnce(new Promise(() => undefined));
       stub.http.authedRequest.mockRejectedValueOnce(new MatrixError({}, 404));
       const answer = transport.rtcTransports();
-      await vi.advanceTimersByTimeAsync(5_000);
+      await vi.advanceTimersByTimeAsync(4_000);
+      await expect(answer).resolves.toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to well-known when the endpoint takes over 2 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockReturnValueOnce(new Promise(() => undefined));
+      const answer = transport.rtcTransports();
+      await vi.advanceTimersByTimeAsync(2_000);
+      await expect(answer).resolves.toEqual([{ type: 'livekit' }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers within 6 s when neither source does', async () => {
+    vi.useFakeTimers();
+    try {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockReturnValueOnce(new Promise(() => undefined));
+      wellKnown.mockReturnValueOnce(new Promise(() => undefined));
+      const answer = transport.rtcTransports();
+      await vi.advanceTimersByTimeAsync(6_000);
       await expect(answer).resolves.toEqual([]);
     } finally {
       vi.useRealTimers();
