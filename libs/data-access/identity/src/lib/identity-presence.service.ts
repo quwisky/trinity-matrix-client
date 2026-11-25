@@ -241,7 +241,9 @@ export class IdentityPresenceService {
       return;
     }
     this._myPresence.set(toPresenceState(user.presence ?? 'online'));
-    this._myStatusMessage.set(user.presenceStatusMsg ?? '');
+    // From the event itself: the SDK's presenceStatusMsg keeps a message the user cleared.
+    const message = user.events?.presence?.getContent().status_msg;
+    this._myStatusMessage.set(typeof message === 'string' ? message : '');
   }
 
   private currentDetails(

@@ -28,6 +28,10 @@ export interface IdentitySdkUser {
   readonly lastActiveAgo?: number;
   readonly lastPresenceTs?: number;
   readonly currentlyActive?: boolean;
+  /** The last raw presence event; `presenceStatusMsg` keeps a message the event cleared. */
+  readonly events?: {
+    readonly presence?: { getContent(): { status_msg?: unknown } } | null;
+  };
 }
 
 /** Protocol operations owned by Identity; Account and sync lifecycle methods are absent. */
