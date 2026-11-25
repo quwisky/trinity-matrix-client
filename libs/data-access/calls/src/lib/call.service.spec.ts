@@ -4,7 +4,7 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CallSession, CallSessionState } from './call-runtime';
-import { CallService } from './call.service';
+import { CALL_RUNTIME_LOAD_TIMEOUT_MS, CallService } from './call.service';
 
 const runtime = vi.hoisted(() => ({
   sessions: [] as {
@@ -14,9 +14,11 @@ const runtime = vi.hoisted(() => ({
   }[],
   start: vi.fn(),
   members: [] as unknown[],
+  gate: null as Promise<void> | null,
 }));
 
 vi.mock('./call-runtime', async () => {
+  if (runtime.gate) await runtime.gate;
   const { signal } = await import('@angular/core');
   runtime.start.mockImplementation((...args: unknown[]) => {
     const state = signal<CallSessionState>('loading');
@@ -47,6 +49,8 @@ describe('CallService', () => {
   const iframe = document.createElement('iframe');
 
   beforeEach(() => {
+    vi.resetModules();
+    runtime.gate = null;
     runtime.sessions.length = 0;
     runtime.members = [];
     runtime.start.mockClear();
@@ -156,4 +160,63 @@ describe('CallService', () => {
       expect(service.activeCall()).toBeNull();
     },
   );
+
+  it('starts one session for two attaches of the same call', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    service.attach(iframe).subscribe();
+    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runtime.start).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the call when attach is dropped before the chunk resolves', async () => {
+    let open!: () => void;
+    runtime.gate = new Promise<void>((resolve) => (open = resolve));
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe().unsubscribe();
+    expect(service.activeCall()).toBeNull();
+    open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runtime.start).not.toHaveBeenCalled();
+  });
+
+  it('starts no session when the account changes while the chunk loads', async () => {
+    let open!: () => void;
+    runtime.gate = new Promise<void>((resolve) => (open = resolve));
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    activeUserId.set('@you:hs');
+    open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(runtime.start).not.toHaveBeenCalled();
+  });
+
+  it('fails the call when the runtime chunk times out', () => {
+    vi.useFakeTimers();
+    try {
+      runtime.gate = new Promise<void>(() => undefined);
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      vi.advanceTimersByTime(CALL_RUNTIME_LOAD_TIMEOUT_MS);
+      expect(service.activeCall()?.state).toBe('failed');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sends one hang-up when ending then dropping the subscription', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    const subscription = service.attach(iframe).subscribe();
+    await vi.waitFor(() => expect(runtime.sessions).toHaveLength(1));
+    service.hangUp();
+    subscription.unsubscribe();
+    expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
+    expect(service.activeCall()).toBeNull();
+  });
 });

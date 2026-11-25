@@ -5,6 +5,7 @@ import {
   Observable,
   catchError,
   defer,
+  finalize,
   from,
   switchMap,
   timeout,
@@ -40,6 +41,7 @@ export class CallService {
   private readonly clients = inject(MatrixClientService);
   private readonly call = signal<Call | null>(null);
   private readonly session = signal<CallSession | null>(null);
+  private readonly hungUp = new WeakSet<CallSession>();
   private readonly loadFailed = signal(false);
 
   readonly activeCall = computed<ActiveCall | null>(() => {
@@ -94,49 +96,64 @@ export class CallService {
   attach(iframe: HTMLIFrameElement): Observable<never> {
     return defer(() => {
       const call = this.call();
-      if (!call) return EMPTY;
+      if (!call || this.session()) return EMPTY;
+      // Unsubscribing before the chunk lands leaves no session to hang up, so end the call here.
+      let settled = false;
       return from(import('./call-runtime')).pipe(
         timeout(CALL_RUNTIME_LOAD_TIMEOUT_MS),
-        switchMap(
-          ({ startCallSession }) =>
-            new Observable<never>((subscriber) => {
-              // A newer call replaced this one while the chunk loaded.
-              if (this.call() !== call) {
+        switchMap(({ startCallSession }) => {
+          settled = true;
+          return new Observable<never>((subscriber) => {
+            // A newer call, an account switch or a second attach got here first.
+            if (
+              this.call() !== call ||
+              this.session() ||
+              this.clients.activeUserId() !== call.accountId
+            ) {
+              subscriber.complete();
+              return;
+            }
+            const session = startCallSession(
+              call.transport,
+              call.widgetUrl,
+              CALL_WIDGET_ID,
+              iframe,
+              () => {
+                // A late end from a replaced session must not clear the newer call.
+                if (this.call() === call) this.clear();
                 subscriber.complete();
-                return;
-              }
-              const session = startCallSession(
-                call.transport,
-                call.widgetUrl,
-                CALL_WIDGET_ID,
-                iframe,
-                () => {
-                  // A late end from a replaced session must not clear the newer call.
-                  if (this.call() === call) this.clear();
-                  subscriber.complete();
-                },
-              );
-              this.session.set(session);
-              return () => session.hangUp();
-            }),
-        ),
+              },
+            );
+            this.session.set(session);
+            return () => this.hangUpOnce(session);
+          });
+        }),
         catchError(() => {
+          settled = true;
           if (this.call() === call) this.loadFailed.set(true);
           return EMPTY;
+        }),
+        finalize(() => {
+          if (!settled && this.call() === call) this.end();
         }),
       );
     });
   }
 
   hangUp(): void {
-    const session = this.session();
-    if (session) session.hangUp();
-    else this.clear();
+    this.end();
   }
 
   private end(): void {
-    this.session()?.hangUp();
+    const session = this.session();
+    if (session) this.hangUpOnce(session);
     this.clear();
+  }
+
+  private hangUpOnce(session: CallSession): void {
+    if (this.hungUp.has(session)) return;
+    this.hungUp.add(session);
+    session.hangUp();
   }
 
   private clear(): void {
