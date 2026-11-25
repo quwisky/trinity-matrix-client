@@ -92,8 +92,10 @@
     <!-- The lead slot is all the header/continuation split still owns: an avatar on a group start,
          the hover-revealed timestamp on a continuation. -->
     @if (r.showHeader) {
+      <!-- The header names the sender and reads the status, so the avatar is decorative. -->
       <trn-avatar
         class="msg__avatar"
+        aria-hidden="true"
         [mxc]="r.senderAvatarMxc"
         [initial]="r.senderInitial"
         [name]="r.senderName"
@@ -116,6 +118,9 @@
         @if (r.showHeader) {
           <div class="msg__head">
             <span class="msg__author">{{ r.senderName }}</span>
+            @if (senderPresenceLabel(); as status) {
+              <span class="sr-only">, {{ status }}</span>
+            }
             <trn-message-time
               [timestamp]="r.timestamp"
               [armed]="timeTipArmed()"

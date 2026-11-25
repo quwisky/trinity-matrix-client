@@ -1,11 +1,12 @@
 import { Injectable, Signal, computed, inject, signal } from '@angular/core';
-import { Observable, Subscription, defer, from, tap } from 'rxjs';
+import { Observable, Subscription, defer, from, switchMap, tap } from 'rxjs';
 import { ProjectionRuntime } from '@trinity/runtime/projection';
 import { type PresenceState, toPresenceState } from '@trinity/util/matrix';
 import {
   IDENTITY_MATRIX_EVENTS,
   IdentityMatrixPort,
   type IdentityMatrixClient,
+  type IdentitySdkUser,
 } from '@trinity/data-access/matrix-client';
 import {
   identityNotReady,
@@ -33,6 +34,15 @@ function samePresenceDetails(
       a.lastActiveAt === b.lastActiveAt &&
       a.currentlyActive === b.currentlyActive)
   );
+}
+
+/**
+ * The status message in the user's last presence event. Not `presenceStatusMsg`: the SDK only
+ * overwrites that when an event carries a message, so a cleared one would linger.
+ */
+function reportedStatusMessage(user: IdentitySdkUser): string {
+  const message = user.events?.presence?.getContent().status_msg;
+  return typeof message === 'string' ? message : '';
 }
 
 /** Projects authoritative Matrix presence; unavailable or unseen status remains unknown. */
@@ -67,11 +77,14 @@ export class IdentityPresenceService {
   private readonly _revision = signal(0);
   readonly revision = this._revision.asReadonly();
 
-  // The signed-in user's own presence and status message, seeded by loadOwnPresence().
+  // The signed-in user's own presence and status message: what they set here, else what the
+  // server last reported, else online. Every read of the signed-in user's presence uses it.
   private readonly _myPresence = signal<PresenceState>('online');
   readonly myPresence = this._myPresence.asReadonly();
   private readonly _myStatusMessage = signal('');
   readonly myStatusMessage = this._myStatusMessage.asReadonly();
+  /** When this client last wrote its own presence; older server reports don't undo it. */
+  private ownWrittenAt = 0;
 
   /**
    * Reactive presence for a user; unknown while the projection is unavailable. Safe to call
@@ -82,7 +95,12 @@ export class IdentityPresenceService {
     if (!view) {
       const state = signal<PresenceState | null>(null);
       this.states.set(userId, state);
-      view = computed(() => (this.available() ? state() : null));
+      view = computed(() => {
+        if (!this.available()) return null;
+        return userId === this.matrix.activeAccountId()
+          ? this._myPresence()
+          : state();
+      });
       this.views.set(userId, view);
       // Schedule outside the computed read context: invalidation publishes Projection Runtime signals.
       if (this.available()) queueMicrotask(() => this.projection.schedule());
@@ -96,7 +114,17 @@ export class IdentityPresenceService {
     if (!view) {
       const details = signal<PresenceDetails | null>(null);
       this.details.set(userId, details);
-      view = computed(() => (this.available() ? details() : null));
+      view = computed(() => {
+        if (!this.available()) return null;
+        const current = details();
+        return current && userId === this.matrix.activeAccountId()
+          ? {
+              ...current,
+              state: this._myPresence(),
+              statusMessage: this._myStatusMessage(),
+            }
+          : current;
+      });
       this.detailViews.set(userId, view);
       if (this.available()) queueMicrotask(() => this.projection.schedule());
     }
@@ -119,6 +147,7 @@ export class IdentityPresenceService {
     events: [IDENTITY_MATRIX_EVENTS.presence],
     // Re-seed tracked users: a re-login brings a fresh client whose users may differ.
     rebuild: (client) => {
+      this.seedOwnPresence(client);
       for (const [userId, state] of this.states) {
         state.set(this.currentPresence(userId, client));
       }
@@ -138,6 +167,7 @@ export class IdentityPresenceService {
       }
       this._myPresence.set('online');
       this._myStatusMessage.set('');
+      this.ownWrittenAt = 0;
       this._revision.update((n) => n + 1);
     },
   });
@@ -164,18 +194,12 @@ export class IdentityPresenceService {
   /**
    * Seed {@link myPresence} / {@link myStatusMessage} from the signed-in user's current
    * server state, for the presence-settings control to edit. A homeserver usually does
-   * not echo your own presence, so an unknown state defaults to `online`.
+   * not echo your own presence; without a server report the current value stays.
    */
   loadOwnPresence(): void {
-    if (!this.matrix.isAvailable()) {
-      return;
+    if (this.matrix.isAvailable()) {
+      this.seedOwnPresence(this.matrix.active().client);
     }
-    const { accountId, client } = this.matrix.active();
-    const user = client.getUser(accountId);
-    this._myPresence.set(
-      user?.presence ? toPresenceState(user.presence) : 'online',
-    );
-    this._myStatusMessage.set(user?.presenceStatusMsg ?? '');
   }
 
   /**
@@ -197,16 +221,37 @@ export class IdentityPresenceService {
           status_msg: trimmed || undefined,
         }),
       ).pipe(
+        // Per the spec, a sync that omits set_presence marks the user online, undoing the choice.
+        switchMap(() =>
+          client.setSyncPresence(
+            presence as Parameters<IdentityMatrixClient['setSyncPresence']>[0],
+          ),
+        ),
         tap(() => {
           // The command may finish after an Account switch: its remote write belongs to the
           // captured Account but must not publish into the new Active Account's state.
           if (this.matrix.activeAccountId() === accountId) {
             this._myPresence.set(presence);
             this._myStatusMessage.set(trimmed);
+            this.ownWrittenAt = Date.now();
           }
         }),
       );
     }).pipe(recoverIdentityOperation('set-presence'));
+  }
+
+  /**
+   * Adopt the signed-in user's presence when the server has reported it. The SDK seeds
+   * every user as offline with `lastPresenceTs` 0, which is not a report, and a report
+   * older than this client's own write is stale.
+   */
+  private seedOwnPresence(client: IdentityMatrixClient): void {
+    const user = client.getUser(client.getUserId() ?? '');
+    if (!user?.lastPresenceTs || user.lastPresenceTs <= this.ownWrittenAt) {
+      return;
+    }
+    this._myPresence.set(toPresenceState(user.presence ?? 'online'));
+    this._myStatusMessage.set(reportedStatusMessage(user));
   }
 
   private currentDetails(
@@ -221,7 +266,12 @@ export class IdentityPresenceService {
     if (!state || !known) return null;
     return {
       state,
-      statusMessage: user?.presenceStatusMsg ?? '',
+      statusMessage:
+        userId === client.getUserId()
+          ? this._myStatusMessage()
+          : user
+            ? reportedStatusMessage(user)
+            : '',
       // Same anchor as the SDK's getLastActiveTs().
       lastActiveAt:
         user?.lastPresenceTs && user.lastActiveAgo != null
@@ -232,9 +282,9 @@ export class IdentityPresenceService {
   }
 
   /**
-   * This client's current presence for a user, or null when unknown. The signed-in
-   * user always reads `online`: a homeserver typically doesn't send you your own presence,
-   * so `getUser(self)` would report `offline` even though our client is live and syncing.
+   * This client's current presence for a user, or null when unknown. The signed-in user
+   * reads {@link myPresence}: a homeserver often doesn't send you your own presence, so
+   * `getUser(self)` would report the SDK's placeholder `offline` while the client is live.
    */
   private currentPresence(
     userId: string,
@@ -245,7 +295,7 @@ export class IdentityPresenceService {
     }
     const client = projectedClient ?? this.matrix.active().client;
     if (userId === client.getUserId()) {
-      return 'online';
+      return this._myPresence();
     }
     const presence = client.getUser(userId)?.presence;
     return presence ? toPresenceState(presence) : null;

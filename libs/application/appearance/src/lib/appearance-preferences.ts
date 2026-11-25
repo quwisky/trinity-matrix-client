@@ -83,7 +83,8 @@ export type AppearanceHydrationOutcome =
     };
 
 /**
- * Application-level read model over eight capability-owned preference cells.
+ * Application-level read model over the eight Appearance axes, each a capability-owned
+ * preference cell. Hydration also loads the timeline's avatar-presence choice, which no axis reads.
  *
  * Persistence remains in PreferenceStoreService and in each descriptor. This projection only
  * groups their committed values, preserves per-axis failure state, and reduces any partial

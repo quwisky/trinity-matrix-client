@@ -81,18 +81,26 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 }
 
 const presenceEnabled = signal(true);
-const senderState = signal<PresenceState | null>(null);
-const myPresence = signal<PresenceState>('online');
-const presenceAvailable = signal(true);
-const presenceFor = vi.fn((_userId: string) => senderState.asReadonly());
+// What the service reports right now; like the real peek it is read untracked, so a change
+// reaches the row only through a revision bump.
+let reported: PresenceState | null = null;
+const presenceRevision = signal(0);
+const peekDetails = vi.fn((_userId: string) =>
+  reported
+    ? {
+        state: reported,
+        statusMessage: '',
+        lastActiveAt: null,
+        currentlyActive: false,
+      }
+    : null,
+);
 
 describe('MessageRowComponent', () => {
   beforeEach(() => {
     presenceEnabled.set(true);
-    senderState.set(null);
-    myPresence.set('online');
-    presenceAvailable.set(true);
-    presenceFor.mockClear();
+    reported = null;
+    peekDetails.mockClear();
   });
 
   function renderRow(
@@ -131,9 +139,8 @@ describe('MessageRowComponent', () => {
           enabled: presenceEnabled.asReadonly(),
         }),
         MockProvider(IdentityPresenceService, {
-          presenceFor,
-          myPresence: myPresence.asReadonly(),
-          presenceAvailable: presenceAvailable.asReadonly(),
+          peekDetails,
+          revision: presenceRevision.asReadonly(),
         }),
         ...extraProviders,
       ],
@@ -1579,19 +1586,19 @@ describe('MessageRowComponent', () => {
     it.each(['online', 'unavailable'] as const)(
       'shows a %s dot on the group avatar',
       async (state) => {
-        senderState.set(state);
+        reported = state;
         const { container } = await renderRow({
           row: row({ showHeader: true }),
         });
         expect(dot(container)?.getAttribute('data-presence')).toBe(state);
-        expect(presenceFor).toHaveBeenCalledWith('@a:hs');
+        expect(peekDetails).toHaveBeenCalledWith('@a:hs');
       },
     );
 
     it.each(['offline', null] as const)(
       'shows no dot when presence is %s',
       async (state) => {
-        senderState.set(state);
+        reported = state;
         const { container } = await renderRow({
           row: row({ showHeader: true }),
         });
@@ -1599,34 +1606,19 @@ describe('MessageRowComponent', () => {
       },
     );
 
-    // The service always reports the signed-in user as online; the status they chose wins.
-    it.each([
-      ['unavailable', 'unavailable'],
-      ['offline', null],
-    ] as const)(
-      'shows your own %s status on your messages',
-      async (mine, shown) => {
-        senderState.set('online');
-        myPresence.set(mine);
-        const { container } = await renderRow({
-          row: row({ showHeader: true, isOwn: true }),
-        });
-        expect(dot(container)?.getAttribute('data-presence') ?? null).toBe(
-          shown,
-        );
-      },
-    );
-
-    it('shows no dot on your own messages while presence is unavailable', async () => {
-      presenceAvailable.set(false);
-      const { container } = await renderRow({
-        row: row({ showHeader: true, isOwn: true }),
+    it('follows a presence change in place', async () => {
+      reported = 'online';
+      const { container, fixture } = await renderRow({
+        row: row({ showHeader: true }),
       });
-      expect(dot(container)).toBeNull();
+      reported = 'unavailable';
+      presenceRevision.update((n) => n + 1);
+      fixture.detectChanges();
+      expect(dot(container)?.getAttribute('data-presence')).toBe('unavailable');
     });
 
     it('removes the dot when the setting is turned off', async () => {
-      senderState.set('online');
+      reported = 'online';
       const { container, fixture } = await renderRow({
         row: row({ showHeader: true }),
       });
@@ -1634,6 +1626,28 @@ describe('MessageRowComponent', () => {
       presenceEnabled.set(false);
       fixture.detectChanges();
       expect(dot(container)).toBeNull();
+    });
+
+    // The header already names the sender, so the avatar would only repeat it; the status is
+    // said once, after the name.
+    it('hides the avatar from screen readers and reads the status after the name', async () => {
+      reported = 'unavailable';
+      const { container } = await renderRow({
+        row: row({ showHeader: true }),
+      });
+      expect(
+        container.querySelector('.msg__avatar')?.getAttribute('aria-hidden'),
+      ).toBe('true');
+      expect(container.querySelector('.msg__head .sr-only')?.textContent).toBe(
+        ', Away',
+      );
+    });
+
+    it('reads no status when there is no dot', async () => {
+      const { container } = await renderRow({
+        row: row({ showHeader: true }),
+      });
+      expect(container.querySelector('.msg__head .sr-only')).toBeNull();
     });
   });
 });

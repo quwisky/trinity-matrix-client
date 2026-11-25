@@ -16,6 +16,11 @@ import { MatrixClientService } from '@trinity/data-access/matrix-client';
 const asClient = (fake: object): MatrixClient =>
   fake as unknown as MatrixClient;
 
+/** The SDK's last raw presence event for a user; its content is what the server sent. */
+const presenceEvent = (content: Record<string, unknown>) => ({
+  getContent: () => content,
+});
+
 /** The signed-in user's id — distinct from the seeded co-members below. */
 const SELF = '@self:hs';
 
@@ -38,6 +43,7 @@ function fakeClient(
         : null,
     ),
     setPresence: vi.fn(() => Promise.resolve()),
+    setSyncPresence: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -126,6 +132,9 @@ describe('IdentityPresenceService', () => {
         lastActiveAgo: 7_200_000,
         lastPresenceTs: NOW,
         currentlyActive: false,
+        events: {
+          presence: presenceEvent({ presence, status_msg: 'On holiday' }),
+        },
       });
 
     beforeEach(() => {
@@ -196,6 +205,21 @@ describe('IdentityPresenceService', () => {
           '@a:hs',
         ),
       ).toBe(false);
+    });
+
+    // The SDK only overwrites presenceStatusMsg when an event carries a message.
+    it('reads a message the member cleared as cleared', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: '@a:hs',
+        presence: 'online',
+        presenceStatusMsg: 'On holiday',
+        lastPresenceTs: NOW,
+        events: { presence: presenceEvent({ presence: 'online' }) },
+      });
+      svc.runProjection().subscribe();
+
+      expect(svc.peekDetails('@a:hs')?.statusMessage).toBe('');
     });
 
     it('peeks null for a user the server never reported (SDK default offline)', () => {
@@ -386,8 +410,153 @@ describe('IdentityPresenceService', () => {
   });
 
   describe('own presence', () => {
+    it('reports the status the signed-in user chose, everywhere self is read', async () => {
+      const { svc } = setup();
+      const state = svc.presenceFor(SELF);
+      const details = svc.presenceDetailsFor(SELF);
+      svc.runProjection().subscribe();
+      expect(state()).toBe('online');
+
+      await firstValueFrom(svc.setOwnPresence('unavailable', 'lunch'));
+
+      expect(state()).toBe('unavailable');
+      expect(details()).toEqual(
+        expect.objectContaining({
+          state: 'unavailable',
+          statusMessage: 'lunch',
+        }),
+      );
+      expect(svc.peekDetails(SELF)?.state).toBe('unavailable');
+    });
+
+    it('restores the status the server reports for the signed-in user on connect', () => {
+      const { svc, client } = setup();
+      client.getUser.mockImplementation((id: string) =>
+        id === SELF
+          ? {
+              userId: SELF,
+              presence: 'unavailable',
+              presenceStatusMsg: 'away for the day',
+              lastPresenceTs: 1_000,
+              events: {
+                presence: presenceEvent({
+                  presence: 'unavailable',
+                  status_msg: 'away for the day',
+                }),
+              },
+            }
+          : null,
+      );
+      const state = svc.presenceFor(SELF);
+      svc.runProjection().subscribe();
+
+      expect(state()).toBe('unavailable');
+      expect(svc.myPresence()).toBe('unavailable');
+      expect(svc.myStatusMessage()).toBe('away for the day');
+    });
+
+    it('ignores the SDK placeholder offline the server never reported', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'offline',
+        lastPresenceTs: 0,
+      });
+      svc.runProjection().subscribe();
+      svc.loadOwnPresence();
+
+      expect(svc.myPresence()).toBe('online');
+      expect(svc.presenceFor(SELF)()).toBe('online');
+    });
+
+    // The SDK only overwrites presenceStatusMsg when an event carries one, so a cleared
+    // message lingers there.
+    it('keeps a status message the user cleared when their presence echo arrives', async () => {
+      const { svc, client } = setup();
+      svc.runProjection().subscribe();
+      await firstValueFrom(svc.setOwnPresence('online', ''));
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'online',
+        presenceStatusMsg: 'lunch',
+        lastPresenceTs: Date.now() + 1_000,
+        events: { presence: presenceEvent({ presence: 'online' }) },
+      });
+
+      presenceHandler(client)(undefined, { userId: SELF, presence: 'online' });
+      await Promise.resolve();
+
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
+    it('adopts a newer message set on another device', async () => {
+      const { svc, client } = setup();
+      svc.runProjection().subscribe();
+      await firstValueFrom(svc.setOwnPresence('online', 'lunch'));
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'online',
+        presenceStatusMsg: 'in a meeting',
+        lastPresenceTs: Date.now() + 1_000,
+        events: {
+          presence: presenceEvent({
+            presence: 'online',
+            status_msg: 'in a meeting',
+          }),
+        },
+      });
+
+      presenceHandler(client)(undefined, { userId: SELF, presence: 'online' });
+      await Promise.resolve();
+
+      expect(svc.myStatusMessage()).toBe('in a meeting');
+    });
+
+    it('reads a message cleared elsewhere as cleared on the first report', () => {
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'online',
+        presenceStatusMsg: 'stale',
+        lastPresenceTs: 1_000,
+        events: { presence: presenceEvent({ presence: 'online' }) },
+      });
+      svc.runProjection().subscribe();
+
+      expect(svc.myStatusMessage()).toBe('');
+    });
+
+    it('keeps a status the user just set over an older server report', async () => {
+      const { svc, client } = setup();
+      const state = svc.presenceFor(SELF);
+      svc.runProjection().subscribe();
+      await firstValueFrom(svc.setOwnPresence('unavailable', ''));
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'online',
+        lastPresenceTs: 1,
+      });
+
+      presenceHandler(client)(undefined, { userId: SELF, presence: 'online' });
+      await Promise.resolve();
+
+      expect(state()).toBe('unavailable');
+    });
+
     it('seeds myPresence and myStatusMessage from the client', () => {
-      const { svc } = setup({ [SELF]: 'unavailable' }, { [SELF]: 'brb' });
+      const { svc, client } = setup();
+      client.getUser.mockReturnValue({
+        userId: SELF,
+        presence: 'unavailable',
+        presenceStatusMsg: 'brb',
+        lastPresenceTs: 1_000,
+        events: {
+          presence: presenceEvent({
+            presence: 'unavailable',
+            status_msg: 'brb',
+          }),
+        },
+      });
       svc.loadOwnPresence();
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('brb');
@@ -409,6 +578,23 @@ describe('IdentityPresenceService', () => {
       });
       expect(svc.myPresence()).toBe('unavailable');
       expect(svc.myStatusMessage()).toBe('heads down');
+    });
+
+    // Per the spec, a sync that omits set_presence marks the user online, which would undo the choice
+    // within seconds.
+    it('keeps the chosen status in the client’s own syncs', async () => {
+      const { svc, client } = setup();
+      await firstValueFrom(svc.setOwnPresence('unavailable', ''));
+      expect(client.setSyncPresence).toHaveBeenCalledWith('unavailable');
+    });
+
+    it('leaves syncs alone when the server rejects the status', async () => {
+      const { svc, client } = setup();
+      client.setPresence.mockReturnValueOnce(Promise.reject(new Error('nope')));
+      await firstValueFrom(svc.setOwnPresence('unavailable', '')).catch(
+        () => undefined,
+      );
+      expect(client.setSyncPresence).not.toHaveBeenCalled();
     });
 
     it('omits an empty status message', async () => {
