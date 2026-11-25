@@ -2,6 +2,7 @@ import {
   EventType,
   Preset,
   Visibility,
+  type ICreateRoomOpts,
   type ICreateRoomStateEvent,
 } from 'matrix-js-sdk';
 import type { RoomEncryptionEventContent } from 'matrix-js-sdk/lib/@types/state_events';
@@ -23,6 +24,21 @@ export function roomEncryptionInitialState(): ICreateRoomStateEvent {
     type: EventType.RoomEncryption,
     state_key: '',
     content: roomEncryptionContent(),
+  };
+}
+
+/**
+ * Lets every member publish MatrixRTC call membership (state_default is 50), as Element Web
+ * does. Rooms created before this keep their power levels.
+ */
+export function callPowerLevelOverride(): Pick<
+  ICreateRoomOpts,
+  'power_level_content_override'
+> {
+  return {
+    power_level_content_override: {
+      events: { 'org.matrix.msc3401.call.member': 0 },
+    },
   };
 }
 

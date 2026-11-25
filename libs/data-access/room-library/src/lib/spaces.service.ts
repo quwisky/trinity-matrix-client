@@ -30,6 +30,7 @@ import {
   projectFromClient,
 } from '@trinity/data-access/matrix-client';
 import {
+  callPowerLevelOverride,
   initialOf,
   roomEncryptionInitialState,
   visibilityOptions,
@@ -408,6 +409,7 @@ export class SpacesService {
           name: options.name.trim(),
           ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
           ...visibilityOptions(options.isPublic),
+          ...callPowerLevelOverride(),
           // E2EE-first: enable Megolm before the first message so the room is never
           // briefly unencrypted.
           initial_state: [roomEncryptionInitialState()],
