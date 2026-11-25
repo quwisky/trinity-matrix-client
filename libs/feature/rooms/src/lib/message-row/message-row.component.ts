@@ -576,7 +576,9 @@ export class MessageRowComponent {
   readonly row = input.required<MessageRow>();
   /** The sender's dot on the group avatar; null when the setting is off or nothing to show. */
   protected readonly senderPresence = computed(() => {
-    if (!this.avatarPresence.enabled()) return null;
+    if (!this.avatarPresence.enabled() || !this.presence.presenceAvailable()) {
+      return null;
+    }
     const { isOwn, senderId } = this.row();
     // presenceFor reports the signed-in user as always online; the status they chose wins.
     const state = isOwn

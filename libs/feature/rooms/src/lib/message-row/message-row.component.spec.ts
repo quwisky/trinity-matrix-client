@@ -83,6 +83,7 @@ function summary(overrides: Partial<ThreadSummary> = {}): ThreadSummary {
 const presenceEnabled = signal(true);
 const senderState = signal<PresenceState | null>(null);
 const myPresence = signal<PresenceState>('online');
+const presenceAvailable = signal(true);
 const presenceFor = vi.fn((_userId: string) => senderState.asReadonly());
 
 describe('MessageRowComponent', () => {
@@ -90,6 +91,7 @@ describe('MessageRowComponent', () => {
     presenceEnabled.set(true);
     senderState.set(null);
     myPresence.set('online');
+    presenceAvailable.set(true);
     presenceFor.mockClear();
   });
 
@@ -131,6 +133,7 @@ describe('MessageRowComponent', () => {
         MockProvider(IdentityPresenceService, {
           presenceFor,
           myPresence: myPresence.asReadonly(),
+          presenceAvailable: presenceAvailable.asReadonly(),
         }),
         ...extraProviders,
       ],
@@ -1613,6 +1616,14 @@ describe('MessageRowComponent', () => {
         );
       },
     );
+
+    it('shows no dot on your own messages while presence is unavailable', async () => {
+      presenceAvailable.set(false);
+      const { container } = await renderRow({
+        row: row({ showHeader: true, isOwn: true }),
+      });
+      expect(dot(container)).toBeNull();
+    });
 
     it('removes the dot when the setting is turned off', async () => {
       senderState.set('online');
