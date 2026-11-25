@@ -13,6 +13,7 @@ import {
 } from '../../../support/app.mts';
 import { registerUser, apiLogin } from '../../../support/account.mts';
 import {
+  closeSettings,
   openSettingsSection,
   openSystemStatusFromRooms,
 } from '../../../support/journeys/navigation.mts';
@@ -282,12 +283,78 @@ for (const mobile of [false, true]) {
 
         // Switching back on brings the dot back, so the empty check above was the setting
         // at work and not presence that had lapsed.
-        await setMemberAway();
         await switchSetting(true);
+        await setMemberAway();
         await page.goto('/rooms');
         await openNamedRoom(page, roomName);
         await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
           timeout: 30_000,
+        });
+      });
+
+      test('keeps the status you chose, on your own messages, in the user panel and on the server', async ({
+        page,
+        request,
+      }, testInfo) => {
+        const { reader, roomName } = await seedRoomWithMember(
+          request,
+          session.hs as string,
+          testResourceId('own-presence'),
+        );
+        const body = `Own presence ${testResourceId('message')}`;
+
+        await page.emulateMedia({ colorScheme: 'dark' });
+        await login(page, reader);
+        await openNamedRoom(page, roomName);
+        await page.getByTestId('composer-input').fill(body);
+        await page.getByTestId('composer-send').click();
+        const dot = page
+          .locator('trn-message-row')
+          .filter({ hasText: body })
+          .locator('.msg__avatar .presence-dot');
+        await expect(dot).toHaveAttribute('data-presence', 'online', {
+          timeout: 30_000,
+        });
+
+        await page.goto('/rooms');
+        await openSettingsSection(page, 'presence');
+        await page.getByTestId('presence-unavailable').click();
+        await page.getByTestId('presence-save').click();
+        await expect(page.getByTestId('presence-saved')).toBeVisible({
+          timeout: 15_000,
+        });
+        // A sync the client starts after the save: one that omits set_presence marks you online.
+        const syncAfterSave = await page.waitForRequest(
+          (r) => r.url().includes('/_matrix/client/v3/sync'),
+          { timeout: 45_000 },
+        );
+
+        // Closed in place: a page load is a new session, whose first sync resets the status.
+        await closeSettings(page);
+        await openNamedRoom(page, roomName);
+        await expect(dot).toHaveAttribute('data-presence', 'unavailable', {
+          timeout: 30_000,
+        });
+        if (!mobile) {
+          await expect(
+            page.getByTestId('user-menu-trigger').locator('.presence-dot'),
+          ).toHaveAttribute('data-presence', 'unavailable');
+        }
+        await syncAfterSave.response();
+        const observer = await apiLogin(
+          request,
+          session.hs as string,
+          reader.user,
+          reader.pass,
+        );
+        const status = await request.get(
+          `${session.hs}/_matrix/client/v3/presence/${encodeURIComponent(observer.userId)}/status`,
+          { headers: observer.headers },
+        );
+        expect((await status.json()).presence).toBe('unavailable');
+        await testInfo.attach('own-presence-away', {
+          body: await page.screenshot({ animations: 'disabled' }),
+          contentType: 'image/png',
         });
       });
     },
