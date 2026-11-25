@@ -4,9 +4,11 @@ import {
   EventTimeline,
   EventType,
   MatrixError,
+  MatrixEventEvent,
   Method,
   RoomEvent,
   RoomStateEvent,
+  type IRoomTimelineData,
   type MatrixClient,
   type MatrixEvent,
   type ReceivedToDeviceMessage,
@@ -26,7 +28,7 @@ type ToDeviceMessage = Parameters<
 const RTC_TRANSPORTS_PREFIX = '/_matrix/client/unstable/org.matrix.msc4143';
 const LIVEKIT_PREFIX = '/_matrix/client/unstable/io.element.msc4195';
 
-// The SDK types sends against its known event map; call events are arbitrary types.
+// SDK send methods are typed against its known event map; call events are arbitrary types.
 type AnyType = never;
 type AnyContent = never;
 
@@ -265,21 +267,38 @@ export function matrixCallTransport(
             subscriber.next(toRaw(event));
           }
         };
+        // Live events still awaiting a readable decryption; each leaves once emitted.
+        const pending = new WeakSet<MatrixEvent>();
+        const emitPending = (event: MatrixEvent) => {
+          if (pending.has(event) && isReadable(event)) {
+            pending.delete(event);
+            emit(event);
+          }
+        };
         const onTimeline = (
           event: MatrixEvent,
           eventRoom: Room | undefined,
           toStartOfTimeline: boolean | undefined,
+          _removed: boolean,
+          data?: IRoomTimelineData,
         ) => {
           // State events are emitted once, by onState.
           if (
             eventRoom?.roomId !== roomId ||
             toStartOfTimeline ||
+            data?.liveEvent === false ||
             event.isState()
           ) {
             return;
           }
+          if (isReadable(event)) {
+            emit(event);
+            return;
+          }
+          pending.add(event);
+          // Keys that arrive later re-decrypt the event and fire onDecrypted.
           client.decryptEventIfNeeded(event).then(
-            () => emit(event),
+            () => emitPending(event),
             () => undefined,
           );
         };
@@ -288,9 +307,11 @@ export function matrixCallTransport(
         };
         client.on(RoomEvent.Timeline, onTimeline);
         client.on(RoomStateEvent.Events, onState);
+        client.on(MatrixEventEvent.Decrypted, emitPending);
         return () => {
           client.off(RoomEvent.Timeline, onTimeline);
           client.off(RoomStateEvent.Events, onState);
+          client.off(MatrixEventEvent.Decrypted, emitPending);
         };
       });
     },

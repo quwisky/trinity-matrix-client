@@ -4,6 +4,7 @@ import {
   Direction,
   MatrixError,
   MatrixEvent,
+  MatrixEventEvent,
   Method,
   RoomEvent,
   RoomStateEvent,
@@ -398,6 +399,52 @@ describe('matrixCallTransport', () => {
     subscription.unsubscribe();
     expect(emitter.listenerCount(RoomEvent.Timeline)).toBe(0);
     expect(emitter.listenerCount(RoomStateEvent.Events)).toBe(0);
+  });
+
+  it('emits a live event once it decrypts late, only once', async () => {
+    const { emitter, stub, transport } = setup();
+    const { values, subscription } = collect(transport.roomEvents());
+    const room = { roomId: ROOM };
+    const late = matrixEvent({ event_id: '$late', type: 'm.room.encrypted' });
+    const failure = vi.spyOn(late, 'isDecryptionFailure').mockReturnValue(true);
+    emitter.emit(RoomEvent.Timeline, late, room, false, false, {
+      liveEvent: true,
+    });
+    emitter.emit(MatrixEventEvent.Decrypted, late, new Error('no key'));
+    await vi.waitFor(() =>
+      expect(stub.decryptEventIfNeeded).toHaveBeenCalledWith(late),
+    );
+    expect(values).toEqual([]);
+
+    failure.mockReturnValue(false);
+    vi.spyOn(late, 'getType').mockReturnValue(
+      'io.element.call.encryption_keys',
+    );
+    vi.spyOn(late, 'getEffectiveEvent').mockReturnValue({
+      ...late.event,
+      type: 'io.element.call.encryption_keys',
+    } as IEvent);
+    emitter.emit(MatrixEventEvent.Decrypted, late);
+    emitter.emit(MatrixEventEvent.Decrypted, late);
+    // Not seen live: a paginated or unrelated event stays out.
+    emitter.emit(MatrixEventEvent.Decrypted, matrixEvent({ event_id: '$u' }));
+    emitter.emit(
+      RoomEvent.Timeline,
+      matrixEvent({ event_id: '$notLive' }),
+      room,
+      false,
+      false,
+      { liveEvent: false },
+    );
+    expect(values).toEqual([
+      expect.objectContaining({
+        event_id: '$late',
+        type: 'io.element.call.encryption_keys',
+      }),
+    ]);
+
+    subscription.unsubscribe();
+    expect(emitter.listenerCount(MatrixEventEvent.Decrypted)).toBe(0);
   });
 
   it('emits received to-device messages until unsubscribed', () => {
