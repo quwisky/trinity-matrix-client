@@ -7,7 +7,7 @@ import {
   type PreferenceDescriptor,
 } from '@trinity/runtime/preferences';
 import type { Observable } from 'rxjs';
-import { booleanMigration, validateBoolean } from './privacy-preferences';
+import { booleanMigration, validateBoolean } from './boolean-preference';
 
 export const TIMELINE_AVATAR_PRESENCE_PREFERENCE = definePreference({
   id: 'conversations.timeline.avatar-presence',
