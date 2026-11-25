@@ -102,6 +102,7 @@ export class IdentityPresenceService {
   /** When this client last wrote its own presence; older server reports don't undo it. */
   private ownWrittenAt = 0;
   private readonly restoredClients = new WeakSet<IdentityMatrixClient>();
+  private restore = Subscription.EMPTY;
 
   /**
    * Reactive presence for a user; unknown while the projection is unavailable. Safe to call
@@ -227,7 +228,11 @@ export class IdentityPresenceService {
    * in which case the call rejects and the caller surfaces it.
    */
   setOwnPresence(presence: PresenceState, statusMsg: string): Observable<void> {
-    return this.publishOwnPresence(presence, statusMsg, false);
+    return defer(() => {
+      // The user's choice wins: a restore still in flight must not send the old status after it.
+      this.restore.unsubscribe();
+      return this.publishOwnPresence(presence, statusMsg, false);
+    });
   }
 
   private publishOwnPresence(
@@ -254,8 +259,6 @@ export class IdentityPresenceService {
           ),
         ),
         tap(() => {
-          // A status the user chose while this restore was in flight wins.
-          if (restoring && this.ownWrittenAt !== 0) return;
           // The command may finish after an Account switch: its remote write belongs to the
           // captured Account but must not publish into the new Active Account's state.
           if (this.matrix.activeAccountId() === accountId) {
@@ -278,7 +281,8 @@ export class IdentityPresenceService {
     // Once per client: switching back to an Account must not undo a status set elsewhere since.
     if (!accountId || this.restoredClients.has(client)) return;
     this.restoredClients.add(client);
-    this.preferences
+    this.restore.unsubscribe();
+    this.restore = this.preferences
       .readSaved(OWN_PRESENCE_PREFERENCE, { kind: 'account', accountId })
       .pipe(
         switchMap((saved) =>

@@ -688,9 +688,10 @@ describe('IdentityPresenceService', () => {
       await vi.waitFor(() => expect(client.setPresence).toHaveBeenCalledOnce());
       await firstValueFrom(svc.setOwnPresence('offline', ''));
       finishRestore();
-      await vi.waitFor(() =>
-        expect(client.setSyncPresence).toHaveBeenCalledTimes(2),
-      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(client.setSyncPresence).toHaveBeenLastCalledWith('offline');
+      expect(client.setSyncPresence).not.toHaveBeenCalledWith('unavailable');
       expect(svc.myPresence()).toBe('offline');
       expect(storage.ownPresence()).toEqual({
         presence: 'offline',
