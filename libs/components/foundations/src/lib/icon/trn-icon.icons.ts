@@ -90,6 +90,8 @@ import {
   lucideVideo,
   lucideVote,
   lucideX,
+  lucideZoomIn,
+  lucideZoomOut,
 } from '@ng-icons/lucide';
 import type { TrnIconName } from './trn-icon-name';
 
@@ -189,6 +191,8 @@ export const TRN_ICONS: Record<TrnIconName, string> = {
   video: lucideVideo,
   vote: lucideVote,
   x: lucideX,
+  'zoom-in': lucideZoomIn,
+  'zoom-out': lucideZoomOut,
 };
 
 /** Registers every Trinity icon once, at the app root. */

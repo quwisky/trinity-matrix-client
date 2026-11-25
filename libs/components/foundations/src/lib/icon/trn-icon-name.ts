@@ -100,6 +100,8 @@ export const TRN_ICON_NAMES = [
   'video',
   'vote',
   'x',
+  'zoom-in',
+  'zoom-out',
 ] as const;
 
 export type TrnIconName = (typeof TRN_ICON_NAMES)[number];
