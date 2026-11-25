@@ -294,6 +294,27 @@ describe('LightboxComponent zoom', () => {
     expect(scale()).toBe(1);
   });
 
+  it('leaves keys typed into a field, or in another dialog above it, alone', async () => {
+    const { fixture } = await renderLightbox();
+    const { scale } = parts(fixture.nativeElement);
+    const other = document.createElement('div');
+    other.setAttribute('role', 'dialog');
+    const field = document.createElement('input');
+    other.append(field, document.createElement('button'));
+    document.body.append(other);
+    for (const target of [field, other.querySelector('button')!]) {
+      const press = new KeyboardEvent('keydown', {
+        key: '+',
+        bubbles: true,
+        cancelable: true,
+      });
+      target.dispatchEvent(press);
+      expect(press.defaultPrevented).toBe(false);
+    }
+    expect(scale()).toBe(1);
+    other.remove();
+  });
+
   it('steps with the zoom buttons and marks them at their limits', async () => {
     const { fixture, close } = await renderLightbox();
     const root = fixture.nativeElement as HTMLElement;

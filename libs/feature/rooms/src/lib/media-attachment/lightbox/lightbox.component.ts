@@ -187,6 +187,7 @@ export class LightboxComponent {
   }
 
   protected keydown(event: KeyboardEvent): void {
+    if (!this.ownsKey(event)) return;
     // Hidden controls come back for a keyboard or screen reader user reaching for them.
     this.revealControls();
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -200,6 +201,23 @@ export class LightboxComponent {
     if (!action) return;
     event.preventDefault();
     action();
+  }
+
+  /**
+   * A key pressed in this viewer's dialog, or with nothing focused. Not one typed into a field
+   * or meant for another overlay stacked above the viewer.
+   */
+  private ownsKey(event: KeyboardEvent): boolean {
+    if (event.defaultPrevented || event.isComposing) return false;
+    const target = event.target;
+    const host = this.host.nativeElement;
+    // Nothing focused (the page itself) or the dialog around the viewer.
+    if (target instanceof Node && target.contains(host)) return true;
+    if (!(target instanceof HTMLElement) || target.isContentEditable) {
+      return false;
+    }
+    if (target.closest('input, textarea, select')) return false;
+    return (host.closest('[role="dialog"]') ?? host).contains(target);
   }
 
   /** The wheel, and a trackpad pinch (a ctrl+wheel), zoom at the pointer instead of the page. */
