@@ -83,6 +83,11 @@ export const CONFIG_KEY_LEDGER: readonly ConfigKeyRecord[] = [
     owner: 'data-access/timeline',
   },
   {
+    disposition: 'exported',
+    key: 'trinity.timeline.avatar-presence',
+    owner: 'data-access/timeline',
+  },
+  {
     disposition: 'excluded',
     key: 'trinity.composer.expression-tab',
     owner: 'data-access/timeline',

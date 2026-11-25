@@ -632,6 +632,21 @@ describe('AppearanceSettingsComponent', () => {
     );
   });
 
+  it('offers presence on message avatars in the Timeline group, on by default', async () => {
+    const { container, fixture } = await renderPage();
+
+    const group = [...container.querySelectorAll('trn-settings-group')].find(
+      (candidate) => candidate.textContent?.includes('Show joins and leaves'),
+    );
+    expect(
+      group?.querySelector('[data-testid=timeline-avatar-presence]')
+        ?.textContent,
+    ).toContain('Show presence on message avatars');
+    expect(switchFor(fixture, 'timeline-avatar-presence')!.checked()).toBe(
+      true,
+    );
+  });
+
   it('writes each timeline toggle to its own setter', async () => {
     const { fixture } = await renderPage();
 

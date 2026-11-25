@@ -2,6 +2,8 @@ import { inject, type EnvironmentProviders } from '@angular/core';
 import {
   CODE_LINE_PRESENTATION_PREFERENCE,
   CODE_SIZE_PREFERENCE,
+  TIMELINE_AVATAR_PRESENCE_PREFERENCE,
+  TimelineAvatarPresencePreference,
 } from '@trinity/data-access/timeline';
 import {
   choiceSetting,
@@ -24,10 +26,18 @@ import {
   TRUE_BLACK_PREFERENCE,
 } from './design-system-appearance-preferences';
 
-/** Register the eight portable Appearance axes under one descriptor-backed config group. */
+/** Register the portable Appearance preferences, all descriptor-backed. */
 export function provideAppearanceConfigEntries(): EnvironmentProviders {
   return provideConfigEntries(() => {
     const appearance = inject(AppearancePreferences);
+    const avatarPresence = inject(TimelineAvatarPresencePreference);
+    const { editor: avatarPresenceEditor } =
+      TIMELINE_AVATAR_PRESENCE_PREFERENCE;
+    if (avatarPresenceEditor.kind !== 'toggle') {
+      throw new Error(
+        `Appearance config entry ${TIMELINE_AVATAR_PRESENCE_PREFERENCE.id} is not a toggle preference`,
+      );
+    }
     return [
       appearanceEntry('appearance.mode', MODE_PREFERENCE, appearance.axes.mode),
       appearanceEntry(
@@ -69,6 +79,15 @@ export function provideAppearanceConfigEntries(): EnvironmentProviders {
         reset: () =>
           appearance.axes.trueBlack.set(TRUE_BLACK_PREFERENCE.defaultValue),
         ...flagSetting((on) => appearance.axes.trueBlack.set(on)),
+      },
+      {
+        path: 'timeline.avatarPresence',
+        key: TIMELINE_AVATAR_PRESENCE_PREFERENCE.persistence.key,
+        description: avatarPresenceEditor.description,
+        read: avatarPresence.enabled,
+        reset: () =>
+          avatarPresence.set(TIMELINE_AVATAR_PRESENCE_PREFERENCE.defaultValue),
+        ...flagSetting((on) => avatarPresence.set(on)),
       },
     ];
   });

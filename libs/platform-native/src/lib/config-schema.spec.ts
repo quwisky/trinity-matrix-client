@@ -58,6 +58,7 @@ describe('config key ledger', () => {
     expect(exportedKeysFor('data-access/timeline')).toEqual([
       'trinity.appearance.code-size',
       'trinity.appearance.code-line-presentation',
+      'trinity.timeline.avatar-presence',
     ]);
     expect(exportedKeysFor('data-access/gif')).toEqual(['trinity.gif.config']);
     expect(exportedKeysFor('data-access/notifications')).toEqual([]);
