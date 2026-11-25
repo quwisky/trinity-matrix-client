@@ -5,7 +5,7 @@ import type {
   CallTransport,
   RawCallEvent,
 } from './call-transport';
-import { startCallSession } from './call-runtime';
+import { CALL_LOAD_TIMEOUT_MS, startCallSession } from './call-runtime';
 
 const { FakeClientWidgetApi, apis } = vi.hoisted(() => {
   class FakeClientWidgetApi {
@@ -193,6 +193,37 @@ describe('startCallSession', () => {
     expect(session.state()).toBe('failed');
     expect(api.stop).toHaveBeenCalledTimes(1);
     expect(onEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails the session when the frame never reports its content loaded', () => {
+    vi.useFakeTimers();
+    try {
+      const { session, onEnded, api } = setup();
+
+      vi.advanceTimersByTime(CALL_LOAD_TIMEOUT_MS - 1);
+      expect(session.state()).toBe('loading');
+      vi.advanceTimersByTime(1);
+
+      expect(session.state()).toBe('failed');
+      expect(api.stop).toHaveBeenCalledTimes(1);
+      expect(onEnded).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a loaded session past the load timeout', () => {
+    vi.useFakeTimers();
+    try {
+      const { session, api } = setup();
+
+      api.fromWidget('content_loaded');
+      vi.advanceTimersByTime(CALL_LOAD_TIMEOUT_MS);
+
+      expect(session.state()).toBe('joined');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('asks the widget to hang up, then tears down even if that fails', async () => {

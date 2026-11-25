@@ -133,7 +133,7 @@ export class CallService {
               () => {
                 ended = true;
                 // A late end from a replaced session must not clear the newer call.
-                if (this.call() === call) this.settle();
+                if (this.call() === call) this.settle(session);
                 subscriber.complete();
               },
             );
@@ -177,8 +177,9 @@ export class CallService {
     }
   }
 
-  /** The session finished: start any call queued behind it. */
-  private settle(): void {
+  /** The session finished: keep a failure on screen until closed, else start any queued call. */
+  private settle(session: CallSession): void {
+    if (!this.ending() && session.state() === 'failed') return;
     const next = this.next;
     this.clear();
     if (next) this.call.set(next);

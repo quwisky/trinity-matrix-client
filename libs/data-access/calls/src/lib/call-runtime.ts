@@ -27,6 +27,9 @@ export interface CallSession {
 const WIDGET_CLOSE_ACTIONS = ['io.element.close', 'im.vector.hangup'];
 const HANGUP_ACTION = 'im.vector.hangup';
 
+/** How long Element Call may take to report `content_loaded` before the call fails. */
+export const CALL_LOAD_TIMEOUT_MS = 25_000;
+
 /** Bind a call-scoped client Widget API to a frame, then load Element Call into it. */
 export function startCallSession(
   transport: CallTransport,
@@ -65,8 +68,13 @@ class ActiveCallSession implements CallSession {
   private readonly currentState = signal<CallSessionState>('loading');
   private readonly subscriptions: Subscription[];
   private finished = false;
+  private readonly loadTimer = setTimeout(
+    () => this.finish('failed'),
+    CALL_LOAD_TIMEOUT_MS,
+  );
 
   private readonly onContentLoaded = (): void => {
+    clearTimeout(this.loadTimer);
     if (!this.finished) this.currentState.set('joined');
   };
   private readonly onClose = (ev: CustomEvent<IWidgetApiRequest>): void => {
@@ -119,6 +127,7 @@ class ActiveCallSession implements CallSession {
   private finish(state: 'ended' | 'failed'): void {
     if (this.finished) return;
     this.finished = true;
+    clearTimeout(this.loadTimer);
     this.currentState.set(state);
     for (const subscription of this.subscriptions) subscription.unsubscribe();
     this.api.removeListener(

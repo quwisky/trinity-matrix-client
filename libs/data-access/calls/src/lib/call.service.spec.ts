@@ -197,6 +197,18 @@ describe('CallService', () => {
     expect(service.activeCall()).toBeNull();
   });
 
+  it('keeps a failed call until the user closes it', async () => {
+    const service = TestBed.inject(CallService);
+    service.start('!r', opts);
+    service.attach(iframe).subscribe();
+    await loaded();
+    runtime.sessions[0].state.set('failed');
+    runtime.sessions[0].onEnded();
+    expect(service.activeCall()?.state).toBe('failed');
+    service.hangUp();
+    expect(service.activeCall()).toBeNull();
+  });
+
   it('binds the widget, mirrors session state and clears on end', async () => {
     const service = TestBed.inject(CallService);
     service.start('!r', opts);

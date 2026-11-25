@@ -86,6 +86,12 @@ describe('RoomCallComponent', () => {
     expect(container.querySelector('trn-spinner')).not.toBeNull();
   });
 
+  it('offers a way out of the loading view', async () => {
+    const { hangUp } = await build(true, 'loading');
+    screen.getByRole('button', { name: 'Hang up' }).click();
+    expect(hangUp).toHaveBeenCalledOnce();
+  });
+
   it('shows nothing but keeps the frame while the call ends', async () => {
     const { iframe, container } = await build(false, 'ending');
     expect(iframe()).not.toBeNull();
