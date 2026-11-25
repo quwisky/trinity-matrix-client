@@ -214,3 +214,108 @@ describe('LightboxComponent touch', () => {
     expect(document.activeElement).not.toBe(closeButton);
   });
 });
+
+describe('LightboxComponent zoom', () => {
+  const parts = (root: HTMLElement) => {
+    const image = root.querySelector<HTMLImageElement>('.lightbox__image')!;
+    const button = (id: string) =>
+      root.querySelector<HTMLButtonElement>(`[data-testid="lightbox-${id}"]`)!;
+    const scale = () =>
+      Number(/scale\(([\d.]+)\)/.exec(image.style.transform)?.[1] ?? 1);
+    return { image, button, scale };
+  };
+  const mouse = (target: Element, type: string, x: number) =>
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        pointerType: 'mouse',
+        pointerId: 1,
+        clientX: x,
+        clientY: 0,
+        bubbles: true,
+      }),
+    );
+  const key = (root: Element, value: string) =>
+    root.dispatchEvent(
+      new KeyboardEvent('keydown', { key: value, bubbles: true }),
+    );
+
+  it('zooms in on a click on the image and closes on a click on the matte', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image, scale } = parts(root);
+    image.click();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+    root.click();
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('goes back to fit on a click at the maximum', async () => {
+    const { fixture } = await renderLightbox();
+    const { image, scale } = parts(fixture.nativeElement);
+    for (let i = 0; i < 4; i++) image.click();
+    expect(scale()).toBe(4);
+    image.click();
+    expect(scale()).toBe(1);
+  });
+
+  it('zooms on the wheel and keeps it from the page', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const wheel = new WheelEvent('wheel', {
+      deltaY: -200,
+      ctrlKey: true,
+      cancelable: true,
+      bubbles: true,
+    });
+    parts(root).image.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(parts(root).scale()).toBeGreaterThan(1);
+  });
+
+  it('zooms with + and - and resets with 0', async () => {
+    const { fixture } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { scale } = parts(root);
+    key(root, '+');
+    expect(scale()).toBe(1.5);
+    key(root, '-');
+    expect(scale()).toBe(1);
+    key(root, '=');
+    key(root, '+');
+    key(root, '0');
+    expect(scale()).toBe(1);
+  });
+
+  it('steps with the zoom buttons and marks them at their limits', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { button, scale } = parts(root);
+    fixture.detectChanges();
+    expect(button('zoom-out').getAttribute('aria-disabled')).toBe('true');
+    button('zoom-in').click();
+    fixture.detectChanges();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+    expect(button('zoom-out').getAttribute('aria-disabled')).toBeNull();
+    for (let i = 0; i < 4; i++) button('zoom-in').click();
+    fixture.detectChanges();
+    expect(scale()).toBe(4);
+    expect(button('zoom-in').getAttribute('aria-disabled')).toBe('true');
+    button('zoom-in').click();
+    expect(scale()).toBe(4);
+  });
+
+  it('pans a zoomed image with a mouse drag without zooming or closing', async () => {
+    const { fixture, close } = await renderLightbox();
+    const root = fixture.nativeElement as HTMLElement;
+    const { image, button, scale } = parts(root);
+    button('zoom-in').click();
+    mouse(image, 'pointerdown', 0);
+    mouse(image, 'pointermove', 30);
+    mouse(image, 'pointerup', 30);
+    image.click();
+    expect(scale()).toBe(1.5);
+    expect(close).not.toHaveBeenCalled();
+  });
+});
