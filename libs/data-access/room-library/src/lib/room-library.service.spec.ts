@@ -2103,6 +2103,10 @@ describe('RoomLibraryService writes', () => {
           ? { getContent: () => opts?.direct ?? {} }
           : undefined,
       createRoom,
+      // Synapse's default room version, whose creators alone may upgrade it.
+      getCapabilities: vi
+        .fn()
+        .mockResolvedValue({ 'm.room_versions': { default: '12' } }),
       invite,
       setAccountData,
       searchUserDirectory,
@@ -2152,7 +2156,17 @@ describe('RoomLibraryService writes', () => {
         preset: 'private_chat',
         // Any member may publish call membership, as Element Web lets them.
         power_level_content_override: {
-          events: { 'org.matrix.msc3401.call.member': 0 },
+          events: {
+            'm.room.name': 50,
+            'm.room.power_levels': 100,
+            'm.room.history_visibility': 100,
+            'm.room.canonical_alias': 50,
+            'm.room.avatar': 50,
+            'm.room.tombstone': 150,
+            'm.room.server_acl': 100,
+            'm.room.encryption': 100,
+            'org.matrix.msc3401.call.member': 0,
+          },
         },
         initial_state: [
           {

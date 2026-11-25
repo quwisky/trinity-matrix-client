@@ -1,7 +1,8 @@
 import { EventType, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { Observable, defer, from, map, of, switchMap } from 'rxjs';
 import {
   callPowerLevelOverride,
+  defaultRoomVersion,
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
@@ -12,15 +13,21 @@ export function createEncryptedRoom(
   client: MatrixClient,
   options: CreateRoomOptions,
 ): Observable<string> {
-  return from(
-    client.createRoom({
-      name: options.name.trim(),
-      ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-      ...visibilityOptions(options.isPublic),
-      ...callPowerLevelOverride(),
-      initial_state: [roomEncryptionInitialState()],
-    }),
-  ).pipe(map((response) => response.room_id));
+  return from(client.getCapabilities()).pipe(
+    switchMap((capabilities) =>
+      client.createRoom({
+        name: options.name.trim(),
+        ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+        ...visibilityOptions(options.isPublic),
+        ...callPowerLevelOverride({
+          roomVersion: defaultRoomVersion(capabilities),
+          isPublic: options.isPublic,
+        }),
+        initial_state: [roomEncryptionInitialState()],
+      }),
+    ),
+    map((response) => response.room_id),
+  );
 }
 
 /**

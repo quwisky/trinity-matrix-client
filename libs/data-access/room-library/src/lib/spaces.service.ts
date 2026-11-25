@@ -31,6 +31,7 @@ import {
 } from '@trinity/data-access/matrix-client';
 import {
   callPowerLevelOverride,
+  defaultRoomVersion,
   initialOf,
   roomEncryptionInitialState,
   visibilityOptions,
@@ -404,17 +405,21 @@ export class SpacesService {
         ),
       );
       const via = serverNameOf(client.getUserId());
-      return from(
-        client.createRoom({
-          name: options.name.trim(),
-          ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
-          ...visibilityOptions(options.isPublic),
-          ...callPowerLevelOverride(),
-          // E2EE-first: enable Megolm before the first message so the room is never
-          // briefly unencrypted.
-          initial_state: [roomEncryptionInitialState()],
-        }),
-      ).pipe(
+      return from(client.getCapabilities()).pipe(
+        switchMap((capabilities) =>
+          client.createRoom({
+            name: options.name.trim(),
+            ...(options.topic?.trim() ? { topic: options.topic.trim() } : {}),
+            ...visibilityOptions(options.isPublic),
+            ...callPowerLevelOverride({
+              roomVersion: defaultRoomVersion(capabilities),
+              isPublic: options.isPublic,
+            }),
+            // E2EE-first: enable Megolm before the first message so the room is never
+            // briefly unencrypted.
+            initial_state: [roomEncryptionInitialState()],
+          }),
+        ),
         switchMap((res) => {
           const childId = res.room_id;
           return from(
