@@ -1,4 +1,11 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
@@ -23,6 +30,7 @@ import {
   callIntent,
   callParticipants,
   callWidgetUrl,
+  formatCallElapsed,
   hasOngoingCall,
 } from './call-intent';
 import type { CallTransport } from './call-transport';
@@ -33,15 +41,19 @@ export interface ActiveCall {
   /** New for every started call, so a view can give each call its own frame. */
   readonly id: number;
   readonly roomId: string;
+  readonly roomName: string;
   readonly accountId: string;
   readonly widgetUrl: string;
   /** `ending`: hung up, and the hidden frame stays until Element Call has left the call. */
   readonly state: CallSessionState | 'ending';
+  /** Epoch ms when the session first reached `joined`; `null` before. */
+  readonly joinedAt: number | null;
 }
 
 interface Call {
   readonly id: number;
   readonly roomId: string;
+  readonly roomName: string;
   readonly accountId: string;
   readonly widgetUrl: string;
   readonly transport: CallTransport;
@@ -63,6 +75,7 @@ export class CallService {
   private readonly hungUp = new WeakSet<CallSession>();
   private readonly loadFailed = signal(false);
   private readonly ending = signal(false);
+  private readonly joined = signal<{ id: number; at: number } | null>(null);
   /** A call started while the previous one was ending; it starts once that one has left. */
   private next: Call | null = null;
   private lastId = 0;
@@ -74,16 +87,24 @@ export class CallService {
   readonly activeCall = computed<ActiveCall | null>(() => {
     const call = this.call();
     if (!call) return null;
-    const { id, roomId, accountId, widgetUrl } = call;
+    const { id, roomId, roomName, accountId, widgetUrl } = call;
     const state = this.ending()
       ? 'ending'
       : this.loadFailed()
         ? 'failed'
         : (this.session()?.state() ?? 'loading');
-    return { id, roomId, accountId, widgetUrl, state };
+    const joined = this.joined();
+    const joinedAt = joined?.id === id ? joined.at : null;
+    return { id, roomId, roomName, accountId, widgetUrl, state, joinedAt };
   });
 
   constructor() {
+    effect(() => {
+      const call = this.activeCall();
+      if (call?.state === 'joined' && untracked(this.joined)?.id !== call.id) {
+        this.joined.set({ id: call.id, at: Date.now() });
+      }
+    });
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -93,7 +114,12 @@ export class CallService {
 
   start(
     roomId: string,
-    options: { video: boolean; dm: boolean; theme: 'light' | 'dark' },
+    options: {
+      video: boolean;
+      dm: boolean;
+      theme: 'light' | 'dark';
+      roomName: string;
+    },
   ): void {
     const accountId = this.clients.activeUserId();
     const client = accountId ? this.clients.clientFor(accountId) : null;
@@ -114,9 +140,27 @@ export class CallService {
       intent: callIntent({ dm: options.dm, ongoing, video: options.video }),
       theme: options.theme,
     });
-    const call = { id: ++this.lastId, roomId, accountId, widgetUrl, transport };
+    const call = {
+      id: ++this.lastId,
+      roomId,
+      roomName: options.roomName,
+      accountId,
+      widgetUrl,
+      transport,
+    };
     if (this.ending()) this.next = call;
     else this.call.set(call);
+  }
+
+  /** Time since the call was joined, ticking each second; empty until then. */
+  elapsed(): Observable<string> {
+    return timer(0, 1000).pipe(
+      map(() => {
+        const joinedAt = this.activeCall()?.joinedAt;
+        return joinedAt == null ? '' : formatCallElapsed(Date.now() - joinedAt);
+      }),
+      distinctUntilChanged(),
+    );
   }
 
   /** How many members are in `roomId`'s call, kept current as events arrive and memberships expire. */

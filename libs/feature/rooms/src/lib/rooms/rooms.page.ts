@@ -537,6 +537,7 @@ export class RoomsPage {
       this.calls.start(room.id, {
         video,
         dm: !!room.directUserId,
+        roomName: room.name,
         theme: this.rootTheme.key().startsWith('dark') ? 'dark' : 'light',
       });
     if (!running) return start();

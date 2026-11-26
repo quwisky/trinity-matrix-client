@@ -2,6 +2,7 @@ import {
   callIntent,
   callParticipants,
   callWidgetUrl,
+  formatCallElapsed,
   hasOngoingCall,
   type ElementCallIntent,
 } from './call-intent';
@@ -190,5 +191,16 @@ describe('callWidgetUrl', () => {
     expect(url.protocol).toBe('trinity:');
     expect(url.host).toBe('app');
     expect(url.searchParams.get('parentUrl')).toBe('trinity://app');
+  });
+});
+
+describe('formatCallElapsed', () => {
+  it.each([
+    [252_000, '4:12'],
+    [5_000, '0:05'],
+    [3_723_000, '1:02:03'],
+    [-1, '0:00'],
+  ])('formats %i ms as %s', (ms, text) => {
+    expect(formatCallElapsed(ms)).toBe(text);
   });
 });

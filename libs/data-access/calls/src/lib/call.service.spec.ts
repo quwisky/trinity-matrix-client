@@ -2,7 +2,7 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { Observable, firstValueFrom } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { CALL_RUNTIME_LOAD_TIMEOUT_MS, CallService } from './call.service';
 
@@ -92,7 +92,12 @@ describe('CallService', () => {
     await Promise.resolve();
   };
 
-  const opts = { video: true, dm: false, theme: 'dark' } as const;
+  const opts = {
+    video: true,
+    dm: false,
+    theme: 'dark',
+    roomName: 'General',
+  } as const;
 
   it('starts a call in the loading state', () => {
     const service = TestBed.inject(CallService);
@@ -100,8 +105,10 @@ describe('CallService', () => {
     const call = service.activeCall();
     expect(call).toMatchObject({
       roomId: '!r',
+      roomName: 'General',
       accountId: '@me:hs',
       state: 'loading',
+      joinedAt: null,
     });
     expect(new URL(call!.widgetUrl).searchParams.get('intent')).toBe(
       'start_call',
@@ -355,6 +362,70 @@ describe('CallService', () => {
     subscription.unsubscribe();
     expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
     expect(service.activeCall()).toBeNull();
+  });
+
+  describe('joinedAt', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('is set once the session joins and does not move afterwards', async () => {
+      vi.useFakeTimers({ now: 10_000, toFake: ['Date'] });
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      TestBed.tick();
+      expect(service.activeCall()?.joinedAt).toBeNull();
+
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      expect(service.activeCall()?.joinedAt).toBe(10_000);
+
+      vi.setSystemTime(20_000);
+      TestBed.tick();
+      expect(service.activeCall()?.joinedAt).toBe(10_000);
+    });
+
+    it('starts over for the next call', async () => {
+      vi.useFakeTimers({ now: 10_000, toFake: ['Date'] });
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      service.start('!r', opts);
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(service.activeCall()).toMatchObject({
+        state: 'loading',
+        joinedAt: null,
+      });
+    });
+  });
+
+  describe('elapsed', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('is empty before the join, then counts seconds, and leaves no timer', async () => {
+      vi.useFakeTimers({ now: 10_000 });
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      const seen: string[] = [];
+      const subscription = service.elapsed().subscribe((v) => seen.push(v));
+      vi.advanceTimersByTime(0);
+      expect(seen).toEqual(['']);
+
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      vi.advanceTimersByTime(1000);
+      vi.advanceTimersByTime(1000);
+      expect(seen).toEqual(['', '0:01', '0:02']);
+
+      subscription.unsubscribe();
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   describe('participants', () => {

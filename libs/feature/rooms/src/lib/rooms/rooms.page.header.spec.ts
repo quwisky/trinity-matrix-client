@@ -708,9 +708,11 @@ describe('RoomsPage calls', () => {
   const ongoing = (roomId: string): ActiveCall => ({
     id: ++lastId,
     roomId,
+    roomName: 'Elsewhere',
     accountId: '@me:hs',
     widgetUrl: 'trinity://app/element-call/index.html',
     state: 'joined',
+    joinedAt: 0,
   });
 
   function renderCalls(activeCall: ActiveCall | null, room = ROOM) {
@@ -741,6 +743,7 @@ describe('RoomsPage calls', () => {
       video: true,
       dm: false,
       theme: 'light',
+      roomName: 'General',
     });
   });
 
@@ -754,6 +757,7 @@ describe('RoomsPage calls', () => {
       video: false,
       dm: true,
       theme: 'light',
+      roomName: 'General',
     });
   });
 
@@ -779,6 +783,7 @@ describe('RoomsPage calls', () => {
       video: false,
       dm: false,
       theme: 'light',
+      roomName: 'General',
     });
   });
 
@@ -807,6 +812,7 @@ describe('RoomsPage calls', () => {
       video: true,
       dm: false,
       theme: 'light',
+      roomName: 'General',
     });
   });
 
@@ -823,6 +829,7 @@ describe('RoomsPage calls', () => {
       video: true,
       dm: false,
       theme: 'light',
+      roomName: 'General',
     });
   });
 
