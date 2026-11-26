@@ -255,6 +255,47 @@ describe('registerAppProtocol — streaming', () => {
     expect(res.headers.get('content-length')).toBe('8');
   });
 
+  it('lets only the app frame Element Call', async () => {
+    fakeFiles.set(
+      path.join(WWW_ROOT, 'element-call', 'index.html'),
+      Buffer.from('<p>x</p>'),
+    );
+
+    const res = await handler({ url: 'trinity://app/element-call/index.html' });
+
+    expect(res.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'self'",
+    );
+    expect(res.headers.get('x-frame-options')).toBeNull();
+  });
+
+  it('keeps every other page unframeable', async () => {
+    fakeFiles.set(INDEX_HTML, Buffer.from('<p>x</p>'));
+
+    const res = await handler({ url: 'trinity://app/index.html' });
+
+    expect(res.headers.get('content-security-policy')).toBe(
+      "frame-ancestors 'none'",
+    );
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('keeps look-alike paths unframeable', async () => {
+    for (const rel of [
+      'element-call-evil/index.html',
+      'x/element-call/index.html',
+    ]) {
+      fakeFiles.set(path.join(WWW_ROOT, rel), Buffer.from('<p>x</p>'));
+
+      const res = await handler({ url: `trinity://app/${rel}` });
+
+      expect(res.headers.get('content-security-policy')).toBe(
+        "frame-ancestors 'none'",
+      );
+      expect(res.headers.get('x-frame-options')).toBe('DENY');
+    }
+  });
+
   it('answers 404 when the file vanishes between stat and open', async () => {
     const gone = path.join(WWW_ROOT, 'gone.js');
     fakeFiles.set(gone, Buffer.from('x'));

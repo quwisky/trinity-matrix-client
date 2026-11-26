@@ -117,6 +117,39 @@
         presentation="ghost"
         size="md"
         shape="icon"
+        [trnDropdownMenuTrigger]="callMenu"
+        align="end"
+        trnTooltip="Start call"
+        aria-label="Start call"
+        data-testid="start-call"
+      >
+        <trn-icon size="lg" name="phone" motion="pop" />
+      </button>
+      <ng-template #callMenu>
+        <div trnDropdownMenu aria-label="Start call">
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'call', video: false })"
+            data-testid="start-voice-call"
+          >
+            <trn-icon name="phone" />
+            Voice call
+          </button>
+          <button
+            trnDropdownMenuItem
+            (triggered)="action.emit({ type: 'call', video: true })"
+            data-testid="start-video-call"
+          >
+            <trn-icon name="video" />
+            Video call
+          </button>
+        </div>
+      </ng-template>
+      <button
+        trnBtn
+        presentation="ghost"
+        size="md"
+        shape="icon"
         class="header-toggle"
         (click)="action.emit({ type: 'threads' })"
         trnTooltip="Threads"

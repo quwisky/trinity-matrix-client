@@ -486,6 +486,11 @@ function setupWrites() {
     // `@me:hs.example` → the `via` homeserver is `hs.example`.
     getUserId: () => '@me:hs.example',
     createRoom,
+    getStateEvent: vi.fn().mockResolvedValue({
+      events: { 'm.room.power_levels': 100 },
+      state_default: 50,
+      users_default: 0,
+    }),
     sendStateEvent,
     leave,
     joinRoom,
@@ -551,6 +556,21 @@ describe('SpacesService writes', () => {
           },
         ],
       }),
+    );
+    await vi.waitFor(() =>
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!new:hs',
+        'm.room.power_levels',
+        {
+          events: {
+            'm.room.power_levels': 100,
+            'org.matrix.msc3401.call.member': 0,
+          },
+          state_default: 50,
+          users_default: 0,
+        },
+        '',
+      ),
     );
     // Child link on the space, parent link back on the child — both carry `via`.
     expect(sendStateEvent).toHaveBeenCalledWith(

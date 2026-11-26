@@ -116,6 +116,58 @@ describe('hardenContents', () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
+  describe('subframe navigation to the app origin', () => {
+    const main = { url: 'trinity://app/rooms', parent: null };
+    const callUrl = 'trinity://app/element-call/index.html?widgetId=w';
+
+    function navigate(frame: unknown, initiator: unknown, url = callUrl) {
+      const c = fakeContents();
+      hardenContents(c as never);
+      const event = {
+        preventDefault: vi.fn(),
+        url,
+        isMainFrame: false,
+        frame,
+        initiator,
+      };
+      c.emit('will-frame-navigate', event);
+      return event.preventDefault;
+    }
+
+    it('lets the app document load the call into its own iframe', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(navigate(frame, main)).not.toHaveBeenCalled();
+    });
+
+    it('lets the call frame navigate itself', () => {
+      const frame = { url: callUrl, parent: main };
+      expect(navigate(frame, frame)).not.toHaveBeenCalled();
+    });
+
+    it('stops a remote widget frame navigating itself to the app', () => {
+      const frame = { url: 'https://widgets.example/w', parent: main };
+      expect(navigate(frame, frame)).toHaveBeenCalled();
+    });
+
+    it('stops an app page loading in a frame nested under a remote one', () => {
+      const remote = { url: 'https://widgets.example/w', parent: main };
+      const frame = { url: 'about:blank', parent: remote };
+      expect(navigate(frame, remote)).toHaveBeenCalled();
+    });
+
+    it('stops an app-origin subframe navigation with no initiator', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(navigate(frame, null)).toHaveBeenCalled();
+    });
+
+    it('leaves remote subframe navigations alone', () => {
+      const frame = { url: 'about:blank', parent: main };
+      expect(
+        navigate(frame, frame, 'https://widgets.example/w'),
+      ).not.toHaveBeenCalled();
+    });
+  });
+
   it('blocks webview attachment', () => {
     const c = fakeContents();
     hardenContents(c as never);
@@ -314,6 +366,48 @@ describe('installPermissionPolicy', () => {
     expect(
       check(appContents, 'midi', 'trinity://app', { isMainFrame: true }),
     ).toBe(false);
+  });
+
+  it.each([
+    'geolocation',
+    'persistent-storage',
+    'clipboard-sanitized-write',
+    'fullscreen',
+  ])('gives the bundled call frame no %s', (permission) => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0];
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+    const granted = vi.fn();
+    const details = {
+      isMainFrame: false,
+      requestingUrl: 'trinity://app/element-call/index.html',
+    };
+
+    request(appContents, permission, granted, details);
+    expect(granted).toHaveBeenCalledWith(false);
+    expect(check(appContents, permission, 'trinity://app', details)).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ['the bundled call frame', 'trinity://app/element-call/index.html', true],
+    ['a remote widget frame', 'https://widget.example/', false],
+    ['an app frame outside the call', 'trinity://app/index.html', false],
+  ])('lets %s use the camera and microphone: %s', (_name, url, allowed) => {
+    const s = fakeSession();
+    installPermissionPolicy(s as never);
+    const request = s.setPermissionRequestHandler.mock.calls[0][0];
+    const check = s.setPermissionCheckHandler.mock.calls[0][0];
+    const granted = vi.fn();
+    const details = { isMainFrame: false, requestingUrl: url };
+
+    request(appContents, 'media', granted, details);
+    expect(granted).toHaveBeenCalledWith(allowed);
+    expect(check(appContents, 'media', new URL(url).origin, details)).toBe(
+      allowed,
+    );
   });
 });
 

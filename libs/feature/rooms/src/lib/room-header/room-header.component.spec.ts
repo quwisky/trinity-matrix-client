@@ -449,6 +449,7 @@ describe('RoomHeaderComponent actions and search field', () => {
 
 describe('RoomHeaderComponent for a linked room the client does not hold yet', () => {
   const roomActions = [
+    'start-call',
     'search-messages',
     'open-threads',
     'open-pinned',
@@ -498,4 +499,32 @@ describe('RoomHeaderComponent back arrow', () => {
       'Back to inbox',
     );
   });
+});
+
+describe('RoomHeaderComponent call menu', () => {
+  it('is one ghost icon button named "Start call"', async () => {
+    const { byId } = await build();
+    const button = byId('start-call') as HTMLButtonElement;
+    expect(button.tagName).toBe('BUTTON');
+    expect(button.getAttribute('aria-label')).toBe('Start call');
+    expect(button.getAttribute('presentation')).toBe('ghost');
+    expect(button.querySelector('trn-icon')?.getAttribute('name')).toBe(
+      'phone',
+    );
+  });
+
+  it.each([
+    ['start-voice-call', 'Voice call', false],
+    ['start-video-call', 'Video call', true],
+  ] as const)(
+    'opens a menu whose %s item, "%s", asks for a call',
+    async (id, label, video) => {
+      const { byId, actions } = await build();
+      byId('start-call')?.click();
+      const item = document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      expect(item?.textContent?.trim()).toBe(label);
+      item?.click();
+      expect(actions).toEqual([{ type: 'call', video }]);
+    },
+  );
 });

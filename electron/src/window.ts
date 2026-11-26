@@ -69,8 +69,38 @@ export function hardenContents(contents: Electron.WebContents): void {
     }
   });
 
+  // A subframe gets an app document only from the app itself: a remote widget frame that
+  // navigated itself here would be same-origin with the app, and `frame-ancestors`, which
+  // checks only its parent, would not stop it.
+  contents.on('will-frame-navigate', (event) => {
+    if (event.isMainFrame || !isAppUrl(event.url)) return;
+    const parent = event.frame?.parent;
+    const initiator = event.initiator;
+    const appMainFrame =
+      !!parent && parent.parent === null && isAppUrl(parent.url);
+    if (!appMainFrame || !initiator || !isAppUrl(initiator.url)) {
+      event.preventDefault();
+    }
+  });
+
   // Defense in depth: never attach a webview.
   contents.on('will-attach-webview', (event) => event.preventDefault());
+}
+
+/** The bundled Element Call page: the one subframe that may use the camera and microphone. */
+function isCallFrameUrl(url: string): boolean {
+  return isAppUrl(url) && new URL(url).pathname.startsWith('/element-call/');
+}
+
+/** The app's main frame gets the app permissions; the call frame gets media only. */
+function isAllowedFramePermission(
+  isMainFrame: boolean,
+  requestingUrl: string,
+  permission: string,
+): boolean {
+  return isMainFrame
+    ? isAppUrl(requestingUrl) && isAllowedAppPermission(permission)
+    : isCallFrameUrl(requestingUrl) && permission === 'media';
 }
 
 /** Electron emits persistent-storage at runtime but omits it from its permission union. */
@@ -88,31 +118,33 @@ function isAllowedAppPermission(permission: string): boolean {
  * Restrict renderer permission requests to what the app uses: media (microphone for voice
  * messages, camera for QR verification), geolocation (location sharing), persistent
  * storage, sanitized clipboard writes for explicit copy actions, and element fullscreen
- * (the video player). Without a handler Electron would auto-approve every other powerful
- * permission. Clipboard reads remain denied.
+ * (the video player). Of subframes, only the bundled call frame gets media, for calls.
+ * Without a handler Electron would auto-approve every other powerful permission.
+ * Clipboard reads remain denied.
  */
 export function installPermissionPolicy(session: Electron.Session): void {
   session.setPermissionRequestHandler(
     (contents, permission, callback, details) => {
-      if (
-        !details.isMainFrame ||
-        !isAppUrl(contents.getURL()) ||
-        !isAppUrl(details.requestingUrl)
-      ) {
-        callback(false);
-        return;
-      }
-      callback(isAllowedAppPermission(permission));
+      callback(
+        isAppUrl(contents.getURL()) &&
+          isAllowedFramePermission(
+            details.isMainFrame,
+            details.requestingUrl,
+            permission,
+          ),
+      );
     },
   );
   session.setPermissionCheckHandler(
     (contents, permission, requestingOrigin, details) =>
       Boolean(
         contents &&
-        details.isMainFrame &&
         isAppUrl(contents.getURL()) &&
-        isAppUrl(details.requestingUrl ?? requestingOrigin) &&
-        isAllowedAppPermission(permission),
+        isAllowedFramePermission(
+          details.isMainFrame,
+          details.requestingUrl ?? requestingOrigin,
+          permission,
+        ),
       ),
   );
 }

@@ -36,6 +36,7 @@ import {
 } from '@trinity/util/matrix';
 import { isJoinedSpace, spaceChildIdsOf } from './room-projection';
 import { compareOrder } from './space-child-order';
+import { openCallsToMembers } from './direct-rooms';
 import {
   ROOM_LIBRARY_GOVERNANCE_POLICY,
   assertRoomLibraryGovernance,
@@ -413,6 +414,7 @@ export class SpacesService {
           initial_state: [roomEncryptionInitialState()],
         }),
       ).pipe(
+        tap((res) => openCallsToMembers(client, res.room_id)),
         switchMap((res) => {
           const childId = res.room_id;
           return from(

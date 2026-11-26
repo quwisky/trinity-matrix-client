@@ -27,6 +27,11 @@ import {
   WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { CallService } from '@trinity/data-access/calls';
+import { TrnAlertService } from '@trinity/components/overlay';
+import { filter } from 'rxjs';
+import { RoomCallComponent } from '../room-call/room-call.component';
+import { RootThemeObserver } from '../message-presentation/root-theme';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -151,6 +156,7 @@ const PANEL_DRAWER_PX = 360;
     TombstoneBannerComponent,
     IdentityChangeBannerComponent,
     JoinRequestsBannerComponent,
+    RoomCallComponent,
   ],
   host: {
     // One delegating listener for every global shortcut, all resolved through
@@ -364,6 +370,10 @@ export class RoomsPage {
   protected readonly titleBar = inject(TitleBarState);
   private readonly presence = inject(IdentityPresenceService);
   private readonly reporting = inject(ContentReportingService);
+  private readonly alert = inject(TrnAlertService);
+  private readonly rootTheme = inject(RootThemeObserver);
+  private readonly destroyRef = inject(DestroyRef);
+  protected readonly calls = inject(CallService);
   /** The active account's own presence for the user-panel avatar; null while unknown. */
   protected readonly ownPresence = computed(() => {
     const userId = this.vm.activeAccountId();
@@ -429,10 +439,33 @@ export class RoomsPage {
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
 
+  /**
+   * One frame per call id. A new call can replace the old one in a single task, so
+   * `@if (activeCall())` alone would keep the old frame and never attach the new call.
+   */
+  protected readonly callFrames = computed(() => {
+    const id = this.calls.activeCall()?.id;
+    return id === undefined ? [] : [id];
+  });
+
+  /**
+   * The call frame fills the conversation area only in the call's own room, and only while
+   * the call runs: an ending or failed call's frame stays out of sight.
+   */
+  protected readonly callExpanded = computed(() => {
+    const call = this.calls.activeCall();
+    return (
+      call?.roomId === this.store.activeRoomId() &&
+      (call.state === 'loading' || call.state === 'joined')
+    );
+  });
+
   protected onHeaderAction(action: RoomHeaderAction): void {
     switch (action.type) {
       case 'back':
         return this.backToList();
+      case 'call':
+        return this.startCall(action.video);
       case 'threads':
         return this.messageActions.openThreadsList();
       case 'pinned':
@@ -452,6 +485,38 @@ export class RoomsPage {
       case 'system-status':
         return this.systemStatus.show();
     }
+  }
+
+  /** One call at a time: a call elsewhere is left only once the user agrees. */
+  private startCall(video: boolean): void {
+    const room = this.vm.activeRoom();
+    if (!room) return;
+    const active = this.calls.activeCall();
+    const running =
+      active && active.state !== 'failed' && active.state !== 'ending'
+        ? active
+        : null;
+    // Already in this room's call: the frame is expanded here.
+    if (running?.roomId === room.id) return;
+    const start = () =>
+      this.calls.start(room.id, {
+        video,
+        dm: !!room.directUserId,
+        theme: this.rootTheme.key().startsWith('dark') ? 'dark' : 'light',
+      });
+    if (!running) return start();
+    const callRoom =
+      this.nav.knownRooms().find((known) => known.id === running.roomId)
+        ?.name ?? 'another room';
+    this.alert
+      .confirm$({
+        header: `Leave the call in ${callRoom}?`,
+        confirmText: 'Leave',
+        cancelText: 'Cancel',
+        variant: 'danger',
+      })
+      .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+      .subscribe(start);
   }
 
   constructor() {

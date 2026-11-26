@@ -24,6 +24,7 @@ export const START_URL = `${APP_ORIGIN}/`;
 // from dist/; fs reads are asar-aware, so the path works in both.
 export const WWW_ROOT = path.resolve(__dirname, '..', 'www');
 export const INDEX_HTML = path.join(WWW_ROOT, 'index.html');
+const ELEMENT_CALL_ROOT = path.join(WWW_ROOT, 'element-call');
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
   '.html': 'text/html; charset=utf-8',
@@ -97,8 +98,14 @@ async function fileResponse(
   if (path.extname(filePath).toLowerCase() === '.html') {
     // The app permits remote HTTPS widget frames. Stop one from navigating its subframe
     // back to the privileged app document and obtaining a same-origin page.
-    headers['content-security-policy'] = "frame-ancestors 'none'";
-    headers['x-frame-options'] = 'DENY';
+    if (filePath.startsWith(ELEMENT_CALL_ROOT + path.sep)) {
+      // A remote widget frame cannot nest it, since `frame-ancestors` checks every ancestor.
+      // It could still navigate itself here; hardenContents in window.ts blocks that.
+      headers['content-security-policy'] = "frame-ancestors 'self'";
+    } else {
+      headers['content-security-policy'] = "frame-ancestors 'none'";
+      headers['x-frame-options'] = 'DENY';
+    }
   }
   return new Response(Readable.toWeb(stream) as ReadableStream, {
     status,

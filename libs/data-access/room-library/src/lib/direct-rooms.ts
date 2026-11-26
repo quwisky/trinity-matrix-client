@@ -1,9 +1,10 @@
-import { EventType, type MatrixClient } from 'matrix-js-sdk';
-import { Observable, defer, from, map, of } from 'rxjs';
+import { EventTimeline, EventType, type MatrixClient } from 'matrix-js-sdk';
+import { Observable, defer, from, map, of, tap } from 'rxjs';
 import {
   roomEncryptionInitialState,
   visibilityOptions,
 } from '@trinity/util/matrix';
+import type { RoomPowerLevelsEventContent } from 'matrix-js-sdk/lib/@types/state_events';
 import { type CreateRoomOptions } from './room-library.service';
 
 /** Shared active/exact Account implementation for encrypted Room creation. */
@@ -18,7 +19,48 @@ export function createEncryptedRoom(
       ...visibilityOptions(options.isPublic),
       initial_state: [roomEncryptionInitialState()],
     }),
-  ).pipe(map((response) => response.room_id));
+  ).pipe(
+    map((response) => response.room_id),
+    tap((roomId) => openCallsToMembers(client, roomId)),
+  );
+}
+
+const CALL_MEMBER = 'org.matrix.msc3401.call.member';
+
+/**
+ * Lets every member of a room Trinity just created publish MatrixRTC call membership, as
+ * Element Web does, by merging one key into the server's own power levels: an override at
+ * creation would replace the server's whole default `events` map. Best-effort and not
+ * awaited; on failure the room keeps the server's levels, so only moderators can join calls.
+ * shortcut: a power-level edit sent before this lands could be overwritten by it, so it runs
+ * right after creation; send it as a conditional update if Matrix gains one.
+ */
+export function openCallsToMembers(client: MatrixClient, roomId: string): void {
+  const synced = client
+    .getRoom(roomId)
+    ?.getLiveTimeline()
+    .getState(EventTimeline.FORWARDS)
+    ?.getStateEvents(EventType.RoomPowerLevels, '')
+    ?.getContent<RoomPowerLevelsEventContent>();
+  Promise.resolve()
+    .then(
+      async () =>
+        synced ??
+        ((await client.getStateEvent(
+          roomId,
+          EventType.RoomPowerLevels,
+          '',
+        )) as RoomPowerLevelsEventContent),
+    )
+    .then((content) => {
+      const level =
+        content.events?.[CALL_MEMBER] ?? content.state_default ?? 50;
+      if (level <= (content.users_default ?? 0)) return;
+      const next = structuredClone(content);
+      next.events = { ...next.events, [CALL_MEMBER]: 0 };
+      return client.sendStateEvent(roomId, EventType.RoomPowerLevels, next, '');
+    })
+    .catch(() => undefined);
 }
 
 /**

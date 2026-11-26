@@ -1,0 +1,35 @@
+@if (call()?.state === 'failed') {
+  <trn-banner variant="accent" role="alert" data-testid="call-failed">
+    <trn-icon trnBannerIcon name="triangle-alert" />
+    The call could not start
+    <span trnBannerActions>
+      <button trnBtn size="sm" (click)="hangUp()">Close</button>
+    </span>
+  </trn-banner>
+} @else if (call()?.state !== 'ending' && !expanded()) {
+  <trn-banner variant="accent" data-testid="call-bar">
+    <trn-icon trnBannerIcon name="phone" />
+    Call in progress
+    <span trnBannerActions>
+      <button trnBtn size="sm" (click)="returnToCall()">Return to call</button>
+      <button trnBtn size="sm" variant="danger" (click)="hangUp()">
+        Hang up
+      </button>
+    </span>
+  </trn-banner>
+} @else if (call()?.state === 'loading') {
+  <div class="room-call__loading">
+    <trn-spinner size="lg" aria-label="Joining the call" />
+    <button trnBtn size="sm" variant="danger" (click)="hangUp()">
+      Hang up
+    </button>
+  </div>
+}
+
+<iframe
+  #callFrame
+  class="room-call__frame"
+  title="Call"
+  allow="camera; microphone; display-capture; autoplay; clipboard-write"
+  sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+></iframe>

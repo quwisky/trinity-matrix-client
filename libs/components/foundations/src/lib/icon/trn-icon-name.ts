@@ -72,6 +72,7 @@ export const TRN_ICON_NAMES = [
   'paperclip',
   'pause',
   'pencil',
+  'phone',
   'pin',
   'play',
   'plus',

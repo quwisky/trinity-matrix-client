@@ -2,10 +2,11 @@
 import { readFileSync } from 'node:fs';
 import { join, posix } from 'node:path';
 
-// Measured 2026-11-20 on 1468a1ba: 2,405,157 bytes in 26 files, rounded up to the next
-// 10 kB. Lower it when a reduction lands; raise it only in the pull request that grows the
+// Measured 2026-11-25 on the MatrixRTC calls branch: 2,410,421 bytes in 26 files, rounded
+// up to the next 10 kB. The call service and room call frame are wired into the rooms page
+// eagerly. Lower it when a reduction lands; raise it only in the pull request that grows the
 // closure, with the reason.
-export const CEILING_BYTES = 2_410_000;
+export const CEILING_BYTES = 2_420_000;
 
 const SCRIPT_TAG = /<script\b[^>]*\bsrc=["']([^"']+\.js)["']/g;
 // Static imports and re-exports only: `import("./x.js")` has a paren, so it never matches.

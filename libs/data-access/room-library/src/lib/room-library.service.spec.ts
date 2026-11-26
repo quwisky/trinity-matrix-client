@@ -217,6 +217,20 @@ function provideRooms(
 
 afterEach(() => vi.useRealTimers());
 
+// Synapse's v12 defaults with the private_chat preset.
+const SERVER_POWER_LEVELS = {
+  ban: 50,
+  events: {
+    'm.room.name': 50,
+    'm.room.power_levels': 100,
+    'm.room.tombstone': 150,
+  },
+  events_default: 0,
+  invite: 0,
+  state_default: 50,
+  users: {},
+  users_default: 0,
+};
 describe('RoomLibraryService', () => {
   function setup(rooms: ReturnType<typeof fakeRoom>[]) {
     const client = {
@@ -2078,6 +2092,8 @@ describe('RoomLibraryService writes', () => {
     joinedRooms?: Record<string, string>; // roomId -> membership
   }) {
     const createRoom = vi.fn().mockResolvedValue({ room_id: '!new:hs' });
+    const getStateEvent = vi.fn().mockResolvedValue(SERVER_POWER_LEVELS);
+    const sendStateEvent = vi.fn().mockResolvedValue({ event_id: '$pl' });
     const invite = vi.fn().mockResolvedValue({});
     const setAccountData = vi.fn().mockResolvedValue({});
     const searchUserDirectory = vi.fn().mockResolvedValue({
@@ -2103,6 +2119,8 @@ describe('RoomLibraryService writes', () => {
           ? { getContent: () => opts?.direct ?? {} }
           : undefined,
       createRoom,
+      getStateEvent,
+      sendStateEvent,
       invite,
       setAccountData,
       searchUserDirectory,
@@ -2117,6 +2135,8 @@ describe('RoomLibraryService writes', () => {
       matrix,
       client,
       createRoom,
+      getStateEvent,
+      sendStateEvent,
       invite,
       setAccountData,
       searchUserDirectory,
@@ -2159,6 +2179,114 @@ describe('RoomLibraryService writes', () => {
         ],
       }),
     );
+  });
+
+  it("opens a new room's calls to members, keeping the server's power levels", async () => {
+    const { svc, createRoom, getStateEvent, sendStateEvent } = setupWrites();
+
+    await firstValueFrom(svc.createRoom({ name: 'general' }));
+
+    expect(createRoom.mock.calls[0][0]).not.toHaveProperty(
+      'power_level_content_override',
+    );
+    await vi.waitFor(() =>
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!new:hs',
+        'm.room.power_levels',
+        {
+          ...SERVER_POWER_LEVELS,
+          events: {
+            ...SERVER_POWER_LEVELS.events,
+            'org.matrix.msc3401.call.member': 0,
+          },
+        },
+        '',
+      ),
+    );
+    expect(getStateEvent).toHaveBeenCalledWith(
+      '!new:hs',
+      'm.room.power_levels',
+      '',
+    );
+    expect(SERVER_POWER_LEVELS.events).not.toHaveProperty(
+      'org.matrix.msc3401.call.member',
+    );
+  });
+
+  it.each(['read', 'write'])(
+    'creates the room even when the power level %s fails',
+    async (step) => {
+      const { svc, getStateEvent, sendStateEvent } = setupWrites();
+      (step === 'read' ? getStateEvent : sendStateEvent).mockRejectedValue(
+        new Error('M_FORBIDDEN'),
+      );
+
+      await expect(
+        firstValueFrom(svc.createRoom({ name: 'general' })),
+      ).resolves.toBe('!new:hs');
+      await new Promise((resolve) => setTimeout(resolve));
+    },
+  );
+
+  it('merges into the synced power levels without changing them', async () => {
+    const { svc, client, getStateEvent, sendStateEvent } = setupWrites();
+    const synced = structuredClone(SERVER_POWER_LEVELS);
+    Object.assign(client, {
+      getRoom: (id: string) =>
+        id === '!new:hs'
+          ? {
+              getLiveTimeline: () => ({
+                getState: () => ({
+                  getStateEvents: () => ({ getContent: () => synced }),
+                }),
+              }),
+            }
+          : null,
+    });
+
+    await firstValueFrom(svc.createRoom({ name: 'general' }));
+
+    await vi.waitFor(() =>
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!new:hs',
+        'm.room.power_levels',
+        {
+          ...SERVER_POWER_LEVELS,
+          events: {
+            ...SERVER_POWER_LEVELS.events,
+            'org.matrix.msc3401.call.member': 0,
+          },
+        },
+        '',
+      ),
+    );
+    expect(getStateEvent).not.toHaveBeenCalled();
+    expect(synced).toEqual(SERVER_POWER_LEVELS);
+  });
+
+  it('creates the room even when reading power levels throws at once', async () => {
+    const { svc, getStateEvent } = setupWrites();
+    getStateEvent.mockImplementation(() => {
+      throw new Error('not ready');
+    });
+
+    await expect(
+      firstValueFrom(svc.createRoom({ name: 'general' })),
+    ).resolves.toBe('!new:hs');
+  });
+
+  it('leaves power levels that already let members join calls', async () => {
+    const { svc, getStateEvent, sendStateEvent } = setupWrites();
+    getStateEvent.mockResolvedValue({
+      ...SERVER_POWER_LEVELS,
+      events: { 'org.matrix.msc3401.call.member': 0 },
+    });
+
+    await firstValueFrom(svc.createRoom({ name: 'general' }));
+    await vi.waitFor(() => expect(getStateEvent).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve));
+
+    expect(sendStateEvent).not.toHaveBeenCalled();
   });
 
   it('leave is cold and leaves the room on subscribe', async () => {

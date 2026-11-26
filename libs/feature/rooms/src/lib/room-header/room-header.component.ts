@@ -38,6 +38,7 @@ import {
 /** A user intent raised from the room header; the page decides what it does. */
 export type RoomHeaderAction =
   | { type: 'back' }
+  | { type: 'call'; video: boolean }
   | { type: 'threads' }
   | { type: 'pinned' }
   | { type: 'members' }

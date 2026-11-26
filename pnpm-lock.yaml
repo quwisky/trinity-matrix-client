@@ -279,6 +279,9 @@ importers:
       '@ctrl/ngx-emoji-mart':
         specifier: ^9.3.0
         version: 9.3.0(patch_hash=4d506eef6b9b44e36ca18f16eba0a7f341de02c0100116ea377a328e5f890b0e)(@angular/core@22.2.6(@angular/compiler@22.2.6)(rxjs@7.8.2))
+      '@element-hq/element-call-embedded':
+        specifier: 0.28.2
+        version: 0.28.2
       '@lezer/common':
         specifier: ^1.5.2
         version: 1.5.6
@@ -2054,6 +2057,9 @@ packages:
 
   '@dabh/diagnostics@2.0.9':
     resolution: {integrity: sha512-R6siwR65Hm+3yfgP7o8DKhNvputQAwfoz9zTc3kyDudnomj2/BcLmD+uGQQPICjuFUp8ounPBU+jmKsocwVVAg==}
+
+  '@element-hq/element-call-embedded@0.28.2':
+    resolution: {integrity: sha512-Ua6BG0ZQJ4yrv98mI9XIWpaHvRHAlAIb3ZyXgmWTJoaBRHA/zBpFSmpaJKL4IlQZeWw84YwI02m8GJK4jUbWSg==}
 
   '@emmetio/abbreviation@2.3.3':
     resolution: {integrity: sha512-mgv58UrU3rh4YgbE/TzgLQwJ3pFsHHhCLqY20aJq+9comytTXUDNGG/SMtSeMJdkpxgXSXunBGLD8Boka3JyVA==}
@@ -12084,6 +12090,8 @@ snapshots:
       '@so-ric/colorspace': 1.1.6
       enabled: 2.0.0
       kuler: 2.0.0
+
+  '@element-hq/element-call-embedded@0.28.2': {}
 
   '@emmetio/abbreviation@2.3.3':
     dependencies:

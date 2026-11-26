@@ -1,0 +1,38 @@
+@layer components {
+  :host {
+    display: flex;
+    flex-direction: column;
+    flex: none;
+    position: relative;
+  }
+
+  :host(.room-call--expanded) {
+    flex: 1;
+    min-block-size: 0;
+    background: var(--trinity-surface-pane);
+  }
+
+  .room-call__frame {
+    flex: 1;
+    min-block-size: 0;
+    inline-size: 100%;
+    border: 0;
+  }
+
+  // Collapsed, the frame keeps rendering off-screen so the call's audio continues.
+  :host(:not(.room-call--expanded)) .room-call__frame {
+    position: fixed;
+    inset-inline-start: -10000px;
+    inline-size: 1px;
+    block-size: 1px;
+  }
+
+  .room-call__loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: var(--trinity-space-4);
+  }
+}

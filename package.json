@@ -121,6 +121,7 @@
     "@codemirror/state": "^6.7.1",
     "@codemirror/view": "^6.43.8",
     "@ctrl/ngx-emoji-mart": "^9.3.0",
+    "@element-hq/element-call-embedded": "0.28.2",
     "@lezer/common": "^1.5.2",
     "@lezer/highlight": "^1.2.3",
     "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
