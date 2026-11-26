@@ -22,26 +22,44 @@ export function callIntent(o: {
   }` as ElementCallIntent;
 }
 
-export function hasOngoingCall(
+export function callParticipants(
   memberEvents: readonly RawCallEvent[],
   nowMs: number,
-): boolean {
-  return memberEvents.some((event) => {
-    if (event.type !== CALL_MEMBER_TYPE) return false;
+): { count: number; nextExpiryMs: number | null } {
+  let count = 0;
+  let nextExpiryMs: number | null = null;
+  for (const event of memberEvents) {
+    if (event.type !== CALL_MEMBER_TYPE) continue;
     const content: unknown = event.content;
-    if (typeof content !== 'object' || content === null) return false;
+    if (typeof content !== 'object' || content === null) continue;
     const fields = content as Record<string, unknown>;
-    if (Object.keys(fields).length === 0) return false;
+    if (Object.keys(fields).length === 0) continue;
     const memberships = fields['memberships'];
-    if (Array.isArray(memberships)) return memberships.length > 0;
+    if (Array.isArray(memberships)) {
+      count += memberships.length;
+      continue;
+    }
     const expiresTs =
       typeof fields['expires_ts'] === 'number'
         ? fields['expires_ts']
         : typeof fields['expires'] === 'number'
           ? event.origin_server_ts + fields['expires']
           : undefined;
-    return expiresTs === undefined || expiresTs >= nowMs;
-  });
+    if (expiresTs !== undefined && expiresTs < nowMs) continue;
+    count++;
+    if (expiresTs !== undefined) {
+      nextExpiryMs =
+        nextExpiryMs === null ? expiresTs : Math.min(nextExpiryMs, expiresTs);
+    }
+  }
+  return { count, nextExpiryMs };
+}
+
+export function hasOngoingCall(
+  memberEvents: readonly RawCallEvent[],
+  nowMs: number,
+): boolean {
+  return callParticipants(memberEvents, nowMs).count > 0;
 }
 
 export function callWidgetUrl(o: {
