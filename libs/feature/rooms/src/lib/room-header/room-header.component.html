@@ -120,7 +120,7 @@
           shape="icon"
           [trnDropdownMenuTrigger]="callMenu"
           align="end"
-          [trnTooltip]="callLabel()"
+          [trnTooltip]="callAvailable() ? callLabel() : callUnavailableReason"
           [attr.aria-label]="callLabel()"
           [trnActionAllowed]="callAvailable()"
           [trnActionDisabledReason]="callUnavailableReason"

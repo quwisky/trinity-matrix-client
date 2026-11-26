@@ -27,7 +27,7 @@
     flex: none;
     flex-wrap: wrap;
     justify-content: flex-end;
-    align-items: center;
+    align-items: flex-start;
     padding-block-end: env(safe-area-inset-bottom);
     border-block-start: 1px solid var(--trinity-border-subtle);
     background: var(--trinity-surface-pane);

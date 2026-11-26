@@ -555,6 +555,23 @@ describe('RoomHeaderComponent call menu', () => {
     expect(actions).toEqual([]);
   });
 
+  it('gives the reason as its tooltip when the server has no calls', async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { byId } = await build({ callAvailable: false });
+    const hover = new Event('pointerenter');
+    Object.defineProperty(hover, 'pointerType', { value: 'mouse' });
+
+    byId('start-call')?.dispatchEvent(hover);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      "Your server isn't set up for calls",
+    );
+  });
+
   it("hides the call button while in this room's call", async () => {
     const { byId } = await build({ inCall: true });
     expect(byId('start-call')).toBeNull();
