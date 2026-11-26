@@ -378,21 +378,25 @@ provider, you manage your addresses at the provider, and the group says so.
 ## Voice and video calls {#calls}
 
 On the web and desktop apps, open a room and choose **Start call** in its header, then
-**Voice call** or **Video call**. Trinity opens Element Call over the room. In a group room,
-check your camera and microphone there and choose **Join call**; in a direct chat the call
-starts straight away and rings the other person. If someone has already started a call in
-the room, the same button joins it. Calls work with people using Element Web and other
-clients that use Element Call (MatrixRTC), and they are end-to-end encrypted.
+**Voice call** or **Video call**. Trinity opens Element Call over the conversation. In a
+group room, check your camera and microphone there and choose **Join call**; in a direct
+chat the call starts straight away and rings the other person. When a call is running in
+the room, the header button reads **Join call · 3** (the number of people in it) and its
+menu offers **Join with voice** or **Join with video**. The button is hidden while you are
+in that room's call. Calls work with people using Element Web and other clients that use
+Element Call (MatrixRTC), and they are end-to-end encrypted.
 
-While a call is open you can go to another room: the call shrinks to a **Call in
-progress** bar with **Return to call** and **Hang up**. Starting a call in another room
-asks you to leave the current one first. Opening Settings, switching account or signing
-out ends the call.
+The call keeps going when you leave the room or open Settings: it shrinks to a panel in the
+bottom corner showing the call's video, with **Call in progress**, **Return to call** and
+**Hang up**. On a phone, the panel also appears while a page such as Settings covers the
+conversation. Starting a call in another room asks you to leave the current one first.
+Switching account or signing out ends the call.
 
 Trinity doesn't yet ring you for incoming calls or show which rooms have a call going.
 Calls aren't available in the Android and iOS apps yet. If the call can't start, Trinity
-shows "The call could not start": your server may not be set up for calls (see
-[Server requirements](#server-requirements)).
+shows "The call could not start" in the corner: your server may not be set up for calls (see
+[Server requirements](#server-requirements)). If it advertises no call support at all, the
+call button is disabled and says "Your server isn't set up for calls".
 
 In rooms Trinity creates, every member can join calls. In other rooms, a member needs
 permission to send `org.matrix.msc3401.call.member` state, which a room admin can grant.
