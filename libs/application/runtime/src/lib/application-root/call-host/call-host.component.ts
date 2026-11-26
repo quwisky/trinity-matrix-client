@@ -31,7 +31,7 @@ interface Rect {
 // Off-screen, the frame keeps rendering so the call's audio continues.
 const OFF_SCREEN: Rect = { top: 0, left: -10000, width: 1, height: 1 };
 
-const MOVE_EVENTS = ['animationend', 'transitionend', 'scroll'] as const;
+const MOVE_EVENTS = ['animationend', 'scroll'] as const;
 
 /** Follows `target`'s viewport rect through resizes, scrolls and finished animations. */
 function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
