@@ -48,6 +48,7 @@ interface Call {
 }
 
 const CALL_WIDGET_ID = 'trinity-call';
+const MAX_TIMER_MS = 2 ** 31 - 1;
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
 
 // Same budget as the widget bridge: the runtime chunk is small, so this only trips on a dead network.
@@ -136,9 +137,10 @@ export class CallService {
             ? of(count)
             : concat(
                 of(count),
-                timer(Math.max(0, nextExpiryMs - now + 1)).pipe(
-                  switchMap(recount),
-                ),
+                timer(
+                  // setTimeout overflows past 2^31-1 ms and would fire at once.
+                  Math.min(MAX_TIMER_MS, Math.max(0, nextExpiryMs - now + 1)),
+                ).pipe(switchMap(recount)),
               );
         });
       return transport.roomEvents().pipe(

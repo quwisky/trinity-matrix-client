@@ -17,6 +17,7 @@ const runtime = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   listeners: new Set<(event: unknown) => void>(),
   rtcTransports: vi.fn(),
+  reads: 0,
 }));
 
 vi.mock('./call-runtime', async () => {
@@ -41,7 +42,10 @@ vi.mock('./matrix-call-transport', () => ({
     userId: '@me:hs',
     deviceId: 'DEV',
     homeserverUrl: 'https://hs',
-    readState: () => runtime.members,
+    readState: () => {
+      runtime.reads++;
+      return runtime.members;
+    },
     roomEvents: () =>
       new Observable((subscriber) => {
         const listener = (event: unknown) => subscriber.next(event);
@@ -64,6 +68,7 @@ describe('CallService', () => {
     runtime.sessions.length = 0;
     runtime.members = [];
     runtime.listeners.clear();
+    runtime.reads = 0;
     runtime.rtcTransports.mockReset();
     runtime.start.mockClear();
     activeUserId.set('@me:hs');
@@ -380,6 +385,23 @@ describe('CallService', () => {
         expect(counts).toEqual([1, 2, 1]);
         subscription.unsubscribe();
         expect(runtime.listeners.size).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not spin on an expiry beyond the timer limit', () => {
+      vi.useFakeTimers({ now: 1_000 });
+      try {
+        runtime.members = [member({ expires_ts: Date.now() + 3e10 })];
+        const counts: number[] = [];
+        const subscription = TestBed.inject(CallService)
+          .participants('@me:hs', '!r')
+          .subscribe((count) => counts.push(count));
+        vi.advanceTimersByTime(1_000);
+        expect(counts).toEqual([1]);
+        expect(runtime.reads).toBe(1);
+        subscription.unsubscribe();
       } finally {
         vi.useRealTimers();
       }
