@@ -239,7 +239,10 @@ export function matrixCallTransport(
           ),
           RTC_TRANSPORTS_TIMEOUT_MS,
         );
-        return response?.rtc_transports ?? [];
+        // A timeout or a body without the field says nothing about support.
+        return Array.isArray(response?.rtc_transports)
+          ? response.rtc_transports
+          : undefined;
       } catch (error) {
         if (error instanceof MatrixError && isUnsupported(error)) {
           return undefined;
