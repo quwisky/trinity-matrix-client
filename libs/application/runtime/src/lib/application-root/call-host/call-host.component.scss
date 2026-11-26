@@ -6,7 +6,9 @@
   .call-host__frame,
   .call-host__loading {
     position: fixed;
-    z-index: var(--trinity-z-sticky);
+
+    // Paints above the stage and the card's slot it covers, which share the sticky layer; overlays stay above.
+    z-index: calc(var(--trinity-z-sticky) + 1);
   }
 
   .call-host__frame {
