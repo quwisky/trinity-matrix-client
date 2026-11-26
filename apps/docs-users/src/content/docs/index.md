@@ -387,8 +387,8 @@ people in it), which shows when you point at it, and its menu offers **Join with
 people using Element Web and other clients that use Element Call (MatrixRTC), and they are
 end-to-end encrypted.
 
-The call keeps going when you leave the room or open Settings: it moves to a card in the
-sidebar above your account. The card shows the call's video, the room name with the number
+The call keeps going when you leave the room, and with Settings open. It moves to a card in
+the sidebar above your account. The card shows the call's video, the room name with the number
 of people and how long you have been in the call, **Return to call** and **Hang up**. Choose
 the room name to go back to the call. **Hide video** keeps the call's sound; the video is
 hidden by default in a narrow window. Where the sidebar isn't on screen, such as a narrow
