@@ -13,6 +13,9 @@ const frameTemplate =
   'room-widget-frame.component.html';
 const callFrameTemplate =
   'libs/feature/rooms/src/lib/room-call/room-call.component.html';
+const callHostTemplate =
+  'libs/application/runtime/src/lib/application-root/call-host/' +
+  'call-host.component.html';
 
 describe('widget iframe boundary', () => {
   it('allows only HTTPS frames in the document CSP', () => {
@@ -48,6 +51,10 @@ describe('widget iframe boundary', () => {
       .split('\n')
       .filter(Boolean);
 
-    expect(matches).toEqual([callFrameTemplate, frameTemplate]);
+    expect(matches).toEqual([
+      callHostTemplate,
+      callFrameTemplate,
+      frameTemplate,
+    ]);
   });
 });

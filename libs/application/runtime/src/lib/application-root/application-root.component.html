@@ -170,6 +170,9 @@
     <router-outlet #outlet (activate)="markRoutedPage(outlet)" />
     <trn-verification-host />
   }
+  @defer (on idle) {
+    <trn-call-host />
+  }
 </div>
 <p
   class="sr-only"
