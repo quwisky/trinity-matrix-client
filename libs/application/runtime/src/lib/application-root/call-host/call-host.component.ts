@@ -6,6 +6,7 @@ import {
   computed,
   effect,
   inject,
+  linkedSignal,
   signal,
   untracked,
   viewChild,
@@ -20,6 +21,7 @@ import {
   TrnSpinnerComponent,
 } from '@trinity/components/generic-content';
 import { CallService, CallStageService } from '@trinity/data-access/calls';
+import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 
 interface Rect {
   readonly top: number;
@@ -31,11 +33,20 @@ interface Rect {
 // Off-screen, the frame keeps rendering so the call's audio continues.
 const OFF_SCREEN: Rect = { top: 0, left: -10000, width: 1, height: 1 };
 
+const sameRect = (a: Rect | null, b: Rect | null): boolean =>
+  a === b ||
+  (!!a &&
+    !!b &&
+    a.top === b.top &&
+    a.left === b.left &&
+    a.width === b.width &&
+    a.height === b.height);
+
 const MOVE_EVENTS = ['animationend', 'scroll'] as const;
 
 /** Follows `target`'s viewport rect through resizes, scrolls and finished animations. */
 function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
-  const rect = signal<Rect | null>(null);
+  const rect = signal<Rect | null>(null, { equal: sameRect });
   effect((onCleanup) => {
     const element = target();
     if (!element) {
@@ -67,7 +78,7 @@ function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
 
 /**
  * The active call's Element Call frame, app-wide. It lies over the stage a page registers,
- * or over the dock's video slot; only its style moves, because re-parenting or re-creating
+ * or over the video slot of the dock, a bar at the bottom of the app; only its style moves, because re-parenting or re-creating
  * the iframe would reload Element Call and drop the call.
  */
 @Component({
@@ -89,7 +100,20 @@ export class CallHostComponent {
     computed(() => this.dockSlot()?.nativeElement ?? null),
   );
 
+  private readonly belowMd = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
+  /** The user's choice, which holds until the call ends. */
+  private readonly videoChoice = linkedSignal<
+    number | undefined,
+    boolean | null
+  >({
+    source: () => this.calls.activeCall()?.id,
+    computation: () => null,
+  });
+
   protected readonly call = this.calls.activeCall;
+  protected readonly videoShown = computed(
+    () => this.videoChoice() ?? !this.belowMd(),
+  );
 
   /** Keyed on the call id, so each call gets a fresh frame. */
   protected readonly callIds = computed(() => {
@@ -112,7 +136,7 @@ export class CallHostComponent {
       case 'stage':
         return this.stageRect() ?? OFF_SCREEN;
       case 'dock':
-        return this.slotRect() ?? OFF_SCREEN;
+        return (this.videoShown() && this.slotRect()) || OFF_SCREEN;
       default:
         return OFF_SCREEN;
     }
@@ -128,6 +152,10 @@ export class CallHostComponent {
       );
       onCleanup(() => subscription.unsubscribe());
     });
+  }
+
+  protected toggleVideo(): void {
+    this.videoChoice.set(!this.videoShown());
   }
 
   protected returnToCall(): void {

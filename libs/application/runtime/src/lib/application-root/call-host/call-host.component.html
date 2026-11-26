@@ -1,10 +1,13 @@
 @switch (mode()) {
   @case ('dock') {
-    <div class="call-host__dock" role="region" aria-label="Call">
+    <div class="call-host__bar" role="region" aria-label="Call">
       <trn-banner variant="accent">
         <trn-icon trnBannerIcon name="phone" />
         Call in progress
         <span trnBannerActions>
+          <button trnBtn size="sm" (click)="toggleVideo()">
+            {{ videoShown() ? 'Hide video' : 'Show video' }}
+          </button>
           <button trnBtn size="sm" (click)="returnToCall()">
             Return to call
           </button>
@@ -13,11 +16,13 @@
           </button>
         </span>
       </trn-banner>
-      <div #dockSlot class="call-host__slot"></div>
+      @if (videoShown()) {
+        <div #dockSlot class="call-host__slot"></div>
+      }
     </div>
   }
   @case ('failed') {
-    <div class="call-host__dock">
+    <div class="call-host__bar">
       <trn-banner variant="accent" role="alert">
         <trn-icon trnBannerIcon name="triangle-alert" />
         The call could not start

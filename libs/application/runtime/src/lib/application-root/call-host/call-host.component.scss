@@ -4,8 +4,7 @@
   }
 
   .call-host__frame,
-  .call-host__loading,
-  .call-host__dock {
+  .call-host__loading {
     position: fixed;
     z-index: var(--trinity-z-sticky);
   }
@@ -22,18 +21,25 @@
     gap: var(--trinity-space-4);
   }
 
-  .call-host__dock {
-    inset-block-end: var(--trinity-space-4);
-    inset-inline-end: var(--trinity-space-4);
-    inline-size: min(320px, 100vw - 32px);
-    overflow: hidden;
-    border: 1px solid var(--trinity-border-subtle);
-    border-radius: var(--trinity-radius-md);
-    background: var(--trinity-surface-floating);
-    box-shadow: var(--trinity-shadow-floating);
+  // In flow at the bottom of the app frame, so the page above shrinks rather than sits under it.
+  .call-host__bar {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    padding-block-end: env(safe-area-inset-bottom);
+    border-block-start: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-surface-pane);
+
+    > trn-banner {
+      flex: 1 1 16rem;
+    }
   }
 
   .call-host__slot {
+    flex: none;
+    inline-size: min(320px, 100vw - 32px);
     aspect-ratio: 16 / 9;
   }
 }

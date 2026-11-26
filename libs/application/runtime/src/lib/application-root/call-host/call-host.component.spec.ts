@@ -104,6 +104,46 @@ describe('CallHostComponent', () => {
     expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
   });
 
+  // jsdom applies no component styles, so this pins the contract: `.call-host__bar` is the
+  // in-flow row and only the frame and loading layer are fixed.
+  it('keeps the dock in the page flow', async () => {
+    await build();
+    const dock = screen.getByRole('region', { name: 'Call' });
+    expect(dock.classList.contains('call-host__bar')).toBe(true);
+    expect(dock.style.position).toBe('');
+  });
+
+  it('hides the video without dropping the frame', async () => {
+    const { iframe, update, attach } = await build();
+    const frame = iframe();
+    expect(document.querySelector('.call-host__slot')).not.toBeNull();
+
+    screen.getByRole('button', { name: 'Hide video' }).click();
+    await update();
+
+    expect(document.querySelector('.call-host__slot')).toBeNull();
+    expect(iframe()).toBe(frame);
+    expect(iframe()?.style.left).toBe('-10000px');
+    expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
+    expect(screen.getByRole('button', { name: 'Show video' })).toBeTruthy();
+  });
+
+  it('hides the video by default below md', async () => {
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockReturnValue({
+      matches: true,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    } as unknown as MediaQueryList);
+    try {
+      const { iframe } = await build();
+      expect(document.querySelector('.call-host__slot')).toBeNull();
+      expect(iframe()?.style.left).toBe('-10000px');
+      expect(screen.getByRole('button', { name: 'Show video' })).toBeTruthy();
+    } finally {
+      matchMedia.mockRestore();
+    }
+  });
+
   it('docks while the stage has no size', async () => {
     const { stage, update } = await build();
     stage.register(stageOf(0, 0));
