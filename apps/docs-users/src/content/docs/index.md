@@ -375,6 +375,27 @@ still let people find you by it.
 If your server doesn't allow changes, the list is read-only and says so. If you sign in through a
 provider, you manage your addresses at the provider, and the group says so.
 
+## Voice and video calls {#calls}
+
+On the web and desktop apps, open a room and choose **Start call** in its header, then
+**Voice call** or **Video call**. Trinity opens Element Call over the room, so check your
+camera and microphone there and choose **Join**. If someone has already started a call in
+the room, the same button joins it. Calls work with people using Element Web and other
+clients that use Element Call (MatrixRTC), and they are end-to-end encrypted.
+
+While a call is open you can go to another room: the call shrinks to a **Call in
+progress** bar with **Return to call** and **Hang up**. Starting a call in another room
+asks you to leave the current one first. Opening Settings, switching account or signing
+out ends the call.
+
+Trinity doesn't yet ring people in direct chats or show which rooms have a call going.
+Calls aren't available in the Android and iOS apps yet. If the call can't start, Trinity
+shows "The call could not start": your server may not be set up for calls (see
+[Server requirements](#server-requirements)).
+
+In rooms Trinity creates, every member can join calls. In other rooms, a member needs
+permission to send `org.matrix.msc3401.call.member` state, which a room admin can grant.
+
 ## Get help {#get-help}
 
 Report problems on [GitHub Issues](https://github.com/quwisky/trinity-matrix-client/issues).
@@ -391,6 +412,12 @@ expires. Trinity keeps the account and its encryption keys on the device. Before
 update, turn on key backup, or ask your server's admin to upgrade Synapse first. If an
 account has already stopped connecting, export your room keys, then remove the account
 and sign in again.
+
+Calls need a server set up for MatrixRTC: delayed events (MSC4140), a LiveKit server, and the `lk-jwt-service`
+token service, advertised as `org.matrix.msc4143.rtc_foci` in the server's
+`/.well-known/matrix/client`. Element's
+[Element Call self-hosting guide](https://github.com/element-hq/element-call/blob/main/docs/self_hosting.md)
+describes the setup.
 
 ## If your server ends a session {#session-ended}
 

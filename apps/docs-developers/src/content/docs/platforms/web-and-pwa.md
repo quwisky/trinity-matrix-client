@@ -59,6 +59,8 @@ answers `/health` for health checks. It supports `linux/amd64` and `linux/arm64`
 
 Pin `X.Y.Z` in production and update deliberately.
 
+The image serves the bundled Element Call under `/element-call/` with `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` (`container/sws.toml`). If you serve the release zip from your own web server, send the same headers for that path, so other sites can't frame the call page.
+
 ### Release zip {#self-host-zip}
 
 Download `Trinity-Web-X.Y.Z.zip` from the
