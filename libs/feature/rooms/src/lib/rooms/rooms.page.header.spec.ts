@@ -926,4 +926,19 @@ describe('RoomsPage calls', () => {
         ?.getAttribute('aria-label'),
     ).toBe('Join call · 3');
   });
+
+  it('keeps watching the call when the room summary refreshes with the same ids', () => {
+    const participants = vi.fn(() => of(1));
+    renderHeader(0, {
+      calls: {
+        activeCall: signal(null),
+        participants,
+        callAvailable: () => of(true),
+      },
+    });
+    const vm = lastFixture.debugElement.injector.get(RoomShellViewModel);
+    (vm.activeRoom as WritableSignal<RoomSummary | null>).set({ ...ROOM });
+    lastFixture.detectChanges();
+    expect(participants).toHaveBeenCalledTimes(1);
+  });
 });
