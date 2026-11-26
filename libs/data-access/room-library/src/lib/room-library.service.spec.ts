@@ -2228,6 +2228,53 @@ describe('RoomLibraryService writes', () => {
     },
   );
 
+  it('merges into the synced power levels without changing them', async () => {
+    const { svc, client, getStateEvent, sendStateEvent } = setupWrites();
+    const synced = structuredClone(SERVER_POWER_LEVELS);
+    Object.assign(client, {
+      getRoom: (id: string) =>
+        id === '!new:hs'
+          ? {
+              getLiveTimeline: () => ({
+                getState: () => ({
+                  getStateEvents: () => ({ getContent: () => synced }),
+                }),
+              }),
+            }
+          : null,
+    });
+
+    await firstValueFrom(svc.createRoom({ name: 'general' }));
+
+    await vi.waitFor(() =>
+      expect(sendStateEvent).toHaveBeenCalledWith(
+        '!new:hs',
+        'm.room.power_levels',
+        {
+          ...SERVER_POWER_LEVELS,
+          events: {
+            ...SERVER_POWER_LEVELS.events,
+            'org.matrix.msc3401.call.member': 0,
+          },
+        },
+        '',
+      ),
+    );
+    expect(getStateEvent).not.toHaveBeenCalled();
+    expect(synced).toEqual(SERVER_POWER_LEVELS);
+  });
+
+  it('creates the room even when reading power levels throws at once', async () => {
+    const { svc, getStateEvent } = setupWrites();
+    getStateEvent.mockImplementation(() => {
+      throw new Error('not ready');
+    });
+
+    await expect(
+      firstValueFrom(svc.createRoom({ name: 'general' })),
+    ).resolves.toBe('!new:hs');
+  });
+
   it('leaves power levels that already let members join calls', async () => {
     const { svc, getStateEvent, sendStateEvent } = setupWrites();
     getStateEvent.mockResolvedValue({
