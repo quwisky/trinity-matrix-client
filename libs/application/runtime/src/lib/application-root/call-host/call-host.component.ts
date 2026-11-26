@@ -31,7 +31,9 @@ interface Rect {
 // Off-screen, the frame keeps rendering so the call's audio continues.
 const OFF_SCREEN: Rect = { top: 0, left: -10000, width: 1, height: 1 };
 
-/** Follows `target`'s viewport rect through resizes of it and of the window. */
+const MOVE_EVENTS = ['animationend', 'transitionend', 'scroll'] as const;
+
+/** Follows `target`'s viewport rect through resizes, scrolls and finished animations. */
 function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
   const rect = signal<Rect | null>(null);
   effect((onCleanup) => {
@@ -48,9 +50,16 @@ function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     window.addEventListener('resize', measure);
+    // Pane slides move the target by transform alone, which no ResizeObserver reports.
+    for (const type of MOVE_EVENTS) {
+      document.addEventListener(type, measure, { capture: true });
+    }
     onCleanup(() => {
       observer.disconnect();
       window.removeEventListener('resize', measure);
+      for (const type of MOVE_EVENTS) {
+        document.removeEventListener(type, measure, { capture: true });
+      }
     });
   });
   return rect.asReadonly();

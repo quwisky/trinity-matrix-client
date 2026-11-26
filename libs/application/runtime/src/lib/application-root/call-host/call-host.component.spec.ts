@@ -74,6 +74,21 @@ describe('CallHostComponent', () => {
     expect(screen.queryByRole('region', { name: 'Call' })).toBeNull();
   });
 
+  it('follows the stage when an animation moves it', async () => {
+    const { stage, iframe, update } = await build();
+    const element = stageOf(600, 400);
+    stage.register(element);
+    await update();
+
+    element.getBoundingClientRect = () =>
+      ({ top: 0, left: 0, width: 600, height: 400 }) as DOMRect;
+    document.dispatchEvent(new Event('animationend'));
+    await update();
+
+    expect(iframe()?.style.left).toBe('0px');
+    expect(iframe()?.style.top).toBe('0px');
+  });
+
   it('docks the same frame when the stage goes away', async () => {
     const { stage, iframe, update, attach } = await build();
     const release = stage.register(stageOf(600, 400));
