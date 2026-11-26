@@ -504,6 +504,32 @@ describe('CallService', () => {
     });
   });
 
+  describe('activeCallParticipants', () => {
+    it('is 0 without a call and counts the active call', () => {
+      runtime.members = [
+        {
+          type: 'org.matrix.msc3401.call.member',
+          origin_server_ts: 0,
+          content: { expires_ts: Date.now() + 60_000 },
+        },
+      ];
+      const service = TestBed.inject(CallService);
+      const counts: number[] = [];
+      const subscription = service
+        .activeCallParticipants()
+        .subscribe((count) => counts.push(count));
+      TestBed.tick();
+      expect(counts).toEqual([0]);
+
+      service.start('!r', opts);
+      TestBed.tick();
+      expect(counts).toEqual([0, 1]);
+
+      service.hangUp();
+      subscription.unsubscribe();
+    });
+  });
+
   describe('callAvailable', () => {
     it('turns false when the server has no transports', async () => {
       runtime.advertisedRtcTransports.mockResolvedValue([]);

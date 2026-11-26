@@ -11,13 +11,12 @@ import {
   untracked,
   viewChild,
 } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnTooltip } from '@trinity/components/generic-content';
 import { CallService, CallStageService } from '@trinity/data-access/calls';
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
-import { EMPTY, distinctUntilChanged, switchMap } from 'rxjs';
 import { RoomShellNavigationService } from '../rooms/room-shell-navigation.service';
 
 /**
@@ -45,12 +44,7 @@ export class CallCardComponent {
     initialValue: '',
   });
   protected readonly participants = toSignal(
-    toObservable(this.call).pipe(
-      distinctUntilChanged((a, b) => a?.id === b?.id),
-      switchMap((call) =>
-        call ? this.calls.participants(call.accountId, call.roomId) : EMPTY,
-      ),
-    ),
+    this.calls.activeCallParticipants(),
     { initialValue: 0 },
   );
   protected readonly meta = computed(() => {
@@ -61,6 +55,10 @@ export class CallCardComponent {
     source: () => this.call()?.id,
     computation: () => !untracked(this.belowMd),
   });
+
+  protected toggleVideo(): void {
+    this.videoShown.update((shown) => !shown);
+  }
 
   /** The card's height plus its gap to the account panel, for the scrollers it covers. */
   readonly heightChange = output<number>();

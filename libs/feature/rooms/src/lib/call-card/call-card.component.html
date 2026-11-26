@@ -32,7 +32,7 @@
           size="sm"
           [attr.aria-label]="videoShown() ? 'Hide video' : 'Show video'"
           [trnTooltip]="videoShown() ? 'Hide video' : 'Show video'"
-          (click)="videoShown.set(!videoShown())"
+          (click)="toggleVideo()"
         >
           <trn-icon
             [name]="videoShown() ? 'chevron-down' : 'chevron-up'"

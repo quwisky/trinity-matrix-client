@@ -61,7 +61,7 @@ async function build(
         attach,
         hangUp,
         elapsed,
-        participants,
+        activeCallParticipants: participants,
       }),
       MockProvider(WorkspaceNavigationService, { navigate }),
       {
@@ -164,7 +164,7 @@ describe('CallHostComponent', () => {
     const { iframe, strip, participants } = await build();
     expect(strip()?.textContent).toContain('Call in Design sync · 2 · 0:05');
     expect(iframe()?.style.left).toBe('-10000px');
-    expect(participants).toHaveBeenCalledWith(CALL.accountId, CALL.roomId);
+    expect(participants).toHaveBeenCalled();
   });
 
   // jsdom applies no component styles, so this pins the contract: the strip is the in-flow

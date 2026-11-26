@@ -48,7 +48,7 @@ async function renderCard(
           activeCall,
           hangUp,
           elapsed: () => of('0:05'),
-          participants: () => of(2),
+          activeCallParticipants: () => of(2),
         },
       },
       { provide: RoomShellNavigationService, useValue: { onSelectRoom } },

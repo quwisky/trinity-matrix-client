@@ -103,6 +103,7 @@ export class CallService {
   private readonly joinedAt$ = toObservable(
     computed(() => this.activeCall()?.joinedAt ?? null),
   );
+  private readonly activeCall$ = toObservable(this.activeCall);
 
   constructor() {
     effect(() => {
@@ -167,6 +168,16 @@ export class CallService {
           : timer(0, 1000).pipe(map(() => formatCallElapsed(Date.now() - at))),
       ),
       distinctUntilChanged(),
+    );
+  }
+
+  /** How many people are in the active call; 0 with none. */
+  activeCallParticipants(): Observable<number> {
+    return this.activeCall$.pipe(
+      distinctUntilChanged((a, b) => a?.id === b?.id),
+      switchMap((call) =>
+        call ? this.participants(call.accountId, call.roomId) : of(0),
+      ),
     );
   }
 

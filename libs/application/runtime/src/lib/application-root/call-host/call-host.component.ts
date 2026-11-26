@@ -12,13 +12,12 @@ import {
   viewChild,
   type Signal,
 } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
 import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { CallService, CallStageService } from '@trinity/data-access/calls';
-import { EMPTY, distinctUntilChanged, switchMap } from 'rxjs';
 
 interface Rect {
   readonly top: number;
@@ -102,12 +101,7 @@ export class CallHostComponent {
   protected readonly call = this.calls.activeCall;
   // Cold: the strip's async pipes subscribe only while it renders.
   protected readonly elapsed$ = this.calls.elapsed();
-  protected readonly participants$ = toObservable(this.call).pipe(
-    distinctUntilChanged((a, b) => a?.id === b?.id),
-    switchMap((call) =>
-      call ? this.calls.participants(call.accountId, call.roomId) : EMPTY,
-    ),
-  );
+  protected readonly participants$ = this.calls.activeCallParticipants();
 
   /** Keyed on the call id, so each call gets a fresh frame. */
   protected readonly callIds = computed(() => {

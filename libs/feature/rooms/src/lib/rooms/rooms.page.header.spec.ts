@@ -723,6 +723,7 @@ describe('RoomsPage calls', () => {
         activeCall: signal(activeCall),
         start,
         participants: () => of(0),
+        activeCallParticipants: () => of(0),
         callAvailable: () => of(true),
         elapsed: () => of(''),
       },
