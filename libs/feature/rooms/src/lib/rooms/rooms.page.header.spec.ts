@@ -724,6 +724,7 @@ describe('RoomsPage calls', () => {
         start,
         participants: () => of(0),
         callAvailable: () => of(true),
+        elapsed: () => of(''),
       },
     });
     const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
@@ -915,6 +916,55 @@ describe('RoomsPage calls', () => {
       .transition({ kind: 'open-threads' });
     lastFixture.detectChanges();
     expect(stage(root)).not.toBeNull();
+  });
+
+  const card = (root: ParentNode) => root.querySelector('trn-call-card');
+  const stubBelowMd = () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === BELOW_MD_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+  };
+
+  it('docks a call in another room as the sidebar card', () => {
+    const { root } = renderCalls(ongoing('!call:hs'));
+    expect(card(root)).not.toBeNull();
+  });
+
+  it('shows no card while the call is expanded on its stage', () => {
+    const { root } = renderCalls(ongoing('!r:hs'));
+    expect(card(root)).toBeNull();
+  });
+
+  it('shows no card below md while a room covers the room list', () => {
+    stubBelowMd();
+    const { root } = renderCalls(ongoing('!call:hs'));
+    expect(card(root)).toBeNull();
+  });
+
+  it('reserves the card height on the shell for the scrollers under it', () => {
+    const { root } = renderCalls(ongoing('!call:hs'));
+    const shell = root.querySelector<HTMLElement>('.shell-side');
+    expect(shell?.style.getPropertyValue('--trinity-call-card-height')).toBe(
+      '0px',
+    );
+    const observer = (
+      ResizeObserver as unknown as {
+        instances: {
+          observed: Set<Element>;
+          emit(entries: unknown[]): void;
+        }[];
+      }
+    ).instances.find((o) => o.observed.has(card(root) as Element));
+    observer?.emit([{ borderBoxSize: [{ blockSize: 240, inlineSize: 300 }] }]);
+    lastFixture.detectChanges();
+    expect(shell?.style.getPropertyValue('--trinity-call-card-height')).toBe(
+      '240px',
+    );
   });
 
   it("passes the open room's call participants to the header", () => {

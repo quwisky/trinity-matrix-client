@@ -63,10 +63,10 @@
     // last room and tell focus-driven scrolling about the same obstruction, so a keyboard-selected
     // row can always settle fully above the dock.
     padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-reserve) + var(--trinity-space-5)
     );
     scroll-padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-reserve) + var(--trinity-space-5)
     );
   }
 }

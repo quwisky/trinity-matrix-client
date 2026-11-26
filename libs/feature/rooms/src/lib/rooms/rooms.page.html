@@ -28,6 +28,9 @@
       tabindex="-1"
       class="shell-side"
       [attr.inert]="paneSlide() === 'open' ? '' : null"
+      [style.--trinity-call-card-height.px]="
+        callCardShown() ? callCardHeight() : 0
+      "
     >
       <trn-server-rail
         class="shell-side__rail"
@@ -121,6 +124,9 @@
           (markAllRead)="readState.onMarkAllRead()"
           (setSortMode)="spaceActions.onSetSpaceSort($event)"
         />
+      }
+      @if (callCardShown()) {
+        <trn-call-card (heightChange)="callCardHeight.set($event)" />
       }
       <trn-sidebar-user-panel
         class="shell-side__dock"

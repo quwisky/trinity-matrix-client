@@ -71,10 +71,10 @@
     // The identity dock floats over this scroller, as it does over the room list. Leave real
     // content space for the last row and tell focus-driven scrolling about the same obstruction.
     padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-reserve) + var(--trinity-space-5)
     );
     scroll-padding-block-end: calc(
-      var(--trinity-navigation-dock-height) + var(--trinity-space-5)
+      var(--trinity-navigation-reserve) + var(--trinity-space-5)
     );
   }
 

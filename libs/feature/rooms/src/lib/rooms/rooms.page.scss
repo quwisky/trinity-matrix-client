@@ -96,6 +96,12 @@
     --trinity-navigation-dock-height: max(60px, calc(2rem + 12px));
     --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
 
+    // The docked call card stacks on the dock; the card publishes its height inline here.
+    --trinity-call-card-height: 0px;
+    --trinity-navigation-reserve: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-call-card-height)
+    );
+
     @media #{$md} {
       width: var(--shell-sidebar-w, 352px);
 

@@ -90,6 +90,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/crypto/src/lib/verification/sas-compare.component.scss',
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.scss',
   'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
+  'libs/feature/rooms/src/lib/call-card/call-card.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',

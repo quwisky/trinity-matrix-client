@@ -36,6 +36,7 @@ import { CallService } from '@trinity/data-access/calls';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { filter, of, switchMap, type Observable } from 'rxjs';
 import { CallStageDirective } from '../room-call/call-stage.directive';
+import { CallCardComponent } from '../call-card/call-card.component';
 import { RootThemeObserver } from '../message-presentation/root-theme';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
@@ -162,6 +163,7 @@ const PANEL_DRAWER_PX = 360;
     IdentityChangeBannerComponent,
     JoinRequestsBannerComponent,
     CallStageDirective,
+    CallCardComponent,
   ],
   host: {
     // One delegating listener for every global shortcut, all resolved through
@@ -464,6 +466,18 @@ export class RoomsPage {
       !(this.mobileMasterDetail() && this.shownSurface()),
   );
   protected readonly inActiveCall = this.callLiveInOpenRoom;
+
+  /** The docked card, wherever the room list is on screen and the call is not on its stage. */
+  protected readonly callCardShown = computed(() => {
+    const state = this.calls.activeCall()?.state;
+    if (state !== 'loading' && state !== 'joined' && state !== 'failed')
+      return false;
+    // Below md the list and the room are separate pages: the stage is off screen on the list.
+    return this.mobileMasterDetail()
+      ? this.store.pane() !== 'conversation'
+      : !this.callExpanded();
+  });
+  protected readonly callCardHeight = signal(0);
 
   /** Ids only, so a summary refreshed by unread or typing does not restart the watches. */
   private readonly openRoomCall = computed(
