@@ -1,37 +1,27 @@
-@switch (mode()) {
-  @case ('dock') {
-    <div class="call-host__bar" role="region" aria-label="Call">
-      <trn-banner variant="accent">
-        <trn-icon trnBannerIcon name="phone" />
-        Call in progress
-        <span trnBannerActions>
-          <button trnBtn size="sm" (click)="toggleVideo()">
-            {{ videoShown() ? 'Hide video' : 'Show video' }}
-          </button>
-          <button trnBtn size="sm" (click)="returnToCall()">
-            Return to call
-          </button>
-          <button trnBtn size="sm" variant="danger" (click)="hangUp()">
-            Hang up
-          </button>
-        </span>
-      </trn-banner>
-      @if (videoShown()) {
-        <div #dockSlot class="call-host__slot"></div>
-      }
-    </div>
-  }
-  @case ('failed') {
-    <div class="call-host__bar">
-      <trn-banner variant="accent" role="alert">
-        <trn-icon trnBannerIcon name="triangle-alert" />
-        The call could not start
-        <span trnBannerActions>
-          <button trnBtn size="sm" (click)="hangUp()">Close</button>
-        </span>
-      </trn-banner>
-    </div>
-  }
+@if (showStrip()) {
+  <div class="call-host__strip" role="region" aria-label="Call">
+    @if (mode() === 'failed') {
+      <trn-icon name="triangle-alert" />
+      <span class="call-host__summary" role="alert"
+        >The call could not start</span
+      >
+      <button trnBtn size="sm" (click)="hangUp()">Close</button>
+    } @else {
+      @let elapsed = elapsed$ | async;
+      <span class="call-host__live" aria-hidden="true"></span>
+      <span class="call-host__summary">
+        <span class="call-host__room">Call in {{ call()?.roomName }}</span>
+        <span class="call-host__meta">
+          · {{ participants$ | async
+          }}{{ elapsed ? ' · ' + elapsed : '' }}</span
+        >
+      </span>
+      <button trnBtn size="sm" (click)="returnToCall()">Return</button>
+      <button trnBtn size="sm" variant="danger" (click)="hangUp()">
+        Hang up
+      </button>
+    }
+  </div>
 }
 
 @for (id of callIds(); track id) {

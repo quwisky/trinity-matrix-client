@@ -1,3 +1,4 @@
+import { AsyncPipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -6,22 +7,18 @@ import {
   computed,
   effect,
   inject,
-  linkedSignal,
   signal,
   untracked,
   viewChild,
   type Signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { TrnIconComponent } from '@trinity/components/foundations';
-import {
-  BannerComponent,
-  TrnSpinnerComponent,
-} from '@trinity/components/generic-content';
+import { TrnSpinnerComponent } from '@trinity/components/generic-content';
 import { CallService, CallStageService } from '@trinity/data-access/calls';
-import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
+import { EMPTY, distinctUntilChanged, switchMap } from 'rxjs';
 
 interface Rect {
   readonly top: number;
@@ -76,15 +73,19 @@ function trackRect(target: Signal<HTMLElement | null>): Signal<Rect | null> {
   return rect.asReadonly();
 }
 
+const hasArea = (rect: Rect | null): rect is Rect =>
+  !!rect && rect.width > 0 && rect.height > 0;
+
 /**
- * The active call's Element Call frame, app-wide. It lies over the stage a page registers,
- * or over the video slot of the dock, a bar at the bottom of the app; only its style moves, because re-parenting or re-creating
- * the iframe would reload Element Call and drop the call.
+ * The active call's Element Call frame, app-wide. It lies over the stage a page registers, or
+ * over the dock slot of the sidebar card; only its style moves, because re-parenting or
+ * re-creating the iframe would reload Element Call and drop the call. Without a card, a strip
+ * under the title bar stands in for it.
  */
 @Component({
   selector: 'trn-call-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BannerComponent, TrnButton, TrnIconComponent, TrnSpinnerComponent],
+  imports: [AsyncPipe, TrnButton, TrnIconComponent, TrnSpinnerComponent],
   templateUrl: './call-host.component.html',
   styleUrl: './call-host.component.scss',
 })
@@ -94,25 +95,18 @@ export class CallHostComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly frame =
     viewChild<ElementRef<HTMLIFrameElement>>('callFrame');
-  private readonly dockSlot = viewChild<ElementRef<HTMLElement>>('dockSlot');
-  private readonly stageRect = trackRect(inject(CallStageService).element);
-  private readonly slotRect = trackRect(
-    computed(() => this.dockSlot()?.nativeElement ?? null),
-  );
-
-  private readonly belowMd = mediaQuerySignal(BELOW_MD_QUERY, this.destroyRef);
-  /** The user's choice, which holds until the call ends. */
-  private readonly videoChoice = linkedSignal<
-    number | undefined,
-    boolean | null
-  >({
-    source: () => this.calls.activeCall()?.id,
-    computation: () => null,
-  });
+  private readonly callStage = inject(CallStageService);
+  private readonly stageRect = trackRect(this.callStage.element);
+  private readonly dockRect = trackRect(this.callStage.dockElement);
 
   protected readonly call = this.calls.activeCall;
-  protected readonly videoShown = computed(
-    () => this.videoChoice() ?? !this.belowMd(),
+  // Cold: the strip's async pipes subscribe only while it renders.
+  protected readonly elapsed$ = this.calls.elapsed();
+  protected readonly participants$ = toObservable(this.call).pipe(
+    distinctUntilChanged((a, b) => a?.id === b?.id),
+    switchMap((call) =>
+      call ? this.calls.participants(call.accountId, call.roomId) : EMPTY,
+    ),
   );
 
   /** Keyed on the call id, so each call gets a fresh frame. */
@@ -126,17 +120,24 @@ export class CallHostComponent {
       const state = this.call()?.state;
       if (state === 'failed') return 'failed';
       if (!state || state === 'ending') return 'hidden';
-      const stage = this.stageRect();
-      return stage && stage.width > 0 && stage.height > 0 ? 'stage' : 'dock';
+      return hasArea(this.stageRect()) ? 'stage' : 'dock';
     },
+  );
+
+  protected readonly showStrip = computed(
+    () =>
+      (this.mode() === 'dock' || this.mode() === 'failed') &&
+      !this.callStage.dockPresent(),
   );
 
   protected readonly rect = computed<Rect>(() => {
     switch (this.mode()) {
       case 'stage':
         return this.stageRect() ?? OFF_SCREEN;
-      case 'dock':
-        return (this.videoShown() && this.slotRect()) || OFF_SCREEN;
+      case 'dock': {
+        const dock = this.dockRect();
+        return hasArea(dock) ? dock : OFF_SCREEN;
+      }
       default:
         return OFF_SCREEN;
     }
@@ -152,10 +153,6 @@ export class CallHostComponent {
       );
       onCleanup(() => subscription.unsubscribe());
     });
-  }
-
-  protected toggleVideo(): void {
-    this.videoChoice.set(!this.videoShown());
   }
 
   protected returnToCall(): void {

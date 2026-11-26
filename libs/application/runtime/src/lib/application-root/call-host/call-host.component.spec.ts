@@ -7,41 +7,75 @@ import {
 } from '@trinity/data-access/calls';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { NEVER, of } from 'rxjs';
+import { NEVER, Observable, of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { CallHostComponent } from './call-host.component';
 
 const CALL: ActiveCall = {
   id: 1,
   roomId: '!call:hs',
+  roomName: 'Design sync',
   accountId: '@me:hs',
   widgetUrl: 'trinity://app/element-call/index.html#?roomId=!call:hs',
   state: 'joined',
+  joinedAt: 0,
 };
 
-function stageOf(width: number, height: number): HTMLElement {
+function elementOf(
+  width: number,
+  height: number,
+  top = 10,
+  left = 20,
+): HTMLElement {
   const element = document.createElement('div');
   element.getBoundingClientRect = () =>
-    ({ top: 10, left: 20, width, height }) as DOMRect;
+    ({ top, left, width, height }) as DOMRect;
   return element;
 }
 
-async function build(initial: ActiveCall | null = CALL) {
+async function build(
+  initial: ActiveCall | null = CALL,
+  initialStage?: HTMLElement,
+) {
   const activeCall = signal<ActiveCall | null>(initial);
   const attach = vi.fn(() => NEVER);
   const hangUp = vi.fn();
+  let elapsedSubscriptions = 0;
+  const elapsed = vi.fn(
+    () =>
+      new Observable<string>((subscriber) => {
+        elapsedSubscriptions++;
+        subscriber.next('0:05');
+      }),
+  );
+  const participants = vi.fn(() => of(2));
   const navigate = vi.fn(() =>
     of({ kind: 'ready' as const, change: 'committed' as const }),
   );
   const result = await render(CallHostComponent, {
     providers: [
-      MockProvider(CallService, { activeCall, attach, hangUp }),
+      MockProvider(CallService, {
+        activeCall,
+        attach,
+        hangUp,
+        elapsed,
+        participants,
+      }),
       MockProvider(WorkspaceNavigationService, { navigate }),
+      {
+        provide: CallStageService,
+        useFactory: () => {
+          const service = new CallStageService();
+          if (initialStage) service.register(initialStage);
+          return service;
+        },
+      },
     ],
   });
   const stage = result.fixture.debugElement.injector.get(CallStageService);
   const iframe = () =>
     (result.container as HTMLElement).querySelector('iframe');
+  const strip = () => screen.queryByRole('region', { name: 'Call' });
   const update = async () => {
     result.fixture.detectChanges();
     await result.fixture.whenStable();
@@ -52,9 +86,12 @@ async function build(initial: ActiveCall | null = CALL) {
     attach,
     hangUp,
     navigate,
+    participants,
     stage,
     iframe,
+    strip,
     update,
+    elapsedSubscriptions: () => elapsedSubscriptions,
   };
 }
 
@@ -65,18 +102,28 @@ describe('CallHostComponent', () => {
   });
 
   it('lays the frame over a registered stage', async () => {
-    const { stage, iframe, update } = await build();
-    stage.register(stageOf(600, 400));
+    const { stage, iframe, strip, update } = await build();
+    stage.register(elementOf(600, 400));
     await update();
 
     expect(iframe()?.style.width).toBe('600px');
     expect(iframe()?.style.height).toBe('400px');
-    expect(screen.queryByRole('region', { name: 'Call' })).toBeNull();
+    expect(strip()).toBeNull();
+  });
+
+  it('subscribes to no call time on the stage', async () => {
+    const { strip, update, elapsedSubscriptions } = await build(
+      CALL,
+      elementOf(600, 400),
+    );
+    await update();
+    expect(strip()).toBeNull();
+    expect(elapsedSubscriptions()).toBe(0);
   });
 
   it('follows the stage when an animation moves it', async () => {
     const { stage, iframe, update } = await build();
-    const element = stageOf(600, 400);
+    const element = elementOf(600, 400);
     stage.register(element);
     await update();
 
@@ -89,84 +136,86 @@ describe('CallHostComponent', () => {
     expect(iframe()?.style.top).toBe('0px');
   });
 
-  it('docks the same frame when the stage goes away', async () => {
+  it('lays the docked frame over the registered dock, without a strip', async () => {
+    const { stage, iframe, strip, update } = await build();
+    stage.claimDock();
+    stage.registerDock(elementOf(264, 148, 300, 8));
+    await update();
+
+    expect(iframe()?.style.width).toBe('264px');
+    expect(iframe()?.style.height).toBe('148px');
+    expect(iframe()?.style.top).toBe('300px');
+    expect(iframe()?.style.left).toBe('8px');
+    expect(strip()).toBeNull();
+  });
+
+  it('hides the frame while the card is collapsed, without a strip', async () => {
+    const { stage, iframe, strip, update } = await build();
+    stage.claimDock();
+    await update();
+
+    expect(iframe()?.style.left).toBe('-10000px');
+    expect(strip()).toBeNull();
+  });
+
+  it('shows the strip without a card', async () => {
+    const { iframe, strip, participants } = await build();
+    expect(strip()?.textContent).toContain('Call in Design sync · 2 · 0:05');
+    expect(iframe()?.style.left).toBe('-10000px');
+    expect(participants).toHaveBeenCalledWith(CALL.accountId, CALL.roomId);
+  });
+
+  // jsdom applies no component styles, so this pins the contract: the strip is the in-flow
+  // row and only the frame and loading layer are fixed.
+  it('keeps the strip in the page flow', async () => {
+    const { strip } = await build();
+    expect(strip()?.classList.contains('call-host__strip')).toBe(true);
+    expect(strip()?.style.position).toBe('');
+  });
+
+  it('keeps one frame from stage to dock to collapsed', async () => {
     const { stage, iframe, update, attach } = await build();
-    const release = stage.register(stageOf(600, 400));
+    const release = stage.register(elementOf(600, 400));
     await update();
     const frame = iframe();
 
     release();
+    stage.claimDock();
+    const releaseDock = stage.registerDock(elementOf(264, 148));
     await update();
+    expect(iframe()?.style.width).toBe('264px');
 
-    const dock = screen.getByRole('region', { name: 'Call' });
-    expect(dock.textContent).toContain('Call in progress');
-    expect(iframe()).toBe(frame);
-    expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
-  });
-
-  // jsdom applies no component styles, so this pins the contract: `.call-host__bar` is the
-  // in-flow row and only the frame and loading layer are fixed.
-  it('keeps the dock in the page flow', async () => {
-    await build();
-    const dock = screen.getByRole('region', { name: 'Call' });
-    expect(dock.classList.contains('call-host__bar')).toBe(true);
-    expect(dock.style.position).toBe('');
-  });
-
-  it('hides the video without dropping the frame', async () => {
-    const { iframe, update, attach } = await build();
-    const frame = iframe();
-    expect(document.querySelector('.call-host__slot')).not.toBeNull();
-
-    screen.getByRole('button', { name: 'Hide video' }).click();
+    releaseDock();
     await update();
-
-    expect(document.querySelector('.call-host__slot')).toBeNull();
-    expect(iframe()).toBe(frame);
     expect(iframe()?.style.left).toBe('-10000px');
-    expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
-    expect(screen.getByRole('button', { name: 'Show video' })).toBeTruthy();
-  });
 
-  it('hides the video by default below md', async () => {
-    const matchMedia = vi.spyOn(window, 'matchMedia').mockReturnValue({
-      matches: true,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    } as unknown as MediaQueryList);
-    try {
-      const { iframe } = await build();
-      expect(document.querySelector('.call-host__slot')).toBeNull();
-      expect(iframe()?.style.left).toBe('-10000px');
-      expect(screen.getByRole('button', { name: 'Show video' })).toBeTruthy();
-    } finally {
-      matchMedia.mockRestore();
-    }
+    expect(iframe()).toBe(frame);
+    expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
   });
 
   it('hides the docked frame while the call ends', async () => {
-    const { activeCall, iframe, update, attach } = await build();
+    const { activeCall, iframe, strip, update, attach } = await build();
     const frame = iframe();
 
     activeCall.set({ ...CALL, state: 'ending' });
     await update();
 
-    expect(screen.queryByRole('region', { name: 'Call' })).toBeNull();
+    expect(strip()).toBeNull();
     expect(iframe()).toBe(frame);
     expect(iframe()?.style.left).toBe('-10000px');
     expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
   });
 
   it('docks while the stage has no size', async () => {
-    const { stage, update } = await build();
-    stage.register(stageOf(0, 0));
+    const { stage, strip, update } = await build();
+    stage.register(elementOf(0, 0));
     await update();
-    expect(screen.getByRole('region', { name: 'Call' })).toBeTruthy();
+    expect(strip()).toBeTruthy();
   });
 
   it('returns to the call room', async () => {
     const { navigate } = await build();
-    screen.getByRole('button', { name: 'Return to call' }).click();
+    screen.getByRole('button', { name: 'Return' }).click();
     expect(navigate).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({
         kind: 'room',
@@ -176,7 +225,7 @@ describe('CallHostComponent', () => {
     );
   });
 
-  it('hangs up from the dock', async () => {
+  it('hangs up from the strip', async () => {
     const { hangUp } = await build();
     screen.getByRole('button', { name: 'Hang up' }).click();
     expect(hangUp).toHaveBeenCalledOnce();
@@ -191,12 +240,20 @@ describe('CallHostComponent', () => {
     expect(hangUp).toHaveBeenCalledOnce();
   });
 
-  it('drops the frame and dock when the call goes away', async () => {
-    const { activeCall, iframe, update } = await build();
+  it('leaves a failed call to the card when one is present', async () => {
+    const { stage, strip, update } = await build({ ...CALL, state: 'failed' });
+    stage.claimDock();
+    await update();
+    expect(strip()).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('drops the frame and strip when the call goes away', async () => {
+    const { activeCall, iframe, strip, update } = await build();
     activeCall.set(null);
     await update();
     expect(iframe()).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Call' })).toBeNull();
+    expect(strip()).toBeNull();
   });
 
   it('gives a new call its own frame', async () => {

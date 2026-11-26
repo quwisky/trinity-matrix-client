@@ -268,6 +268,18 @@ describe('ApplicationRootComponent', () => {
     ).not.toBeNull();
   });
 
+  it('puts the call strip under the title bar, above the routed page', async () => {
+    const { fixture, container } = await setup(READY);
+    const [callHost] = await fixture.getDeferBlocks();
+    await callHost.render(DeferBlockState.Complete);
+    const host = container.querySelector('trn-call-host') as Element;
+    const outlet = container.querySelector('router-outlet') as Element;
+    expect(host.previousElementSibling?.tagName).toBe('TRN-TITLE-BAR');
+    expect(
+      host.compareDocumentPosition(outlet) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('keeps the app-wide status controls below a notched status bar', async () => {
     const { fixture, router, getByTestId } = await setup(READY, [
       { path: 'login', component: RouteProbeComponent },
