@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { firstValueFrom } from 'rxjs';
+import { Observable, firstValueFrom } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { CALL_RUNTIME_LOAD_TIMEOUT_MS, CallService } from './call.service';
@@ -15,6 +15,8 @@ const runtime = vi.hoisted(() => ({
   start: vi.fn(),
   members: [] as unknown[],
   gate: null as Promise<void> | null,
+  listeners: new Set<(event: unknown) => void>(),
+  rtcTransports: vi.fn(),
 }));
 
 vi.mock('./call-runtime', async () => {
@@ -40,12 +42,20 @@ vi.mock('./matrix-call-transport', () => ({
     deviceId: 'DEV',
     homeserverUrl: 'https://hs',
     readState: () => runtime.members,
+    roomEvents: () =>
+      new Observable((subscriber) => {
+        const listener = (event: unknown) => subscriber.next(event);
+        runtime.listeners.add(listener);
+        return () => runtime.listeners.delete(listener);
+      }),
+    rtcTransports: () => runtime.rtcTransports(),
   }),
 }));
 
 describe('CallService', () => {
   const activeUserId = signal<string | null>('@me:hs');
   const hasClient = signal(true);
+  const client = {};
   const iframe = document.createElement('iframe');
 
   beforeEach(() => {
@@ -53,6 +63,8 @@ describe('CallService', () => {
     runtime.gate = null;
     runtime.sessions.length = 0;
     runtime.members = [];
+    runtime.listeners.clear();
+    runtime.rtcTransports.mockReset();
     runtime.start.mockClear();
     activeUserId.set('@me:hs');
     hasClient.set(true);
@@ -62,7 +74,7 @@ describe('CallService', () => {
           provide: MatrixClientService,
           useValue: {
             activeUserId,
-            clientFor: () => (hasClient() ? {} : null),
+            clientFor: () => (hasClient() ? client : null),
           },
         },
       ],
@@ -338,5 +350,96 @@ describe('CallService', () => {
     subscription.unsubscribe();
     expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
     expect(service.activeCall()).toBeNull();
+  });
+
+  describe('participants', () => {
+    const member = (content: Record<string, unknown>) => ({
+      type: 'org.matrix.msc3401.call.member',
+      origin_server_ts: 0,
+      content,
+    });
+    const emit = (event: unknown) =>
+      runtime.listeners.forEach((listener) => listener(event));
+
+    it('tracks joins and expiries', () => {
+      vi.useFakeTimers({ now: 1_000 });
+      try {
+        runtime.members = [member({ expires_ts: 5_000 })];
+        const counts: number[] = [];
+        const subscription = TestBed.inject(CallService)
+          .participants('@me:hs', '!r')
+          .subscribe((count) => counts.push(count));
+        expect(counts).toEqual([1]);
+        runtime.members = [
+          member({ expires_ts: 5_000 }),
+          member({ expires_ts: 60_000 }),
+        ];
+        emit(member({ expires_ts: 60_000 }));
+        expect(counts).toEqual([1, 2]);
+        vi.advanceTimersByTime(4_001);
+        expect(counts).toEqual([1, 2, 1]);
+        subscription.unsubscribe();
+        expect(runtime.listeners.size).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('ignores other event types', () => {
+      runtime.members = [member({ expires_ts: Date.now() + 60_000 })];
+      const counts: number[] = [];
+      TestBed.inject(CallService)
+        .participants('@me:hs', '!r')
+        .subscribe((count) => counts.push(count));
+      emit({ type: 'm.room.message', content: {} });
+      expect(counts).toEqual([1]);
+    });
+
+    it('emits 0 and completes for an unknown account', () => {
+      hasClient.set(false);
+      const counts: number[] = [];
+      let completed = false;
+      TestBed.inject(CallService)
+        .participants('@nobody:hs', '!r')
+        .subscribe({
+          next: (count) => counts.push(count),
+          complete: () => (completed = true),
+        });
+      expect(counts).toEqual([0]);
+      expect(completed).toBe(true);
+    });
+  });
+
+  describe('callAvailable', () => {
+    it('turns false when the server has no transports', async () => {
+      runtime.rtcTransports.mockResolvedValue([]);
+      const values: boolean[] = [];
+      TestBed.inject(CallService)
+        .callAvailable('@me:hs', '!r')
+        .subscribe((value) => values.push(value));
+      expect(values).toEqual([true]);
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(values).toEqual([true, false]);
+    });
+
+    it('stays true when the lookup fails', async () => {
+      runtime.rtcTransports.mockRejectedValue(new Error('down'));
+      const values: boolean[] = [];
+      TestBed.inject(CallService)
+        .callAvailable('@me:hs', '!r')
+        .subscribe((value) => values.push(value));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(values).toEqual([true]);
+    });
+
+    it('looks up once per account', async () => {
+      runtime.rtcTransports.mockResolvedValue([{}]);
+      const service = TestBed.inject(CallService);
+      service.callAvailable('@me:hs', '!a').subscribe();
+      service.callAvailable('@me:hs', '!b').subscribe();
+      expect(runtime.rtcTransports).toHaveBeenCalledTimes(1);
+    });
   });
 });

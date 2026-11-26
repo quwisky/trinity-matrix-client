@@ -1,16 +1,30 @@
 import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { MatrixClient } from 'matrix-js-sdk';
 import {
   EMPTY,
   Observable,
   catchError,
+  concat,
   defer,
+  distinctUntilChanged,
+  filter,
   finalize,
   from,
+  map,
+  of,
+  shareReplay,
+  startWith,
   switchMap,
   timeout,
+  timer,
 } from 'rxjs';
-import { callIntent, callWidgetUrl, hasOngoingCall } from './call-intent';
+import {
+  callIntent,
+  callParticipants,
+  callWidgetUrl,
+  hasOngoingCall,
+} from './call-intent';
 import type { CallTransport } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { matrixCallTransport } from './matrix-call-transport';
@@ -51,6 +65,10 @@ export class CallService {
   /** A call started while the previous one was ending; it starts once that one has left. */
   private next: Call | null = null;
   private lastId = 0;
+  private readonly availability = new Map<
+    string,
+    { client: MatrixClient; available$: Observable<boolean> }
+  >();
 
   readonly activeCall = computed<ActiveCall | null>(() => {
     const call = this.call();
@@ -100,6 +118,59 @@ export class CallService {
     else this.call.set(call);
   }
 
+  /** How many members are in `roomId`'s call, kept current as events arrive and memberships expire. */
+  participants(accountId: string, roomId: string): Observable<number> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(0);
+      const transport = matrixCallTransport(client, roomId);
+      const recount = (): Observable<number> =>
+        defer(() => {
+          const now = Date.now();
+          const { count, nextExpiryMs } = callParticipants(
+            transport.readState(CALL_MEMBER_TYPE),
+            now,
+          );
+          // Expiry is inclusive, so recheck just after the boundary.
+          return nextExpiryMs === null
+            ? of(count)
+            : concat(
+                of(count),
+                timer(Math.max(0, nextExpiryMs - now + 1)).pipe(
+                  switchMap(recount),
+                ),
+              );
+        });
+      return transport.roomEvents().pipe(
+        filter((event) => event.type === CALL_MEMBER_TYPE),
+        startWith(null),
+        switchMap(recount),
+        distinctUntilChanged(),
+      );
+    });
+  }
+
+  /** `true` until the account's server reports no RTC transports; a failed lookup stays `true`. */
+  callAvailable(accountId: string, roomId: string): Observable<boolean> {
+    const client = this.clients.clientFor(accountId);
+    if (!client) return of(true);
+    let entry = this.availability.get(accountId);
+    if (entry?.client !== client) {
+      const available$ = defer(() =>
+        matrixCallTransport(client, roomId).rtcTransports(),
+      ).pipe(
+        map((transports) => transports.length > 0),
+        catchError(() => of(true)),
+        startWith(true),
+        distinctUntilChanged(),
+        shareReplay(1),
+      );
+      entry = { client, available$ };
+      this.availability.set(accountId, entry);
+    }
+    return entry.available$;
+  }
+
   /**
    * Bind the call to `iframe`. Cold: subscribing lazy-loads the runtime and starts the
    * session; it completes when the call ends, and unsubscribing hangs up.
@@ -140,9 +211,6 @@ export class CallService {
             this.session.set(session);
             return () => {
               if (ended) return;
-              // shortcut: leaving the rooms page destroys the frame before Element Call can
-              // leave the call, so its membership lingers until it expires; slice 2's
-              // app-level call host keeps the frame mounted and removes this.
               this.hangUpOnce(session);
               if (this.call() === call) this.clear();
             };
