@@ -144,6 +144,19 @@ describe('CallHostComponent', () => {
     }
   });
 
+  it('hides the docked frame while the call ends', async () => {
+    const { activeCall, iframe, update, attach } = await build();
+    const frame = iframe();
+
+    activeCall.set({ ...CALL, state: 'ending' });
+    await update();
+
+    expect(screen.queryByRole('region', { name: 'Call' })).toBeNull();
+    expect(iframe()).toBe(frame);
+    expect(iframe()?.style.left).toBe('-10000px');
+    expect(attach).toHaveBeenCalledExactlyOnceWith(frame);
+  });
+
   it('docks while the stage has no size', async () => {
     const { stage, update } = await build();
     stage.register(stageOf(0, 0));
