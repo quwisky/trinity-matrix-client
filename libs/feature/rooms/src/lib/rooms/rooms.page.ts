@@ -444,11 +444,6 @@ export class RoomsPage {
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
 
-  /**
-   * The call fills the conversation area only in its own room, while it runs, and not while a
-   * panel page is on screen below md, sliding off included: the host's fixed frame would sit on
-   * that page, and hiding `.chat-body` mid-slide would cancel the slide's `animationend`.
-   */
   /** This room's call is running here; an ending or failed one is not. */
   private readonly callLiveInOpenRoom = computed(() => {
     const call = this.calls.activeCall();
@@ -458,6 +453,11 @@ export class RoomsPage {
     );
   });
 
+  /**
+   * The call fills the conversation area only in its own room, while it runs, and not while a
+   * panel page is on screen below md, sliding off included: the host's fixed frame would sit on
+   * that page, and hiding `.chat-body` mid-slide would cancel the slide's `animationend`.
+   */
   protected readonly callExpanded = computed(
     () =>
       this.callLiveInOpenRoom() &&
