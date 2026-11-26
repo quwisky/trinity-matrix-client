@@ -128,8 +128,9 @@
 @layer components {
   /* The status bar sits over the top of the frame, so whatever is at the top clears the inset
    * with its own background and the status bar takes that colour. On most pages that is the
-   * frame, in the open page's ground. Otherwise the first banner takes it, or else the bar at
-   * the top of each rooms shell column (`--trinity-top-inset`, rooms.page.scss). */
+   * frame, in the open page's ground. Otherwise the call strip or the first banner takes it,
+   * or else the bar at the top of each rooms shell column (`--trinity-top-inset`,
+   * rooms.page.scss). */
   .app-frame {
     --trinity-top-inset: env(safe-area-inset-top, 0px);
 
@@ -141,7 +142,11 @@
     background-color: var(--trinity-surface-app);
   }
 
-  .app-frame:has(> trn-banner, .rooms-shell) {
+  .app-frame:has(
+    > trn-banner,
+    > trn-call-host .call-host__strip,
+    .rooms-shell
+  ) {
     padding-top: 0;
   }
 
@@ -152,6 +157,7 @@
   }
 
   .app-frame > trn-banner ~ *,
+  .app-frame > trn-call-host:has(.call-host__strip) ~ *,
   .rooms-shell > :not(.rooms-workspace):has(trn-banner) ~ * {
     --trinity-top-inset: 0px;
   }

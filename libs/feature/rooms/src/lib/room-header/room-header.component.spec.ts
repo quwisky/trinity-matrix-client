@@ -527,4 +527,53 @@ describe('RoomHeaderComponent call menu', () => {
       expect(actions).toEqual([{ type: 'call', video }]);
     },
   );
+
+  it('offers to join an ongoing call, with the count in its label', async () => {
+    const { byId } = await build({ callParticipants: 2 });
+    const button = byId('start-call') as HTMLButtonElement;
+    expect(button.getAttribute('aria-label')).toBe('Join call · 2');
+    expect(button.querySelector('trn-icon')?.getAttribute('data-variant')).toBe(
+      'accent',
+    );
+    button.click();
+    expect(
+      document.querySelector('[data-testid="start-voice-call"]')?.textContent,
+    ).toContain('Join with voice');
+    expect(
+      document.querySelector('[data-testid="start-video-call"]')?.textContent,
+    ).toContain('Join with video');
+  });
+
+  it('is disabled with a reason when the server has no calls', async () => {
+    const { byId, actions } = await build({ callAvailable: false });
+    const button = byId('start-call') as HTMLButtonElement;
+    button.click();
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      document.querySelector('[data-testid="start-voice-call"]'),
+    ).toBeNull();
+    expect(actions).toEqual([]);
+  });
+
+  it('gives the reason as its tooltip when the server has no calls', async () => {
+    vi.useFakeTimers();
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    const { byId } = await build({ callAvailable: false });
+    const hover = new Event('pointerenter');
+    Object.defineProperty(hover, 'pointerType', { value: 'mouse' });
+
+    byId('start-call')?.dispatchEvent(hover);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain(
+      "Your server isn't set up for calls",
+    );
+  });
+
+  it("hides the call button while in this room's call", async () => {
+    const { byId } = await build({ inCall: true });
+    expect(byId('start-call')).toBeNull();
+  });
 });

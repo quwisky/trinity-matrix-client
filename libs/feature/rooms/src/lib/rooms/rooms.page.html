@@ -28,6 +28,9 @@
       tabindex="-1"
       class="shell-side"
       [attr.inert]="paneSlide() === 'open' ? '' : null"
+      [style.--trinity-call-card-height.px]="
+        callCardShown() ? callCardHeight() : 0
+      "
     >
       <trn-server-rail
         class="shell-side__rail"
@@ -122,6 +125,9 @@
           (setSortMode)="spaceActions.onSetSpaceSort($event)"
         />
       }
+      @if (callCardShown()) {
+        <trn-call-card (heightChange)="callCardHeight.set($event)" />
+      }
       <trn-sidebar-user-panel
         class="shell-side__dock"
         [user]="vm.userProfile()"
@@ -175,6 +181,9 @@
         [actingAs]="actingAs()"
         [surfaceKind]="surfaceKind()"
         [pinnedCount]="pinned.messages().length"
+        [callParticipants]="callParticipants()"
+        [callAvailable]="callAvailable()"
+        [inCall]="inActiveCall()"
         [invitePermission]="vm.roomInvitePermission()"
         [systemStatusProblems]="systemStatus.hasProblems()"
         [canReport]="canReportActiveRoom()"
@@ -198,10 +207,13 @@
         />
       }
 
-      <!-- Expanded, the call replaces this room's timeline. Collapsed it is a bar, and its
-           frame keeps running off-screen. Leaving this page ends the call. -->
-      @for (frame of callFrames(); track frame) {
-        <trn-room-call [expanded]="callExpanded()" />
+      <!-- The app-level call host draws the call over this stage; without one it docks. -->
+      @if (callExpanded()) {
+        <div
+          trnCallStage
+          class="room-call-stage"
+          data-testid="call-stage"
+        ></div>
       }
 
       <div

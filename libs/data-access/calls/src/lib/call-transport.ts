@@ -76,6 +76,9 @@ export interface CallTransport {
     matrix_server_name: string;
     expires_in: number;
   }>;
+  /** The endpoint's `rtc_transports`; `undefined` when the server lacks the endpoint. */
+  advertisedRtcTransports(): Promise<unknown[] | undefined>;
+  /** The endpoint's list, else the server name's well-known foci. */
   rtcTransports(): Promise<unknown[]>;
   livekitToken(body: Record<string, unknown>): Promise<{ jwt: string }>;
   delegateLivekitDelayedLeave(body: Record<string, unknown>): Promise<void>;

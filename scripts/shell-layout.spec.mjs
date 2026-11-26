@@ -209,8 +209,11 @@ describe('modern room shell layout contracts', () => {
     expect(roomsHtml).toMatch(
       /<trn-server-rail[\s\S]*class="shell-side__rail"[\s\S]*<trn-channel-sidebar[\s\S]*class="shell-side__rooms"[\s\S]*<trn-sidebar-user-panel[\s\S]*class="shell-side__dock"/,
     );
+    expect(roomsCss).toMatch(
+      /--trinity-navigation-reserve:\s*calc\(\s*var\(--trinity-navigation-dock-height\)\s*\+\s*var\(--trinity-call-card-height\)\s*\);/,
+    );
     expect(sidebarCss).toMatch(
-      /\.sidebar__scroll\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,
+      /\.sidebar__scroll\s*\{[\s\S]*?padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-reserve\)[\s\S]*?scroll-padding-block-end:\s*calc\([\s\S]*?var\(--trinity-navigation-reserve\)/,
     );
     expect(railCss).toMatch(
       /\.rail-scroll\s*\{[\s\S]*?padding-block:[^;]*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)[\s\S]*?scroll-padding-block:[^;]*calc\([\s\S]*?var\(--trinity-navigation-dock-height\)/,

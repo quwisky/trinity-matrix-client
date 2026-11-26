@@ -62,6 +62,7 @@ const componentStylesheets = stylesheets.filter(
  */
 const COMPONENT_STYLESHEET_LEDGER = [
   'libs/application/runtime/src/lib/application-root/application-root.component.scss',
+  'libs/application/runtime/src/lib/application-root/call-host/call-host.component.scss',
   'libs/application/runtime/src/lib/application-root/system-status/system-status.component.scss',
   'libs/application/runtime/src/lib/application-root/title-bar/title-bar.component.scss',
   'libs/components/controls/src/lib/emoji-picker/trn-emoji-picker/trn-emoji-picker.component.scss',
@@ -89,6 +90,7 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/crypto/src/lib/verification/sas-compare.component.scss',
   'libs/feature/rooms/src/lib/account-picker/account-picker.component.scss',
   'libs/feature/rooms/src/lib/add-to-space/add-to-space.component.scss',
+  'libs/feature/rooms/src/lib/call-card/call-card.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/channel-sidebar.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.scss',
   'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.scss',
@@ -135,7 +137,6 @@ const COMPONENT_STYLESHEET_LEDGER = [
   'libs/feature/rooms/src/lib/quick-switcher/quick-switcher.component.scss',
   'libs/feature/rooms/src/lib/reaction-picker/reaction-picker.component.scss',
   'libs/feature/rooms/src/lib/reactions-dialog/reactions-dialog.component.scss',
-  'libs/feature/rooms/src/lib/room-call/room-call.component.scss',
   'libs/feature/rooms/src/lib/room-header/room-header.component.scss',
   'libs/feature/rooms/src/lib/room-link-preview/room-link-preview.component.scss',
   'libs/feature/rooms/src/lib/room-settings/room-settings-access.component.scss',

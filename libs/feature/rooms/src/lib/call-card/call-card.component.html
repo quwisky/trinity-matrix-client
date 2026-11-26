@@ -1,0 +1,59 @@
+@if (call(); as call) {
+  <section class="call-card" aria-label="Call">
+    @if (call.state === 'failed') {
+      <div class="call-card__row">
+        <trn-icon name="triangle-alert" />
+        <span class="call-card__summary" role="alert"
+          >The call could not start</span
+        >
+        <button trnBtn type="button" size="sm" (click)="hangUp()">Close</button>
+      </div>
+    } @else {
+      @if (videoShown()) {
+        <div #videoSlot class="call-card__video"></div>
+      }
+      <div class="call-card__row">
+        <span class="call-card__live" aria-hidden="true"></span>
+        <span class="call-card__summary">
+          <button
+            type="button"
+            class="call-card__room"
+            (click)="returnToCall()"
+          >
+            {{ call.roomName }}
+          </button>
+          <span class="call-card__meta">{{ meta() }}</span>
+        </span>
+        <button
+          trnBtn
+          type="button"
+          presentation="ghost"
+          shape="icon"
+          size="sm"
+          [attr.aria-label]="videoShown() ? 'Hide video' : 'Show video'"
+          [trnTooltip]="videoShown() ? 'Hide video' : 'Show video'"
+          (click)="toggleVideo()"
+        >
+          <trn-icon
+            [name]="videoShown() ? 'chevron-down' : 'chevron-up'"
+            motion="pop"
+          />
+        </button>
+      </div>
+      <div class="call-card__actions">
+        <button trnBtn type="button" size="sm" (click)="returnToCall()">
+          Return to call
+        </button>
+        <button
+          trnBtn
+          type="button"
+          size="sm"
+          variant="danger"
+          (click)="hangUp()"
+        >
+          Hang up
+        </button>
+      </div>
+    }
+  </section>
+}

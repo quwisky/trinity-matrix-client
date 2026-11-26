@@ -8,6 +8,7 @@ import {
   DestroyRef,
   computed,
   ElementRef,
+  type Signal,
   Injector,
   afterNextRender,
   effect,
@@ -18,7 +19,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
 import {
   InboundRoomLinkService,
   roomTitle,
@@ -29,8 +34,9 @@ import {
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { CallService } from '@trinity/data-access/calls';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { filter } from 'rxjs';
-import { RoomCallComponent } from '../room-call/room-call.component';
+import { filter, of, switchMap, type Observable } from 'rxjs';
+import { CallStageDirective } from '../room-call/call-stage.directive';
+import { CallCardComponent } from '../call-card/call-card.component';
 import { RootThemeObserver } from '../message-presentation/root-theme';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
@@ -156,7 +162,8 @@ const PANEL_DRAWER_PX = 360;
     TombstoneBannerComponent,
     IdentityChangeBannerComponent,
     JoinRequestsBannerComponent,
-    RoomCallComponent,
+    CallStageDirective,
+    CallCardComponent,
   ],
   host: {
     // One delegating listener for every global shortcut, all resolved through
@@ -439,26 +446,68 @@ export class RoomsPage {
     () => this.roomSurfaces.renderedSurface()?.kind ?? null,
   );
 
-  /**
-   * One frame per call id. A new call can replace the old one in a single task, so
-   * `@if (activeCall())` alone would keep the old frame and never attach the new call.
-   */
-  protected readonly callFrames = computed(() => {
-    const id = this.calls.activeCall()?.id;
-    return id === undefined ? [] : [id];
-  });
-
-  /**
-   * The call frame fills the conversation area only in the call's own room, and only while
-   * the call runs: an ending or failed call's frame stays out of sight.
-   */
-  protected readonly callExpanded = computed(() => {
+  /** This room's call is running here; an ending or failed one is not. */
+  private readonly callLiveInOpenRoom = computed(() => {
     const call = this.calls.activeCall();
     return (
       call?.roomId === this.store.activeRoomId() &&
       (call.state === 'loading' || call.state === 'joined')
     );
   });
+
+  /**
+   * The call fills the conversation area only in its own room, while it runs, and not while a
+   * panel page is on screen below md, sliding off included: the host's fixed frame would sit on
+   * that page, and hiding `.chat-body` mid-slide would cancel the slide's `animationend`.
+   */
+  protected readonly callExpanded = computed(
+    () =>
+      this.callLiveInOpenRoom() &&
+      !(this.mobileMasterDetail() && this.shownSurface()),
+  );
+  protected readonly inActiveCall = this.callLiveInOpenRoom;
+
+  /** The docked card, wherever the room list is on screen and the call is not on its stage. */
+  protected readonly callCardShown = computed(() => {
+    const state = this.calls.activeCall()?.state;
+    if (state !== 'loading' && state !== 'joined' && state !== 'failed')
+      return false;
+    // Below md the list and the room are separate pages: the stage is off screen on the list.
+    return this.mobileMasterDetail()
+      ? this.store.pane() !== 'conversation'
+      : !this.callExpanded();
+  });
+  protected readonly callCardHeight = signal(0);
+
+  /** Ids only, so a summary refreshed by unread or typing does not restart the watches. */
+  private readonly openRoomCall = computed(
+    () => {
+      const room = this.vm.activeRoom();
+      return room ? { accountId: room.accountId, roomId: room.id } : null;
+    },
+    {
+      equal: (a, b) => a?.accountId === b?.accountId && a?.roomId === b?.roomId,
+    },
+  );
+  private watchCall<T>(
+    watch: (accountId: string, roomId: string) => Observable<T>,
+    none: T,
+  ): Signal<T> {
+    return toSignal(
+      toObservable(this.openRoomCall).pipe(
+        switchMap((r) => (r ? watch(r.accountId, r.roomId) : of(none))),
+      ),
+      { initialValue: none },
+    );
+  }
+  protected readonly callParticipants = this.watchCall(
+    (a, r) => this.calls.participants(a, r),
+    0,
+  );
+  protected readonly callAvailable = this.watchCall(
+    (a, r) => this.calls.callAvailable(a, r),
+    true,
+  );
 
   protected onHeaderAction(action: RoomHeaderAction): void {
     switch (action.type) {
@@ -502,6 +551,7 @@ export class RoomsPage {
       this.calls.start(room.id, {
         video,
         dm: !!room.directUserId,
+        roomName: room.name,
         theme: this.rootTheme.key().startsWith('dark') ? 'dark' : 'light',
       });
     if (!running) return start();

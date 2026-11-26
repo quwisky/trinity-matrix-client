@@ -1,0 +1,53 @@
+@if (showStrip()) {
+  <div class="call-host__strip" role="region" aria-label="Call">
+    @if (mode() === 'failed') {
+      <trn-icon name="triangle-alert" />
+      <span class="call-host__summary" role="alert"
+        >The call could not start</span
+      >
+      <button trnBtn size="sm" (click)="hangUp()">Close</button>
+    } @else {
+      @let elapsed = elapsed$ | async;
+      <span class="call-host__live" aria-hidden="true"></span>
+      <span class="call-host__summary">
+        <span class="call-host__room">Call in {{ call()?.roomName }}</span>
+        <span class="call-host__meta">{{
+          ' · ' + (participants$ | async) + (elapsed ? ' · ' + elapsed : '')
+        }}</span>
+      </span>
+      <button trnBtn size="sm" (click)="returnToCall()">Return</button>
+      <button trnBtn size="sm" variant="danger" (click)="hangUp()">
+        Hang up
+      </button>
+    }
+  </div>
+}
+
+@for (id of callIds(); track id) {
+  <iframe
+    #callFrame
+    class="call-host__frame"
+    title="Call"
+    allow="camera; microphone; display-capture; autoplay; clipboard-write"
+    sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+    [style.top.px]="rect().top"
+    [style.left.px]="rect().left"
+    [style.width.px]="rect().width"
+    [style.height.px]="rect().height"
+  ></iframe>
+}
+
+@if (mode() === 'stage' && call()?.state === 'loading') {
+  <div
+    class="call-host__loading"
+    [style.top.px]="rect().top"
+    [style.left.px]="rect().left"
+    [style.width.px]="rect().width"
+    [style.height.px]="rect().height"
+  >
+    <trn-spinner size="lg" aria-label="Joining the call" />
+    <button trnBtn size="sm" variant="danger" (click)="hangUp()">
+      Hang up
+    </button>
+  </div>
+}

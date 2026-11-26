@@ -378,21 +378,30 @@ provider, you manage your addresses at the provider, and the group says so.
 ## Voice and video calls {#calls}
 
 On the web and desktop apps, open a room and choose **Start call** in its header, then
-**Voice call** or **Video call**. Trinity opens Element Call over the room. In a group room,
-check your camera and microphone there and choose **Join call**; in a direct chat the call
-starts straight away and rings the other person. If someone has already started a call in
-the room, the same button joins it. Calls work with people using Element Web and other
-clients that use Element Call (MatrixRTC), and they are end-to-end encrypted.
+**Voice call** or **Video call**. Trinity opens Element Call over the conversation. In a
+group room, check your camera and microphone there and choose **Join call**; in a direct
+chat the call starts straight away and rings the other person. When a call is running in
+the room, the header's call button is an icon button named **Join call · 3** (the number of
+people in it), which shows when you point at it, and its menu offers **Join with voice** or
+**Join with video**. The button is hidden while you are in that room's call. Calls work with
+people using Element Web and other clients that use Element Call (MatrixRTC), and they are
+end-to-end encrypted.
 
-While a call is open you can go to another room: the call shrinks to a **Call in
-progress** bar with **Return to call** and **Hang up**. Starting a call in another room
-asks you to leave the current one first. Opening Settings, switching account or signing
-out ends the call.
+The call keeps going when you leave the room, and with Settings open. It moves to a card in
+the sidebar above your account. The card shows the call's video, the room name with the number
+of people and how long you have been in the call, **Return to call** and **Hang up**. Choose
+the room name to go back to the call. **Hide video** keeps the call's sound; the video is
+hidden by default in a narrow window. Where the sidebar isn't on screen, such as a narrow
+window with another room open, a one-line strip at the top of the app shows **Call in**
+and the room name, with **Return** and **Hang up**. Starting a call in another room asks you
+to leave the current one first. Switching account or signing out ends the call.
 
-Trinity doesn't yet ring you for incoming calls or show which rooms have a call going.
-Calls aren't available in the Android and iOS apps yet. If the call can't start, Trinity
-shows "The call could not start": your server may not be set up for calls (see
-[Server requirements](#server-requirements)).
+Trinity doesn't yet ring you for incoming calls or show which rooms have a call going in the
+room list. Calls aren't available in the Android and iOS apps yet. If the call can't start,
+Trinity shows "The call could not start" with **Close**, in the card or the strip: your server may not be
+set up for calls (see [Server requirements](#server-requirements)). If the server reports that it
+offers no call service (its `/rtc/transports` list is empty), the call button is disabled and
+says "Your server isn't set up for calls"; other servers find out when a call starts.
 
 In rooms Trinity creates, every member can join calls. In other rooms, a member needs
 permission to send `org.matrix.msc3401.call.member` state, which a room admin can grant.

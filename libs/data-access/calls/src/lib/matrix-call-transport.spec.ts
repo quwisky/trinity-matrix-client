@@ -311,6 +311,66 @@ describe('matrixCallTransport', () => {
     });
   });
 
+  describe('advertisedRtcTransports', () => {
+    it('reads the list, without fetching the well-known', async () => {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockResolvedValueOnce({
+        rtc_transports: [{ type: 'a' }],
+      });
+      await expect(transport.advertisedRtcTransports()).resolves.toEqual([
+        { type: 'a' },
+      ]);
+      stub.http.authedRequest.mockResolvedValueOnce({ rtc_transports: [] });
+      await expect(transport.advertisedRtcTransports()).resolves.toEqual([]);
+      expect(wellKnown).not.toHaveBeenCalled();
+    });
+
+    it('is undefined when the field is missing', async () => {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockResolvedValueOnce({});
+      await expect(
+        transport.advertisedRtcTransports(),
+      ).resolves.toBeUndefined();
+    });
+
+    it('is undefined when the endpoint takes over 5 s', async () => {
+      vi.useFakeTimers();
+      try {
+        const { stub, transport } = setup();
+        stub.http.authedRequest.mockReturnValueOnce(
+          new Promise(() => undefined),
+        );
+        const answer = transport.advertisedRtcTransports();
+        await vi.advanceTimersByTimeAsync(5_000);
+        await expect(answer).resolves.toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it.each([
+      ['404', new MatrixError({}, 404)],
+      ['405', new MatrixError({}, 405)],
+      [
+        '400 M_UNRECOGNIZED',
+        new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 400),
+      ],
+    ])('is undefined on %s', async (_name, error) => {
+      const { stub, transport } = setup();
+      stub.http.authedRequest.mockRejectedValueOnce(error);
+      await expect(
+        transport.advertisedRtcTransports(),
+      ).resolves.toBeUndefined();
+    });
+
+    it('rejects on another error', async () => {
+      const { stub, transport } = setup();
+      const failure = new MatrixError({ errcode: 'M_UNKNOWN' }, 500);
+      stub.http.authedRequest.mockRejectedValueOnce(failure);
+      await expect(transport.advertisedRtcTransports()).rejects.toBe(failure);
+    });
+  });
+
   it('reads RTC transports, falling back to well-known on 404', async () => {
     const { stub, transport } = setup();
     stub.http.authedRequest.mockResolvedValueOnce({

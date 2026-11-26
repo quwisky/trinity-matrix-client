@@ -1,8 +1,9 @@
 import { ApplicationRef, Component, signal } from '@angular/core';
-import { TestBed } from '@angular/core/testing';
+import { DeferBlockState, TestBed } from '@angular/core/testing';
 import {
   WORKSPACE_SYSTEM_STATUS,
   WorkspaceBackService,
+  WorkspaceNavigationService,
 } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import { provideRouter, Router, type Routes } from '@angular/router';
@@ -13,6 +14,7 @@ import {
 } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
+import { CallService } from '@trinity/data-access/calls';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   TrustService,
@@ -201,6 +203,8 @@ describe('ApplicationRootComponent', () => {
           hasActiveAccount: signal(hasActiveAccount).asReadonly(),
         }),
         MockProvider(AppRestartService),
+        MockProvider(CallService, { activeCall: signal(null) }),
+        MockProvider(WorkspaceNavigationService),
       ],
     });
     return {
@@ -253,6 +257,27 @@ describe('ApplicationRootComponent', () => {
     expect(workspace.contains(screen.getByTestId('app-lock-cover'))).toBe(
       false,
     );
+  });
+
+  it('hosts the call inside the app frame, past every startup branch', async () => {
+    const { fixture, container } = await setup({ phase: 'stopped' });
+    const [callHost] = await fixture.getDeferBlocks();
+    await callHost.render(DeferBlockState.Complete);
+    expect(
+      container.querySelector('trn-call-host')?.closest('.app-frame'),
+    ).not.toBeNull();
+  });
+
+  it('puts the call strip under the title bar, above the routed page', async () => {
+    const { fixture, container } = await setup(READY);
+    const [callHost] = await fixture.getDeferBlocks();
+    await callHost.render(DeferBlockState.Complete);
+    const host = container.querySelector('trn-call-host') as Element;
+    const outlet = container.querySelector('router-outlet') as Element;
+    expect(host.previousElementSibling?.tagName).toBe('TRN-TITLE-BAR');
+    expect(
+      host.compareDocumentPosition(outlet) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('keeps the app-wide status controls below a notched status bar', async () => {

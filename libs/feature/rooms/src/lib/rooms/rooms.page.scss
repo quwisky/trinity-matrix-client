@@ -96,6 +96,12 @@
     --trinity-navigation-dock-height: max(60px, calc(2rem + 12px));
     --trinity-navigation-safe-area-bottom: env(safe-area-inset-bottom);
 
+    // The docked call card stacks on the dock; the card publishes its height inline here.
+    --trinity-call-card-height: 0px;
+    --trinity-navigation-reserve: calc(
+      var(--trinity-navigation-dock-height) + var(--trinity-call-card-height)
+    );
+
     @media #{$md} {
       width: var(--shell-sidebar-w, 352px);
 
@@ -293,6 +299,11 @@
     background: var(--trinity-surface-pane);
   }
 
+  .room-call-stage {
+    flex: 1;
+    min-height: 0;
+  }
+
   // The timeline keeps a readable floor beside a wide panel; the panel is the one that
   // shrinks. `min()` so it never asks for more than the row has.
   .chat-body > trn-message-list {
@@ -301,17 +312,17 @@
 
   // On a wide window the panel runs the full height of the room beside its header rather
   // than under it, so the two 48px bars share one row. The row of [timeline, panel] becomes
-  // a grid: the header, up to three banners and the call bar in the first column's rows, the
-  // timeline (or the expanded call) in the last row, and the divider and panel spanning them
-  // all. The panel's track grows to the stored width only from what the first column's floor
-  // leaves, so a wide stored panel is squeezed rather than clipped. That track exists only
-  // while a panel is open: an empty `minmax(0, 360px)` track would still take its 360px.
-  // Narrower windows keep the panel in the row under the header.
+  // a grid: the header and up to three banners in the first column's rows, the timeline (or
+  // the call stage) in the last row, and the divider and panel spanning them all. The panel's
+  // track grows to the stored width only from what the first column's floor leaves, so a wide
+  // stored panel is squeezed rather than clipped. That track exists only while a panel is
+  // open: an empty `minmax(0, 360px)` track would still take its 360px. Narrower windows keep
+  // the panel in the row under the header.
   @media #{$xl} {
     .main {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
+      grid-template-rows: auto auto auto auto minmax(0, 1fr);
     }
 
     // 520px rather than the timeline's 320px floor: this column also holds the room header
@@ -333,8 +344,8 @@
     }
 
     .chat-body > *,
-    .main > .room-call--expanded {
-      grid-row: 6;
+    .main > .room-call-stage {
+      grid-row: 5;
       min-height: 0;
     }
 

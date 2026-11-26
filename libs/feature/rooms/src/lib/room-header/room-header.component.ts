@@ -103,6 +103,11 @@ export class RoomHeaderComponent {
     reason: null,
   });
   readonly systemStatusProblems = input(false);
+  /** People in the room's call right now; above zero the button offers to join. */
+  readonly callParticipants = input(0);
+  readonly callAvailable = input(true);
+  /** This room's call is running here, where Element Call has its own controls. */
+  readonly inCall = input(false);
   /** Whether this account's server may still take room reports. */
   readonly canReport = input(false);
   /** Shared by the header field and the search panel's own field. */
@@ -117,6 +122,15 @@ export class RoomHeaderComponent {
     this.pinnedCount() > 0
       ? `Pinned messages (${this.pinnedCount()})`
       : 'Pinned messages',
+  );
+
+  protected readonly callUnavailableReason =
+    "Your server isn't set up for calls";
+
+  protected readonly callLabel = computed(() =>
+    this.callParticipants() > 0
+      ? `Join call · ${this.callParticipants()}`
+      : 'Start call',
   );
 
   /**

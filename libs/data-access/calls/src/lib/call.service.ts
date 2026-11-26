@@ -1,16 +1,39 @@
-import { Injectable, computed, effect, inject, signal } from '@angular/core';
+import {
+  Injectable,
+  computed,
+  effect,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import type { MatrixClient } from 'matrix-js-sdk';
 import {
   EMPTY,
   Observable,
   catchError,
+  concat,
   defer,
+  distinctUntilChanged,
+  filter,
   finalize,
   from,
+  map,
+  of,
+  shareReplay,
+  startWith,
   switchMap,
   timeout,
+  timer,
 } from 'rxjs';
-import { callIntent, callWidgetUrl, hasOngoingCall } from './call-intent';
+import {
+  callIntent,
+  callParticipants,
+  callWidgetUrl,
+  formatCallElapsed,
+  hasOngoingCall,
+} from './call-intent';
 import type { CallTransport } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { matrixCallTransport } from './matrix-call-transport';
@@ -19,21 +42,26 @@ export interface ActiveCall {
   /** New for every started call, so a view can give each call its own frame. */
   readonly id: number;
   readonly roomId: string;
+  readonly roomName: string;
   readonly accountId: string;
   readonly widgetUrl: string;
   /** `ending`: hung up, and the hidden frame stays until Element Call has left the call. */
   readonly state: CallSessionState | 'ending';
+  /** Epoch ms when the session first reached `joined`; `null` before. */
+  readonly joinedAt: number | null;
 }
 
 interface Call {
   readonly id: number;
   readonly roomId: string;
+  readonly roomName: string;
   readonly accountId: string;
   readonly widgetUrl: string;
   readonly transport: CallTransport;
 }
 
 const CALL_WIDGET_ID = 'trinity-call';
+const MAX_TIMER_MS = 2 ** 31 - 1;
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
 
 // Same budget as the widget bridge: the runtime chunk is small, so this only trips on a dead network.
@@ -48,23 +76,42 @@ export class CallService {
   private readonly hungUp = new WeakSet<CallSession>();
   private readonly loadFailed = signal(false);
   private readonly ending = signal(false);
+  private readonly joined = signal<{ id: number; at: number } | null>(null);
   /** A call started while the previous one was ending; it starts once that one has left. */
   private next: Call | null = null;
   private lastId = 0;
+  private readonly availability = new WeakMap<
+    MatrixClient,
+    Observable<boolean>
+  >();
 
   readonly activeCall = computed<ActiveCall | null>(() => {
     const call = this.call();
     if (!call) return null;
-    const { id, roomId, accountId, widgetUrl } = call;
+    const { id, roomId, roomName, accountId, widgetUrl } = call;
     const state = this.ending()
       ? 'ending'
       : this.loadFailed()
         ? 'failed'
         : (this.session()?.state() ?? 'loading');
-    return { id, roomId, accountId, widgetUrl, state };
+    const joined = this.joined();
+    const joinedAt = joined?.id === id ? joined.at : null;
+    return { id, roomId, roomName, accountId, widgetUrl, state, joinedAt };
   });
 
+  // Created once: an effect made per subscription would outlive it, tied to the service.
+  private readonly joinedAt$ = toObservable(
+    computed(() => this.activeCall()?.joinedAt ?? null),
+  );
+  private readonly activeCall$ = toObservable(this.activeCall);
+
   constructor() {
+    effect(() => {
+      const call = this.activeCall();
+      if (call?.state === 'joined' && untracked(this.joined)?.id !== call.id) {
+        this.joined.set({ id: call.id, at: Date.now() });
+      }
+    });
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -74,7 +121,12 @@ export class CallService {
 
   start(
     roomId: string,
-    options: { video: boolean; dm: boolean; theme: 'light' | 'dark' },
+    options: {
+      video: boolean;
+      dm: boolean;
+      theme: 'light' | 'dark';
+      roomName: string;
+    },
   ): void {
     const accountId = this.clients.activeUserId();
     const client = accountId ? this.clients.clientFor(accountId) : null;
@@ -95,9 +147,91 @@ export class CallService {
       intent: callIntent({ dm: options.dm, ongoing, video: options.video }),
       theme: options.theme,
     });
-    const call = { id: ++this.lastId, roomId, accountId, widgetUrl, transport };
+    const call = {
+      id: ++this.lastId,
+      roomId,
+      roomName: options.roomName,
+      accountId,
+      widgetUrl,
+      transport,
+    };
     if (this.ending()) this.next = call;
     else this.call.set(call);
+  }
+
+  /** Time since the call was joined, ticking each second; empty until then. */
+  elapsed(): Observable<string> {
+    return this.joinedAt$.pipe(
+      switchMap((at) =>
+        at === null
+          ? of('')
+          : timer(0, 1000).pipe(map(() => formatCallElapsed(Date.now() - at))),
+      ),
+      distinctUntilChanged(),
+    );
+  }
+
+  /** How many people are in the active call; 0 with none. */
+  activeCallParticipants(): Observable<number> {
+    return this.activeCall$.pipe(
+      distinctUntilChanged((a, b) => a?.id === b?.id),
+      switchMap((call) =>
+        call ? this.participants(call.accountId, call.roomId) : of(0),
+      ),
+    );
+  }
+
+  /** How many members are in `roomId`'s call, kept current as events arrive and memberships expire. */
+  participants(accountId: string, roomId: string): Observable<number> {
+    return defer(() => {
+      const client = this.clients.clientFor(accountId);
+      if (!client) return of(0);
+      const transport = matrixCallTransport(client, roomId);
+      const recount = (): Observable<number> =>
+        defer(() => {
+          const now = Date.now();
+          const { count, nextExpiryMs } = callParticipants(
+            transport.readState(CALL_MEMBER_TYPE),
+            now,
+          );
+          // Expiry is inclusive, so recheck just after the boundary.
+          return nextExpiryMs === null
+            ? of(count)
+            : concat(
+                of(count),
+                timer(
+                  // setTimeout overflows past 2^31-1 ms and would fire at once.
+                  Math.min(MAX_TIMER_MS, Math.max(0, nextExpiryMs - now + 1)),
+                ).pipe(switchMap(recount)),
+              );
+        });
+      return transport.roomEvents().pipe(
+        filter((event) => event.type === CALL_MEMBER_TYPE),
+        startWith(null),
+        switchMap(recount),
+        distinctUntilChanged(),
+      );
+    });
+  }
+
+  /** `true` until the account's server reports no RTC transports; a failed lookup stays `true`. */
+  callAvailable(accountId: string, roomId: string): Observable<boolean> {
+    const client = this.clients.clientFor(accountId);
+    if (!client) return of(true);
+    let available$ = this.availability.get(client);
+    if (!available$) {
+      available$ = defer(() =>
+        matrixCallTransport(client, roomId).advertisedRtcTransports(),
+      ).pipe(
+        map((transports) => transports?.length !== 0),
+        catchError(() => of(true)),
+        startWith(true),
+        distinctUntilChanged(),
+        shareReplay(1),
+      );
+      this.availability.set(client, available$);
+    }
+    return available$;
   }
 
   /**
@@ -140,9 +274,6 @@ export class CallService {
             this.session.set(session);
             return () => {
               if (ended) return;
-              // shortcut: leaving the rooms page destroys the frame before Element Call can
-              // leave the call, so its membership lingers until it expires; slice 2's
-              // app-level call host keeps the frame mounted and removes this.
               this.hangUpOnce(session);
               if (this.call() === call) this.clear();
             };

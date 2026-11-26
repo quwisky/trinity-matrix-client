@@ -1,0 +1,72 @@
+@layer components {
+  :host {
+    display: contents;
+  }
+
+  .call-host__frame,
+  .call-host__loading {
+    position: fixed;
+
+    // Paints above the stage and the card's slot it covers, which share the sticky layer; overlays stay above.
+    z-index: calc(var(--trinity-z-sticky) + 1);
+  }
+
+  .call-host__frame {
+    border: 0;
+    background: var(--trinity-surface-pane);
+  }
+
+  .call-host__loading {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    gap: var(--trinity-space-4);
+  }
+
+  // In flow under the title bar, so the page below shrinks rather than sits under it.
+  .call-host__strip {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    padding: var(--trinity-space-1) var(--trinity-density-row-padding-inline);
+
+    // Takes the top inset from the frame, as a root banner does (global.scss).
+    padding-block-start: calc(
+      var(--trinity-top-inset) + var(--trinity-space-1)
+    );
+    border-block-end: 1px solid var(--trinity-border-subtle);
+    background: var(--trinity-state-attention-surface);
+    color: var(--trinity-state-attention-foreground);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+    white-space: nowrap;
+
+    --trinity-focus-ring: var(--trinity-focus-ring-on-attention);
+  }
+
+  .call-host__live {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-success);
+  }
+
+  .call-host__summary {
+    display: flex;
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .call-host__room {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .call-host__meta {
+    flex: none;
+    white-space: pre;
+  }
+}

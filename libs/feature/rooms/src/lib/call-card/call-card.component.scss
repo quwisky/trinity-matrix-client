@@ -1,0 +1,85 @@
+@use '../styles/mixins' as *;
+
+@layer components {
+  // Floats over the room list, directly above the account panel. The block-end padding is the
+  // gap to that panel, so the measured height the scrollers reserve includes it.
+  :host {
+    display: block;
+    grid-column: 2;
+    grid-row: 2;
+    position: absolute;
+    inset-inline: var(--trinity-space-2) var(--trinity-space-3);
+    inset-block-end: calc(
+      var(--trinity-space-3) + var(--trinity-navigation-safe-area-bottom)
+    );
+    margin-block-end: var(--trinity-navigation-dock-height);
+    z-index: var(--trinity-z-sticky);
+    padding-block-end: var(--trinity-space-2);
+
+    // The gap stays click-through to the list rows under it.
+    pointer-events: none;
+  }
+
+  .call-card {
+    pointer-events: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--trinity-space-2);
+    padding: var(--trinity-space-2);
+    border: 1px solid var(--trinity-border-subtle);
+    border-radius: var(--trinity-shape-overlay-radius);
+    background: var(--trinity-surface-floating-card);
+    box-shadow: var(--trinity-shadow-floating);
+    color: var(--trinity-text-muted);
+    font-size: var(--trinity-type-caption-size);
+    line-height: var(--trinity-type-caption-line-height);
+  }
+
+  .call-card__video {
+    aspect-ratio: 16 / 9;
+    border-radius: var(--trinity-radius-md);
+    background: var(--trinity-surface-pane);
+  }
+
+  .call-card__row {
+    display: flex;
+    align-items: center;
+    gap: var(--trinity-space-2);
+    white-space: nowrap;
+  }
+
+  .call-card__live {
+    flex: none;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--trinity-radius-pill);
+    background: var(--trinity-success);
+  }
+
+  .call-card__summary {
+    display: flex;
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .call-card__room {
+    @include interactive-row;
+    @include ellipsis;
+
+    min-inline-size: 0;
+    padding: 0;
+    font: inherit;
+    color: var(--trinity-text-bright);
+  }
+
+  .call-card__meta {
+    flex: none;
+    white-space: pre;
+  }
+
+  .call-card__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--trinity-space-2);
+  }
+}
