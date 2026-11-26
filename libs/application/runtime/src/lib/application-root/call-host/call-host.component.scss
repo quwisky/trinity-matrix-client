@@ -28,6 +28,11 @@
     align-items: center;
     gap: var(--trinity-space-2);
     padding: var(--trinity-space-1) var(--trinity-density-row-padding-inline);
+
+    // Takes the top inset from the frame, as a root banner does (global.scss).
+    padding-block-start: calc(
+      var(--trinity-top-inset) + var(--trinity-space-1)
+    );
     border-block-end: 1px solid var(--trinity-border-subtle);
     background: var(--trinity-state-attention-surface);
     color: var(--trinity-state-attention-foreground);

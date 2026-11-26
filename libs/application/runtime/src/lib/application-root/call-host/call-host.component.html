@@ -11,10 +11,9 @@
       <span class="call-host__live" aria-hidden="true"></span>
       <span class="call-host__summary">
         <span class="call-host__room">Call in {{ call()?.roomName }}</span>
-        <span class="call-host__meta">
-          · {{ participants$ | async
-          }}{{ elapsed ? ' · ' + elapsed : '' }}</span
-        >
+        <span class="call-host__meta">{{
+          ' · ' + (participants$ | async) + (elapsed ? ' · ' + elapsed : '')
+        }}</span>
       </span>
       <button trnBtn size="sm" (click)="returnToCall()">Return</button>
       <button trnBtn size="sm" variant="danger" (click)="hangUp()">

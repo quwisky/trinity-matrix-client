@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import { provideTrnIcons } from '@trinity/components/foundations';
 import {
   CallService,
   CallStageService,
@@ -54,6 +55,7 @@ async function build(
   );
   const result = await render(CallHostComponent, {
     providers: [
+      provideTrnIcons(),
       MockProvider(CallService, {
         activeCall,
         attach,
