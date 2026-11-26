@@ -59,7 +59,7 @@ answers `/health` for health checks. It supports `linux/amd64` and `linux/arm64`
 
 Pin `X.Y.Z` in production and update deliberately.
 
-The image serves the bundled Element Call under `/element-call/` with `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` (`container/sws.toml`). If you serve the release zip from your own web server, send the same headers for that path, so other sites can't frame the call page.
+The image serves the bundled Element Call under `/element-call/` with `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN` (`container/sws.toml`).
 
 ### Release zip {#self-host-zip}
 
@@ -71,7 +71,9 @@ Download `Trinity-Web-X.Y.Z.zip` from the
   `index.html`, but return 404 for missing files with an extension;
 - send `Cache-Control: no-cache` for `index.html`, `ngsw.json`, `ngsw-worker.js` and
   `manifest.webmanifest`, and may cache hashed `*.js`/`*.css` files for a year;
-- serve `.wasm` as `application/wasm`.
+- serve `.wasm` as `application/wasm`;
+- send `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`
+  for `/element-call/`, so other sites can't frame the call page.
 
 The container's [`sws.toml`](https://github.com/quwisky/trinity-matrix-client/blob/main/container/sws.toml)
 is a complete reference configuration.

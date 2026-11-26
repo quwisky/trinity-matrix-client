@@ -110,7 +110,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 — not offered by that app. Element X is Element's mobile app, so Element Web/Desktop
 shows — for Android and iOS.
 Trinity starts and joins MatrixRTC calls from the room header with Element Call; it
-doesn't yet show ongoing calls in the room list or ring in direct chats. See
+doesn't yet show ongoing calls in the room list or ring for incoming calls. See
 [Voice and video calls](https://docs.trinityproject.dev/trinity-matrix-client/users/#calls).
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
 Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop

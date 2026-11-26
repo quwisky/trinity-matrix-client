@@ -378,8 +378,9 @@ provider, you manage your addresses at the provider, and the group says so.
 ## Voice and video calls {#calls}
 
 On the web and desktop apps, open a room and choose **Start call** in its header, then
-**Voice call** or **Video call**. Trinity opens Element Call over the room, so check your
-camera and microphone there and choose **Join**. If someone has already started a call in
+**Voice call** or **Video call**. Trinity opens Element Call over the room. In a group room,
+check your camera and microphone there and choose **Join call**; in a direct chat the call
+starts straight away and rings the other person. If someone has already started a call in
 the room, the same button joins it. Calls work with people using Element Web and other
 clients that use Element Call (MatrixRTC), and they are end-to-end encrypted.
 
@@ -388,7 +389,7 @@ progress** bar with **Return to call** and **Hang up**. Starting a call in anoth
 asks you to leave the current one first. Opening Settings, switching account or signing
 out ends the call.
 
-Trinity doesn't yet ring people in direct chats or show which rooms have a call going.
+Trinity doesn't yet ring you for incoming calls or show which rooms have a call going.
 Calls aren't available in the Android and iOS apps yet. If the call can't start, Trinity
 shows "The call could not start": your server may not be set up for calls (see
 [Server requirements](#server-requirements)).
