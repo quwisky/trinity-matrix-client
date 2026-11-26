@@ -527,4 +527,36 @@ describe('RoomHeaderComponent call menu', () => {
       expect(actions).toEqual([{ type: 'call', video }]);
     },
   );
+
+  it('offers to join an ongoing call, with the count in its label', async () => {
+    const { byId } = await build({ callParticipants: 2 });
+    const button = byId('start-call') as HTMLButtonElement;
+    expect(button.getAttribute('aria-label')).toBe('Join call · 2');
+    expect(button.querySelector('trn-icon')?.getAttribute('data-variant')).toBe(
+      'accent',
+    );
+    button.click();
+    expect(
+      document.querySelector('[data-testid="start-voice-call"]')?.textContent,
+    ).toContain('Join with voice');
+    expect(
+      document.querySelector('[data-testid="start-video-call"]')?.textContent,
+    ).toContain('Join with video');
+  });
+
+  it('is disabled with a reason when the server has no calls', async () => {
+    const { byId, actions } = await build({ callAvailable: false });
+    const button = byId('start-call') as HTMLButtonElement;
+    button.click();
+    expect(button.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      document.querySelector('[data-testid="start-voice-call"]'),
+    ).toBeNull();
+    expect(actions).toEqual([]);
+  });
+
+  it("hides the call button while in this room's call", async () => {
+    const { byId } = await build({ inCall: true });
+    expect(byId('start-call')).toBeNull();
+  });
 });

@@ -112,28 +112,37 @@
 
   <ng-container trnHeaderActions>
     @if (room(); as room) {
-      <button
-        trnBtn
-        presentation="ghost"
-        size="md"
-        shape="icon"
-        [trnDropdownMenuTrigger]="callMenu"
-        align="end"
-        trnTooltip="Start call"
-        aria-label="Start call"
-        data-testid="start-call"
-      >
-        <trn-icon size="lg" name="phone" motion="pop" />
-      </button>
+      @if (!inCall()) {
+        <button
+          trnBtn
+          presentation="ghost"
+          size="md"
+          shape="icon"
+          [trnDropdownMenuTrigger]="callMenu"
+          align="end"
+          [trnTooltip]="callLabel()"
+          [attr.aria-label]="callLabel()"
+          [trnActionAllowed]="callAvailable()"
+          [trnActionDisabledReason]="callUnavailableReason"
+          data-testid="start-call"
+        >
+          <trn-icon
+            size="lg"
+            name="phone"
+            motion="pop"
+            [variant]="callParticipants() > 0 ? 'accent' : null"
+          />
+        </button>
+      }
       <ng-template #callMenu>
-        <div trnDropdownMenu aria-label="Start call">
+        <div trnDropdownMenu [attr.aria-label]="callLabel()">
           <button
             trnDropdownMenuItem
             (triggered)="action.emit({ type: 'call', video: false })"
             data-testid="start-voice-call"
           >
             <trn-icon name="phone" />
-            Voice call
+            {{ callParticipants() > 0 ? 'Join with voice' : 'Voice call' }}
           </button>
           <button
             trnDropdownMenuItem
@@ -141,7 +150,7 @@
             data-testid="start-video-call"
           >
             <trn-icon name="video" />
-            Video call
+            {{ callParticipants() > 0 ? 'Join with video' : 'Video call' }}
           </button>
         </div>
       </ng-template>

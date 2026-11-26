@@ -18,7 +18,11 @@ import {
   viewChild,
 } from '@angular/core';
 import { Router } from '@angular/router';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
 import {
   InboundRoomLinkService,
   roomTitle,
@@ -29,7 +33,7 @@ import {
 import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { CallService } from '@trinity/data-access/calls';
 import { TrnAlertService } from '@trinity/components/overlay';
-import { filter } from 'rxjs';
+import { filter, of, switchMap } from 'rxjs';
 import { CallStageDirective } from '../room-call/call-stage.directive';
 import { RootThemeObserver } from '../message-presentation/root-theme';
 import { TrnButton } from '@trinity/components/controls';
@@ -450,6 +454,35 @@ export class RoomsPage {
       call?.roomId === this.store.activeRoomId() &&
       (call.state === 'loading' || call.state === 'joined') &&
       !(this.mobileMasterDetail() && this.shownSurface())
+    );
+  });
+
+  private readonly callRoom = computed(() => {
+    const room = this.vm.activeRoom();
+    return room ? { accountId: room.accountId, roomId: room.id } : null;
+  });
+  protected readonly callParticipants = toSignal(
+    toObservable(this.callRoom).pipe(
+      switchMap((r) =>
+        r ? this.calls.participants(r.accountId, r.roomId) : of(0),
+      ),
+    ),
+    { initialValue: 0 },
+  );
+  protected readonly callAvailable = toSignal(
+    toObservable(this.callRoom).pipe(
+      switchMap((r) =>
+        r ? this.calls.callAvailable(r.accountId, r.roomId) : of(true),
+      ),
+    ),
+    { initialValue: true },
+  );
+  protected readonly inActiveCall = computed(() => {
+    const call = this.calls.activeCall();
+    return (
+      !!call &&
+      (call.state === 'loading' || call.state === 'joined') &&
+      call.roomId === this.vm.activeRoom()?.id
     );
   });
 

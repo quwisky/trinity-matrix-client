@@ -717,7 +717,12 @@ describe('RoomsPage calls', () => {
     const start = vi.fn();
     const root = renderHeader(0, {
       room,
-      calls: { activeCall: signal(activeCall), start },
+      calls: {
+        activeCall: signal(activeCall),
+        start,
+        participants: () => of(0),
+        callAvailable: () => of(true),
+      },
     });
     const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
     const click = (id: string) => {
@@ -903,5 +908,22 @@ describe('RoomsPage calls', () => {
       .transition({ kind: 'open-threads' });
     lastFixture.detectChanges();
     expect(stage(root)).not.toBeNull();
+  });
+
+  it("passes the open room's call participants to the header", () => {
+    const participants = vi.fn(() => of(3));
+    const root = renderHeader(0, {
+      calls: {
+        activeCall: signal(null),
+        participants,
+        callAvailable: () => of(true),
+      },
+    });
+    expect(participants).toHaveBeenCalledWith('@me:hs', '!r:hs');
+    expect(
+      root
+        .querySelector('[data-testid="start-call"]')
+        ?.getAttribute('aria-label'),
+    ).toBe('Join call · 3');
   });
 });
