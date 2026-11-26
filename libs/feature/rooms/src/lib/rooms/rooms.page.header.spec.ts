@@ -717,7 +717,7 @@ describe('RoomsPage calls', () => {
     const start = vi.fn();
     const root = renderHeader(0, {
       room,
-      calls: { activeCall: signal(activeCall), start, attach: () => NEVER },
+      calls: { activeCall: signal(activeCall), start },
     });
     const confirm = vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$');
     const click = (id: string) => {
@@ -777,14 +777,16 @@ describe('RoomsPage calls', () => {
     });
   });
 
-  it('only expands the frame when the call is already in this room', () => {
+  const stage = (root: ParentNode) =>
+    root.querySelector('[data-testid="call-stage"]');
+
+  it('stages the call in its own room, over the timeline', () => {
     const { root, start, confirm, click } = renderCalls(ongoing('!r:hs'));
+    expect(stage(root)).not.toBeNull();
+    expect(root.querySelector('.chat-body')?.className).toContain('hidden');
     click('start-video-call');
     expect(confirm).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
-    expect(root.querySelector('trn-room-call')?.className).toContain(
-      'room-call--expanded',
-    );
   });
 
   it('starts a fresh call in this room when its call failed', () => {
@@ -792,10 +794,7 @@ describe('RoomsPage calls', () => {
       ...ongoing('!r:hs'),
       state: 'failed',
     });
-    // The stopped frame stays out of sight: only the failure banner and the room show.
-    expect(root.querySelector('trn-room-call')?.className).not.toContain(
-      'room-call--expanded',
-    );
+    expect(stage(root)).toBeNull();
     expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
     click('start-video-call');
     expect(confirm).not.toHaveBeenCalled();
@@ -811,9 +810,7 @@ describe('RoomsPage calls', () => {
       ...ongoing('!r:hs'),
       state: 'ending',
     });
-    expect(root.querySelector('trn-room-call')?.className).not.toContain(
-      'room-call--expanded',
-    );
+    expect(stage(root)).toBeNull();
     expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
     click('start-video-call');
     expect(confirm).not.toHaveBeenCalled();
@@ -824,45 +821,40 @@ describe('RoomsPage calls', () => {
     });
   });
 
-  it('attaches a new frame when the call moves to another room', async () => {
-    const activeCall = signal<ActiveCall | null>(ongoing('!call:hs'));
-    const frames: HTMLIFrameElement[] = [];
-    const root = renderHeader(0, {
-      calls: {
-        activeCall,
-        // The worst case for the frame: the old call ends and the new one starts in one task.
-        start: (roomId: string) => {
-          activeCall.set(null);
-          activeCall.set(ongoing(roomId));
-        },
-        attach: (iframe: HTMLIFrameElement) => {
-          frames.push(iframe);
-          return NEVER;
-        },
-      },
-    });
-    await lastFixture.whenStable();
-    expect(frames).toHaveLength(1);
-    vi.spyOn(TestBed.inject(TrnAlertService), 'confirm$').mockReturnValue(
-      of(true),
-    );
-
-    root.querySelector<HTMLElement>('[data-testid="start-call"]')?.click();
-    document
-      .querySelector<HTMLElement>('[data-testid="start-video-call"]')
-      ?.click();
-    lastFixture.detectChanges();
-    await lastFixture.whenStable();
-
-    expect(frames).toHaveLength(2);
-    expect(frames[1]).not.toBe(frames[0]);
-    expect(root.querySelector('iframe')).toBe(frames[1]);
+  it('offers no stage while another room is open', () => {
+    const { root } = renderCalls(ongoing('!call:hs'));
+    expect(stage(root)).toBeNull();
+    expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
   });
 
-  it('collapses the call frame while another room is open', () => {
-    const { root } = renderCalls(ongoing('!call:hs'));
-    const call = root.querySelector('trn-room-call');
-    expect(call).not.toBeNull();
-    expect(call?.className).not.toContain('room-call--expanded');
+  // Below md a panel page covers the conversation, and the fixed call frame would sit on it.
+  it('docks the call while a panel page covers its room', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === BELOW_MD_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const { root } = renderCalls(ongoing('!r:hs'));
+    expect(stage(root)).not.toBeNull();
+
+    lastFixture.debugElement.injector
+      .get(RoomSurfaceLifecycle)
+      .transition({ kind: 'open-threads' });
+    lastFixture.detectChanges();
+
+    expect(stage(root)).toBeNull();
+    expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
+  });
+
+  it('keeps the call staged beside a side panel on a wide window', () => {
+    const { root } = renderCalls(ongoing('!r:hs'));
+    lastFixture.debugElement.injector
+      .get(RoomSurfaceLifecycle)
+      .transition({ kind: 'open-threads' });
+    lastFixture.detectChanges();
+    expect(stage(root)).not.toBeNull();
   });
 });

@@ -30,7 +30,7 @@ import { BELOW_MD_QUERY, mediaQuerySignal } from '@trinity/util/ui';
 import { CallService } from '@trinity/data-access/calls';
 import { TrnAlertService } from '@trinity/components/overlay';
 import { filter } from 'rxjs';
-import { RoomCallComponent } from '../room-call/room-call.component';
+import { CallStageDirective } from '../room-call/call-stage.directive';
 import { RootThemeObserver } from '../message-presentation/root-theme';
 import { TrnButton } from '@trinity/components/controls';
 import { EmptyStateComponent } from '@trinity/components/generic-content';
@@ -156,7 +156,7 @@ const PANEL_DRAWER_PX = 360;
     TombstoneBannerComponent,
     IdentityChangeBannerComponent,
     JoinRequestsBannerComponent,
-    RoomCallComponent,
+    CallStageDirective,
   ],
   host: {
     // One delegating listener for every global shortcut, all resolved through
@@ -440,23 +440,15 @@ export class RoomsPage {
   );
 
   /**
-   * One frame per call id. A new call can replace the old one in a single task, so
-   * `@if (activeCall())` alone would keep the old frame and never attach the new call.
-   */
-  protected readonly callFrames = computed(() => {
-    const id = this.calls.activeCall()?.id;
-    return id === undefined ? [] : [id];
-  });
-
-  /**
-   * The call frame fills the conversation area only in the call's own room, and only while
-   * the call runs: an ending or failed call's frame stays out of sight.
+   * The call fills the conversation area only in its own room, while it runs, and not while a
+   * panel page covers the room below md: the host's fixed frame would sit on that page.
    */
   protected readonly callExpanded = computed(() => {
     const call = this.calls.activeCall();
     return (
       call?.roomId === this.store.activeRoomId() &&
-      (call.state === 'loading' || call.state === 'joined')
+      (call.state === 'loading' || call.state === 'joined') &&
+      !this.panelPage()
     );
   });
 

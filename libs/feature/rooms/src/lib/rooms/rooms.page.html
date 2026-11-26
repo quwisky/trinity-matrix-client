@@ -198,10 +198,13 @@
         />
       }
 
-      <!-- Expanded, the call replaces this room's timeline. Collapsed it is a bar, and its
-           frame keeps running off-screen. Leaving this page ends the call. -->
-      @for (frame of callFrames(); track frame) {
-        <trn-room-call [expanded]="callExpanded()" />
+      <!-- The app-level call host draws the call over this stage; without one it docks. -->
+      @if (callExpanded()) {
+        <div
+          trnCallStage
+          class="room-call-stage"
+          data-testid="call-stage"
+        ></div>
       }
 
       <div
