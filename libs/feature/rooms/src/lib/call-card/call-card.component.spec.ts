@@ -101,6 +101,22 @@ describe('CallCardComponent', () => {
     ).not.toBeNull();
   });
 
+  it('keeps the video choice when the card is recreated for the same call', async () => {
+    const { fixture, activeCall } = await renderCard();
+    screen.getByRole('button', { name: 'Hide video' }).click();
+    fixture.destroy();
+
+    const next = TestBed.createComponent(CallCardComponent);
+    next.detectChanges();
+    expect(next.nativeElement.querySelector('.call-card__video')).toBeNull();
+
+    activeCall.set({ ...CALL, id: 2 });
+    next.detectChanges();
+    expect(
+      next.nativeElement.querySelector('.call-card__video'),
+    ).not.toBeNull();
+  });
+
   it('shows the room, the participant count and the elapsed time', async () => {
     const { fixture } = await renderCard();
     expect(

@@ -6,9 +6,7 @@ import {
   computed,
   effect,
   inject,
-  linkedSignal,
   output,
-  untracked,
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -51,17 +49,19 @@ export class CallCardComponent {
     const elapsed = this.elapsed();
     return ` · ${this.participants()}${elapsed ? ` · ${elapsed}` : ''}`;
   });
-  protected readonly videoShown = linkedSignal({
-    source: () => this.call()?.id,
-    computation: () => !untracked(this.belowMd),
+  protected readonly videoShown = computed(() => {
+    const id = this.call()?.id;
+    const choice = id === undefined ? null : this.stage.videoChoice(id);
+    return choice ?? !this.belowMd();
   });
-
-  protected toggleVideo(): void {
-    this.videoShown.update((shown) => !shown);
-  }
 
   /** The card's height plus its gap to the account panel, for the scrollers it covers. */
   readonly heightChange = output<number>();
+
+  protected toggleVideo(): void {
+    const id = this.call()?.id;
+    if (id !== undefined) this.stage.setVideoChoice(id, !this.videoShown());
+  }
 
   constructor() {
     this.destroyRef.onDestroy(this.stage.claimDock());

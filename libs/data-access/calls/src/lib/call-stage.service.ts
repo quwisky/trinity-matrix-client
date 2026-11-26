@@ -6,11 +6,22 @@ export class CallStageService {
   private readonly stage = signal<HTMLElement | null>(null);
   private readonly dock = signal<HTMLElement | null>(null);
   private readonly dockClaims = signal<symbol | null>(null);
+  private readonly choice = signal<{ id: number; shown: boolean } | null>(null);
 
   readonly element = this.stage.asReadonly();
   readonly dockElement = this.dock.asReadonly();
   /** Whether a host element currently stands ready to show the docked card. */
   readonly dockPresent = computed(() => this.dockClaims() !== null);
+
+  /** Whether the user chose to show the call's video; null until they choose for this call. */
+  videoChoice(callId: number): boolean | null {
+    const choice = this.choice();
+    return choice?.id === callId ? choice.shown : null;
+  }
+
+  setVideoChoice(callId: number, shown: boolean): void {
+    this.choice.set({ id: callId, shown });
+  }
 
   /** Returns a release that leaves a newer registration in place. */
   register(element: HTMLElement): () => void {

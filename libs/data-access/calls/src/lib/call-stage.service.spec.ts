@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { CallStageService } from './call-stage.service';
 
 describe('CallStageService', () => {
+  it('keeps the video choice for one call id only', () => {
+    const stage = TestBed.inject(CallStageService);
+    expect(stage.videoChoice(1)).toBeNull();
+    stage.setVideoChoice(1, false);
+    expect(stage.videoChoice(1)).toBe(false);
+    expect(stage.videoChoice(2)).toBeNull();
+  });
+
   it('releases only its own registration', () => {
     const stage = TestBed.inject(CallStageService);
     const first = document.createElement('div');
