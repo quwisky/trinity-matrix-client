@@ -66,9 +66,9 @@ export class CallService {
   /** A call started while the previous one was ending; it starts once that one has left. */
   private next: Call | null = null;
   private lastId = 0;
-  private readonly availability = new Map<
-    string,
-    { client: MatrixClient; available$: Observable<boolean> }
+  private readonly availability = new WeakMap<
+    MatrixClient,
+    Observable<boolean>
   >();
 
   readonly activeCall = computed<ActiveCall | null>(() => {
@@ -156,9 +156,9 @@ export class CallService {
   callAvailable(accountId: string, roomId: string): Observable<boolean> {
     const client = this.clients.clientFor(accountId);
     if (!client) return of(true);
-    let entry = this.availability.get(accountId);
-    if (entry?.client !== client) {
-      const available$ = defer(() =>
+    let available$ = this.availability.get(client);
+    if (!available$) {
+      available$ = defer(() =>
         matrixCallTransport(client, roomId).rtcTransports(),
       ).pipe(
         map((transports) => transports.length > 0),
@@ -167,10 +167,9 @@ export class CallService {
         distinctUntilChanged(),
         shareReplay(1),
       );
-      entry = { client, available$ };
-      this.availability.set(accountId, entry);
+      this.availability.set(client, available$);
     }
-    return entry.available$;
+    return available$;
   }
 
   /**
