@@ -229,6 +229,25 @@ export function matrixCallTransport(
     },
 
     // Bounded so Element Call gets an answer before the widget API's 10 s request timeout.
+    async advertisedRtcTransports() {
+      try {
+        const response = await withTimeout(
+          unstable<{ rtc_transports?: unknown[] }>(
+            RTC_TRANSPORTS_PREFIX,
+            Method.Get,
+            '/rtc/transports',
+          ),
+          RTC_TRANSPORTS_TIMEOUT_MS,
+        );
+        return response?.rtc_transports ?? [];
+      } catch (error) {
+        if (error instanceof MatrixError && isUnsupported(error)) {
+          return undefined;
+        }
+        throw error;
+      }
+    },
+
     async rtcTransports() {
       // The client never polls its own well-known copy, so the server name's is read afresh,
       // alongside the endpoint; discovery retries a failing one for up to ~20 s.
@@ -239,21 +258,8 @@ export function matrixCallTransport(
             WELL_KNOWN_TIMEOUT_MS,
           ).catch(() => undefined)
         : Promise.resolve(undefined);
-      try {
-        const response = await withTimeout(
-          unstable<{ rtc_transports?: unknown[] }>(
-            RTC_TRANSPORTS_PREFIX,
-            Method.Get,
-            '/rtc/transports',
-          ),
-          RTC_TRANSPORTS_TIMEOUT_MS,
-        );
-        if (response?.rtc_transports?.length) return response.rtc_transports;
-      } catch (error) {
-        if (!(error instanceof MatrixError) || !isUnsupported(error)) {
-          throw error;
-        }
-      }
+      const advertised = await this.advertisedRtcTransports();
+      if (advertised?.length) return advertised;
       const foci = (await wellKnown)?.['org.matrix.msc4143.rtc_foci'];
       return Array.isArray(foci) ? foci : [];
     },

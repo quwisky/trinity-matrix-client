@@ -159,9 +159,9 @@ export class CallService {
     let available$ = this.availability.get(client);
     if (!available$) {
       available$ = defer(() =>
-        matrixCallTransport(client, roomId).rtcTransports(),
+        matrixCallTransport(client, roomId).advertisedRtcTransports(),
       ).pipe(
-        map((transports) => transports.length > 0),
+        map((transports) => transports?.length !== 0),
         catchError(() => of(true)),
         startWith(true),
         distinctUntilChanged(),

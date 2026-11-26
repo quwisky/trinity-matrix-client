@@ -44,6 +44,7 @@ function fakeTransport(): CallTransport {
       matrix_server_name: 'hs',
       expires_in: 3600,
     }),
+    advertisedRtcTransports: vi.fn().mockResolvedValue(undefined),
     rtcTransports: vi
       .fn()
       .mockResolvedValue([{ type: 'livekit' }, { url: 'no-type' }, null]),

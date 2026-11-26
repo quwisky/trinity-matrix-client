@@ -16,7 +16,7 @@ const runtime = vi.hoisted(() => ({
   members: [] as unknown[],
   gate: null as Promise<void> | null,
   listeners: new Set<(event: unknown) => void>(),
-  rtcTransports: vi.fn(),
+  advertisedRtcTransports: vi.fn(),
   reads: 0,
 }));
 
@@ -52,7 +52,7 @@ vi.mock('./matrix-call-transport', () => ({
         runtime.listeners.add(listener);
         return () => runtime.listeners.delete(listener);
       }),
-    rtcTransports: () => runtime.rtcTransports(),
+    advertisedRtcTransports: () => runtime.advertisedRtcTransports(),
   }),
 }));
 
@@ -69,7 +69,7 @@ describe('CallService', () => {
     runtime.members = [];
     runtime.listeners.clear();
     runtime.reads = 0;
-    runtime.rtcTransports.mockReset();
+    runtime.advertisedRtcTransports.mockReset();
     runtime.start.mockClear();
     activeUserId.set('@me:hs');
     hasClient.set(true);
@@ -434,7 +434,7 @@ describe('CallService', () => {
 
   describe('callAvailable', () => {
     it('turns false when the server has no transports', async () => {
-      runtime.rtcTransports.mockResolvedValue([]);
+      runtime.advertisedRtcTransports.mockResolvedValue([]);
       const values: boolean[] = [];
       TestBed.inject(CallService)
         .callAvailable('@me:hs', '!r')
@@ -445,8 +445,19 @@ describe('CallService', () => {
       expect(values).toEqual([true, false]);
     });
 
+    it('stays true when the server lacks the endpoint', async () => {
+      runtime.advertisedRtcTransports.mockResolvedValue(undefined);
+      const values: boolean[] = [];
+      TestBed.inject(CallService)
+        .callAvailable('@me:hs', '!r')
+        .subscribe((value) => values.push(value));
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(values).toEqual([true]);
+    });
+
     it('stays true when the lookup fails', async () => {
-      runtime.rtcTransports.mockRejectedValue(new Error('down'));
+      runtime.advertisedRtcTransports.mockRejectedValue(new Error('down'));
       const values: boolean[] = [];
       TestBed.inject(CallService)
         .callAvailable('@me:hs', '!r')
@@ -457,11 +468,11 @@ describe('CallService', () => {
     });
 
     it('looks up once per account', async () => {
-      runtime.rtcTransports.mockResolvedValue([{}]);
+      runtime.advertisedRtcTransports.mockResolvedValue([{}]);
       const service = TestBed.inject(CallService);
       service.callAvailable('@me:hs', '!a').subscribe();
       service.callAvailable('@me:hs', '!b').subscribe();
-      expect(runtime.rtcTransports).toHaveBeenCalledTimes(1);
+      expect(runtime.advertisedRtcTransports).toHaveBeenCalledTimes(1);
     });
   });
 });

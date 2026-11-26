@@ -311,6 +311,21 @@ describe('matrixCallTransport', () => {
     });
   });
 
+  it('reads only the advertised RTC transports, undefined when unsupported', async () => {
+    const { stub, transport } = setup();
+    stub.http.authedRequest.mockResolvedValueOnce({
+      rtc_transports: [{ type: 'a' }],
+    });
+    await expect(transport.advertisedRtcTransports()).resolves.toEqual([
+      { type: 'a' },
+    ]);
+    stub.http.authedRequest.mockRejectedValueOnce(
+      new MatrixError({ errcode: 'M_UNRECOGNIZED' }, 404),
+    );
+    await expect(transport.advertisedRtcTransports()).resolves.toBeUndefined();
+    expect(wellKnown).not.toHaveBeenCalled();
+  });
+
   it('reads RTC transports, falling back to well-known on 404', async () => {
     const { stub, transport } = setup();
     stub.http.authedRequest.mockResolvedValueOnce({

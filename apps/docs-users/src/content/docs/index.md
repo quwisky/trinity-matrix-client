@@ -397,8 +397,9 @@ asks you to leave the current one first. Switching account or signing out ends t
 Trinity doesn't yet ring you for incoming calls or show which rooms have a call going in the
 room list. Calls aren't available in the Android and iOS apps yet. If the call can't start,
 Trinity shows "The call could not start" at the bottom of the window: your server may not be
-set up for calls (see [Server requirements](#server-requirements)). If it advertises no call
-support at all, the call button is disabled and says "Your server isn't set up for calls".
+set up for calls (see [Server requirements](#server-requirements)). If the server reports that it
+offers no call service (its `/rtc/transports` list is empty), the call button is disabled and
+says "Your server isn't set up for calls"; other servers find out when a call starts.
 
 In rooms Trinity creates, every member can join calls. In other rooms, a member needs
 permission to send `org.matrix.msc3401.call.member` state, which a room admin can grant.
