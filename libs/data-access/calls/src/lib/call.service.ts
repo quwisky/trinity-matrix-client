@@ -6,6 +6,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
@@ -98,6 +99,11 @@ export class CallService {
     return { id, roomId, roomName, accountId, widgetUrl, state, joinedAt };
   });
 
+  // Created once: an effect made per subscription would outlive it, tied to the service.
+  private readonly joinedAt$ = toObservable(
+    computed(() => this.activeCall()?.joinedAt ?? null),
+  );
+
   constructor() {
     effect(() => {
       const call = this.activeCall();
@@ -154,11 +160,12 @@ export class CallService {
 
   /** Time since the call was joined, ticking each second; empty until then. */
   elapsed(): Observable<string> {
-    return timer(0, 1000).pipe(
-      map(() => {
-        const joinedAt = this.activeCall()?.joinedAt;
-        return joinedAt == null ? '' : formatCallElapsed(Date.now() - joinedAt);
-      }),
+    return this.joinedAt$.pipe(
+      switchMap((at) =>
+        at === null
+          ? of('')
+          : timer(0, 1000).pipe(map(() => formatCallElapsed(Date.now() - at))),
+      ),
       distinctUntilChanged(),
     );
   }

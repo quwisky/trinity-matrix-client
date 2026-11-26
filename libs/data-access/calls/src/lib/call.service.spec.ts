@@ -414,14 +414,15 @@ describe('CallService', () => {
       await loaded();
       const seen: string[] = [];
       const subscription = service.elapsed().subscribe((v) => seen.push(v));
-      vi.advanceTimersByTime(0);
+      TestBed.tick();
       expect(seen).toEqual(['']);
 
       runtime.sessions[0].state.set('joined');
       TestBed.tick();
+      vi.advanceTimersByTime(0);
+      expect(seen).toEqual(['', '0:00']);
       vi.advanceTimersByTime(1000);
-      vi.advanceTimersByTime(1000);
-      expect(seen).toEqual(['', '0:01', '0:02']);
+      expect(seen).toEqual(['', '0:00', '0:01']);
 
       subscription.unsubscribe();
       expect(vi.getTimerCount()).toBe(0);
