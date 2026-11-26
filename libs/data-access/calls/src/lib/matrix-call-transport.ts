@@ -28,8 +28,9 @@ type ToDeviceMessage = Parameters<
 
 const RTC_TRANSPORTS_PREFIX = '/_matrix/client/unstable/org.matrix.msc4143';
 const LIVEKIT_PREFIX = '/_matrix/client/unstable/io.element.msc4195';
-const RTC_TRANSPORTS_TIMEOUT_MS = 2_000;
-const WELL_KNOWN_TIMEOUT_MS = 4_000;
+// Both start together, so the lookup answers within 6 s.
+const RTC_TRANSPORTS_TIMEOUT_MS = 5_000;
+const WELL_KNOWN_TIMEOUT_MS = 6_000;
 
 // SDK send methods are typed against its known event map; call events are arbitrary types.
 type AnyType = never;
@@ -229,6 +230,15 @@ export function matrixCallTransport(
 
     // Bounded so Element Call gets an answer before the widget API's 10 s request timeout.
     async rtcTransports() {
+      // The client never polls its own well-known copy, so the server name's is read afresh,
+      // alongside the endpoint; discovery retries a failing one for up to ~20 s.
+      const domain = client.getDomain();
+      const wellKnown = domain
+        ? withTimeout(
+            AutoDiscovery.getRawClientConfig(domain),
+            WELL_KNOWN_TIMEOUT_MS,
+          ).catch(() => undefined)
+        : Promise.resolve(undefined);
       try {
         const response = await withTimeout(
           unstable<{ rtc_transports?: unknown[] }>(
@@ -244,15 +254,7 @@ export function matrixCallTransport(
           throw error;
         }
       }
-      // The client never polls its own well-known copy, so read the server name's afresh.
-      const domain = client.getDomain();
-      if (!domain) return [];
-      // Discovery retries a failing well-known for up to ~20 s.
-      const wellKnown = await withTimeout(
-        AutoDiscovery.getRawClientConfig(domain),
-        WELL_KNOWN_TIMEOUT_MS,
-      ).catch(() => undefined);
-      const foci = wellKnown?.['org.matrix.msc4143.rtc_foci'];
+      const foci = (await wellKnown)?.['org.matrix.msc4143.rtc_foci'];
       return Array.isArray(foci) ? foci : [];
     },
 
