@@ -441,14 +441,15 @@ export class RoomsPage {
 
   /**
    * The call fills the conversation area only in its own room, while it runs, and not while a
-   * panel page covers the room below md: the host's fixed frame would sit on that page.
+   * panel page is on screen below md, sliding off included: the host's fixed frame would sit on
+   * that page, and hiding `.chat-body` mid-slide would cancel the slide's `animationend`.
    */
   protected readonly callExpanded = computed(() => {
     const call = this.calls.activeCall();
     return (
       call?.roomId === this.store.activeRoomId() &&
       (call.state === 'loading' || call.state === 'joined') &&
-      !this.panelPage()
+      !(this.mobileMasterDetail() && this.shownSurface())
     );
   });
 

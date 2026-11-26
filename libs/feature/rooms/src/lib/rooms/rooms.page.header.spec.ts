@@ -849,7 +849,54 @@ describe('RoomsPage calls', () => {
     expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
   });
 
-  it('keeps the call staged beside a side panel on a wide window', () => {
+  it('keeps the call docked until a closing panel page has slid away', () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === BELOW_MD_QUERY,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const { root } = renderCalls(ongoing('!r:hs'));
+    Object.assign(
+      lastFixture.debugElement.injector.get(WorkspaceNavigationService),
+      { committedInApp: true },
+    );
+    const page = lastFixture.componentInstance as unknown as {
+      panelSlide: () => string | null;
+      shownSurface: () => unknown;
+      onMainAnimationEnd: (event: AnimationEvent) => void;
+    };
+    const panelSlideEnds = () => {
+      const panel = root.querySelector<HTMLElement>(
+        '[data-right-panel-surface]',
+      );
+      page.onMainAnimationEnd({
+        target: panel,
+        currentTarget: root.querySelector('main'),
+      } as unknown as AnimationEvent);
+      lastFixture.detectChanges();
+    };
+    const surfaces =
+      lastFixture.debugElement.injector.get(RoomSurfaceLifecycle);
+    surfaces.transition({ kind: 'open-threads' });
+    lastFixture.detectChanges();
+    panelSlideEnds();
+
+    surfaces.transition({ kind: 'clear' });
+    lastFixture.detectChanges();
+    expect(page.panelSlide()).toBe('close');
+    expect(stage(root)).toBeNull();
+    expect(root.querySelector('.chat-body')?.className).not.toContain('hidden');
+
+    panelSlideEnds();
+    expect(page.panelSlide()).toBeNull();
+    expect(page.shownSurface()).toBeNull();
+    expect(stage(root)).not.toBeNull();
+  });
+
+  it('keeps the call staged while a side panel is open on a wide window', () => {
     const { root } = renderCalls(ongoing('!r:hs'));
     lastFixture.debugElement.injector
       .get(RoomSurfaceLifecycle)
