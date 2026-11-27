@@ -396,8 +396,16 @@ window with another room open, a one-line strip at the top of the app shows **Ca
 and the room name, with **Return** and **Hang up**. Starting a call in another room asks you
 to leave the current one first. Switching account or signing out ends the call.
 
-Trinity doesn't yet ring you for incoming calls or show which rooms have a call going in the
-room list. Calls aren't available in the Android and iOS apps yet. If the call can't start,
+When someone calls you in a direct chat, Trinity shows who is calling with **Join** and
+**Decline**, and plays a ring tone unless notification sounds are off. With more than one
+account signed in, the prompt says which account is being called, and **Join** switches to
+it. The ring stops when the caller hangs up, when you answer on another device, or after at
+most two minutes. Calls in group rooms don't ring. The conversation shows a line such as
+"Alice started a video call", and the room list shows a phone icon on rooms with a call going
+on. Trinity doesn't ring while it is closed, and a browser may keep the ring tone silent until
+you have clicked in the page.
+
+Calls aren't available in the Android and iOS apps yet. If the call can't start,
 Trinity shows "The call could not start" with **Close**, in the card or the strip: your server may not be
 set up for calls (see [Server requirements](#server-requirements)). If the server reports that it
 offers no call service (its `/rtc/transports` list is empty), the call button is disabled and
