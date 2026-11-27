@@ -78,7 +78,7 @@ describe('call session bridge', () => {
     const service = read(`${javaDir}/CallSessionService.java`);
 
     expect(service).toMatch(
-      /onTaskRemoved\(Intent rootIntent\)\s*\{\s*stopSelf\(\);/,
+      /onTaskRemoved\(Intent rootIntent\)\s*\{\s*end\(this\);/,
     );
   });
 });

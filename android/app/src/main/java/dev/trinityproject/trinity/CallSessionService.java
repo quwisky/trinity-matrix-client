@@ -6,6 +6,7 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -18,7 +19,7 @@ import androidx.core.content.ContextCompat;
 /**
  * The foreground service that keeps a joined call's WebView capturing and connected while
  * Trinity is in the background or the screen is off, with an ongoing "Call in progress"
- * notification. Lives from CallSessionPlugin.begin() to end(), or until the task is removed.
+ * notification. Lives from begin() to end(), or until the task is removed.
  */
 public class CallSessionService extends Service {
     static final String ACTION_HANG_UP = "dev.trinityproject.trinity.CALL_HANG_UP";
@@ -27,22 +28,74 @@ public class CallSessionService extends Service {
     private static final String CHANNEL_ID = "calls";
     private static final int NOTIFICATION_ID = 0x7ca11;
 
+    private static final Object lock = new Object();
+    /** Starts asked for whose onStartCommand has not run yet. */
+    private static int pendingStarts = 0;
+    /** end() came while a start was pending: stop once startForeground has been called. */
+    private static boolean stopRequested = false;
+
+    /** Throws what startForegroundService throws (ForegroundServiceStartNotAllowedException). */
+    static void begin(Context context, String roomName) {
+        Intent intent = new Intent(context, CallSessionService.class)
+            .putExtra(EXTRA_ROOM_NAME, roomName);
+        synchronized (lock) {
+            ContextCompat.startForegroundService(context, intent);
+            pendingStarts++;
+            stopRequested = false;
+        }
+    }
+
+    /**
+     * Stopping a service between startForegroundService and its startForeground kills the app
+     * (Android 9+), so a pending start is left to stop itself once it reaches the foreground.
+     */
+    static void end(Context context) {
+        synchronized (lock) {
+            if (pendingStarts > 0) {
+                stopRequested = true;
+            } else {
+                context.stopService(new Intent(context, CallSessionService.class));
+            }
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String roomName = intent != null ? intent.getStringExtra(EXTRA_ROOM_NAME) : null;
-        Notification notification = notification(roomName != null ? roomName : "");
-        try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, grantedTypes());
-        } catch (RuntimeException error) {
-            // SecurityException or ForegroundServiceStartNotAllowedException: no service.
-            stopSelf();
+        boolean foreground = startForeground(notification(roomName != null ? roomName : ""));
+        boolean stop;
+        synchronized (lock) {
+            pendingStarts = Math.max(0, pendingStarts - 1);
+            stop = !foreground || (stopRequested && pendingStarts == 0);
+            if (stop && pendingStarts == 0) stopRequested = false;
+        }
+        if (stop) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
+            // A newer start's id makes this a no-op, so that start still reaches the foreground.
+            stopSelf(startId);
         }
         return START_NOT_STICKY;
     }
 
+    /** Tries the granted types, then mediaPlayback, then (before Android 14) no type. */
+    private boolean startForeground(Notification notification) {
+        int[] attempts = Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+            ? new int[] { grantedTypes(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK, 0 }
+            : new int[] { grantedTypes(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK };
+        for (int types : attempts) {
+            try {
+                ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types);
+                return true;
+            } catch (RuntimeException error) {
+                // SecurityException or ForegroundServiceStartNotAllowedException: try the next.
+            }
+        }
+        return false;
+    }
+
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        stopSelf();
+        end(this);
     }
 
     @Override

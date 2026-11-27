@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Handler;
+import android.os.Looper;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -17,12 +19,23 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "CallSession")
 public class CallSessionPlugin extends Plugin {
+    /** How long the web layer has to leave the call and end() before the receiver stops it. */
+    private static final long HANG_UP_FALLBACK_MS = 5_000;
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    /** Counts begin() calls, so a late fallback stop never ends a newer call's service. */
+    private volatile int generation = 0;
+
     private final BroadcastReceiver hangUpReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             notifyListeners("hangUp", new JSObject());
-            // Gone even if the web layer never answers.
-            stopService();
+            int hungUp = generation;
+            // The web path stops the service once Element Call has left; this covers a web
+            // layer that never answers.
+            main.postDelayed(() -> {
+                if (generation == hungUp) CallSessionService.end(getContext());
+            }, HANG_UP_FALLBACK_MS);
         }
     };
 
@@ -39,16 +52,16 @@ public class CallSessionPlugin extends Plugin {
     @Override
     protected void handleOnDestroy() {
         getContext().unregisterReceiver(hangUpReceiver);
+        main.removeCallbacksAndMessages(null);
         stopService();
     }
 
     @PluginMethod
     public void begin(PluginCall call) {
-        Intent intent = new Intent(getContext(), CallSessionService.class)
-            .putExtra(CallSessionService.EXTRA_ROOM_NAME, call.getString("roomName", ""));
         JSObject result = new JSObject();
         try {
-            ContextCompat.startForegroundService(getContext(), intent);
+            generation++;
+            CallSessionService.begin(getContext(), call.getString("roomName", ""));
             result.put("started", true);
         } catch (RuntimeException error) {
             // ForegroundServiceStartNotAllowedException (Android 12+, from the background) and
@@ -66,6 +79,6 @@ public class CallSessionPlugin extends Plugin {
     }
 
     private void stopService() {
-        getContext().stopService(new Intent(getContext(), CallSessionService.class));
+        CallSessionService.end(getContext());
     }
 }
