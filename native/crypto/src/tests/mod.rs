@@ -46,6 +46,8 @@ const TO_DEVICE: u64 = 3;
 #[derive(Default)]
 pub(super) struct Homeserver {
     device_keys: BTreeMap<String, Value>,
+    /// User → `/keys/device_signing/upload` body (master, self-signing, user-signing keys).
+    cross_signing: BTreeMap<String, Value>,
     one_time_keys: BTreeMap<String, Vec<(String, Value)>>,
     pub(super) inbox: BTreeMap<String, VecDeque<Value>>,
 }
@@ -73,7 +75,23 @@ impl Homeserver {
                         device_keys.insert(queried.clone(), keys.clone());
                     }
                 }
-                json!({ "device_keys": device_keys, "failures": {} })
+                let mut response = json!({ "device_keys": device_keys, "failures": {} });
+                for (field, key) in [
+                    ("master_keys", "master_key"),
+                    ("self_signing_keys", "self_signing_key"),
+                ] {
+                    let keys: serde_json::Map<String, Value> = body["device_keys"]
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .filter_map(|queried| {
+                            let found = self.cross_signing.get(queried)?.get(key)?;
+                            Some((queried.clone(), found.clone()))
+                        })
+                        .collect();
+                    response[field] = Value::Object(keys);
+                }
+                response
             }
             KEYS_CLAIM => {
                 let mut claimed = serde_json::Map::new();
@@ -106,6 +124,16 @@ impl Homeserver {
             }
             other => panic!("unexpected request type {other}"),
         }
+    }
+
+    /// Forgets every device of `user`, as when they are all logged out.
+    pub(super) fn forget_devices(&mut self, user: &str) {
+        self.device_keys.insert(user.to_owned(), json!({}));
+    }
+
+    /// `/keys/device_signing/upload`: replaces `user`'s public cross-signing keys.
+    pub(super) fn upload_signing_keys(&mut self, user: &str, request: &Value) {
+        self.cross_signing.insert(user.to_owned(), body(request));
     }
 
     pub(super) fn send_outgoing(&mut self, user: &str, device: &str) {

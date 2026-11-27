@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use super::{invoke, ok, unique_user};
+use super::{Homeserver, invoke, ok, unique_user};
 
 fn error_code(response: &Value) -> &str {
     response["error"]["code"].as_str().unwrap()
@@ -153,4 +153,137 @@ fn object_methods_refuse_what_wasm_could_not_call() {
     );
     // The own device is locally trusted (WASM `LocalTrust.Verified`).
     assert_eq!(me["localTrustState"], json!(0));
+}
+
+/// Asks `alice`'s machine to download `user`'s keys now.
+fn query(server: &mut Homeserver, alice: &str, user: &str) {
+    let request = ok(
+        alice,
+        "ALICE",
+        "queryKeysForUsers",
+        json!({ "users": [user] }),
+    );
+    server.send(alice, "ALICE", &request);
+}
+
+/// The public master key in an identity snapshot.
+fn master_key(identity: &Value) -> String {
+    let key: Value = serde_json::from_str(identity["masterKey"].as_str().unwrap()).unwrap();
+    let (_, public) = key["keys"].as_object().unwrap().iter().next().unwrap();
+    public.as_str().unwrap().to_owned()
+}
+
+#[test]
+fn a_device_the_host_did_not_see_is_refused_and_left_unchanged() {
+    let mut server = Homeserver::default();
+    let (alice, bob) = (unique_user("stalea"), unique_user("staleb"));
+    ok(&alice, "ALICE", "init", json!({}));
+    ok(&bob, "BOB", "init", json!({}));
+    server.send_outgoing(&alice, "ALICE");
+    server.send_outgoing(&bob, "BOB");
+    query(&mut server, &alice, &bob);
+    let device = json!({ "userId": bob, "deviceId": "BOB" });
+    let seen = ok(&alice, "ALICE", "getDevice", device.clone());
+    let old_key = seen["keys"]["ed25519:BOB"].as_str().unwrap().to_owned();
+
+    // Bob logs out, then logs in again under the same device ID with new keys.
+    server.forget_devices(&bob);
+    query(&mut server, &alice, &bob);
+    assert_eq!(
+        ok(&alice, "ALICE", "getDevice", device.clone()),
+        Value::Null
+    );
+    ok(&bob, "BOB", "close", json!({}));
+    ok(&bob, "BOB", "init", json!({}));
+    server.send_outgoing(&bob, "BOB");
+    query(&mut server, &alice, &bob);
+    let current = ok(&alice, "ALICE", "getDevice", device.clone());
+    let new_key = current["keys"]["ed25519:BOB"].as_str().unwrap().to_owned();
+    assert_ne!(new_key, old_key);
+
+    let mut stale = device.clone();
+    stale["ed25519Key"] = json!(old_key);
+    let mut trust = stale.clone();
+    trust["localState"] = json!(0);
+    for (method, params) in [("setLocalTrust", trust), ("verifyDevice", stale)] {
+        assert_eq!(
+            error_code(&invoke(&alice, "ALICE", method, params)),
+            "StaleObject",
+            "{method}"
+        );
+    }
+    assert_eq!(
+        ok(&alice, "ALICE", "getDevice", device.clone())["localTrustState"],
+        json!(3),
+        "a refused call changes nothing"
+    );
+
+    let mut fresh = device.clone();
+    fresh["ed25519Key"] = json!(new_key);
+    fresh["localState"] = json!(0);
+    assert_eq!(ok(&alice, "ALICE", "setLocalTrust", fresh), Value::Null);
+    assert_eq!(
+        ok(&alice, "ALICE", "getDevice", device)["isLocallyTrusted"],
+        json!(true)
+    );
+}
+
+#[test]
+fn an_identity_the_host_did_not_see_is_refused_and_left_unchanged() {
+    let mut server = Homeserver::default();
+    let (alice, bob) = (unique_user("stalei"), unique_user("staleo"));
+    ok(&alice, "ALICE", "init", json!({}));
+    ok(&bob, "BOB", "init", json!({}));
+    server.send_outgoing(&alice, "ALICE");
+    server.send_outgoing(&bob, "BOB");
+    let reset = |server: &mut Homeserver| {
+        let requests = ok(
+            &bob,
+            "BOB",
+            "bootstrapCrossSigning",
+            json!({ "reset": true }),
+        );
+        server.upload_signing_keys(&bob, &requests["uploadSigningKeysRequest"]);
+    };
+    reset(&mut server);
+    query(&mut server, &alice, &bob);
+    let user = json!({ "userId": bob });
+    let old_key = master_key(&ok(&alice, "ALICE", "getIdentity", user.clone()));
+
+    reset(&mut server);
+    query(&mut server, &alice, &bob);
+    let changed = ok(&alice, "ALICE", "getIdentity", user.clone());
+    assert_eq!(changed["identityNeedsUserApproval"], json!(true));
+    let new_key = master_key(&changed);
+    assert_ne!(new_key, old_key);
+
+    let mut stale = user.clone();
+    stale["masterKey"] = json!(old_key);
+    for method in [
+        "pinCurrentMasterKey",
+        "verifyIdentity",
+        "withdrawVerification",
+    ] {
+        assert_eq!(
+            error_code(&invoke(&alice, "ALICE", method, stale.clone())),
+            "StaleObject",
+            "{method}"
+        );
+    }
+    assert_eq!(
+        ok(&alice, "ALICE", "getIdentity", user.clone())["identityNeedsUserApproval"],
+        json!(true),
+        "a refused call changes nothing"
+    );
+
+    let mut fresh = user.clone();
+    fresh["masterKey"] = json!(new_key);
+    assert_eq!(
+        ok(&alice, "ALICE", "pinCurrentMasterKey", fresh),
+        Value::Null
+    );
+    assert_eq!(
+        ok(&alice, "ALICE", "getIdentity", user)["identityNeedsUserApproval"],
+        json!(false)
+    );
 }
