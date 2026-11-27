@@ -537,7 +537,11 @@ const wasmDevice = async (userId, deviceId) => {
     shareRoomKey: async (roomId, list, sharingStrategy) => {
       const settings = new wasm.EncryptionSettings();
       if (sharingStrategy) {
-        settings.sharingStrategy = wasm.CollectStrategy[sharingStrategy]();
+        // A constructor name, or a WASM CollectStrategy as matrix-js-sdk builds it.
+        settings.sharingStrategy =
+          typeof sharingStrategy === 'string'
+            ? wasm.CollectStrategy[sharingStrategy]()
+            : sharingStrategy;
       }
       return (
         await machine.shareRoomKey(room(roomId), users(list), settings)
@@ -879,7 +883,7 @@ export class Homeserver {
         for (const [user, devices] of Object.entries(body.one_time_keys)) {
           for (const target of Object.keys(devices)) {
             const [id, key] = this.#otks(user, target).pop();
-            claimed[user] = { [target]: { [id]: key } };
+            claimed[user] = { ...claimed[user], [target]: { [id]: key } };
           }
         }
         return { one_time_keys: claimed, failures: {} };

@@ -6,6 +6,7 @@
  * as each case says. A wrong `true` here is a security bug, so cases also pin the expected
  * answer, not only the agreement.
  */
+import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
 import {
   Homeserver,
@@ -119,13 +120,81 @@ const fetchKeys = async (server, device, users) =>
  */
 const query = async (server, devices, users, step) => {
   const answers = await each(devices, async (it) => {
-    const request = await it.queryKeysForUsers(users);
+    const request = await it.queryKeysForUsers(
+      typeof users === 'function' ? users(it) : users,
+    );
     return { request, marked: await server.send(it, result(request)) };
   });
   expectSame(answers, step, ({ request, marked }, index) => ({
     request: requestShape(request.result, devices[index]),
     marked,
   }));
+};
+
+/** Flips the first character of a base64 signature. */
+const flip = (signature) =>
+  (signature.startsWith('A') ? 'B' : 'A') + signature.slice(1);
+
+/** Matrix canonical JSON (sorted keys, no whitespace): what a signature signs. */
+const canonical = (value) =>
+  Array.isArray(value)
+    ? `[${value.map(canonical).join(',')}]`
+    : value && typeof value === 'object'
+      ? `{${Object.keys(value)
+          .sort()
+          .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+          .join(',')}}`
+      : JSON.stringify(value);
+
+/** The bytes a Matrix signature on `object` covers. */
+const signedBytes = (object) => {
+  const signed = structuredClone(object);
+  delete signed.signatures;
+  delete signed.unsigned;
+  return Buffer.from(canonical(signed));
+};
+
+/** Signs `object` with an exported ed25519 private key (base64 seed), as a client would. */
+const signWithSeed = (object, seed) =>
+  sign(
+    null,
+    signedBytes(object),
+    createPrivateKey({
+      key: Buffer.concat([
+        Buffer.from('302e020100300506032b657004220420', 'hex'),
+        Buffer.from(seed, 'base64'),
+      ]),
+      format: 'der',
+      type: 'pkcs8',
+    }),
+  )
+    .toString('base64')
+    .replace(/=+$/, '');
+
+/** Whether `signature` on `object` is valid for the ed25519 public key (base64). */
+const validSignature = (object, publicKey, signature) =>
+  verify(
+    null,
+    signedBytes(object),
+    createPublicKey({
+      key: Buffer.concat([
+        Buffer.from('302a300506032b6570032100', 'hex'),
+        Buffer.from(publicKey, 'base64'),
+      ]),
+      format: 'der',
+      type: 'spki',
+    }),
+    Buffer.from(signature, 'base64'),
+  );
+
+/** WASM's `CollectStrategy.deviceBasedStrategy` as the crate's strategy names, in WASM's order. */
+const deviceBasedStrategy = (
+  onlyAllowTrustedDevices,
+  errorOnVerifiedUserProblem,
+) => {
+  if (onlyAllowTrustedDevices) return 'onlyTrustedDevices';
+  if (errorOnVerifiedUserProblem) return 'errorOnUnverifiedUserProblem';
+  return 'allDevices';
 };
 
 /** Uploads keys and tracks `users`, fetching their keys. */
@@ -431,6 +500,28 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         isCrossSigningTrusted: true,
         isLocallyTrusted: false,
       });
+      // Blacklisting does not undo cross-signing trust: `isVerified` stays true beside
+      // `isBlacklisted`, which matrix-js-sdk's device converter therefore checks first.
+      for (const state of [LocalTrust.BlackListed, LocalTrust.Unset]) {
+        expectSame(
+          await both(observers, (it) =>
+            it.setLocalTrust(bob.userId, bob.deviceId, state),
+          ),
+          `setLocalTrust ${state} on a cross-signed device`,
+        );
+        const now = await both(observers, (it) =>
+          it.getDevice(bob.userId, bob.deviceId),
+        );
+        expectSame(now, `getDevice after setLocalTrust ${state}`);
+        expect(trust(now[0].result)).toEqual({
+          isVerified: true,
+          isCrossSigningTrusted: true,
+          isCrossSignedByOwner: true,
+          isLocallyTrusted: false,
+          isBlacklisted: state === LocalTrust.BlackListed,
+          localTrustState: state,
+        });
+      }
 
       // Bob resets his cross-signing keys: no longer verified, and the change must be flagged.
       await bootstrap(server, bob);
@@ -1024,6 +1115,324 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         userState: Missing,
         trusted: true,
       });
+    },
+  );
+  covered(
+    [
+      'OwnUserIdentity.isVerified',
+      'OwnUserIdentity.wasPreviouslyVerified',
+      'OwnUserIdentity.withdrawVerification',
+      'OwnUserIdentity.verify',
+      'OlmMachine.crossSigningStatus',
+    ],
+    'flags a reset of its own identity and verifies it again as WASM does',
+    async () => {
+      const server = new Homeserver();
+      const primaries = [await device('native'), await device('wasm')];
+      // Another device of the same user, named after its primary so IDs anonymise alike.
+      const siblings = [];
+      for (const primary of primaries) {
+        siblings.push(
+          await device('wasm', {
+            userId: primary.userId,
+            deviceId: `${primary.deviceId}S`,
+          }),
+        );
+      }
+      for (const sibling of siblings) await server.flush(sibling);
+      for (const primary of primaries) {
+        await join(server, primary, [primary.userId]);
+        await bootstrap(server, primary);
+      }
+      const own = (it) => it.getIdentity(it.userId);
+      const before = await both(primaries, own);
+      expectSame(before, 'getIdentity of the own user', identityOf);
+      expect(before[0].result).toMatchObject({
+        kind: 'own',
+        isVerified: true,
+        hasVerificationViolation: false,
+      });
+
+      // The sibling resets the user's cross-signing keys.
+      for (const sibling of siblings) await bootstrap(server, sibling);
+      await both(primaries, (it) => it.pollEvents());
+      await query(
+        server,
+        primaries,
+        (it) => [it.userId],
+        'query after the own key change',
+      );
+      const changed = await both(primaries, (it) => it.pollEvents());
+      expectSame(changed, 'pollEvents after the own key change');
+      expect(changed[0].result.events).toContainEqual({
+        type: 'userIdentityUpdated',
+        userId: '<receiver>',
+      });
+      const violated = await both(primaries, own);
+      expectSame(violated, 'getIdentity after the own key change', identityOf);
+      expect(violated[0].result).toMatchObject({
+        kind: 'own',
+        isVerified: false,
+        wasPreviouslyVerified: true,
+        hasVerificationViolation: true,
+      });
+      expectSame(
+        await both(primaries, (it) => it.crossSigningStatus()),
+        'crossSigningStatus after the own key change',
+      );
+
+      expectSame(
+        await both(primaries, (it) => it.withdrawVerification(it.userId)),
+        'withdrawVerification of the own identity',
+      );
+      const withdrawn = await both(primaries, own);
+      expectSame(
+        withdrawn,
+        'getIdentity after withdrawVerification',
+        identityOf,
+      );
+      expect(withdrawn[0].result).toMatchObject({
+        isVerified: false,
+        wasPreviouslyVerified: false,
+        hasVerificationViolation: false,
+      });
+
+      const requests = await each(primaries, (it) =>
+        it.verifyIdentity(it.userId),
+      );
+      expectSame(
+        requests,
+        'verifyIdentity of the own identity',
+        requestOf(primaries),
+      );
+      for (const [index, primary] of primaries.entries()) {
+        await server.send(primary, requests[index].result);
+      }
+      await query(
+        server,
+        primaries,
+        (it) => [it.userId],
+        'query after verifyIdentity of the own identity',
+      );
+      const verified = await both(primaries, own);
+      expectSame(verified, 'getIdentity once verified again', identityOf);
+      expect(verified[0].result).toMatchObject({
+        isVerified: true,
+        hasVerificationViolation: false,
+      });
+    },
+  );
+
+  covered(
+    ['OlmMachine.getIdentity', 'OlmMachine.getDevice'],
+    'does not trust another user whose self-signing key their master key did not sign',
+    async () => {
+      const server = new Homeserver();
+      const bob = await device('wasm');
+      await server.flush(bob);
+      await bootstrap(server, bob);
+      const { master_key: master, self_signing_key: selfSigning } =
+        server.crossSigning.get(bob.userId);
+      const [masterId] = Object.keys(master.keys);
+      selfSigning.signatures[bob.userId][masterId] = flip(
+        selfSigning.signatures[bob.userId][masterId],
+      );
+
+      const observers = [await device('native'), await device('wasm')];
+      for (const observer of observers) {
+        await join(server, observer, [bob.userId]);
+        await bootstrap(server, observer);
+      }
+      const identity = await both(observers, (it) =>
+        it.getIdentity(bob.userId),
+      );
+      expectSame(
+        identity,
+        'getIdentity with an unsigned self-signing key',
+        identityOf,
+      );
+      // Rejected as a whole: no identity, so nothing about Bob can be verified.
+      expect(identity[0].result).toBeNull();
+      const found = await both(observers, (it) =>
+        it.getDevice(bob.userId, bob.deviceId),
+      );
+      expectSame(found, 'getDevice with an unsigned self-signing key');
+      expect(trust(found[0].result)).toEqual({
+        ...UNTRUSTED,
+        isCrossSignedByOwner: false,
+      });
+    },
+  );
+
+  covered(
+    ['OtherUserIdentity.identityNeedsUserApproval', 'OlmMachine.getDevice'],
+    "does not trust a forged user-signing signature on another user's master key",
+    async () => {
+      const { server, bob, observers } = await world();
+      for (const observer of observers) await bootstrap(server, observer);
+      const requests = await each(observers, (it) =>
+        it.verifyIdentity(bob.userId),
+      );
+      expectSame(requests, 'verifyIdentity', requestOf(observers));
+      // The homeserver stores the observer's signature with one character changed.
+      for (const [index, observer] of observers.entries()) {
+        const request = structuredClone(requests[index].result);
+        const body = JSON.parse(request.body);
+        for (const key of Object.values(body[bob.userId])) {
+          const signatures = key.signatures[observer.userId];
+          for (const id of Object.keys(signatures)) {
+            signatures[id] = flip(signatures[id]);
+          }
+        }
+        request.body = JSON.stringify(body);
+        await server.send(observer, request);
+      }
+      await query(server, observers, [bob.userId], 'query after the forgery');
+      const identity = await both(observers, (it) =>
+        it.getIdentity(bob.userId),
+      );
+      expectSame(identity, 'getIdentity with a forged signature', identityOf);
+      expect(identity[0].result).toMatchObject({
+        isVerified: false,
+        wasPreviouslyVerified: false,
+        hasVerificationViolation: false,
+      });
+      const found = await both(observers, (it) =>
+        it.getDevice(bob.userId, bob.deviceId),
+      );
+      expectSame(found, 'getDevice of a user with a forged signature');
+      expect(trust(found[0].result)).toEqual({
+        ...UNTRUSTED,
+        isCrossSignedByOwner: true,
+      });
+    },
+  );
+
+  covered(
+    ['Device.isCrossSigningTrusted', 'Device.isCrossSignedByOwner'],
+    "does not trust a device cross-signed by another user's self-signing key",
+    async () => {
+      const server = new Homeserver();
+      const bob = await device('wasm');
+      await server.flush(bob);
+      await bootstrap(server, bob);
+      // A second device of Bob that Bob never signed.
+      const stray = await device('wasm', {
+        userId: bob.userId,
+        deviceId: `${bob.deviceId}C`,
+      });
+      await server.flush(stray);
+      const carol = await device('wasm');
+      await server.flush(carol);
+      await bootstrap(server, carol);
+
+      // Carol's self-signing key signs Bob's device: a valid signature by the wrong user.
+      const exported = result(await carol.exportCrossSigningKeys());
+      const [[carolKeyId, carolKey]] = Object.entries(
+        server.crossSigning.get(carol.userId).self_signing_key.keys,
+      );
+      const strayKeys = server.deviceKeys.get(bob.userId)[stray.deviceId];
+      const signature = signWithSeed(strayKeys, exported.self_signing_key);
+      expect(validSignature(strayKeys, carolKey, signature)).toBe(true);
+      strayKeys.signatures[carol.userId] = { [carolKeyId]: signature };
+
+      const observers = [await device('native'), await device('wasm')];
+      for (const observer of observers) {
+        await join(server, observer, [bob.userId, carol.userId]);
+        await bootstrap(server, observer);
+      }
+      await verifyUser(server, observers, bob.userId);
+      await verifyUser(server, observers, carol.userId);
+
+      const control = await both(observers, (it) =>
+        it.getDevice(bob.userId, bob.deviceId),
+      );
+      expectSame(control, 'getDevice signed by its owner');
+      expect(control[0].result.isCrossSigningTrusted).toBe(true);
+      const foreign = await both(observers, (it) =>
+        it.getDevice(bob.userId, stray.deviceId),
+      );
+      expectSame(foreign, "getDevice signed by another user's key");
+      expect(trust(foreign[0].result)).toEqual({
+        ...UNTRUSTED,
+        isCrossSignedByOwner: false,
+      });
+    },
+  );
+
+  covered(
+    ['OlmMachine.shareRoomKey'],
+    'maps deviceBasedStrategy onto the same devices as WASM',
+    async () => {
+      const server = new Homeserver();
+      const bob = await device('wasm');
+      await server.flush(bob);
+      await bootstrap(server, bob);
+      // Bob's second device, which Bob never signed: unverified once Bob is verified.
+      const stray = await device('wasm', {
+        userId: bob.userId,
+        deviceId: `${bob.deviceId}C`,
+      });
+      await server.flush(stray);
+      const observers = [await device('native'), await device('wasm')];
+      for (const observer of observers) {
+        await join(server, observer, [bob.userId]);
+        await bootstrap(server, observer);
+      }
+      await verifyUser(server, observers, bob.userId);
+      for (const observer of observers) {
+        await server.send(
+          observer,
+          await observer.getMissingSessions([bob.userId]),
+        );
+      }
+
+      // Which devices get the key and which a withheld notice, or that sharing failed.
+      const recipients = (answer) =>
+        answer.failed
+          ? answer
+          : Object.fromEntries(
+              answer.map(({ event_type: type, body }) => [
+                type,
+                Object.entries(JSON.parse(body).messages)
+                  .flatMap(([user, devices]) =>
+                    Object.keys(devices).map((id) => `${user} ${id}`),
+                  )
+                  .sort(),
+              ]),
+            );
+      const all = `${bob.userId} ${bob.deviceId}`;
+      const strayId = `${bob.userId} ${stray.deviceId}`;
+      const expected = {
+        allDevices: { 'm.room.encrypted': [all, strayId].sort() },
+        onlyTrustedDevices: {
+          'm.room.encrypted': [all],
+          'm.room_key.withheld': [strayId],
+        },
+        // Bob is verified and has an unverified device.
+        errorOnUnverifiedUserProblem: { failed: true },
+      };
+      for (const only of [false, true]) {
+        for (const error of [false, true]) {
+          const roomId = `!strategy-${only}-${error}:localhost`;
+          const shared = await each(observers, async (it) => {
+            const strategy =
+              it.kind === 'native'
+                ? deviceBasedStrategy(only, error)
+                : wasm.CollectStrategy.deviceBasedStrategy(only, error);
+            try {
+              return await it.shareRoomKey(roomId, [bob.userId], strategy);
+            } catch {
+              return { failed: true };
+            }
+          });
+          const step = `deviceBasedStrategy(${only}, ${error})`;
+          expectSame(shared, step, recipients);
+          expect(recipients(shared[0]), step).toEqual(
+            expected[deviceBasedStrategy(only, error)],
+          );
+        }
+      }
     },
   );
 });
