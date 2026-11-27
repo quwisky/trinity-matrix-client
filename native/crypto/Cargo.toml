@@ -6,6 +6,12 @@ license = "Apache-2.0"
 publish = false
 version = "0.0.0"
 
+# The WASM release this crate follows and the matrix-sdk-crypto in its Cargo.lock;
+# scripts/native-crypto-pin.mjs checks package.json and the pins below against it.
+[package.metadata.trinity.wasm-pin]
+matrix-sdk-crypto-wasm = "18.9.0"
+matrix-sdk-crypto = "0.19.1"
+
 [lib]
 name = "trinity_crypto"
 
@@ -13,9 +19,8 @@ name = "trinity_crypto"
 name = "trinity-crypto-cli"
 path = "src/bin/trinity-crypto-cli.rs"
 
-# The three matrix-sdk crates are pinned exactly to the release that
-# @matrix-org/matrix-sdk-crypto-wasm uses (see README.md, "The pin rule"), with
-# the same matrix-sdk-crypto features minus the wasm-only `js`.
+# The three matrix-sdk crates are pinned exactly to the wasm-pin release (see
+# README.md, "The pin rule"), with WASM's matrix-sdk-crypto features minus `js`.
 [dependencies]
 base64 = "0.23.1"
 matrix-sdk-common = { version = "=0.19.1", features = ["experimental-encrypted-state-events"] }

@@ -214,4 +214,18 @@ describe('Matrix crypto WASM', () => {
     );
     expect(rule).toMatchObject({ enabled: false });
   });
+
+  it("leaves the native crypto crate's matrix-sdk pins to the WASM version", () => {
+    const rule = config.packageRules.find((r) =>
+      r.matchPackageNames?.includes('matrix-sdk-crypto'),
+    );
+    expect(rule).toMatchObject({
+      matchManagers: ['cargo'],
+      matchPackageNames: expect.arrayContaining([
+        'matrix-sdk-common',
+        'matrix-sdk-sqlite',
+      ]),
+      enabled: false,
+    });
+  });
 });

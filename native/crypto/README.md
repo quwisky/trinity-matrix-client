@@ -19,6 +19,17 @@ cargo test
 on stdin and writes one response per line on stdout; a line holding a JSON array is a batch.
 The interop test drives it against the WASM package; see "Interop with WASM" below.
 
+## Interop with WASM
+
+`pnpm nx run scripts:native-crypto-interop` builds the CLI and runs it as one device against
+the repository's `@matrix-org/matrix-sdk-crypto-wasm` as the other, through a small in-test
+homeserver: key claims and room keys both ways, encryption both ways, a replayed to-device
+message, and the request shapes of each step compared with each other and with
+`scripts/native-crypto-interop.golden.json` (update it with `-u` after a deliberate change).
+Without cargo on `PATH` the suite is skipped and says why; with `CI` set it fails instead.
+CI runs the crate checks and this test in the `Native crypto (Rust)` job when the crate, its
+scripts, the WASM version or the CI workflow change.
+
 ## The call surface
 
 `call(request_json) -> response_json` runs one request, `call_batch` runs a JSON array of
@@ -55,7 +66,9 @@ one at a time; `close` drops it.
 the release that `@matrix-org/matrix-sdk-crypto-wasm` in the root `package.json` is built on,
 so the web and phone apps run the same crypto. `Cargo.lock` started from the WASM release's
 own lock file, so every crate both use has the same version. Bump the WASM package and these
-pins together.
+pins together: `[package.metadata.trinity.wasm-pin]` in `Cargo.toml` records the pairing, and
+`node scripts/native-crypto-pin.mjs` (also part of `pnpm nx test scripts`) fails when
+`package.json`, the pins or `Cargo.lock` disagree with it. Renovate leaves the three pins alone.
 
 ## Licence
 
