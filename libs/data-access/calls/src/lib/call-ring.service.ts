@@ -190,10 +190,12 @@ export class CallRingService implements OnDestroy {
       ?.getLiveTimeline()
       .getState(EventTimeline.FORWARDS)
       ?.getStateEvents(CALL_MEMBER_TYPE) ?? []) as MatrixEvent[];
-    const ownLive = members
-      .filter((m) => m.getSender() === userId)
-      .some((m) => callParticipants([raw(m)], now).count > 0);
-    if (ownLive) return;
+    const isLive = (who: string): boolean =>
+      members
+        .filter((m) => m.getSender() === who)
+        .some((m) => callParticipants([raw(m)], now).count > 0);
+    // A ring replayed by a reload must not outlive the caller's call.
+    if (isLive(userId) || !isLive(sender)) return;
     this.clear();
     this.ring.set({
       id,

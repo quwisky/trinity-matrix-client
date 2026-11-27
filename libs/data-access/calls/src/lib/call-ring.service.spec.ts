@@ -45,7 +45,16 @@ const ringEv = (over: Partial<Fake> = {}, content = {}): Fake => ({
 
 function makeClient() {
   const bus = new EventEmitter();
-  const members: unknown[] = [];
+  // The caller is in the call unless a test says otherwise.
+  const members: unknown[] = [
+    ev({
+      type: MEMBER,
+      id: '$caller',
+      sender: '@bob:hs',
+      room: '!dm:hs',
+      content: { memberships: [{ application: 'm.call' }] },
+    }),
+  ];
   const client = Object.assign(bus, {
     members,
     sendEvent: vi.fn().mockResolvedValue({}),
@@ -122,6 +131,15 @@ describe('CallRingService', () => {
     c.members.push(
       memberEv('@me:hs', { memberships: [{ application: 'm.call' }] }),
     );
+    live(c, ringEv());
+    expect(service.incomingRing()).toBeNull();
+  });
+
+  it("does not ring once the caller's call has ended, as on a reload", () => {
+    const c = clients['@me:hs'];
+    c.members.length = 0;
+    live(c, ringEv());
+    c.members.push(memberEv('@bob:hs', {}));
     live(c, ringEv());
     expect(service.incomingRing()).toBeNull();
   });
