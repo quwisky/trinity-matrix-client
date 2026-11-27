@@ -1,4 +1,5 @@
 import {
+  DestroyRef,
   Injectable,
   computed,
   effect,
@@ -37,6 +38,7 @@ import {
 } from './call-intent';
 import type { CallTransport, RawCallEvent } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
+import { CALL_SESSION_HOST } from './call-session';
 import { matrixCallTransport } from './matrix-call-transport';
 
 export interface ActiveCall {
@@ -78,6 +80,9 @@ export const CALL_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
 @Injectable({ providedIn: 'root' })
 export class CallService {
   private readonly clients = inject(MatrixClientService);
+  private readonly host = inject(CALL_SESSION_HOST);
+  /** The call the host is keeping alive, from its first join until it stops. */
+  private hostedId: number | null = null;
   private readonly call = signal<Call | null>(null);
   private readonly session = signal<CallSession | null>(null);
   private readonly hungUp = new WeakSet<CallSession>();
@@ -104,6 +109,11 @@ export class CallService {
     const joined = this.joined();
     const joinedAt = joined?.id === id ? joined.at : null;
     return { id, roomId, roomName, accountId, widgetUrl, state, joinedAt };
+  });
+
+  readonly inCall = computed(() => {
+    const state = this.activeCall()?.state;
+    return state === 'loading' || state === 'joined';
   });
 
   // Created once: an effect made per subscription would outlive it, tied to the service.
@@ -136,6 +146,24 @@ export class CallService {
       .subscribe((call) => {
         if (this.call() === call) this.end();
       });
+    effect(() => {
+      const call = this.activeCall();
+      const hosted =
+        call !== null &&
+        (call.state === 'joined' ||
+          (call.state === 'loading' && call.id === this.hostedId));
+      if (hosted && this.hostedId === null) {
+        this.hostedId = call.id;
+        // The call goes on without the host's help when it refuses.
+        this.host.begin({ roomName: call.roomName }).catch(() => undefined);
+      } else if (!hosted) {
+        this.endHosting();
+      }
+    });
+    inject(DestroyRef).onDestroy(() => this.endHosting());
+    this.host.hangUpRequests
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.hangUp());
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -338,6 +366,12 @@ export class CallService {
     const next = this.next;
     this.clear();
     if (next) this.call.set(next);
+  }
+
+  private endHosting(): void {
+    if (this.hostedId === null) return;
+    this.hostedId = null;
+    this.host.end().catch(() => undefined);
   }
 
   private hangUpOnce(session: CallSession): void {

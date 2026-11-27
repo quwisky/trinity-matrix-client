@@ -52,6 +52,7 @@ export * from './lib/shortcuts/shortcut-overrides-config';
 export * from './lib/app-config.service';
 export * from './lib/mobile-os';
 export * from './lib/host-capabilities/host-capability.adapters';
+export * from './lib/host-capabilities/host-call-session.adapters';
 export * from './lib/host-interaction/host-interaction-capabilities';
 export * from './lib/host-network-policy.service';
 export * from './lib/external-browser.service';

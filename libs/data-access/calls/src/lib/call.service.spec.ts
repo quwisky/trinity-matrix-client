@@ -1,9 +1,10 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
-import { Observable, firstValueFrom } from 'rxjs';
+import { Observable, Subject, firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CallSession, CallSessionState } from './call-runtime';
+import { CALL_SESSION_HOST } from './call-session';
 import { CALL_RUNTIME_LOAD_TIMEOUT_MS, CallService } from './call.service';
 
 const runtime = vi.hoisted(() => ({
@@ -708,6 +709,133 @@ describe('CallService', () => {
       service.callAvailable('@me:hs', '!a').subscribe();
       service.callAvailable('@me:hs', '!b').subscribe();
       expect(runtime.advertisedRtcTransports).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('call session host', () => {
+    const host = {
+      begin: vi.fn<(info: { roomName: string }) => Promise<void>>(),
+      end: vi.fn<() => Promise<void>>(),
+      hangUpRequests: new Subject<void>(),
+    };
+
+    beforeEach(() => {
+      host.begin.mockReset().mockResolvedValue(undefined);
+      host.end.mockReset().mockResolvedValue(undefined);
+      TestBed.overrideProvider(CALL_SESSION_HOST, { useValue: host });
+    });
+
+    const joinedCall = async () => {
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      TestBed.tick();
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      return service;
+    };
+
+    it('begins once with the room name when the call joins', async () => {
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      TestBed.tick();
+      expect(host.begin).not.toHaveBeenCalled();
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      TestBed.tick();
+      expect(host.begin).toHaveBeenCalledExactlyOnceWith({
+        roomName: 'General',
+      });
+      expect(host.end).not.toHaveBeenCalled();
+    });
+
+    it('ends once on hang-up', async () => {
+      const service = await joinedCall();
+      service.hangUp();
+      TestBed.tick();
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends once when the call fails after joining', async () => {
+      await joinedCall();
+      runtime.sessions[0].state.set('failed');
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends once when the account switches', async () => {
+      await joinedCall();
+      activeUserId.set('@other:hs');
+      TestBed.tick();
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends once when Element Call closes the widget', async () => {
+      await joinedCall();
+      runtime.sessions[0].state.set('ended');
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('ends when the service is destroyed', async () => {
+      await joinedCall();
+      TestBed.resetTestingModule();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it('never ends without a begin', async () => {
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      TestBed.tick();
+      service.hangUp();
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      TestBed.resetTestingModule();
+      expect(host.begin).not.toHaveBeenCalled();
+      expect(host.end).not.toHaveBeenCalled();
+    });
+
+    it('keeps the call when begin rejects, and still ends it', async () => {
+      host.begin.mockRejectedValue(new Error('not allowed'));
+      const service = await joinedCall();
+      await Promise.resolve();
+      expect(service.activeCall()?.state).toBe('joined');
+      service.hangUp();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
+    it("hangs up from the host's own control", async () => {
+      const service = await joinedCall();
+      host.hangUpRequests.next();
+      expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
+      expect(service.activeCall()?.state).toBe('ending');
+    });
+
+    it('reports inCall while loading or joined', async () => {
+      const service = TestBed.inject(CallService);
+      expect(service.inCall()).toBe(false);
+      service.start('!r', opts);
+      expect(service.inCall()).toBe(true);
+      service.attach(iframe).subscribe();
+      await loaded();
+      runtime.sessions[0].state.set('joined');
+      expect(service.inCall()).toBe(true);
+      service.hangUp();
+      expect(service.inCall()).toBe(false);
+      runtime.sessions[0].onEnded();
+      expect(service.inCall()).toBe(false);
     });
   });
 });
