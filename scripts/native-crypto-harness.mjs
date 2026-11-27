@@ -139,6 +139,21 @@ const decryptionSettings = {
   sender_device_trust_requirement: wasm.TrustRequirement.Untrusted,
 };
 
+/**
+ * Events grouped by type, each type in arrival order: neither side orders events across types
+ * (WASM's callbacks run on separate promise chains).
+ */
+const byType = (response) => {
+  const events = response.result?.events;
+  if (events) {
+    const types = [...new Set(events.map(({ type }) => type))].sort();
+    response.result.events = types.flatMap((type) =>
+      events.filter((event) => event.type === type),
+    );
+  }
+  return response;
+};
+
 /** Drops `undefined` fields, as the native JSON leaves them out. */
 export const defined = (value) => JSON.parse(JSON.stringify(value));
 
@@ -184,7 +199,7 @@ const nativeDevice = async (cli, userId, deviceId) => {
       respond('decryptRoomEvent', { event, roomId, decryptionSettings }),
     getRoomEventEncryptionInfo: (event, roomId) =>
       respond('getRoomEventEncryptionInfo', { event, roomId }),
-    pollEvents: () => respond('pollEvents'),
+    pollEvents: async () => byType(await respond('pollEvents')),
     exportRoomKeys: () => respond('exportRoomKeys'),
     importExportedRoomKeys: (exportedRoomKeys) =>
       respond('importExportedRoomKeys', { exportedRoomKeys }),
@@ -201,6 +216,33 @@ const nativeDevice = async (cli, userId, deviceId) => {
     isBackupEnabled: () => respond('isBackupEnabled'),
     verifyBackup: (backupInfo) => respond('verifyBackup', { backupInfo }),
     sign: (message) => respond('sign', { message }),
+    trackedUsers: () => respond('trackedUsers'),
+    queryKeysForUsers: (users) => respond('queryKeysForUsers', { users }),
+    getDevice: (user, id) =>
+      respond('getDevice', { userId: user, deviceId: id }),
+    getUserDevices: (user) => respond('getUserDevices', { userId: user }),
+    getIdentity: (user) => respond('getIdentity', { userId: user }),
+    setLocalTrust: (user, id, localState) =>
+      respond('setLocalTrust', { userId: user, deviceId: id, localState }),
+    verifyDevice: (user, id) =>
+      respond('verifyDevice', { userId: user, deviceId: id }),
+    encryptToDeviceEvent: (user, id, eventType, content) =>
+      respond('encryptToDeviceEvent', {
+        userId: user,
+        deviceId: id,
+        eventType,
+        content,
+      }),
+    verifyIdentity: (user) => respond('verifyIdentity', { userId: user }),
+    withdrawVerification: (user) =>
+      respond('withdrawVerification', { userId: user }),
+    pinCurrentMasterKey: (user) =>
+      respond('pinCurrentMasterKey', { userId: user }),
+    bootstrapCrossSigning: (reset) =>
+      respond('bootstrapCrossSigning', { reset }),
+    crossSigningStatus: () => respond('crossSigningStatus'),
+    exportCrossSigningKeys: () => respond('exportCrossSigningKeys'),
+    importCrossSigningKeys: (keys) => respond('importCrossSigningKeys', keys),
     async close() {
       if (!closed) await call('close');
       closed = true;
@@ -278,6 +320,61 @@ export const fromWasm = {
     roomId: info.roomId.toString(),
     sessionId: info.sessionId,
   }),
+  /** A `Device` snapshot: every getter matrix-js-sdk reads, plus the trust state. */
+  device: (device) => ({
+    userId: device.userId.toString(),
+    deviceId: device.deviceId.toString(),
+    displayName: device.displayName,
+    keys: Object.fromEntries(
+      [...device.keys].map(([id, key]) => [id.toString(), key.toBase64()]),
+    ),
+    algorithms: device.algorithms,
+    signatures: Object.fromEntries(
+      Object.keys(JSON.parse(device.signatures.asJSON())).map((signer) => [
+        signer,
+        Object.fromEntries(
+          [...device.signatures.get(new wasm.UserId(signer))].map(
+            ([id, maybe]) => [
+              id,
+              {
+                isValid: maybe.isValid(),
+                signature: maybe.signature?.toBase64(),
+                invalidSignatureSource: maybe.invalidSignatureSource,
+              },
+            ],
+          ),
+        ),
+      ]),
+    ),
+    isVerified: device.isVerified(),
+    isCrossSigningTrusted: device.isCrossSigningTrusted(),
+    isCrossSignedByOwner: device.isCrossSignedByOwner(),
+    isLocallyTrusted: device.isLocallyTrusted(),
+    isBlacklisted: device.isBlacklisted(),
+    localTrustState: device.localTrustState,
+    isDeleted: device.isDeleted(),
+    isDehydrated: device.isDehydrated,
+  }),
+  /** An `OwnUserIdentity` or `OtherUserIdentity` snapshot. */
+  identity: (identity) => {
+    const own = identity instanceof wasm.OwnUserIdentity;
+    return {
+      kind: own ? 'own' : 'other',
+      isVerified: identity.isVerified(),
+      wasPreviouslyVerified: identity.wasPreviouslyVerified(),
+      hasVerificationViolation: identity.hasVerificationViolation(),
+      masterKey: identity.masterKey,
+      selfSigningKey: identity.selfSigningKey,
+      ...(own
+        ? { userSigningKey: identity.userSigningKey }
+        : { identityNeedsUserApproval: identity.identityNeedsUserApproval() }),
+    };
+  },
+  crossSigningStatus: ({ hasMaster, hasSelfSigning, hasUserSigning }) => ({
+    hasMaster,
+    hasSelfSigning,
+    hasUserSigning,
+  }),
   /** `{ result }` or `{ error }`, as a native call answers. */
   async response(run, map = (result) => result ?? null) {
     try {
@@ -309,7 +406,27 @@ const wasmDevice = async (userId, deviceId) => {
       keys: infos.map(fromWasm.withheldInfo),
     });
   });
+  machine.registerUserIdentityUpdatedCallback(async (userId) => {
+    events.push({ type: 'userIdentityUpdated', userId: userId.toString() });
+  });
+  machine.registerDevicesUpdatedCallback(async (userIds) => {
+    events.push({ type: 'devicesUpdated', userIds: [...userIds].sort() });
+  });
   const respond = fromWasm.response;
+  // WASM's object methods; native resolves the object by its keys on each call.
+  const onDevice = async (user, id) => {
+    const found = await machine.getDevice(
+      new wasm.UserId(user),
+      new wasm.DeviceId(id),
+    );
+    if (!found) throw new Error(`unknown device ${user} ${id}`);
+    return found;
+  };
+  const onIdentity = async (user) => {
+    const found = await machine.getIdentity(new wasm.UserId(user));
+    if (!found) throw new Error(`unknown identity ${user}`);
+    return found;
+  };
   let closed = false;
   return {
     kind: 'wasm',
@@ -366,7 +483,7 @@ const wasmDevice = async (userId, deviceId) => {
     // The callbacks run from WASM's own promise chain: let it settle first.
     pollEvents: async () => {
       await new Promise((settled) => setTimeout(settled, 10));
-      return { result: { events: events.splice(0), dropped: 0 } };
+      return byType({ result: { events: events.splice(0), dropped: 0 } });
     },
     exportRoomKeys: () => respond(() => machine.exportRoomKeys(() => true)),
     // The listeners record their last call, which native returns as `lastProgress`.
@@ -446,6 +563,82 @@ const wasmDevice = async (userId, deviceId) => {
         () => machine.sign(message),
         (signatures) => JSON.parse(signatures.asJSON()),
       ),
+    trackedUsers: () =>
+      respond(
+        () => machine.trackedUsers(),
+        (set) => [...set].map(String).sort(),
+      ),
+    queryKeysForUsers: (list) =>
+      respond(() => plain(machine.queryKeysForUsers(users(list)))),
+    getDevice: (user, id) =>
+      respond(
+        () => machine.getDevice(new wasm.UserId(user), new wasm.DeviceId(id)),
+        (found) => (found ? fromWasm.device(found) : null),
+      ),
+    getUserDevices: (user) =>
+      respond(
+        () => machine.getUserDevices(new wasm.UserId(user)),
+        (found) =>
+          found
+            .devices()
+            .map(fromWasm.device)
+            .sort((a, b) => a.deviceId.localeCompare(b.deviceId)),
+      ),
+    getIdentity: (user) =>
+      respond(
+        () => machine.getIdentity(new wasm.UserId(user)),
+        (found) => (found ? fromWasm.identity(found) : null),
+      ),
+    setLocalTrust: (user, id, state) =>
+      respond(async () => (await onDevice(user, id)).setLocalTrust(state)),
+    verifyDevice: (user, id) =>
+      respond(async () => plain(await (await onDevice(user, id)).verify())),
+    encryptToDeviceEvent: (user, id, eventType, content) =>
+      respond(async () =>
+        (await onDevice(user, id)).encryptToDeviceEvent(eventType, content),
+      ),
+    verifyIdentity: (user) =>
+      respond(async () => plain(await (await onIdentity(user)).verify())),
+    withdrawVerification: (user) =>
+      respond(async () => (await onIdentity(user)).withdrawVerification()),
+    pinCurrentMasterKey: (user) =>
+      respond(async () => (await onIdentity(user)).pinCurrentMasterKey()),
+    bootstrapCrossSigning: (reset) =>
+      respond(
+        () => machine.bootstrapCrossSigning(reset),
+        (requests) => ({
+          uploadKeysRequest:
+            requests.uploadKeysRequest && plain(requests.uploadKeysRequest),
+          uploadSigningKeysRequest: {
+            body: requests.uploadSigningKeysRequest.body,
+          },
+          uploadSignaturesRequest: plain(requests.uploadSignaturesRequest),
+        }),
+      ),
+    crossSigningStatus: () =>
+      respond(() => machine.crossSigningStatus(), fromWasm.crossSigningStatus),
+    exportCrossSigningKeys: () =>
+      respond(
+        () => machine.exportCrossSigningKeys(),
+        (keys) =>
+          keys
+            ? {
+                masterKey: keys.masterKey,
+                self_signing_key: keys.self_signing_key,
+                userSigningKey: keys.userSigningKey,
+              }
+            : null,
+      ),
+    importCrossSigningKeys: ({ masterKey, selfSigningKey, userSigningKey }) =>
+      respond(
+        () =>
+          machine.importCrossSigningKeys(
+            masterKey,
+            selfSigningKey,
+            userSigningKey,
+          ),
+        fromWasm.crossSigningStatus,
+      ),
     close() {
       if (!closed) machine.close();
       closed = true;
@@ -470,9 +663,10 @@ export const useDevices = () => {
     for (const created of devices) await created.close();
     cli?.stop();
   });
-  return async (kind) => {
-    const userId = `@${kind}${counter++}:localhost`;
-    const deviceId = `${kind.toUpperCase()}${counter}`;
+  /** `ids` names a device of an existing user, such as a second device. */
+  return async (kind, ids = {}) => {
+    const userId = ids.userId ?? `@${kind}${counter++}:localhost`;
+    const deviceId = ids.deviceId ?? `${kind.toUpperCase()}${counter}`;
     const created =
       kind === 'native'
         ? await nativeDevice(cli, userId, deviceId)
@@ -509,16 +703,24 @@ export const shape = (node, key = (name) => name, name = undefined) => {
 
 /** Replaces what differs between two receivers of the same message: their IDs and keys. */
 export const anonymise = (value, receiver) =>
-  JSON.parse(
-    JSON.stringify(value)
-      .replaceAll(receiver.userId, '<receiver>')
-      .replaceAll(receiver.deviceId, '<receiver device>')
-      .replaceAll(receiver.identityKeys.ed25519, '<receiver ed25519>')
-      .replaceAll(receiver.identityKeys.curve25519, '<receiver curve25519>'),
-  );
+  value === undefined
+    ? value
+    : JSON.parse(
+        JSON.stringify(value)
+          .replaceAll(receiver.userId, '<receiver>')
+          .replaceAll(receiver.deviceId, '<receiver device>')
+          .replaceAll(receiver.identityKeys.ed25519, '<receiver ed25519>')
+          .replaceAll(
+            receiver.identityKeys.curve25519,
+            '<receiver curve25519>',
+          ),
+      );
 
 export class Homeserver {
+  /** User → device ID → signed device keys. */
   deviceKeys = new Map();
+  /** User → `{ master_key, self_signing_key, user_signing_key }` as uploaded. */
+  crossSigning = new Map();
   oneTimeKeys = new Map();
   inbox = new Map();
   /** The first request of each type a device kind sent, as a shape. */
@@ -535,6 +737,7 @@ export class Homeserver {
       case RequestType.KeysUpload: {
         if (body.device_keys) {
           this.deviceKeys.set(device.userId, {
+            ...this.deviceKeys.get(device.userId),
             [device.deviceId]: body.device_keys,
           });
         }
@@ -543,12 +746,44 @@ export class Homeserver {
         return { one_time_key_counts: { signed_curve25519: keys.length } };
       }
       case RequestType.KeysQuery: {
-        const found = Object.keys(body.device_keys).filter((user) =>
-          this.deviceKeys.has(user),
+        const found = Object.keys(body.device_keys).filter(
+          (user) => this.deviceKeys.has(user) || this.crossSigning.has(user),
         );
+        // A copy: the client must not see later changes to what the server holds.
+        const keys = (name, users) =>
+          structuredClone(
+            Object.fromEntries(
+              users
+                .filter((user) => this.crossSigning.get(user)?.[name])
+                .map((user) => [user, this.crossSigning.get(user)[name]]),
+            ),
+          );
         return {
-          device_keys: Object.fromEntries(
-            found.map((user) => [user, this.deviceKeys.get(user)]),
+          device_keys: structuredClone(
+            Object.fromEntries(
+              found.map((user) => [user, this.deviceKeys.get(user) ?? {}]),
+            ),
+          ),
+          // As the spec has it, a user's signatures on someone else's master key are visible
+          // only to that user.
+          master_keys: Object.fromEntries(
+            Object.entries(keys('master_key', found)).map(([user, key]) => [
+              user,
+              {
+                ...key,
+                signatures: Object.fromEntries(
+                  Object.entries(key.signatures ?? {}).filter(([signer]) =>
+                    [user, device.userId].includes(signer),
+                  ),
+                ),
+              },
+            ]),
+          ),
+          self_signing_keys: keys('self_signing_key', found),
+          // Only the user's own user-signing key is visible.
+          user_signing_keys: keys(
+            'user_signing_key',
+            found.filter((user) => user === device.userId),
           ),
           failures: {},
         };
@@ -575,6 +810,28 @@ export class Homeserver {
         }
         return {};
       }
+      case RequestType.SignatureUpload: {
+        for (const [user, signed] of Object.entries(body)) {
+          for (const [id, object] of Object.entries(signed)) {
+            const target =
+              this.deviceKeys.get(user)?.[id] ??
+              Object.values(this.crossSigning.get(user) ?? {}).find((key) =>
+                Object.values(key.keys).includes(id),
+              );
+            if (!target) throw new Error(`no key ${id} of ${user} to sign`);
+            for (const [signer, signatures] of Object.entries(
+              object.signatures,
+            )) {
+              target.signatures ??= {};
+              target.signatures[signer] = {
+                ...target.signatures[signer],
+                ...signatures,
+              };
+            }
+          }
+        }
+        return { failures: {} };
+      }
       default:
         throw new Error(`unexpected request type ${request.type}`);
     }
@@ -592,12 +849,32 @@ export class Homeserver {
     return this.inbox.get(id);
   }
 
+  /** `/keys/device_signing/upload`: replaces the user's cross-signing keys. */
+  uploadSigningKeys(device, request) {
+    const body = JSON.parse(request.body);
+    this.crossSigning.set(
+      device.userId,
+      Object.fromEntries(Object.entries(body).filter(([, key]) => key)),
+    );
+  }
+
+  /** Flips the first character of a stored device signature, as a tampering server would. */
+  tamper(user, deviceId, signer, keyId) {
+    const signatures = this.deviceKeys.get(user)[deviceId].signatures[signer];
+    const signature = signatures[keyId];
+    expect(signature, `signature ${keyId} to tamper with`).toBeDefined();
+    signatures[keyId] =
+      (signature.startsWith('A') ? 'B' : 'A') + signature.slice(1);
+  }
+
   async send(device, request) {
     this.shapes[device.kind][request.type] ??= this.requestShape(
       request,
       device,
     );
     const response = this.#respond(device, request);
+    // A signature upload returned by a call (not by outgoingRequests) has no ID to mark.
+    if (request.id === undefined) return;
     await device.markRequestAsSent(
       request.id,
       request.type,

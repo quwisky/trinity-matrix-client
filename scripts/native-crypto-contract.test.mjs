@@ -4,9 +4,8 @@
  * ciphertext, request IDs), by shape, as each case says. Each `covered` case names the
  * manifest entries it proves (scripts/native-crypto-surface.spec.mjs checks the list).
  *
- * Deferred to slice B, which brings a cross-signing fixture: `verifyBackup` on info signed by
- * a known but unverified device of the same user (must answer `trusted: false`), and with a
- * cross-signing identity, so `userState` is something other than Missing.
+ * `verifyBackup` with cross-signing (a known but unverified own device, a master-key signature)
+ * is in native-crypto-trust.test.mjs, which has the cross-signing fixture.
  */
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
 import {
@@ -33,6 +32,9 @@ const result = (response) => {
   expect(response.error).toBeUndefined();
   return response.result;
 };
+
+const ofType = (polled, type) =>
+  polled.result.events.filter((event) => event.type === type);
 
 const bySession = (keys) =>
   [...keys].sort((a, b) => a.session_id.localeCompare(b.session_id));
@@ -115,11 +117,15 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
       const received = await both(receivers, (receiver) =>
         receiver.pollEvents(),
       );
-      expectSame(received, 'roomKeysReceived');
-      expect(received[0].result.events.map(({ type }) => type)).toEqual([
+      // Key queries also queue devicesUpdated, naming the other receiver: compared in
+      // native-crypto-trust.test.mjs.
+      expectSame(
+        received.map((polled) => ofType(polled, 'roomKeysReceived')),
         'roomKeysReceived',
-      ]);
-      expect(received[0].result.events[0].keys[0].roomId).toBe(roomId);
+      );
+      const keyEvents = ofType(received[0], 'roomKeysReceived');
+      expect(keyEvents).toHaveLength(1);
+      expect(keyEvents[0].keys[0].roomId).toBe(roomId);
 
       const exports = await both(receivers, async (receiver) =>
         bySession(JSON.parse(result(await receiver.exportRoomKeys()))),
@@ -194,8 +200,7 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
         receiver.pollEvents(),
       );
       expectSame(withheld, 'roomKeysWithheld');
-      const [event] = withheld[0].result.events;
-      expect(event.type).toBe('roomKeysWithheld');
+      const [event] = ofType(withheld[0], 'roomKeysWithheld');
       expect(event.keys[0].withheldCode).toBe('m.unverified');
       expect(event.keys[0].sender).toBe(sender.userId);
     },
