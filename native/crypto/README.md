@@ -185,8 +185,8 @@ cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is T
   device arrives after its own, even once emoji were shown, and replaces a shown QR code nobody
   scanned with an incoming SAS; WASM's object keeps acting on the SAS it holds. So when the SAS
   on the flow shows other decimals, or none yet (a fresh replacement), `confirmSas` fails with
-  `StaleObject` before anything is confirmed. A SAS that is over confirms nothing upstream and
-  answers as in WASM.
+  `StaleObject` before anything is confirmed. A SAS that is over, or that we confirmed
+  already (a double click), confirms nothing upstream and answers `[]`, as in WASM.
 - Changes become events: `verificationRequestChanged` (`request`: the full request snapshot,
   with its `verification`) and `verificationChanged` (`verification`: the full `Sas` or `Qr`
   snapshot), one per call that changed the object, as WASM calls `registerChangesCallback`'s
@@ -197,7 +197,10 @@ cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is T
   `Sas` or `Qr` it now holds is watched afresh (matrix-js-sdk switches its verifier then), and
   when that one is over already, nothing is. A watch ends when its object is done or cancelled,
   or its request is (a replaced QR code that nobody scanned would never end); a passive request
-  ends when it is done. A panic drops the watches at once (they hold the dead machine's
+  ends when it is done, or once its deadline passes (upstream never cancels a passive request,
+  so no change would end it); an answer that hands out an object that is already over drops its
+  watch. A request past its deadline that is not passive keeps its watch until the next sync
+  cancels it with `m.timeout`, so that event still reaches the host. A panic drops the watches at once (they hold the dead machine's
   objects, store and account), and `init` drops them too: verifications live in the machine's
   memory only, so a reloaded machine has none.
 
