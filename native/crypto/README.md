@@ -94,6 +94,15 @@ Methods, parameter names and result shapes follow the
   `encryptToDeviceEvent` (`userId`, `deviceId`) and `verifyIdentity`,
   `withdrawVerification`, `pinCurrentMasterKey` (`userId`). A device or identity the
   machine no longer knows fails with `UnknownDevice` or `UnknownIdentity`.
+- Because the keys are only IDs, the calls that change trust also take the key the host's
+  object was read with: `ed25519Key` for `setLocalTrust` and `verifyDevice` (the snapshot's
+  `keys["ed25519:<deviceId>"]`), `masterKey` for `verifyIdentity`, `withdrawVerification` and
+  `pinCurrentMasterKey` (the public key in the snapshot's `masterKey` JSON). When the device or
+  identity now has another key (a device logged in again under its ID, a reset master key),
+  the call fails with `StaleObject` and changes nothing. Both are optional so the WASM-shaped
+  call still works, but the shim must always pass them, and must build real
+  `OwnUserIdentity` / `OtherUserIdentity` instances by `kind`: matrix-js-sdk uses
+  `instanceof`.
 - Signature uploads that a call returns (`verifyDevice`, `verifyIdentity`,
   `bootstrapCrossSigning`) have no `id`, as in WASM: send them, do not mark them as sent.
 

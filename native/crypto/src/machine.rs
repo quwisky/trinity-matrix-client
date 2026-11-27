@@ -492,8 +492,8 @@ async fn receive_sync_changes(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UsersParams {
-    users: Vec<OwnedUserId>,
+pub(crate) struct UsersParams {
+    pub(crate) users: Vec<OwnedUserId>,
 }
 
 async fn update_tracked_users(machine: &OlmMachine, params: UsersParams) -> CallResult {

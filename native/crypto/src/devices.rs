@@ -18,6 +18,7 @@ use serde_json::{Map, Value, json};
 
 use crate::error::{CallError, CallResult};
 use crate::events::algorithm;
+use crate::machine::UsersParams;
 use crate::requests;
 use crate::settings::collect_strategy;
 
@@ -178,16 +179,36 @@ pub async fn get_identity(machine: &OlmMachine, params: IdentityParams) -> CallR
     }
 }
 
-/// The device a `Device` method acts on, resolved again from the machine.
+/// Refuses a call on an object whose key is no longer `expected`: the host's object wraps an
+/// older one (a device that logged in again under its ID, an identity whose master key changed).
+fn check_key(what: &str, expected: Option<&str>, current: Option<String>) -> CallResult<()> {
+    match expected {
+        Some(expected) if current.as_deref() != Some(expected) => Err(CallError::new(
+            "StaleObject",
+            format!("the {what} changed since the host read it; read it again"),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// The device a `Device` method acts on, resolved again from the machine and, given the
+/// ed25519 key from the host's snapshot, refused when that is no longer its key.
 async fn resolve_device(
     machine: &OlmMachine,
     user: &OwnedUserId,
     id: &OwnedDeviceId,
+    ed25519_key: Option<&str>,
 ) -> CallResult<Device> {
-    machine
+    let device = machine
         .get_device(user, id, None)
         .await?
-        .ok_or_else(|| CallError::new("UnknownDevice", format!("unknown device {user} {id}")))
+        .ok_or_else(|| CallError::new("UnknownDevice", format!("unknown device {user} {id}")))?;
+    check_key(
+        "device",
+        ed25519_key,
+        device.ed25519_key().map(|key| key.to_base64()),
+    )?;
+    Ok(device)
 }
 
 #[derive(Deserialize)]
@@ -196,15 +217,21 @@ pub struct SetLocalTrustParams {
     user_id: OwnedUserId,
     device_id: OwnedDeviceId,
     local_state: u8,
+    ed25519_key: Option<String>,
 }
 
 /// `Device.setLocalTrust`.
 pub async fn set_local_trust(machine: &OlmMachine, params: SetLocalTrustParams) -> CallResult {
     let state = local_trust_from(params.local_state)?;
-    resolve_device(machine, &params.user_id, &params.device_id)
-        .await?
-        .set_local_trust(state)
-        .await?;
+    resolve_device(
+        machine,
+        &params.user_id,
+        &params.device_id,
+        params.ed25519_key.as_deref(),
+    )
+    .await?
+    .set_local_trust(state)
+    .await?;
     Ok(Value::Null)
 }
 
@@ -213,15 +240,21 @@ pub async fn set_local_trust(machine: &OlmMachine, params: SetLocalTrustParams) 
 pub struct DeviceKeyParams {
     user_id: OwnedUserId,
     device_id: OwnedDeviceId,
+    ed25519_key: Option<String>,
 }
 
 /// `Device.verify`: a `SignatureUploadRequest` without an ID, as WASM returns it.
 pub async fn verify_device(machine: &OlmMachine, params: DeviceKeyParams) -> CallResult {
-    let request = resolve_device(machine, &params.user_id, &params.device_id)
-        .await?
-        .verify()
-        .await
-        .map_err(CallError::crypto)?;
+    let request = resolve_device(
+        machine,
+        &params.user_id,
+        &params.device_id,
+        params.ed25519_key.as_deref(),
+    )
+    .await?
+    .verify()
+    .await
+    .map_err(CallError::crypto)?;
     requests::signature_upload_without_id(&request)
 }
 
@@ -246,7 +279,7 @@ pub async fn encrypt_to_device_event(
         Ok(matrix_sdk_crypto::CollectStrategy::AllDevices),
         collect_strategy,
     )?;
-    let encrypted = resolve_device(machine, &params.user_id, &params.device_id)
+    let encrypted = resolve_device(machine, &params.user_id, &params.device_id, None)
         .await?
         .encrypt_event_raw(&params.event_type, &params.content, strategy)
         .await?;
@@ -259,19 +292,42 @@ pub struct IdentityParams {
     user_id: OwnedUserId,
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct IdentityMethodParams {
+    user_id: OwnedUserId,
+    /// The public master key (base64) of the identity the host's object wraps.
+    master_key: Option<String>,
+}
+
 /// The identity a method acts on, resolved again from the machine (without waiting, as the
-/// WASM object already exists when its method runs).
-async fn resolve_identity(machine: &OlmMachine, user: &OwnedUserId) -> CallResult<UserIdentity> {
-    machine
+/// WASM object already exists when its method runs) and, given the master key from the host's
+/// snapshot, refused when that is no longer its master key.
+async fn resolve_identity(
+    machine: &OlmMachine,
+    params: &IdentityMethodParams,
+) -> CallResult<UserIdentity> {
+    let user = &params.user_id;
+    let identity = machine
         .get_identity(user, None)
         .await?
-        .ok_or_else(|| CallError::new("UnknownIdentity", format!("unknown identity {user}")))
+        .ok_or_else(|| CallError::new("UnknownIdentity", format!("unknown identity {user}")))?;
+    let current = match &identity {
+        UserIdentity::Own(own) => own.master_key().get_first_key(),
+        UserIdentity::Other(other) => other.master_key().get_first_key(),
+    };
+    check_key(
+        "identity",
+        params.master_key.as_deref(),
+        current.map(|key| key.to_base64()),
+    )?;
+    Ok(identity)
 }
 
 /// `OwnUserIdentity.verify` or `OtherUserIdentity.verify`: a `SignatureUploadRequest`
 /// without an ID.
-pub async fn verify_identity(machine: &OlmMachine, params: IdentityParams) -> CallResult {
-    let request = match resolve_identity(machine, &params.user_id).await? {
+pub async fn verify_identity(machine: &OlmMachine, params: IdentityMethodParams) -> CallResult {
+    let request = match resolve_identity(machine, &params).await? {
         UserIdentity::Own(own) => own.verify().await,
         UserIdentity::Other(other) => other.verify().await,
     }
@@ -280,8 +336,11 @@ pub async fn verify_identity(machine: &OlmMachine, params: IdentityParams) -> Ca
 }
 
 /// `withdrawVerification` on either identity.
-pub async fn withdraw_verification(machine: &OlmMachine, params: IdentityParams) -> CallResult {
-    match resolve_identity(machine, &params.user_id).await? {
+pub async fn withdraw_verification(
+    machine: &OlmMachine,
+    params: IdentityMethodParams,
+) -> CallResult {
+    match resolve_identity(machine, &params).await? {
         UserIdentity::Own(own) => own.withdraw_verification().await?,
         UserIdentity::Other(other) => other.withdraw_verification().await?,
     }
@@ -289,8 +348,11 @@ pub async fn withdraw_verification(machine: &OlmMachine, params: IdentityParams)
 }
 
 /// `OtherUserIdentity.pinCurrentMasterKey`; WASM's `OwnUserIdentity` has no such method.
-pub async fn pin_current_master_key(machine: &OlmMachine, params: IdentityParams) -> CallResult {
-    match resolve_identity(machine, &params.user_id).await? {
+pub async fn pin_current_master_key(
+    machine: &OlmMachine,
+    params: IdentityMethodParams,
+) -> CallResult {
+    match resolve_identity(machine, &params).await? {
         UserIdentity::Other(other) => other.pin_current_master_key().await?,
         UserIdentity::Own(_) => {
             return Err(CallError::invalid(
@@ -299,12 +361,6 @@ pub async fn pin_current_master_key(machine: &OlmMachine, params: IdentityParams
         }
     }
     Ok(Value::Null)
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UsersParams {
-    users: Vec<OwnedUserId>,
 }
 
 /// A `KeysQueryRequest` to send now; its response goes to `markRequestAsSent`.
