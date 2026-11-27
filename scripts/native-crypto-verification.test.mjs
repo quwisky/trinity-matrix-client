@@ -528,7 +528,8 @@ const sasUntilEmoji = async (ctx, flowId) => {
   return shown[0].decimals;
 };
 
-const confirmSas = async (ctx, flowId, decimals) => {
+/** Both confirm; with `twice`, each confirms again at once (a double click). */
+const confirmSas = async (ctx, flowId, decimals, { twice = false } = {}) => {
   for (const [name, other] of [
     ['A', ctx.B],
     ['B', ctx.A],
@@ -539,6 +540,16 @@ const confirmSas = async (ctx, flowId, decimals) => {
       ),
     );
     await ctx.sendAll(name, requests);
+    if (twice) {
+      expect(
+        result(
+          await ctx.step(name, 'confirm SAS again', (it) =>
+            it.confirmSas(other.userId, flowId, decimals),
+          ),
+        ),
+        'nothing left to confirm',
+      ).toEqual([]);
+    }
   }
   await ctx.settle('confirm');
   await ctx.events('confirm');
@@ -618,7 +629,7 @@ describe.skipIf(!hasCargo)(
           const flowId = await request(ctx, 'self');
           await accept(ctx, flowId);
           const decimals = await sasUntilEmoji(ctx, flowId);
-          await confirmSas(ctx, flowId, decimals);
+          await confirmSas(ctx, flowId, decimals, { twice: true });
           // Both devices end verified, and the new device trusts its own identity.
           expect(await trustAfter(ctx)).toEqual({
             A: { device: true, identity: true },

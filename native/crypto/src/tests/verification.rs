@@ -149,6 +149,17 @@ fn a_sas_flow_reports_its_changes_and_stops_watching_when_done() {
         for request in confirmed.as_array().unwrap() {
             server.send(user, device, request);
         }
+        // A second confirm (a double click) has nothing left to confirm, as in WASM.
+        assert_eq!(
+            ok(
+                user,
+                device,
+                "confirmSas",
+                json!({ "userId": other, "flowId": flow, "decimals": sas["decimals"] }),
+            ),
+            json!([]),
+            "{user} confirms twice"
+        );
     }
     settle(&mut server, [(&alice, "ALICE"), (&bob, "BOB")]);
     let device = ok(
@@ -672,4 +683,36 @@ fn a_panic_drops_the_watches_at_once() {
         json!(0),
         "the dead machine's objects are not kept until the next init"
     );
+}
+
+#[test]
+fn a_request_past_its_deadline_that_cannot_change_any_more_is_not_watched() {
+    let mut server = Homeserver::default();
+    let (alice, bob) = two_users(&mut server, "late");
+    let started = ok(
+        &alice,
+        "ALICE",
+        "requestDeviceVerification",
+        json!({ "userId": bob, "deviceId": "BOB" }),
+    );
+    let flow = started[0]["flowId"].as_str().unwrap().to_owned();
+    assert_eq!(watched(&alice, "ALICE"), json!(1));
+    // Upstream's ten-minute deadline runs on a clock tests cannot move: the hook stands in for
+    // a passive request past it, which no change will ever end.
+    super::hooks::EXPIRED.lock().unwrap().insert(flow.clone());
+    ok(&alice, "ALICE", "pollEvents", json!({}));
+    assert_eq!(
+        watched(&alice, "ALICE"),
+        json!(0),
+        "dropped on the next drain"
+    );
+    // An answer that hands it out again does not watch it.
+    ok(
+        &alice,
+        "ALICE",
+        "getVerificationRequest",
+        json!({ "userId": bob, "flowId": flow }),
+    );
+    assert_eq!(watched(&alice, "ALICE"), json!(0));
+    super::hooks::EXPIRED.lock().unwrap().remove(&flow);
 }
