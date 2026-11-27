@@ -55,6 +55,15 @@
         "{workspaceRoot}/electron/package.json"
       ]
     },
+    "native-crypto-interop": {
+      "//": "Builds native/crypto with cargo and drives its CLI against the WASM package; kept out of `test` so the unit tests need no Rust toolchain. Skips with a stated reason when cargo is missing, and fails instead in CI.",
+      "cache": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config scripts/native-crypto-interop.vitest.config.mjs",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "record-renderer": {
       "cache": false,
       "executor": "nx:run-commands",

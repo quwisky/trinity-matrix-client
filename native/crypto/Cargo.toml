@@ -1,0 +1,52 @@
+[package]
+name = "trinity-crypto"
+description = "Trinity's native end-to-end encryption: matrix-sdk-crypto behind a JSON call surface"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+version = "0.0.0"
+
+# The WASM release this crate follows and the matrix-sdk-crypto in its Cargo.lock;
+# scripts/native-crypto-pin.mjs checks package.json and the pins below against it.
+[package.metadata.trinity.wasm-pin]
+matrix-sdk-crypto-wasm = "18.9.0"
+matrix-sdk-crypto = "0.19.1"
+
+[lib]
+name = "trinity_crypto"
+# cdylib: the Android `.so` (see build-android.sh); rlib: the CLI and the tests.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The JNI entry points for the Android debug plugin.
+jni = ["dep:jni", "dep:simd_cesu8"]
+
+[[bin]]
+name = "trinity-crypto-cli"
+path = "src/bin/trinity-crypto-cli.rs"
+
+# The three matrix-sdk crates are pinned exactly to the wasm-pin release (see
+# README.md, "The pin rule"), with WASM's matrix-sdk-crypto features minus `js`.
+[dependencies]
+base64 = "0.23.1"
+jni = { version = "0.22.4", optional = true }
+matrix-sdk-common = { version = "=0.19.1", features = ["experimental-encrypted-state-events"] }
+matrix-sdk-crypto = { version = "=0.19.1", default-features = false, features = [
+  "automatic-room-key-forwarding",
+  "experimental-encrypted-state-events",
+  "experimental-push-secrets",
+  "experimental-x509-identity-verification",
+  "rust-x509-verifier-impl",
+] }
+matrix-sdk-sqlite = { version = "=0.19.1", default-features = false, features = [
+  "bundled",
+  "crypto-store",
+  "experimental-encrypted-state-events",
+  "experimental-push-secrets",
+] }
+serde = { version = "1.0.91", features = ["derive"] }
+serde_json = "1.0.91"
+sha2 = "0.10.9"
+simd_cesu8 = { version = "1.2.0", optional = true }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync"] }
+zeroize = "1.6.0"

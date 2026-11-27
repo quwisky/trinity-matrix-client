@@ -214,4 +214,22 @@ describe('Matrix crypto WASM', () => {
     );
     expect(rule).toMatchObject({ enabled: false });
   });
+
+  it('leaves the native crypto crate, lock file included, to hand-made bumps', () => {
+    // Its Cargo.lock mirrors the WASM release's (scripts/native-crypto-pin.mjs checks it), so
+    // neither a dependency update nor lock-file maintenance may touch it.
+    const rules = config.packageRules.filter((r) =>
+      r.matchFileNames?.includes('native/crypto/**'),
+    );
+    expect(rules).toEqual([
+      expect.objectContaining({
+        matchManagers: ['cargo'],
+        matchFileNames: ['native/crypto/**'],
+        enabled: false,
+      }),
+    ]);
+    expect(Object.keys(rules[0]).sort()).toEqual(
+      ['description', 'enabled', 'matchFileNames', 'matchManagers'].sort(),
+    );
+  });
 });

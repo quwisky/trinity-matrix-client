@@ -33,6 +33,7 @@ jobs:
       android-mas: ${{ steps.android-mas.outputs.run }}
       scrollbars: ${{ steps.scrollbars.outputs.run }}
       calls: ${{ steps.calls.outputs.run }}
+      native-crypto: ${{ steps.native-crypto.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -150,6 +151,24 @@ jobs:
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
+      # Whether a pull request or push touches the native crypto crate, its scripts and their
+      # Nx target, the WASM version it is pinned against, the setup action, or this workflow.
+      # Pull requests diff against their base, pushes against the commit before them; a
+      # missing or unknown base runs the job.
+      - id: native-crypto
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          run=true
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
+            manifest=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json)
+            if ! grep -qE '^(native/crypto/|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
   docs-gate:
     name: Documentation site
     needs: classify
@@ -235,6 +254,31 @@ jobs:
           else
             pnpm nx affected -t test --base="$BASE" --head=HEAD
           fi
+
+  # The native crypto crate: format, lints, its tests, the pin against the WASM package and
+  # the interop test that drives it against that package. Only when the classifier's
+  # `native-crypto` step says its inputs changed; no Android cross-build yet. It reports
+  # through `e2e-result`, the required check that accepts path-filtered jobs as skipped.
+  native-crypto:
+    needs: classify
+    if: ${{ !cancelled() && needs.classify.outputs.native-crypto == 'true' }}
+    name: Native crypto (Rust)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+      - run: node scripts/native-crypto-pin.mjs
+      - run: cargo fmt --check
+        working-directory: native/crypto
+      - run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        working-directory: native/crypto
+      - run: cargo test --locked --all-features
+        working-directory: native/crypto
+      - run: pnpm nx run scripts:native-crypto-interop
 
   # The production AOT build remains independent of unit/type checks.
   renderer:
@@ -749,6 +793,7 @@ jobs:
         tuwunel-oauth-e2e,
         scrollbars-e2e,
         calls-e2e,
+        native-crypto,
       ]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: E2E (Playwright + homeserver)
@@ -760,7 +805,7 @@ jobs:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key) \(.value.result)"'
-          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or ((.key == "mas-e2e" or .key == "tuwunel-oauth-e2e" or .key == "scrollbars-e2e" or .key == "calls-e2e") and .value.result == "skipped"))' > /dev/null
+          echo "$NEEDS" | jq -e 'to_entries | all(.[]; .value.result == "success" or ((.key == "mas-e2e" or .key == "tuwunel-oauth-e2e" or .key == "scrollbars-e2e" or .key == "calls-e2e" or .key == "native-crypto") and .value.result == "skipped"))' > /dev/null
 
   # WebdriverIO + Appium on the installed app: it boots an API 36 emulator because browser
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the

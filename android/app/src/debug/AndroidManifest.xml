@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Debug builds only: registers the TrinityCryptoDebug plugin (native/crypto). -->
+    <application android:name=".cryptodebug.DebugApplication" />
+</manifest>

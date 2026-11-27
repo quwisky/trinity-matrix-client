@@ -160,6 +160,10 @@ export default defineConfig({
             { label: 'Web and PWA', link: '/platforms/web-and-pwa/' },
             { label: 'Electron', link: '/platforms/electron/' },
             { label: 'Android', link: '/platforms/android/' },
+            {
+              label: 'Native crypto (experimental)',
+              link: '/platforms/native-crypto/',
+            },
             { label: 'iOS', link: '/platforms/ios/' },
           ],
         },
