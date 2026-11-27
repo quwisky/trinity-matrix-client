@@ -41,38 +41,99 @@
       }
     },
     "Device": {
-      "algorithms": { "status": "planned", "area": "devices-identities" },
-      "deviceId": { "status": "planned", "area": "devices-identities" },
-      "displayName": { "status": "planned", "area": "devices-identities" },
+      "algorithms": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "deviceId": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "displayName": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
       "encryptToDeviceEvent": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "encryptToDeviceEvent",
+        "note": "call: takes userId and deviceId; content is JSON, not a string"
       },
       "free": {
         "status": "shim",
         "area": "devices-identities",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
-      "isBlacklisted": { "status": "planned", "area": "devices-identities" },
+      "isBlacklisted": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
       "isCrossSignedByOwner": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
       },
       "isCrossSigningTrusted": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
       },
-      "isDehydrated": { "status": "planned", "area": "devices-identities" },
-      "isLocallyTrusted": { "status": "planned", "area": "devices-identities" },
-      "isVerified": { "status": "planned", "area": "devices-identities" },
-      "keys": { "status": "planned", "area": "devices-identities" },
+      "isDehydrated": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "isLocallyTrusted": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "isVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "keys": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
       "requestVerification": {
         "status": "planned",
         "area": "devices-identities"
       },
-      "setLocalTrust": { "status": "planned", "area": "devices-identities" },
-      "signatures": { "status": "planned", "area": "devices-identities" },
-      "verify": { "status": "planned", "area": "devices-identities" }
+      "setLocalTrust": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "setLocalTrust",
+        "note": "call: takes userId and deviceId, resolves the device again"
+      },
+      "signatures": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "snapshot field: read from the getDevice snapshot"
+      },
+      "verify": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "verifyDevice",
+        "note": "call: takes userId and deviceId; the SignatureUploadRequest has no id, as in WASM"
+      }
     },
     "Migration": {
       "migrateBaseData": {
@@ -97,14 +158,22 @@
         "area": "backup",
         "native": "backupRoomKeys"
       },
-      "bootstrapCrossSigning": { "status": "planned", "area": "cross-signing" },
+      "bootstrapCrossSigning": {
+        "status": "done",
+        "area": "cross-signing",
+        "native": "bootstrapCrossSigning"
+      },
       "buildRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
       "clearRoomPendingKeyBundle": {
         "status": "planned",
         "area": "key-bundles"
       },
       "close": { "status": "done", "area": "core", "native": "close" },
-      "crossSigningStatus": { "status": "planned", "area": "cross-signing" },
+      "crossSigningStatus": {
+        "status": "done",
+        "area": "cross-signing",
+        "native": "crossSigningStatus"
+      },
       "decryptRoomEvent": {
         "status": "done",
         "area": "core",
@@ -144,8 +213,10 @@
       },
       "encryptStateEvent": { "status": "planned", "area": "core" },
       "exportCrossSigningKeys": {
-        "status": "planned",
-        "area": "cross-signing"
+        "status": "done",
+        "area": "cross-signing",
+        "native": "exportCrossSigningKeys",
+        "note": "the only call that returns private cross-signing keys, as in WASM"
       },
       "exportRoomKeys": {
         "status": "done",
@@ -163,8 +234,18 @@
         "area": "backup",
         "native": "getBackupKeys"
       },
-      "getDevice": { "status": "planned", "area": "devices-identities" },
-      "getIdentity": { "status": "planned", "area": "devices-identities" },
+      "getDevice": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getDevice",
+        "note": "a Device snapshot or null"
+      },
+      "getIdentity": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "an identity snapshot with kind own|other, or null; waits up to 1 s for a key query in flight, as WASM"
+      },
       "getMissingSessions": {
         "status": "done",
         "area": "core",
@@ -185,7 +266,12 @@
       },
       "getRoomSettings": { "status": "planned", "area": "core" },
       "getSecretsFromInbox": { "status": "planned", "area": "secrets" },
-      "getUserDevices": { "status": "planned", "area": "devices-identities" },
+      "getUserDevices": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getUserDevices",
+        "note": "the Device snapshots in no order; the shim builds UserDevices"
+      },
       "getVerificationRequest": { "status": "planned", "area": "verification" },
       "getVerificationRequests": {
         "status": "planned",
@@ -207,8 +293,10 @@
         "note": "takes { roomId: { sessionId: data } }; no progress listener crosses the surface"
       },
       "importCrossSigningKeys": {
-        "status": "planned",
-        "area": "cross-signing"
+        "status": "done",
+        "area": "cross-signing",
+        "native": "importCrossSigningKeys",
+        "note": "takes masterKey, selfSigningKey, userSigningKey"
       },
       "importExportedRoomKeys": {
         "status": "done",
@@ -237,8 +325,9 @@
       },
       "pushSecretToVerifiedDevices": { "status": "planned", "area": "secrets" },
       "queryKeysForUsers": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "queryKeysForUsers"
       },
       "receiveRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
       "receiveSyncChanges": {
@@ -252,9 +341,10 @@
         "area": "verification"
       },
       "registerDevicesUpdatedCallback": {
-        "status": "planned",
+        "status": "done",
         "area": "events",
-        "event": "devicesUpdated"
+        "event": "devicesUpdated",
+        "native": "pollEvents"
       },
       "registerReceiveSecretCallback": {
         "status": "planned",
@@ -275,9 +365,10 @@
         "native": "pollEvents"
       },
       "registerUserIdentityUpdatedCallback": {
-        "status": "planned",
+        "status": "done",
         "area": "events",
-        "event": "userIdentityUpdated"
+        "event": "userIdentityUpdated",
+        "native": "pollEvents"
       },
       "roomKeyCounts": {
         "status": "done",
@@ -312,7 +403,12 @@
         "status": "planned",
         "area": "key-bundles"
       },
-      "trackedUsers": { "status": "planned", "area": "core" },
+      "trackedUsers": {
+        "status": "done",
+        "area": "core",
+        "native": "trackedUsers",
+        "note": "sorted user IDs; the shim builds the Set"
+      },
       "updateTrackedUsers": {
         "status": "done",
         "area": "core",
@@ -338,12 +434,16 @@
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
       "identityNeedsUserApproval": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: only on kind \"other\""
       },
       "pinCurrentMasterKey": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "pinCurrentMasterKey",
+        "note": "call: takes userId; refused for the own identity, which has no such method in WASM"
       },
       "requestVerification": {
         "status": "planned",
@@ -360,22 +460,51 @@
         "area": "devices-identities",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
-      "isVerified": { "status": "planned", "area": "devices-identities" },
-      "masterKey": { "status": "planned", "area": "devices-identities" },
+      "isVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)"
+      },
+      "masterKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
       "requestVerification": {
         "status": "planned",
         "area": "devices-identities"
       },
-      "selfSigningKey": { "status": "planned", "area": "devices-identities" },
-      "userSigningKey": { "status": "planned", "area": "devices-identities" },
-      "verify": { "status": "planned", "area": "devices-identities" },
+      "selfSigningKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
+      "userSigningKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: only on kind \"own\", as matrix-js-sdk tests with `in`"
+      },
+      "verify": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "verifyIdentity",
+        "note": "call: takes userId; either identity kind"
+      },
       "wasPreviouslyVerified": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
       },
       "withdrawVerification": {
-        "status": "planned",
-        "area": "devices-identities"
+        "status": "done",
+        "area": "devices-identities",
+        "native": "withdrawVerification",
+        "note": "call: takes userId; either identity kind"
       }
     },
     "Qr": {
@@ -428,7 +557,12 @@
       }
     },
     "UserDevices": {
-      "devices": { "status": "planned", "area": "devices-identities" },
+      "devices": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getUserDevices",
+        "note": "snapshot field: getUserDevices returns the device snapshots"
+      },
       "free": {
         "status": "shim",
         "area": "devices-identities",

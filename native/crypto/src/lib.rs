@@ -10,6 +10,7 @@ use std::sync::LazyLock;
 use serde_json::{Value, json};
 
 mod backup;
+mod devices;
 mod error;
 mod events;
 #[cfg(feature = "jni")]

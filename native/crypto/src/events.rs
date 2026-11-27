@@ -10,12 +10,14 @@
 //! fields follow the WASM classes passed to the callbacks (ported from matrix-sdk-crypto-wasm
 //! v18.9.0 `src/store.rs` and `src/machine.rs`, Apache-2.0, see `LICENSE-APACHE`).
 
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::task::{Context, Poll, Waker};
 
 use futures_util::stream::{BoxStream, StreamExt};
 use matrix_sdk_crypto::OlmMachine;
-use matrix_sdk_crypto::store::types::{RoomKeyInfo, RoomKeyWithheldInfo};
+use matrix_sdk_crypto::store::types::{
+    DeviceChanges, IdentityChanges, RoomKeyInfo, RoomKeyWithheldInfo,
+};
 use matrix_sdk_crypto::types::EventEncryptionAlgorithm;
 use serde_json::{Value, json};
 
@@ -27,6 +29,7 @@ pub const CAPACITY: usize = if cfg!(test) { 8 } else { 1024 };
 struct Streams {
     room_keys_received: BoxStream<'static, Result<Vec<RoomKeyInfo>, Lagged>>,
     room_keys_withheld: BoxStream<'static, Vec<RoomKeyWithheldInfo>>,
+    identities: BoxStream<'static, (IdentityChanges, DeviceChanges)>,
 }
 
 /// The broadcast channel skipped this many batches.
@@ -41,7 +44,7 @@ pub struct Queue {
 }
 
 /// WASM `EncryptionAlgorithm`.
-fn algorithm(algorithm: EventEncryptionAlgorithm) -> u8 {
+pub(crate) fn algorithm(algorithm: EventEncryptionAlgorithm) -> u8 {
     match algorithm {
         EventEncryptionAlgorithm::OlmV1Curve25519AesSha2 => 0,
         EventEncryptionAlgorithm::MegolmV1AesSha2 => 1,
@@ -97,6 +100,7 @@ impl Queue {
                 })
                 .boxed(),
             room_keys_withheld: store.room_keys_withheld_received_stream().boxed(),
+            identities: store.identities_stream_raw().boxed(),
         });
     }
 
@@ -127,6 +131,21 @@ impl Queue {
                 "type": "roomKeysWithheld",
                 "keys": keys.into_iter().map(room_key_withheld_info).collect::<Vec<_>>(),
             }));
+        }
+        // WASM reads this stream twice: one callback per changed identity, and one per batch
+        // with the users whose devices changed (even none).
+        while let Some((identities, devices)) = ready(&mut streams.identities) {
+            for identity in identities.new.iter().chain(&identities.changed) {
+                self.push(json!({ "type": "userIdentityUpdated", "userId": identity.user_id() }));
+            }
+            let users: BTreeSet<String> = devices
+                .new
+                .iter()
+                .chain(&devices.changed)
+                .chain(&devices.deleted)
+                .map(|device| device.user_id().to_string())
+                .collect();
+            self.push(json!({ "type": "devicesUpdated", "userIds": users }));
         }
         self.streams = Some(streams);
     }
