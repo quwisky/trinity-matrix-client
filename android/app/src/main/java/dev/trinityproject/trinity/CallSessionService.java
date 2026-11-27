@@ -70,6 +70,8 @@ public class CallSessionService extends Service {
             if (stop && pendingStarts == 0) stopRequested = false;
         }
         if (stop) {
+            // Every startForeground attempt failed, so stopping is all that is left; the mediaPlayback
+            // fallback needs no permission beyond the manifest's, so this is practically unreachable.
             ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE);
             // A newer start's id makes this a no-op, so that start still reaches the foreground.
             stopSelf(startId);

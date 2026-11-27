@@ -19,8 +19,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "CallSession")
 public class CallSessionPlugin extends Plugin {
-    /** How long the web layer has to leave the call and end() before the receiver stops it. */
-    private static final long HANG_UP_FALLBACK_MS = 5_000;
+    /** How long the web layer has to leave the call and end() before the receiver stops it: outlasts its 10 s leave timeout. */
+    private static final long HANG_UP_FALLBACK_MS = 15_000;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     /** Counts begin() calls, so a late fallback stop never ends a newer call's service. */
@@ -31,8 +31,8 @@ public class CallSessionPlugin extends Plugin {
         public void onReceive(Context context, Intent intent) {
             notifyListeners("hangUp", new JSObject());
             int hungUp = generation;
-            // The web path stops the service once Element Call has left; this covers a web
-            // layer that never answers.
+            // The web layer ends the service once the call has settled, at most its 10 s leave
+            // timeout after this hang-up; this stops it if the web layer never answers.
             main.postDelayed(() -> {
                 if (generation == hungUp) CallSessionService.end(getContext());
             }, HANG_UP_FALLBACK_MS);
