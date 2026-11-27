@@ -412,6 +412,15 @@ or video. The iOS app is set up to keep a call's sound running in the background
 has not been tested on a device yet. Neither app rings while
 it is closed or the phone is locked.
 
+In the desktop app, the call's screen-share button shares a screen or a window. Trinity lists
+your screens, then your windows, in a menu; choose one to start sharing, or press Esc or click
+outside the menu to cancel. When there is only one thing to share, sharing starts without the
+menu: on Linux with Wayland, the system has already asked you what to share. On macOS 15 and
+later, macOS shows its own picker instead. macOS also asks you to allow Trinity under System
+Settings › Privacy & Security › Screen Recording (Screen & System Audio Recording on macOS 15)
+the first time; reopen Trinity after allowing it. Sharing sends no sound. The desktop app's
+screen sharing has not yet been tried on Windows or macOS.
+
 If the call can't start,
 Trinity shows "The call could not start" with **Close**, in the card or the strip: your server may not be
 set up for calls (see [Server requirements](#server-requirements)). If the server reports that it
