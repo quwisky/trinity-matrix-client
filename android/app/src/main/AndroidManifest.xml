@@ -65,6 +65,13 @@
             android:name="com.capacitorjs.plugins.pushnotifications.MessagingService"
             tools:node="remove" />
 
+        <!-- A joined call (CallSessionPlugin): keeps capture and the connection alive in the
+             background. The types used are the subset whose runtime permission is granted. -->
+        <service
+            android:name=".CallSessionService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera|mediaPlayback" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -105,6 +112,14 @@
     <!-- Composer voice messages and location sharing use the corresponding Web APIs
          inside the Capacitor WebView, whose runtime grants still require manifest entries. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Capacitor's WebChromeClient asks for this with RECORD_AUDIO on every microphone
+         request (calls, voice messages) and denies the request when it is not declared. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- CallSessionService, the foreground service of a joined call. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

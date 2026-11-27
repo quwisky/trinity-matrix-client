@@ -1,4 +1,5 @@
 import {
+  DestroyRef,
   Injectable,
   computed,
   effect,
@@ -8,6 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { BackgroundActivityService } from '@trinity/runtime/host';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
   EMPTY,
@@ -37,6 +39,7 @@ import {
 } from './call-intent';
 import type { CallTransport, RawCallEvent } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
+import { CALL_SESSION_HOST } from './call-session';
 import { matrixCallTransport } from './matrix-call-transport';
 
 export interface ActiveCall {
@@ -78,6 +81,9 @@ export const CALL_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
 @Injectable({ providedIn: 'root' })
 export class CallService {
   private readonly clients = inject(MatrixClientService);
+  private readonly host = inject(CALL_SESSION_HOST);
+  /** The call the host is keeping alive, from its first join until it stops. */
+  private hostedId: number | null = null;
   private readonly call = signal<Call | null>(null);
   private readonly session = signal<CallSession | null>(null);
   private readonly hungUp = new WeakSet<CallSession>();
@@ -106,6 +112,11 @@ export class CallService {
     return { id, roomId, roomName, accountId, widgetUrl, state, joinedAt };
   });
 
+  readonly inCall = computed(() => {
+    const state = this.activeCall()?.state;
+    return state === 'loading' || state === 'joined';
+  });
+
   // Created once: an effect made per subscription would outlive it, tied to the service.
   private readonly joinedAt$ = toObservable(
     computed(() => this.activeCall()?.joinedAt ?? null),
@@ -113,6 +124,7 @@ export class CallService {
   private readonly activeCall$ = toObservable(this.activeCall);
 
   constructor() {
+    const background = inject(BackgroundActivityService);
     effect(() => {
       const call = this.activeCall();
       if (call?.state === 'joined' && untracked(this.joined)?.id !== call.id) {
@@ -136,6 +148,31 @@ export class CallService {
       .subscribe((call) => {
         if (this.call() === call) this.end();
       });
+    effect(() => {
+      const call = this.activeCall();
+      // A hosted call stays hosted through `ending`: Element Call is still leaving in the hidden
+      // frame, and a frozen process or a torn-down audio session would cut that leave short.
+      const hosted =
+        call !== null &&
+        (call.state === 'joined' ||
+          ((call.state === 'loading' || call.state === 'ending') &&
+            call.id === this.hostedId));
+      background.set(this.inCall() || hosted);
+      if (hosted && this.hostedId === null) {
+        this.hostedId = call.id;
+        // The call goes on without the host's help when it refuses.
+        this.host.begin({ roomName: call.roomName }).catch(() => undefined);
+      } else if (!hosted) {
+        this.endHosting();
+      }
+    });
+    inject(DestroyRef).onDestroy(() => {
+      this.endHosting();
+      background.set(false);
+    });
+    this.host.hangUpRequests
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.hangUp());
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -338,6 +375,12 @@ export class CallService {
     const next = this.next;
     this.clear();
     if (next) this.call.set(next);
+  }
+
+  private endHosting(): void {
+    if (this.hostedId === null) return;
+    this.hostedId = null;
+    this.host.end().catch(() => undefined);
   }
 
   private hangUpOnce(session: CallSession): void {

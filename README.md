@@ -101,7 +101,7 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 | Emoji and image packs             | ✅ (one editable pack per room) | 🟡                  | ❌        | ✅         | ✅    |
 | Voice/video calls (1:1)           | ❌                              | ✅                  | ❌        | ❌         | ❌    |
 | Voice/video calls (Jitsi)         | ❌                              | ✅                  | ❌        | ❌         | ❌    |
-| Voice/video calls (MatrixRTC)     | 🟡 (web and desktop)            | ✅                  | ✅        | ✅         | ✅    |
+| Voice/video calls (MatrixRTC)     | 🟡 (iOS not device-tested)      | ✅                  | ✅        | ✅         | ✅    |
 | Invisible cryptography (MSC4153)  | ❌                              | 🟡                  | 🟡        | 🟡         | ❌    |
 | Simplified sliding sync (MSC4186) | ❌                              | 🟡                  | ✅        | ❌         | ❌    |
 | Multi-language interface          | ❌ (English only)               | ✅                  | ✅        | ✅         | ❌    |
@@ -111,7 +111,9 @@ or from the `Trinity-Web-X.Y.Z.zip` attached to each
 shows — for Android and iOS.
 Trinity starts and joins MatrixRTC calls from the room header with Element Call, and the
 call keeps running in a card above your account when you leave the room. An incoming
-call in a direct chat rings, and the room list marks rooms with a call going on. See
+call in a direct chat rings, and the room list marks rooms with a call going on. Calls
+also work in the Android app, where they keep running in the background; the iOS app
+has the same setup but has not been tested on a device yet. See
 [Voice and video calls](https://docs.trinityproject.dev/trinity-matrix-client/users/#calls).
 From Trinity 0.3, OAuth 2.0 sign-in needs Synapse 1.138 or newer when the server uses
 Matrix Authentication Service (MAS). On an older Synapse with MAS, accounts stop

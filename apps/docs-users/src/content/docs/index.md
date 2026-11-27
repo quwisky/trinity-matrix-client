@@ -377,7 +377,7 @@ provider, you manage your addresses at the provider, and the group says so.
 
 ## Voice and video calls {#calls}
 
-On the web and desktop apps, open a room and choose **Start call** in its header, then
+Open a room and choose **Start call** in its header, then
 **Voice call** or **Video call**. Trinity opens Element Call over the conversation. In a
 group room, check your camera and microphone there and choose **Join call**; in a direct
 chat the call starts straight away and rings the other person. When a call is running in
@@ -405,7 +405,14 @@ most two minutes. Calls in group rooms don't ring. The conversation shows a line
 on. Trinity doesn't ring while it is closed, and a browser may keep the ring tone silent until
 you have clicked in the page.
 
-Calls aren't available in the Android and iOS apps yet. If the call can't start,
+In the Android app, a call keeps running when you switch to another app or turn the screen
+off. A **Call in progress** notification shows while it does, with **Hang up**. Android asks
+for the camera and microphone the first time; if you refuse, you join without sending sound
+or video. The iOS app is set up to keep a call's sound running in the background, but this
+has not been tested on a device yet. Neither app rings while
+it is closed or the phone is locked.
+
+If the call can't start,
 Trinity shows "The call could not start" with **Close**, in the card or the strip: your server may not be
 set up for calls (see [Server requirements](#server-requirements)). If the server reports that it
 offers no call service (its `/rtc/transports` list is empty), the call button is disabled and

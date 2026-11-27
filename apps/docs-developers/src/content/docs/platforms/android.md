@@ -44,6 +44,10 @@ Debug builds (including the E2E-only secondary package) contain the module's she
 
 The Android app does not offer legacy SSO: on a homeserver that has it, the sign-in page hides **Continue with SSO** and says the server's single sign-on isn't supported in the Android app yet, keeping password sign-in when the server offers it. OAuth 2.0 sign-in opens the provider in Custom Tabs. See [sign-in callbacks](../../architecture/host-capabilities/#sign-in-callbacks).
 
+## Calls {#calls}
+
+Calls run in the WebView, in the Element Call frame. The manifest needs `MODIFY_AUDIO_SETTINGS` as well as `RECORD_AUDIO` and `CAMERA`: Capacitor's `WebChromeClient` asks for it with every microphone request and refuses the request when it is not declared, which also breaks voice messages. `CallSessionPlugin` starts `CallSessionService`, a foreground service that keeps the process, microphone and camera alive in the background. It declares only the service types whose runtime permission is granted (`microphone`, `camera`, else `mediaPlayback`), is never stopped from outside before it has reached the foreground (Android kills the app otherwise), and stops on `end`, on the notification's **Hang up** and when the task is removed. Neither a wake lock nor a Wi-Fi lock is held; Doze on a real device with the screen off for several minutes is untested.
+
 ## Test native behavior natively {#native-behavior}
 
 Use an installed-host journey for permissions, system Back, app lifecycle, native secure storage, push, badges, keyboards, touch gestures, and WebView TLS. A mobile browser profile remains useful for layout but cannot prove these paths.

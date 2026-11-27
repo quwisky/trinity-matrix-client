@@ -1,4 +1,10 @@
-import { ApplicationRef, Component, signal } from '@angular/core';
+import {
+  ApplicationRef,
+  Component,
+  computed,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 import { DeferBlockState, TestBed } from '@angular/core/testing';
 import {
   WORKSPACE_SYSTEM_STATUS,
@@ -14,7 +20,7 @@ import {
 } from '@trinity/components/overlay';
 import { AccountRuntimeService } from '@trinity/data-access/accounts';
 import { AppLockService } from '@trinity/data-access/app-lock';
-import { CallService } from '@trinity/data-access/calls';
+import { CallService, type ActiveCall } from '@trinity/data-access/calls';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import {
   TrustService,
@@ -113,6 +119,9 @@ describe('ApplicationRootComponent', () => {
     ) {
       this.setAttribute('open', '');
     };
+    HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+      this.removeAttribute('open');
+    };
   });
   afterEach(() => vi.useRealTimers());
 
@@ -120,9 +129,12 @@ describe('ApplicationRootComponent', () => {
     initial: ApplicationRuntimeState,
     routes: Routes = [],
     lock: SessionLockState = 'held',
-    appLocked = false,
+    lockedInput: boolean | WritableSignal<boolean> = false,
     hasActiveAccount = false,
+    call: ActiveCall | null = null,
   ) {
+    const locked =
+      typeof lockedInput === 'boolean' ? signal(lockedInput) : lockedInput;
     const state = signal(initial);
     const trust = signal<TrustStatus>('ready');
     const recover = vi.fn<() => Observable<ApplicationRecoveryOutcome>>(() =>
@@ -185,10 +197,10 @@ describe('ApplicationRootComponent', () => {
         }),
         MockProvider(AppLockService, {
           appName: 'Trinity',
-          locked: signal(appLocked).asReadonly(),
-          status: signal(
-            appLocked ? ('locked' as const) : ('off' as const),
-          ).asReadonly(),
+          locked: locked.asReadonly(),
+          status: computed(() =>
+            locked() ? ('locked' as const) : ('off' as const),
+          ),
           support: signal(NO_USER_PRESENCE).asReadonly(),
           systemAvailable: signal(false).asReadonly(),
           pinState: signal<'ready'>('ready').asReadonly(),
@@ -203,7 +215,12 @@ describe('ApplicationRootComponent', () => {
           hasActiveAccount: signal(hasActiveAccount).asReadonly(),
         }),
         MockProvider(AppRestartService),
-        MockProvider(CallService, { activeCall: signal(null) }),
+        MockProvider(CallService, {
+          activeCall: signal(call),
+          attach: () => NEVER,
+          elapsed: () => NEVER,
+          activeCallParticipants: () => NEVER,
+        }),
         MockProvider(WorkspaceNavigationService),
       ],
     });
@@ -266,6 +283,57 @@ describe('ApplicationRootComponent', () => {
     expect(
       container.querySelector('trn-call-host')?.closest('.app-frame'),
     ).not.toBeNull();
+  });
+
+  it('locks over a running call without touching its iframe, and shows it again on unlock', async () => {
+    const locked = signal(false);
+    const { fixture, container } = await setup(
+      READY,
+      [],
+      'held',
+      locked,
+      true,
+      {
+        id: 1,
+        roomId: '!call:hs',
+        roomName: 'Design sync',
+        accountId: '@me:hs',
+        widgetUrl: 'trinity://app/element-call/index.html',
+        state: 'joined',
+        joinedAt: 0,
+      },
+    );
+    const [callHost] = await fixture.getDeferBlocks();
+    await callHost.render(DeferBlockState.Complete);
+    const frame = container.querySelector('iframe') as HTMLIFrameElement;
+    const workspace = container.querySelector('.app-frame') as HTMLElement;
+    expect(frame).not.toBeNull();
+
+    locked.set(true);
+    fixture.detectChanges();
+
+    expect(container.querySelector('iframe')).toBe(frame);
+    expect(workspace.contains(frame)).toBe(true);
+    // Hidden, not removed or display:none, so the call's audio keeps playing.
+    expect(workspace.style.visibility).toBe('hidden');
+    expect(workspace.style.display).toBe('');
+    expect(frame.hasAttribute('hidden')).toBe(false);
+    expect(frame.style.display).toBe('');
+    // The cover is a dialog in <body>, above the frame's stacking context.
+    expect(workspace.contains(screen.getByTestId('app-lock-cover'))).toBe(
+      false,
+    );
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      true,
+    );
+
+    locked.set(false);
+    fixture.detectChanges();
+    expect(container.querySelector('iframe')).toBe(frame);
+    expect(workspace.style.visibility).toBe('');
+    expect(screen.getByTestId('app-lock-cover').hasAttribute('open')).toBe(
+      false,
+    );
   });
 
   it('shows the ring prompt in the same deferred block as the call host', async () => {

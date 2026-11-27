@@ -45,6 +45,10 @@
 			</array>
 		</dict>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
@@ -74,7 +78,7 @@
 		</dict>
 	</array>
 	<key>NSCameraUsageDescription</key>
-	<string>Trinity needs camera access to take photos and videos for your messages and scan QR codes for device verification and linking new devices.</string>
+	<string>Trinity needs camera access for video calls, to take photos and videos for your messages, and to scan QR codes for device verification and linking new devices.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Trinity uses Face ID to unlock when App lock is on.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -82,7 +86,7 @@
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Trinity needs permission to save images you receive, and photos and videos you take when that setting is on.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Trinity needs microphone access to record voice messages and the sound in videos you take.</string>
+	<string>Trinity needs microphone access for calls, to record voice messages, and for the sound in videos you take.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Trinity needs your location to share it in a message when you choose to.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
