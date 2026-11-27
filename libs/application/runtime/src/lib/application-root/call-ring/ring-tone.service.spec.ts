@@ -41,6 +41,7 @@ function fakeContext(resumeRejects = false) {
 
 describe('RingToneService', () => {
   const enabled = signal(true);
+  const isOn = vi.fn((_accountId: string) => enabled());
   let contexts: ReturnType<typeof fakeContext>[];
   let resumeRejects = false;
   let create: ReturnType<typeof vi.fn>;
@@ -58,7 +59,13 @@ describe('RingToneService', () => {
     });
     vi.stubGlobal('AudioContext', create);
     TestBed.configureTestingModule({
-      providers: [{ provide: NotificationSoundService, useValue: { enabled } }],
+      providers: [
+        // `enabled` stays on: only the stored per-account value may decide.
+        {
+          provide: NotificationSoundService,
+          useValue: { enabled: signal(true), isOn },
+        },
+      ],
     });
   });
 
@@ -68,9 +75,10 @@ describe('RingToneService', () => {
     vi.unstubAllGlobals();
   });
 
-  it('creates no context while sound is off', () => {
+  it("creates no context while the rung account's sound is off", () => {
     enabled.set(false);
-    TestBed.inject(RingToneService).start();
+    TestBed.inject(RingToneService).start('@me:hs');
+    expect(isOn).toHaveBeenCalledWith('@me:hs');
     expect(create).not.toHaveBeenCalled();
   });
 
@@ -78,28 +86,28 @@ describe('RingToneService', () => {
     create.mockImplementation(function () {
       throw new Error('blocked');
     });
-    expect(() => TestBed.inject(RingToneService).start()).not.toThrow();
+    expect(() => TestBed.inject(RingToneService).start('@me:hs')).not.toThrow();
     vi.stubGlobal('AudioContext', undefined);
-    expect(() => TestBed.inject(RingToneService).start()).not.toThrow();
+    expect(() => TestBed.inject(RingToneService).start('@me:hs')).not.toThrow();
   });
 
   it('creates one context for a double start and closes it on stop', () => {
     const tone = TestBed.inject(RingToneService);
-    tone.start();
-    tone.start();
+    tone.start('@me:hs');
+    tone.start('@me:hs');
     expect(create).toHaveBeenCalledTimes(1);
     tone.stop();
     expect(contexts[0].close).toHaveBeenCalledTimes(1);
   });
 
   it('resumes a suspended context', () => {
-    TestBed.inject(RingToneService).start();
+    TestBed.inject(RingToneService).start('@me:hs');
     expect(contexts[0].resume).toHaveBeenCalled();
   });
 
   it('ignores a refused resume', () => {
     resumeRejects = true;
-    expect(() => TestBed.inject(RingToneService).start()).not.toThrow();
+    expect(() => TestBed.inject(RingToneService).start('@me:hs')).not.toThrow();
     // The fake's refusal carries a handler slot; the service must have filled it.
     expect(refusalHandlers).toHaveLength(1);
     expect(refusalHandlers[0](new Error('no gesture'))).toBeUndefined();
@@ -107,7 +115,7 @@ describe('RingToneService', () => {
 
   it('bursts again every three seconds at a low gain', () => {
     const tone = TestBed.inject(RingToneService);
-    tone.start();
+    tone.start('@me:hs');
     const first = contexts[0].createOscillator.mock.calls.length;
     expect(first).toBeGreaterThan(0);
     vi.advanceTimersByTime(3000);

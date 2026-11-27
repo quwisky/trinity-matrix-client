@@ -6,15 +6,17 @@ const PEAK_GAIN = 0.15;
 const TONES_HZ = [440, 480];
 const BURST_SECONDS = 1;
 
-/** A repeating two-tone ring: about 1 s on, 2 s off. Silent when the sound preference is off. */
+/** A repeating two-tone ring: about 1 s on, 2 s off. Silent when the rung account's sound preference is off. */
 @Injectable({ providedIn: 'root' })
 export class RingToneService {
   private readonly sound = inject(NotificationSoundService);
   private context: AudioContext | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  start(): void {
-    if (this.context || !this.sound.enabled()) return;
+  /** `accountId` is the rung account: the preference is per account. */
+  start(accountId: string): void {
+    // isOn reads the account's stored value; `enabled` only updates while Settings is open.
+    if (this.context || !this.sound.isOn(accountId)) return;
     try {
       this.context = new AudioContext();
       // Made without a gesture it starts suspended.

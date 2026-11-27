@@ -62,8 +62,10 @@ export class CallRingComponent {
   constructor() {
     effect(() => {
       // Untracked: start() reads the sound preference, which must not restart the tone.
-      const ringing = !!this.ring();
-      untracked(() => (ringing ? this.tone.start() : this.tone.stop()));
+      const accountId = this.ring()?.accountId;
+      untracked(() =>
+        accountId ? this.tone.start(accountId) : this.tone.stop(),
+      );
     });
     this.destroyRef.onDestroy(() => this.tone.stop());
     effect(() => {

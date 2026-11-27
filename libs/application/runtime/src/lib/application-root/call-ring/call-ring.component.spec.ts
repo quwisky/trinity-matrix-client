@@ -178,6 +178,7 @@ describe('CallRingComponent', () => {
     incomingRing.set(RING);
     await update();
     expect(toneStart).toHaveBeenCalledTimes(1);
+    expect(toneStart).toHaveBeenCalledWith(RING.accountId);
     incomingRing.set(null);
     await update();
     expect(toneStop).toHaveBeenCalled();
