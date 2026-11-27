@@ -34,7 +34,7 @@ export type MessageKind =
   | 'video'
   | 'audio';
 
-export type SystemLineCategory = 'membership' | 'profile' | 'room';
+export type SystemLineCategory = 'membership' | 'profile' | 'room' | 'call';
 
 export interface MessageShield {
   /**
@@ -325,7 +325,12 @@ export type NormalizedSystemChange =
       readonly access: string | null;
     }
   | { readonly kind: 'encryption'; readonly actorName: string }
-  | { readonly kind: 'create'; readonly actorName: string };
+  | { readonly kind: 'create'; readonly actorName: string }
+  | {
+      readonly kind: 'call-started';
+      readonly actorName: string;
+      readonly video: boolean | null;
+    };
 
 export interface NormalizedSystemEvent extends NormalizedCommon {
   readonly type: 'system';
@@ -466,6 +471,11 @@ function systemLine(change: NormalizedSystemChange): SystemLine | null {
       return {
         text: `${change.actorName} created the room`,
         category: 'room',
+      };
+    case 'call-started':
+      return {
+        text: `${change.actorName} started ${change.video === null ? 'a' : change.video ? 'a video' : 'a voice'} call`,
+        category: 'call',
       };
   }
 }

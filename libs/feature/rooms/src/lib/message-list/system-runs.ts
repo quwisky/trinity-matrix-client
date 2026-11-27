@@ -7,12 +7,14 @@ const NOUNS: Readonly<Record<CountedCategory, readonly [string, string]>> = {
   membership: ['membership change', 'membership changes'],
   profile: ['profile change', 'profile changes'],
   room: ['room change', 'room changes'],
+  call: ['call', 'calls'],
   other: ['change', 'changes'],
 };
 const ORDER: readonly CountedCategory[] = [
   'membership',
   'profile',
   'room',
+  'call',
   'other',
 ];
 

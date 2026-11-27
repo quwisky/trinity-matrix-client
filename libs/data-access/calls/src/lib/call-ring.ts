@@ -1,3 +1,5 @@
+import { RING_EVENT_TYPES, ringVideo } from '@trinity/util/matrix';
+
 export interface RingEvent {
   eventId: string;
   roomId: string;
@@ -18,10 +20,7 @@ export interface IncomingRing {
   expiresAt: number;
 }
 
-export const RING_EVENT_TYPES: readonly string[] = [
-  'org.matrix.msc4075.rtc.notification',
-  'm.rtc.notification',
-];
+export { RING_EVENT_TYPES, ringVideo };
 export const DECLINE_EVENT_TYPE = 'org.matrix.msc4310.rtc.decline';
 
 const MAX_LIFETIME_MS = 120_000;
@@ -44,9 +43,4 @@ export function ringExpiry(event: RingEvent, nowMs: number): number | null {
   const base = sentAt <= nowMs ? sentAt : event.originServerTs;
   const expiresAt = base + Math.min(lifetime, MAX_LIFETIME_MS);
   return expiresAt > nowMs ? expiresAt : null;
-}
-
-export function ringVideo(content: unknown): boolean | null {
-  const intent = fieldsOf(content)?.['m.call.intent'];
-  return intent === 'video' ? true : intent === 'audio' ? false : null;
 }

@@ -341,6 +341,8 @@ export class TimelineService {
         return this.systemLines.showProfile();
       case 'room':
         return this.systemLines.showRoomChanges();
+      case 'call':
+        return true;
     }
   }
 

@@ -256,4 +256,36 @@ describe('TimelineService system-line filtering', () => {
     expect(svc.messages().map((m) => m.id)).toEqual(['$1', '$2']);
     expect(svc.firstUnreadId()).toBe('$2');
   });
+
+  // A call line has no setting, and is not an unread message.
+  it('shows a call line with every other category off, and it does not anchor the divider', () => {
+    const lines = systemLinesProvider({
+      membership: false,
+      profile: false,
+      room: false,
+    });
+    const events = [
+      fakeEvent({ id: '$1', sender: '@alice:hs', body: 'a' }),
+      fakeEvent({
+        id: '$call',
+        sender: '@alice:hs',
+        type: 'org.matrix.msc4075.rtc.notification',
+        content: { notification_type: 'ring', 'm.call.intent': 'video' },
+      }),
+    ];
+    const room = fakeRoom(events, {}, false, [], '$1');
+    TestBed.configureTestingModule({
+      providers: [
+        TimelineService,
+        matrixProvider(fakeClient(room, [])),
+        mediaProvider(),
+        lines.provider,
+      ],
+    });
+    const svc = TestBed.inject(TimelineService);
+    svc.open('!r:hs');
+
+    expect(svc.messages().map((m) => m.id)).toEqual(['$1', '$call']);
+    expect(svc.firstUnreadId()).toBeNull();
+  });
 });

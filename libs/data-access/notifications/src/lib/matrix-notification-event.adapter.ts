@@ -1,5 +1,9 @@
 import type { MatrixEvent, Room } from 'matrix-js-sdk';
-import { displayContent, validReplacement } from '@trinity/util/matrix';
+import {
+  displayContent,
+  RING_EVENT_TYPES,
+  validReplacement,
+} from '@trinity/util/matrix';
 import type { NotificationEvent } from './notification-intent';
 
 /**
@@ -15,13 +19,19 @@ export function normalizeNotificationEvent(
   const senderId = event.getSender() ?? '';
   const senderName = event.sender?.name ?? (senderId || 'Someone');
   const content = displayContent(event);
-  const rawBody = content?.['body'];
+  const ring = RING_EVENT_TYPES.includes(event.getType());
+  const rawBody = ring
+    ? content?.['notification_type'] === 'ring'
+      ? 'Incoming call'
+      : 'Call started'
+    : content?.['body'];
   // Text that arrived in the clear in an encrypted room is not previewed: the
   // notification falls back to the generic "New message". The text shown is the edit's
   // when there is one, so it is the edit that must have been encrypted.
   const shown = validReplacement(event) ?? event;
   const previewable =
-    typeof rawBody === 'string' && (shown.isEncrypted() || !roomEncrypted);
+    typeof rawBody === 'string' &&
+    (ring || shown.isEncrypted() || !roomEncrypted);
   return Object.freeze({
     accountId,
     roomId: room.roomId,
