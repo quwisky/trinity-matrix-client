@@ -125,7 +125,6 @@ export class CallService {
 
   constructor() {
     const background = inject(BackgroundActivityService);
-    effect(() => background.set(this.inCall()));
     effect(() => {
       const call = this.activeCall();
       if (call?.state === 'joined' && untracked(this.joined)?.id !== call.id) {
@@ -151,10 +150,14 @@ export class CallService {
       });
     effect(() => {
       const call = this.activeCall();
+      // A hosted call stays hosted through `ending`: Element Call is still leaving in the hidden
+      // frame, and a frozen process or a torn-down audio session would cut that leave short.
       const hosted =
         call !== null &&
         (call.state === 'joined' ||
-          (call.state === 'loading' && call.id === this.hostedId));
+          ((call.state === 'loading' || call.state === 'ending') &&
+            call.id === this.hostedId));
+      background.set(this.inCall() || hosted);
       if (hosted && this.hostedId === null) {
         this.hostedId = call.id;
         // The call goes on without the host's help when it refuses.

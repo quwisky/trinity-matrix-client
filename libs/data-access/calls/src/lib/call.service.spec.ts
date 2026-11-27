@@ -762,6 +762,32 @@ describe('CallService', () => {
       expect(host.end).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps the host and background activity through the ending, until the call has left', async () => {
+      const service = await joinedCall();
+      const activity = TestBed.inject(BackgroundActivityService);
+      service.hangUp();
+      TestBed.tick();
+      expect(service.activeCall()?.state).toBe('ending');
+      expect(host.end).not.toHaveBeenCalled();
+      expect(activity.active()).toBe(true);
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+      expect(activity.active()).toBe(false);
+    });
+
+    it('ends once when the leave times out', async () => {
+      const service = await joinedCall();
+      service.hangUp();
+      TestBed.tick();
+      expect(host.end).not.toHaveBeenCalled();
+      // The runtime finishes a leave that timed out as `ended`.
+      runtime.sessions[0].state.set('ended');
+      runtime.sessions[0].onEnded();
+      TestBed.tick();
+      expect(host.end).toHaveBeenCalledTimes(1);
+    });
+
     it('ends once when the call fails after joining', async () => {
       await joinedCall();
       runtime.sessions[0].state.set('failed');
@@ -813,6 +839,7 @@ describe('CallService', () => {
       await Promise.resolve();
       expect(service.activeCall()?.state).toBe('joined');
       service.hangUp();
+      runtime.sessions[0].onEnded();
       TestBed.tick();
       expect(host.end).toHaveBeenCalledTimes(1);
     });

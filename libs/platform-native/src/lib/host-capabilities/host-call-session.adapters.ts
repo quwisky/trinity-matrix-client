@@ -18,7 +18,9 @@ interface CallSessionPlugin {
   ): Promise<PluginListenerHandle>;
 }
 
-const callSession = registerPlugin<CallSessionPlugin>(PLUGIN_NAME);
+// Pure, so the bundler can drop the proxy from the startup closure when nothing reaches it.
+const callSession =
+  /* @__PURE__ */ registerPlugin<CallSessionPlugin>(PLUGIN_NAME);
 
 /**
  * The calls capability's session host: on Android, the local `CallSession` plugin's foreground
