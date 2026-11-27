@@ -54,8 +54,29 @@ const buildCli = () => {
   return executable;
 };
 
-/** The native methods called since the current `covered` case started. */
+/** The native methods called inside `compared` since the current `covered` case started. */
 const nativeCalls = new Set();
+let comparing = 0;
+
+/** Runs a step whose answers the case compares with WASM; only its native calls count. */
+export const compared = async (run) => {
+  comparing += 1;
+  try {
+    return await run();
+  } finally {
+    comparing -= 1;
+  }
+};
+
+/** Runs the same step on each device (native first), with each device's own IDs replaced. */
+export const both = (devices, run) =>
+  compared(async () => {
+    const answers = [];
+    for (const device of devices) {
+      answers.push(anonymise(await run(device), device));
+    }
+    return answers;
+  });
 
 const startCli = (executable) => {
   const child = spawn(executable, [], { stdio: ['pipe', 'pipe', 'inherit'] });
@@ -64,7 +85,7 @@ const startCli = (executable) => {
   ]();
   return {
     async call(request) {
-      nativeCalls.add(request.method);
+      if (comparing) nativeCalls.add(request.method);
       child.stdin.write(`${JSON.stringify(request)}\n`);
       const { value, done } = await lines.next();
       if (done) throw new Error('trinity-crypto-cli exited');
@@ -81,7 +102,8 @@ const surface = JSON.parse(
 /**
  * A test case for the surface entries it lists (`Class.member`), which
  * scripts/native-crypto-surface.spec.mjs reads statically. The case fails unless it called
- * each entry's native method.
+ * each entry's native method inside a compared step (`compared` or `both`), so setup calls
+ * do not count.
  */
 export const covered = (entries, title, run) =>
   it(`${title} [${entries.join(', ')}]`, async () => {
@@ -90,9 +112,10 @@ export const covered = (entries, title, run) =>
     for (const entry of entries) {
       const [owner, member] = entry.split('.');
       const { native } = surface.stateful[owner]?.[member] ?? {};
-      expect(nativeCalls.has(native), `${entry} calls native ${native}`).toBe(
-        true,
-      );
+      expect(
+        nativeCalls.has(native),
+        `${entry} calls native ${native} in a compared step`,
+      ).toBe(true);
     }
   });
 
@@ -229,7 +252,7 @@ export const fromWasm = {
     },
     utdInfo: event.utdInfo && { reason: event.utdInfo.reason },
   }),
-  importResult: (result) => ({
+  importResult: (result, lastProgress) => ({
     importedCount: result.importedCount,
     totalCount: result.totalCount,
     keys: Object.fromEntries(
@@ -240,6 +263,7 @@ export const fromWasm = {
         ),
       ]),
     ),
+    lastProgress,
   }),
   roomKeyInfo: (info) => ({
     algorithm: info.algorithm,
@@ -345,13 +369,20 @@ const wasmDevice = async (userId, deviceId) => {
       return { result: { events: events.splice(0), dropped: 0 } };
     },
     exportRoomKeys: () => respond(() => machine.exportRoomKeys(() => true)),
-    importExportedRoomKeys: (keys) =>
-      respond(
-        () => machine.importExportedRoomKeys(keys, () => {}),
-        fromWasm.importResult,
-      ),
-    importBackedUpRoomKeys: (rooms, version) =>
-      respond(
+    // The listeners record their last call, which native returns as `lastProgress`.
+    importExportedRoomKeys: (keys) => {
+      let last = null;
+      return respond(
+        () =>
+          machine.importExportedRoomKeys(keys, (...args) => {
+            last = args.map(Number);
+          }),
+        (result) => fromWasm.importResult(result, last),
+      );
+    },
+    importBackedUpRoomKeys: (rooms, version) => {
+      let last = null;
+      return respond(
         () =>
           machine.importBackedUpRoomKeys(
             new Map(
@@ -360,11 +391,18 @@ const wasmDevice = async (userId, deviceId) => {
                 new Map(Object.entries(sessions)),
               ]),
             ),
-            undefined,
+            (...args) => {
+              last = args.map(Number);
+            },
             version,
           ),
-        fromWasm.importResult,
-      ),
+        // WASM reports failures only to its listener, which it calls once per valid key.
+        (result) => ({
+          ...fromWasm.importResult(result, last),
+          failures: last?.[2],
+        }),
+      );
+    },
     roomKeyCounts: () =>
       respond(
         () => machine.roomKeyCounts(),

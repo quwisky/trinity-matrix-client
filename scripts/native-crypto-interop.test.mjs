@@ -9,7 +9,8 @@ import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
 import { format, resolveConfig } from 'prettier';
 import {
   Homeserver,
-  anonymise,
+  both,
+  compared,
   covered,
   hasCargo,
   roomEvent,
@@ -50,13 +51,7 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     const sender = await device(senderKind);
     const receivers = [await device('native'), await device('wasm')];
     const users = [sender, ...receivers].map(({ userId }) => userId);
-    const each = async (run) => {
-      const answers = [];
-      for (const receiver of receivers) {
-        answers.push(anonymise(await run(receiver), receiver));
-      }
-      return answers;
-    };
+    const each = (run) => both(receivers, run);
     const toDevice = (events, rawEvent) =>
       events.map((event) => ({ ...event, rawEvent: rawEvent(event.rawEvent) }));
     const roomId = `!${senderKind}:localhost`;
@@ -128,10 +123,7 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
   describe.each(['native', 'wasm'])('%s sender', (senderKind) => {
     covered(
       [
-        'OlmMachine.outgoingRequests',
-        'OlmMachine.markRequestAsSent',
         'OlmMachine.receiveSyncChanges',
-        'OlmMachine.updateTrackedUsers',
         'OlmMachine.decryptRoomEvent',
         'OlmMachine.getRoomEventEncryptionInfo',
       ],
@@ -168,9 +160,13 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     );
   });
 
-  // The sender's calls: native only sends in the native-sender exchange.
+  // Every request of the native-sender exchange is compared with WASM's by shape, so all of
+  // that exchange counts as compared; the setup calls are only checked here.
   covered(
     [
+      'OlmMachine.outgoingRequests',
+      'OlmMachine.markRequestAsSent',
+      'OlmMachine.updateTrackedUsers',
       'OlmMachine.getMissingSessions',
       'OlmMachine.shareRoomKey',
       'OlmMachine.encryptRoomEvent',
@@ -178,7 +174,7 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     'emits the same request shapes as WASM and matches the golden file',
     async () => {
       const server = new Homeserver(requestShape);
-      const { steps } = await exchange(server, 'native');
+      const { steps } = await compared(() => exchange(server, 'native'));
       await exchange(server, 'wasm');
 
       const { RequestType } = wasm;

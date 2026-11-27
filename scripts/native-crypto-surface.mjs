@@ -46,10 +46,96 @@ export const WASM_HELPERS = new Set([
   'SecretsBundle',
   'QrCodeData',
   'QrCodeScan',
+  // The MSC4108 QR-login channel; the creation results carry an `EstablishedEcies`.
   'Ecies',
   'EstablishedEcies',
+  'InboundCreationResult',
+  'OutboundCreationResult',
   'CheckCode',
 ]);
+
+/** Value types, enums and free functions the shim implements in JavaScript. */
+export const PURE_JS = new Set([
+  'BaseMigrationData',
+  'CancelInfo',
+  'CollectStrategy',
+  'CrossSigningBootstrapRequests',
+  'CrossSigningKeyExport',
+  'CrossSigningStatus',
+  'Curve25519PublicKey',
+  'DecryptedRoomEvent',
+  'DecryptedToDeviceEvent',
+  'DecryptionErrorCode',
+  'DecryptionSettings',
+  'DeviceId',
+  'DeviceKey',
+  'DeviceKeyId',
+  'DeviceLists',
+  'Ed25519PublicKey',
+  'Emoji',
+  'EncryptedAttachment',
+  'EncryptionAlgorithm',
+  'EncryptionInfo',
+  'EncryptionSettings',
+  'EventId',
+  'getVersions',
+  'HistoryVisibility',
+  'IdentityKeys',
+  'initAsync',
+  'KeysBackupRequest',
+  'KeysClaimRequest',
+  'KeysQueryRequest',
+  'KeysUploadRequest',
+  'LocalTrust',
+  'MaybeSignature',
+  'MegolmDecryptionError',
+  'OutgoingRequest',
+  'PickledInboundGroupSession',
+  'PickledSession',
+  'ProcessedToDeviceEventType',
+  'PutDehydratedDeviceRequest',
+  'QrCodeIntent',
+  'QrState',
+  'RoomId',
+  'RoomKeyCounts',
+  'RoomKeyInfo',
+  'RoomKeyWithheldInfo',
+  'RoomMessageRequest',
+  'RoomPendingKeyBundleDetails',
+  'RoomSettings',
+  'ShieldColor',
+  'ShieldState',
+  'ShieldStateCode',
+  'Signature',
+  'Signatures',
+  'SignatureUploadRequest',
+  'SignatureVerification',
+  'StoredRoomKeyBundleData',
+  'ToDeviceEncryptionInfo',
+  'ToDeviceRequest',
+  'TrustRequirement',
+  'UploadSigningKeysRequest',
+  'UserId',
+  'VerificationMethod',
+  'VerificationRequestPhase',
+  'Versions',
+]);
+
+const ownerOf = (symbol) => symbol.split('.')[0];
+
+/** Owners of `symbols` that are in none of the lists above. */
+export const unclassified = (symbols) => [
+  ...new Set(
+    symbols
+      .map(ownerOf)
+      .filter(
+        (owner) =>
+          !(owner in STATEFUL) &&
+          !WASM_HELPERS.has(owner) &&
+          !PURE_JS.has(owner),
+      ),
+  ),
+];
 
 export const STATUSES = new Set(['done', 'planned', 'shim']);
 
@@ -66,11 +152,13 @@ const isWasmModule = (node) =>
   node.name.text === WASM;
 
 /**
- * Every WASM symbol the installed matrix-js-sdk's `src/` uses: `Class`, `Class.member` or a
- * free function, sorted.
+ * Every WASM symbol a matrix-js-sdk's `src/` uses (by default the installed one): `Class`,
+ * `Class.member` or a free function, sorted.
  */
-export const usedSymbols = () => {
-  const jsSdk = realpathSync(resolve(root, 'node_modules/matrix-js-sdk'));
+export const usedSymbols = (
+  jsSdkPath = resolve(root, 'node_modules/matrix-js-sdk'),
+) => {
+  const jsSdk = realpathSync(jsSdkPath);
   // pnpm links a package's dependencies next to it.
   const wasmDir = realpathSync(join(dirname(jsSdk), WASM));
   const src = join(jsSdk, 'src');
@@ -99,6 +187,16 @@ export const usedSymbols = () => {
       ? parent.name.text
       : '';
   const used = new Set();
+  const record = (symbol) => {
+    if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
+      symbol = checker.getAliasedSymbol(symbol);
+    }
+    const declaration = symbol?.declarations?.find(fromWasm);
+    if (declaration && !ts.isSourceFile(declaration)) {
+      const parent = owner(declaration);
+      used.add(parent ? `${parent}.${symbol.name}` : symbol.name);
+    }
+  };
   for (const file of program.getSourceFiles()) {
     if (!file.fileName.startsWith(src) || file.isDeclarationFile) continue;
     ts.forEachChild(file, function visit(node) {
@@ -111,14 +209,16 @@ export const usedSymbols = () => {
             )
           ? node
           : undefined;
-      let symbol = target && checker.getSymbolAtLocation(target);
-      if (symbol && symbol.flags & ts.SymbolFlags.Alias) {
-        symbol = checker.getAliasedSymbol(symbol);
-      }
-      const declaration = symbol?.declarations?.find(fromWasm);
-      if (declaration && !ts.isSourceFile(declaration)) {
-        const parent = owner(declaration);
-        used.add(parent ? `${parent}.${symbol.name}` : symbol.name);
+      if (target) record(checker.getSymbolAtLocation(target));
+      // `const { a, b: c } = value` and destructured parameters name members without an access.
+      if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+        const key = node.propertyName ?? node.name;
+        if (ts.isIdentifier(key) || ts.isStringLiteral(key)) {
+          const type = checker.getNonNullableType(
+            checker.getTypeAtLocation(node.parent),
+          );
+          record(type.getProperty(key.text));
+        }
       }
       ts.forEachChild(node, visit);
     });
@@ -145,7 +245,11 @@ export const buildSurface = (symbols, previous = {}) => {
         ? stateful
         : WASM_HELPERS.has(owner)
           ? wasmHelpers
-          : pureJs;
+          : PURE_JS.has(owner)
+            ? pureJs
+            : undefined;
+    // `unclassified` reports it; filing it anywhere would hide that.
+    if (!group) continue;
     group[owner] ??= group === stateful ? {} : [];
     if (member === undefined) continue;
     if (group === stateful) {
@@ -173,14 +277,32 @@ export const buildSurface = (symbols, previous = {}) => {
   };
 };
 
-/** The `covered([...])` entries of the contract tests, statically. */
+const withoutComments = (source) =>
+  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/** The `covered([...])` entries of the contract tests, statically, outside comments. */
 export const coveredEntries = (sources) =>
   new Set(
     sources.flatMap((source) =>
-      [...source.matchAll(/covered\(\s*\[([^\]]*)\]/g)].flatMap(([, list]) =>
+      [
+        ...withoutComments(source).matchAll(/covered\(\s*\[([^\]]*)\]/g),
+      ].flatMap(([, list]) =>
         [...list.matchAll(/'([^']+)'/g)].map(([, entry]) => entry),
       ),
     ),
+  );
+
+/**
+ * A skipped or focused case would still count as covered, so the contract tests have none;
+ * only the cargo gate `describe.skipIf(!hasCargo)` is allowed.
+ */
+export const contractSourceErrors = (sources) =>
+  sources.flatMap((source) =>
+    [
+      ...withoutComments(source).matchAll(
+        /\b(?:it|test|describe)\.(?:skip|only|todo)\(|\b(?:it|test|describe)\.(?:skipIf|runIf)\((?!!hasCargo\))[^)]*\)/g,
+      ),
+    ].map(([found]) => `contract tests may not skip or focus cases: ${found}`),
   );
 
 export const contractSources = () =>
@@ -190,7 +312,10 @@ export const contractSources = () =>
 
 /** Every problem with `surface` against the generated lists and the contract tests. */
 export const surfaceErrors = (surface, symbols, covered) => {
-  const errors = [];
+  const errors = unclassified(symbols).map(
+    (owner) =>
+      `${owner}: not classified; add it to STATEFUL, WASM_HELPERS or PURE_JS in scripts/native-crypto-surface.mjs`,
+  );
   const expected = buildSurface(symbols, surface);
   const entries = (manifest) =>
     Object.entries(manifest.stateful ?? {}).flatMap(([owner, members]) =>
@@ -251,7 +376,12 @@ export const readSurface = () => JSON.parse(readFileSync(SURFACE_PATH, 'utf8'));
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [command] = process.argv.slice(2);
   const symbols = usedSymbols();
-  if (command === 'write') {
+  if (command === 'write' && unclassified(symbols).length) {
+    console.error(
+      `not classified: ${unclassified(symbols).join(', ')}; add each to STATEFUL, WASM_HELPERS or PURE_JS first`,
+    );
+    process.exitCode = 1;
+  } else if (command === 'write') {
     let previous = {};
     try {
       previous = readSurface();
@@ -268,11 +398,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
     console.log(`wrote ${relative(root, SURFACE_PATH)}`);
   } else if (command === 'check') {
-    const errors = surfaceErrors(
-      readSurface(),
-      symbols,
-      coveredEntries(contractSources()),
-    );
+    const errors = [
+      ...surfaceErrors(
+        readSurface(),
+        symbols,
+        coveredEntries(contractSources()),
+      ),
+      ...contractSourceErrors(contractSources()),
+    ];
     for (const error of errors) console.error(error);
     if (errors.length) process.exitCode = 1;
     else console.log(JSON.stringify(statusCounts(readSurface()), null, 2));

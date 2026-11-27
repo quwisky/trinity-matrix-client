@@ -69,3 +69,4 @@ The debug surface trusts its JavaScript caller. Before any of it ships in a rele
 - The store key comes from the Android Keystore and never from JavaScript.
 - Plugin registration moves to `main`, behind a flag.
 - The request queue is bounded.
+- The shim refuses `StoreHandle.open` with a store prefix: WASM then opens a passphrase store, or an unencrypted persistent one when Trinity has no storage key, and the native crate offers only a raw-key store or memory.

@@ -328,7 +328,7 @@
         "status": "done",
         "area": "backup",
         "native": "verifyBackup",
-        "note": "returns { deviceState, userState, trusted }"
+        "note": "returns { deviceState, userState, trusted }. Deferred to slice B (cross-signing fixture): contract cases for info signed by a known but unverified own device (trusted: false) and for a non-missing userState"
       }
     },
     "OtherUserIdentity": {
@@ -419,7 +419,7 @@
       "open": {
         "status": "shim",
         "area": "store",
-        "note": "the shim keeps storePath and storeKey for init; passphrase stores are not offered natively"
+        "note": "open(null, null) is a memory store: the shim calls init without storePath. With a prefix, WASM opens a passphrase store, or an unencrypted persistent one when the passphrase is missing (Trinity omits storageKey when it has none, matrix-client.service.ts initializeCrypto); native has neither, so the shim must refuse"
       },
       "openWithKey": {
         "status": "shim",
@@ -482,7 +482,9 @@
       "public_key"
     ],
     "EstablishedEcies": ["check_code", "decrypt", "encrypt"],
+    "InboundCreationResult": ["channel", "message"],
     "MegolmV1BackupKey": ["algorithm", "publicKeyBase64"],
+    "OutboundCreationResult": ["channel", "initial_message"],
     "QrCodeData": ["toBytes"],
     "QrCodeScan": ["fromBytes"],
     "SecretsBundle": ["free", "from_json", "to_json"]
@@ -547,7 +549,6 @@
     "getVersions": [],
     "HistoryVisibility": ["Invited", "Joined", "Shared", "WorldReadable"],
     "IdentityKeys": ["curve25519", "ed25519"],
-    "InboundCreationResult": ["message"],
     "initAsync": [],
     "KeysBackupRequest": ["body", "version"],
     "KeysClaimRequest": ["body"],
@@ -556,7 +557,6 @@
     "LocalTrust": ["BlackListed", "Unset", "Verified"],
     "MaybeSignature": ["isValid", "signature"],
     "MegolmDecryptionError": ["code", "description", "maybe_withheld"],
-    "OutboundCreationResult": ["channel", "initial_message"],
     "OutgoingRequest": [],
     "PickledInboundGroupSession": [
       "backedUp",

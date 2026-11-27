@@ -1,7 +1,15 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import {
   buildSurface,
+  contractSourceErrors,
   contractSources,
   coveredEntries,
   readSurface,
@@ -19,6 +27,7 @@ describe('native/crypto/surface.json', () => {
     expect(
       surfaceErrors(readSurface(), symbols, coveredEntries(contractSources())),
     ).toEqual([]);
+    expect(contractSourceErrors(contractSources())).toEqual([]);
   });
 
   it('matches the status table in the developer guide', () => {
@@ -112,6 +121,37 @@ describe('surfaceErrors', () => {
     ).toContain('OlmMachine.getDevice: no area');
   });
 
+  it('fails on an owner that is in none of the lists', () => {
+    expect(
+      surfaceErrors(surface(), [...symbols, 'Mystery.thing'], covered),
+    ).toContain(
+      'Mystery: not classified; add it to STATEFUL, WASM_HELPERS or PURE_JS in scripts/native-crypto-surface.mjs',
+    );
+    expect(buildSurface([...symbols, 'Mystery.thing']).pureJs).toEqual({
+      UserId: ['toString'],
+    });
+  });
+
+  it('ignores covered([...]) in comments and rejects skipped or focused cases', () => {
+    expect([
+      ...coveredEntries([
+        "// covered(['A.b'], 'x', fn)\n/* covered(['C.d']) */\ncovered(['E.f'], 'y', fn)",
+      ]),
+    ]).toEqual(['E.f']);
+    expect(
+      contractSourceErrors([
+        "describe.skipIf(!hasCargo)('x', () => {})",
+        "it.skip('x')",
+        "describe.skipIf(other)('x')",
+        "it.only('x')",
+      ]),
+    ).toEqual([
+      'contract tests may not skip or focus cases: it.skip(',
+      'contract tests may not skip or focus cases: describe.skipIf(other)',
+      'contract tests may not skip or focus cases: it.only(',
+    ]);
+  });
+
   it('reads covered entries from covered([...]) calls', () => {
     expect([
       ...coveredEntries([
@@ -122,6 +162,44 @@ describe('surfaceErrors', () => {
       'OlmMachine.sign',
       'OlmMachine.verifyBackup',
       'BackupKeys.backupVersion',
+    ]);
+  });
+});
+
+describe('usedSymbols', () => {
+  let root;
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
+
+  it('finds members reached through destructuring', () => {
+    root = mkdtempSync(join(tmpdir(), 'native-crypto-surface-'));
+    const write = (path, text) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    };
+    const wasmPackage = 'node_modules/@matrix-org/matrix-sdk-crypto-wasm';
+    write(
+      `${wasmPackage}/package.json`,
+      '{ "name": "@matrix-org/matrix-sdk-crypto-wasm", "types": "index.d.ts" }',
+    );
+    write(
+      `${wasmPackage}/index.d.ts`,
+      'export declare class Thing { channel: string; message: string; other: number; unused: number; }\nexport declare function make(): Thing;\n',
+    );
+    write(
+      'node_modules/matrix-js-sdk/src/a.ts',
+      [
+        'import { make, type Thing } from "@matrix-org/matrix-sdk-crypto-wasm";',
+        'const { channel, message: renamed } = make();',
+        'export const read = ({ other }: Thing) => other;',
+        'export const both = [channel, renamed];',
+      ].join('\n'),
+    );
+    expect(usedSymbols(join(root, 'node_modules/matrix-js-sdk'))).toEqual([
+      'Thing',
+      'Thing.channel',
+      'Thing.message',
+      'Thing.other',
+      'make',
     ]);
   });
 });

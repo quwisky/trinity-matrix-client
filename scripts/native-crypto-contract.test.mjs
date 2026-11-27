@@ -3,11 +3,16 @@
  * answers the same, compared by value; where WASM's answer is random by nature (fresh keys,
  * ciphertext, request IDs), by shape, as each case says. Each `covered` case names the
  * manifest entries it proves (scripts/native-crypto-surface.spec.mjs checks the list).
+ *
+ * Deferred to slice B, which brings a cross-signing fixture: `verifyBackup` on info signed by
+ * a known but unverified device of the same user (must answer `trusted: false`), and with a
+ * cross-signing identity, so `userState` is something other than Missing.
  */
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
 import {
   Homeserver,
-  anonymise,
+  both,
+  compared,
   covered,
   hasCargo,
   roomEvent,
@@ -20,15 +25,6 @@ import {
 
 const KEYS_BACKUP = wasm.RequestType.KeysBackup;
 const BACKUP_ALGORITHM = 'm.megolm_backup.v1.curve25519-aes-sha2';
-
-/** Native first, then WASM. */
-const both = async (devices, run) => {
-  const answers = [];
-  for (const device of devices) {
-    answers.push(anonymise(await run(device), device));
-  }
-  return answers;
-};
 
 const expectSame = ([native, wasmAnswer], step) =>
   expect(native, step).toEqual(wasmAnswer);
@@ -66,8 +62,10 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
     'opens and closes a machine as WASM does',
     async () => {
       const started = Date.now();
-      const native = await device('native');
-      const wasmSide = await device('wasm');
+      const [native, wasmSide] = await compared(async () => [
+        await device('native'),
+        await device('wasm'),
+      ]);
       const { machine } = wasmSide;
       const fromMachine = {
         userId: machine.userId.toString(),
@@ -89,16 +87,17 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
         expect(deviceCreationTimeMs).toBeGreaterThanOrEqual(started - 1000);
         expect(deviceCreationTimeMs).toBeLessThanOrEqual(Date.now());
       }
-      expect(result(await native.respond('identityKeys'))).toEqual(
-        native.identityKeys,
-      );
-
-      await native.close();
-      wasmSide.close();
-      expect((await native.respond('identityKeys')).error.code).toBe(
-        'UnknownMachine',
-      );
-      expect(() => machine.identityKeys).toThrow();
+      await compared(async () => {
+        expect(result(await native.respond('identityKeys'))).toEqual(
+          native.identityKeys,
+        );
+        await native.close();
+        wasmSide.close();
+        expect((await native.respond('identityKeys')).error.code).toBe(
+          'UnknownMachine',
+        );
+        expect(() => machine.identityKeys).toThrow();
+      });
     },
   );
 
@@ -140,12 +139,12 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
         ),
       );
       const crossed = [raw[1], raw[0]];
-      expectSame(
-        await both(importers, (importer) =>
-          importer.importExportedRoomKeys(crossed[importers.indexOf(importer)]),
-        ),
-        'importExportedRoomKeys',
+      const imported = await both(importers, (importer) =>
+        importer.importExportedRoomKeys(crossed[importers.indexOf(importer)]),
       );
+      expectSame(imported, 'importExportedRoomKeys');
+      // WASM's progress listener last saw (index of the last key, total).
+      expect(imported[0].result.lastProgress).toEqual([0, 1]);
       expectSame(
         await both(importers, (importer) => importer.pollEvents()),
         'roomKeysReceived after import',
@@ -288,7 +287,8 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
         await step('backupRoomKeys', (receiver) => receiver.backupRoomKeys()),
       ).toEqual({ result: null });
 
-      // Each side restores the backup the other made; a session that does not parse is skipped.
+      // Each side restores the backup the other made; a session that does not parse is skipped
+      // and counted, and WASM's listener last saw (progress, valid + failed, failed).
       const restorers = [await device('native'), await device('wasm')];
       const restored = await both(restorers, (restorer) => {
         const made = requests[1 - restorers.indexOf(restorer)];
@@ -300,6 +300,8 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
       expect(restored[0].result).toMatchObject({
         importedCount: 1,
         totalCount: 1,
+        failures: 1,
+        lastProgress: [0, 2, 1],
       });
       expectSame(
         await both(restorers, (restorer) => restorer.roomKeyCounts()),
@@ -356,11 +358,16 @@ describe.skipIf(!hasCargo)(`native crypto contract with WASM${skipped}`, () => {
       });
 
       for (const bad of ['not a key', 'AAAA']) {
-        const malformed = await both(devices, (it) =>
+        const [native, wasmAnswer] = await both(devices, (it) =>
           it.saveBackupDecryptionKey(bad, '8'),
         );
-        expectSame(malformed, `saveBackupDecryptionKey ${bad}`);
-        expect(malformed[0].error.code).toBe('CryptoError');
+        // Same code; native's message is fixed on purpose, as WASM's names a character of the
+        // key and its offset.
+        expect(native.error).toEqual({
+          code: 'CryptoError',
+          message: 'invalid backup decryption key',
+        });
+        expect(wasmAnswer.error.code).toBe('CryptoError');
         const enabled = await both(devices, (it) =>
           it.enableBackupV1(bad, '8'),
         );
