@@ -1320,3 +1320,102 @@ describe('TestFlight upload workflow', () => {
     });
   });
 });
+
+describe('native crypto job', () => {
+  const job = workflow.jobs['native-crypto'];
+
+  it('runs the crate checks and the interop test only when the classifier asks', () => {
+    expect(workflow.jobs.classify.outputs['native-crypto']).toBe(
+      '${{ steps.native-crypto.outputs.run }}',
+    );
+    expect(job.if).toContain("needs.classify.outputs.native-crypto == 'true'");
+    expect(
+      job.steps.filter((step) => step.run).map((step) => step.run),
+    ).toEqual([
+      expect.stringMatching(/^rustup toolchain install /),
+      'node scripts/native-crypto-pin.mjs',
+      'cargo fmt --check',
+      'cargo clippy --locked --all-targets -- -D warnings',
+      'cargo test --locked',
+      'pnpm nx run scripts:native-crypto-interop',
+    ]);
+    for (const { uses } of job.steps.filter((step) => step.uses)) {
+      expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
+    }
+  });
+
+  describe('change detection', () => {
+    const script = workflow.jobs.classify.steps.find(
+      (step) => step.id === 'native-crypto',
+    ).run;
+    const env = {
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_SYSTEM: '/dev/null',
+    };
+    let repo;
+    let base;
+    const git = (...args) =>
+      execFileSync('git', ['-C', repo, ...args], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ...env,
+          GIT_AUTHOR_NAME: 'test',
+          GIT_AUTHOR_EMAIL: 'test@example.invalid',
+          GIT_COMMITTER_NAME: 'test',
+          GIT_COMMITTER_EMAIL: 'test@example.invalid',
+        },
+      });
+    const detect = (changes, baseSha = base) => {
+      for (const [path, content] of Object.entries(changes)) {
+        mkdirSync(dirname(join(repo, path)), { recursive: true });
+        writeFileSync(join(repo, path), content);
+      }
+      git('add', '-A');
+      git('commit', '-q', '--allow-empty', '-m', 'change');
+      const output = join(repo, '.git', 'output');
+      writeFileSync(output, '');
+      const result = spawnSync('bash', ['-e', '-c', script], {
+        cwd: repo,
+        env: { ...process.env, ...env, BASE: baseSha, GITHUB_OUTPUT: output },
+        encoding: 'utf8',
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return readFileSync(output, 'utf8').trim();
+    };
+    const wasm = (version) =>
+      `{\n  "dependencies": {\n    "@matrix-org/matrix-sdk-crypto-wasm": "${version}"\n  }\n}\n`;
+
+    beforeAll(() => {
+      repo = mkdtempSync(join(tmpdir(), 'trinity-native-crypto-detect-'));
+      git('init', '-q', '-b', 'main');
+      writeFileSync(join(repo, 'package.json'), wasm('18.9.0'));
+      git('add', '-A');
+      git('commit', '-q', '-m', 'base');
+      base = git('rev-parse', 'HEAD').trim();
+    });
+    afterEach(() => git('reset', '-q', '--hard', base));
+    afterAll(() => rmSync(repo, { recursive: true, force: true }));
+
+    it.each([
+      'native/crypto/src/lib.rs',
+      'scripts/native-crypto-pin.mjs',
+      '.github/workflows/ci.yml',
+    ])('runs when %s changes', (path) => {
+      expect(detect({ [path]: 'changed\n' })).toBe('run=true');
+    });
+
+    it('runs when the WASM version changes', () => {
+      expect(detect({ 'package.json': wasm('18.10.0') })).toBe('run=true');
+    });
+
+    it('skips other changes', () => {
+      expect(detect({ 'libs/a.ts': 'changed\n' })).toBe('run=false');
+    });
+
+    it('runs when the base is missing or unknown', () => {
+      expect(detect({ 'libs/a.ts': 'changed\n' }, '')).toBe('run=true');
+      expect(detect({}, '0'.repeat(40))).toBe('run=true');
+    });
+  });
+});
