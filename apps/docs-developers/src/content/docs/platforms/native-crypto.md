@@ -21,7 +21,28 @@ cd ../..
 pnpm nx run scripts:native-crypto-interop
 ```
 
-The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. Without cargo it is skipped locally and fails in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
+The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract test, which runs each finished native call and the same WASM call side by side and expects the same answer. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
+
+## Surface status {#surface}
+
+`native/crypto/surface.json` lists every WASM class and member the installed matrix-js-sdk uses. Each member of a stateful class (one backed by the machine or its store) is `done` (a native call answers it, proven by a contract-test case), `planned`, or `shim` (the JavaScript shim answers it without a native call, such as `free()`). Value types are listed as pure JavaScript; stateless helpers such as `BackupDecryptionKey` stay on WASM.
+
+| Area               | Done | Planned | Shim |
+| ------------------ | ---- | ------- | ---- |
+| core               | 15   | 8       | 0    |
+| events             | 2    | 3       | 0    |
+| room-keys          | 4    | 0       | 0    |
+| backup             | 10   | 0       | 0    |
+| store              | 0    | 0       | 3    |
+| devices-identities | 0    | 32      | 4    |
+| cross-signing      | 0    | 4       | 0    |
+| verification       | 0    | 38      | 0    |
+| secrets            | 0    | 5       | 0    |
+| key-bundles        | 0    | 10      | 0    |
+| dehydrated-devices | 0    | 7       | 3    |
+| libolm-migration   | 0    | 3       | 0    |
+
+`pnpm nx test scripts` fails when matrix-js-sdk uses a member the manifest lacks or no longer uses one it lists, when a `done` member has no contract case, or when this table disagrees with the manifest. After a matrix-js-sdk bump, run `node scripts/native-crypto-surface.mjs write`: new members arrive as `planned`, and members of `OlmMachine` need an area before the check passes.
 
 ## Run it on Android {#android}
 
