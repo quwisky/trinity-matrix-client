@@ -196,6 +196,7 @@ describe('split E2E jobs', () => {
       'mas-e2e',
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
+      'native-crypto',
     ]);
     for (const id of [
       'e2e',
@@ -375,7 +376,12 @@ describe('MAS sign-in journeys', () => {
     });
 
     // Each is skipped by design when a pull request leaves the paths it checks alone.
-    const pathFiltered = ['mas-e2e', 'tuwunel-oauth-e2e', 'scrollbars-e2e'];
+    const pathFiltered = [
+      'mas-e2e',
+      'tuwunel-oauth-e2e',
+      'scrollbars-e2e',
+      'native-crypto',
+    ];
 
     it.each(pathFiltered)('passes when only %s was skipped', (id) => {
       expect(run({ [id]: 'skipped' }).status).toBe(0);
@@ -1400,6 +1406,8 @@ describe('native crypto job', () => {
     it.each([
       'native/crypto/src/lib.rs',
       'scripts/native-crypto-pin.mjs',
+      'scripts/project.json',
+      '.github/actions/setup/action.yml',
       '.github/workflows/ci.yml',
     ])('runs when %s changes', (path) => {
       expect(detect({ [path]: 'changed\n' })).toBe('run=true');
