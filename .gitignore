@@ -46,6 +46,9 @@ log.txt
 /electron/native/windows-hello/build/
 /electron/build/windows-hello.node
 
+# Rust build output of the native crypto crate
+/native/crypto/target/
+
 # Node. Unanchored on purpose: pnpm and Vite create nested package dirs — `vitest` writes a
 # cache into `libs/<lib>/node_modules/.vite/`, and an anchored `/node_modules` left those
 # committable. Nothing tracked them yet, but `git add -A` picked one up.
