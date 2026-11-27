@@ -64,6 +64,10 @@ App Store guideline 5.1.1(v) requires that an account created in the app can be 
 
 Give reviewers a disposable password account on a legacy-API homeserver in the review notes; deleting it consumes the account, so supply a fresh one for each submission.
 
+## Calls {#calls}
+
+`CallSessionPlugin` (in `MainViewController.swift`) sets the audio session for a call (`.playAndRecord`, `.videoChat`, Bluetooth and speaker allowed) on `begin` and releases it on `end`. `UIBackgroundModes` has `audio`, which keeps a call's sound running in the background; there is no `voip` mode, CallKit or PushKit, so nothing rings while the app is closed. Capacitor already grants camera and microphone capture to the Element Call frame and allows inline playback. An audio interruption (an incoming phone call) is not handled yet, and the call path has not been run on a device.
+
 ## Respect native ownership {#native-ownership}
 
 Keep plugin access in `libs/platform-native` adapters and local plugin packages such as `@trinity/capacitor-push`, and consume shared host operations from application code. Legacy SSO signs in through `ASWebAuthenticationSession`, from the local plugin `@trinity/capacitor-auth-session` (the Swift package `TrinityCapacitorAuthSession` in `CapApp-SPM`); OAuth 2.0 and other provider pages open in the Safari View Controller (see [sign-in callbacks](../../architecture/host-capabilities/#sign-in-callbacks)). A status bar tap reaches the app as Capacitor's `statusTap` window event (the WebView's own scroll view is pinned), and `NativeStatusBarTapAdapter` scrolls the pane at the centre of the topmost open sheet or dialog, or of the screen when none is open, to its top. Test safe areas, keyboard resizing, system browser authentication, deep links, lifecycle, secure storage, notification activation, and Back behavior in the environment whose behavior changed.
