@@ -74,14 +74,19 @@ pub fn call_batch(requests_json: &str) -> String {
     response.to_string()
 }
 
+/// The response to a request that could not be read.
+fn error_response(message: &str) -> String {
+    respond(Err(CallError::invalid(message))).to_string()
+}
+
 fn call_c(request: *const c_char, run: fn(&str) -> String) -> *mut c_char {
     let response = if request.is_null() {
-        respond(Err(CallError::invalid("request is null"))).to_string()
+        error_response("request is null")
     } else {
         // SAFETY: the caller passes a valid NUL-terminated string (see the exported functions).
         match unsafe { CStr::from_ptr(request) }.to_str() {
             Ok(request) => run(request),
-            Err(_) => respond(Err(CallError::invalid("request is not UTF-8"))).to_string(),
+            Err(_) => error_response("request is not UTF-8"),
         }
     };
     // serde_json escapes NUL, so the response never contains one.

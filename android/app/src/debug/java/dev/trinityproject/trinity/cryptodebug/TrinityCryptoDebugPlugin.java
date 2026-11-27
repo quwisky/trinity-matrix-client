@@ -42,16 +42,15 @@ public class TrinityCryptoDebugPlugin extends Plugin {
             return;
         }
         EXECUTOR.execute(() -> {
-            try {
-                long started = System.nanoTime();
-                String response = nativeCall.apply(request);
-                JSObject result = new JSObject();
-                result.put("response", response);
-                result.put("nativeMs", (System.nanoTime() - started) / 1e6);
-                call.resolve(result);
-            } catch (RuntimeException error) {
-                call.reject("native crypto call failed", error);
+            NativeOutcome outcome = NativeOutcome.of(nativeCall, request);
+            if (outcome.error != null) {
+                call.reject("native crypto call failed: " + outcome.error, "NATIVE_ERROR");
+                return;
             }
+            JSObject result = new JSObject();
+            result.put("response", outcome.response);
+            result.put("nativeMs", outcome.nativeMs);
+            call.resolve(result);
         });
     }
 }

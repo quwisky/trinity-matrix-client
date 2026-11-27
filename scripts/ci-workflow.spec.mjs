@@ -1513,7 +1513,7 @@ describe('native crypto job', () => {
       'node scripts/native-crypto-pin.mjs',
       'cargo fmt --check',
       'cargo clippy --locked --all-targets --all-features -- -D warnings',
-      'cargo test --locked',
+      'cargo test --locked --all-features',
       'pnpm nx run scripts:native-crypto-interop',
     ]);
     for (const { uses } of job.steps.filter((step) => step.uses)) {

@@ -12,7 +12,7 @@ Needs Rust and cargo (see `rust-version` of the pinned crates; 1.96 or newer).
 cd native/crypto
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test
+cargo test --all-features
 ```
 
 `cargo build --bin trinity-crypto-cli` builds a host binary that reads one request per line
@@ -61,18 +61,22 @@ store is in memory. One machine exists per user and device for the whole process
 run one at a time. `init` again with the same store returns the open machine, with another
 store it fails with `AlreadyOpen`. `close` waits for a call in flight, then drops the machine;
 calls queued behind it get `UnknownMachine`. Two device IDs must never share one store path:
-the crate does not stop them, and their machines would overwrite each other's account. A call that panics drops its machine too, so the
-next call needs `init`, which reloads the account from the store.
+the crate does not stop them, and their machines would overwrite each other's account. A call
+that panics drops its machine too, so the next call needs `init`, which reloads the account
+from the store.
 
-The crate wipes its own copies of the key, but it cannot wipe the request string or the serde
-buffers the key passed through on the way in. Pass the key only in `init`, and drop the
+The crate wipes its own copies of the key, but it cannot wipe the request string, the serde
+buffers the key passed through on the way in, or on Android the JVM's own string and the
+buffer the JVM hands to native code. Pass the key only in `init`, and drop the
 caller's copies as soon as `init` returns.
 
 ## For the JNI wrapper
 
-- Read the request with `JString::try_to_string` (jni 0.22's replacement for the deprecated
-  `get_string`): Java strings are modified UTF-8, not plain UTF-8, so never read their bytes
-  directly. `src/jni.rs` (cargo feature `jni`) does this.
+- Java strings are modified UTF-8, not plain UTF-8. `src/jni.rs` (cargo feature `jni`) reads
+  the JVM's bytes with `JString::mutf8_chars` (jni 0.22's replacement for the deprecated
+  `get_string`) and decodes them strictly: invalid input fails the request with
+  `InvalidRequest` instead of being replaced. When decoding had to convert, the converted copy
+  is wiped after the call.
 - Never build with `panic = "abort"`: panics are caught and returned as `Panic` errors only
   while panics unwind.
 - Call from a background thread: a call blocks its thread until it is done, and must never
@@ -90,11 +94,15 @@ ignores. It needs an Android NDK (the Android Gradle Plugin's default, 28.2.1367
 
 Debug builds then have the Capacitor plugin `TrinityCryptoDebug`: `call({ request })` and
 `callBatch({ requests })` take the JSON strings above and resolve `{ response, nativeMs }`.
-Calls run one at a time on one background thread. A debug-only `Application` registers the
-plugin (Android 10 or newer), so `MainActivity` never names it. Without the library the plugin
-rejects with `NOT_BUILT`; `pnpm android:build` and the mobile E2E suite need neither Rust nor
-the NDK. Release builds hold neither the plugin nor the library: `pnpm android:build:release`
-checks the bundle with `scripts/android-release-isolation.mjs`.
+Calls run one at a time on one background thread; an error in the native call (for example a
+stale library without a method) rejects the call with `NATIVE_ERROR`. A debug-only
+`Application` registers the plugin, so `MainActivity` never names it. Registration needs
+Android 10 (API 29): on API 24 to 28 debug builds have no plugin, and JS gets Capacitor's "not
+implemented" error. The `secondaryDebug` build type does not use `src/debug`, so it has no
+plugin either. Without the library the plugin rejects with `NOT_BUILT`; `pnpm android:build`
+and the mobile E2E suite need neither Rust nor the NDK. Release builds hold neither the plugin
+nor the library: `pnpm android:build:release` checks the bundle with
+`scripts/android-release-isolation.mjs`.
 
 ## The pin rule
 

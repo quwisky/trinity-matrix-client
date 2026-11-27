@@ -19,7 +19,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 # The JNI entry points for the Android debug plugin.
-jni = ["dep:jni"]
+jni = ["dep:jni", "dep:simd_cesu8"]
 
 [[bin]]
 name = "trinity-crypto-cli"
@@ -47,5 +47,6 @@ matrix-sdk-sqlite = { version = "=0.19.1", default-features = false, features = 
 serde = { version = "1.0.91", features = ["derive"] }
 serde_json = "1.0.91"
 sha2 = "0.10.9"
+simd_cesu8 = { version = "1.2.0", optional = true }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync"] }
 zeroize = "1.6.0"
