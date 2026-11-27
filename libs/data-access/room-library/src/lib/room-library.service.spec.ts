@@ -731,6 +731,56 @@ describe('RoomLibraryService', () => {
 
       expect(svc.rooms().map((r) => r.callActive)).toEqual([false, false]);
     });
+
+    it('re-arms while a membership stays live, and leaves no timer behind', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => [
+          fakeRoom({
+            roomId: '!r:hs',
+            name: 'R',
+            callMembers: [
+              { ts: now, content: { expires_ts: now + 5_000 } },
+              { ts: now, content: { expires_ts: now + 2 ** 33 } },
+            ],
+          }),
+        ],
+        on: () => {},
+        off: () => {},
+      };
+      const { svc } = provideRooms(client);
+      const subscription = svc.runProjection().subscribe();
+      await windowEnds();
+      expect(svc.rooms()[0].callActive).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+
+      // The far expiry is past setTimeout's range; the clamped timer only re-arms.
+      await vi.advanceTimersByTimeAsync(5_001 + 100);
+      expect(svc.rooms()[0].callActive).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+
+      subscription.unsubscribe();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('re-reads the row once its only membership expires', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      const svc = setup([
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          callMembers: [{ ts: now, content: { expires_ts: now + 5_000 } }],
+        }),
+      ]);
+      expect(svc.rooms()[0].callActive).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(5_001 + 100);
+      expect(svc.rooms()[0].callActive).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    });
   });
 
   describe('marked unread', () => {

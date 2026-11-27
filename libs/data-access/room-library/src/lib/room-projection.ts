@@ -212,18 +212,7 @@ export function buildRoomSummary(
     unreadCount,
     highlightCount,
     markedUnread,
-    // shortcut: the flag is recomputed only when the row is rebuilt, so a membership that expires with no new event keeps the marker until the room next changes; add an expiry timer if stale markers are reported.
-    callActive:
-      callParticipants(
-        (liveRoomState(room)?.getStateEvents(CALL_MEMBER_EVENT) ?? []).map(
-          (event) => ({
-            type: CALL_MEMBER_EVENT,
-            origin_server_ts: event.getTs(),
-            content: event.getContent(),
-          }),
-        ),
-        Date.now(),
-      ).count > 0,
+    callActive: roomCall(room, Date.now()).count > 0,
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
@@ -234,6 +223,23 @@ export function buildRoomSummary(
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,
     directUserId,
   };
+}
+
+/** The room's live call members and their earliest expiry, from its `call.member` state. */
+export function roomCall(
+  room: Room,
+  nowMs: number,
+): { count: number; nextExpiryMs: number | null } {
+  return callParticipants(
+    (liveRoomState(room)?.getStateEvents(CALL_MEMBER_EVENT) ?? []).map(
+      (event) => ({
+        type: CALL_MEMBER_EVENT,
+        origin_server_ts: event.getTs(),
+        content: event.getContent(),
+      }),
+    ),
+    nowMs,
+  );
 }
 
 /**
