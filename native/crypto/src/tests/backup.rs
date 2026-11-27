@@ -32,6 +32,8 @@ fn room_keys_export_and_import_into_another_machine() {
     );
     assert_eq!(imported["importedCount"], json!(1));
     assert_eq!(imported["totalCount"], json!(1));
+    // WASM's listener last saw (index of the last key, total).
+    assert_eq!(imported["lastProgress"], json!([0, 1]));
     let sender_key = keys[0]["sender_key"].as_str().unwrap();
     assert_eq!(
         imported["keys"]["!backup:localhost"][sender_key],
@@ -131,9 +133,25 @@ fn a_backup_restores_on_another_machine() {
         "importBackedUpRoomKeys",
         json!({ "backedUpRoomKeys": rooms, "backupVersion": "1" }),
     );
-    // The session that does not parse is skipped, as in WASM.
+    // The session that does not parse is skipped and counted, as in WASM, whose listener last
+    // saw (index of the last valid key, valid keys + failures, failures).
     assert_eq!(imported["importedCount"], json!(1), "{imported}");
     assert_eq!(imported["totalCount"], json!(1));
+    assert_eq!(imported["failures"], json!(1));
+    assert_eq!(imported["lastProgress"], json!([0, 2, 1]));
+
+    let nothing_valid = ok(
+        &carol,
+        "CAROL",
+        "importBackedUpRoomKeys",
+        json!({ "backedUpRoomKeys": { "!backup:localhost": { "broken": {} } }, "backupVersion": "1" }),
+    );
+    assert_eq!(nothing_valid["failures"], json!(1));
+    assert_eq!(
+        nothing_valid["lastProgress"],
+        Value::Null,
+        "WASM never calls its listener"
+    );
 }
 
 #[test]
@@ -151,6 +169,19 @@ fn backup_keys_are_saved_and_a_wrong_key_is_rejected() {
     assert_eq!(
         ok(&user, "K", "getBackupKeys", json!({})),
         json!({ "decryptionKeyBase64": key, "backupVersion": "7" })
+    );
+
+    // A decoding error would name the offending character and its offset in the key.
+    let almost = format!("{}!", &key[..key.len() - 1]);
+    let response = invoke(
+        &user,
+        "K",
+        "saveBackupDecryptionKey",
+        json!({ "decryptionKeyBase64": almost, "version": "8" }),
+    );
+    assert_eq!(
+        response["error"],
+        json!({ "code": "CryptoError", "message": "invalid backup decryption key" })
     );
 
     let wrong = "not a key".to_owned();

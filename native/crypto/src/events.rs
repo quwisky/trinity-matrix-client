@@ -4,10 +4,11 @@
 //! Each machine's queue subscribes to the store's broadcast streams when the machine opens.
 //! Every call drains the streams into the queue before it returns, so the events a call caused
 //! are queued when its response arrives; `pollEvents` drains again and hands over the queue
-//! without waiting for the machine. The queue's lock is never held across an await or while
-//! another lock is taken. Event fields follow the WASM classes passed to the callbacks
-//! (ported from matrix-sdk-crypto-wasm v18.9.0 `src/store.rs` and `src/machine.rs`,
-//! Apache-2.0, see `LICENSE-APACHE`).
+//! without waiting for the machine. A call takes the queue lock while it holds its machine lock;
+//! `pollEvents` takes it holding none. Nothing waits for another lock while holding the queue
+//! lock, and it is never held across an await, so a poll cannot deadlock with a call. Event
+//! fields follow the WASM classes passed to the callbacks (ported from matrix-sdk-crypto-wasm
+//! v18.9.0 `src/store.rs` and `src/machine.rs`, Apache-2.0, see `LICENSE-APACHE`).
 
 use std::collections::VecDeque;
 use std::task::{Context, Poll, Waker};

@@ -56,7 +56,8 @@ struct Device {
 
 type Slot = Arc<Device>;
 
-/// The queue lock is only held while moving events, never across an await or another lock.
+/// Held only while events move: never across an await, and nothing waits for another lock
+/// while holding it (a call takes it while holding the machine lock, never the other way).
 fn events(slot: &Slot) -> std::sync::MutexGuard<'_, events::Queue> {
     slot.events
         .lock()

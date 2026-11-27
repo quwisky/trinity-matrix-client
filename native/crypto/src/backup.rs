@@ -2,8 +2,10 @@
 //!
 //! Ported from matrix-sdk-crypto-wasm v18.9.0 `src/machine.rs`, `src/backup.rs` and
 //! `src/types.rs` (Apache-2.0, see `LICENSE-APACHE`). A WASM progress listener cannot cross
-//! the JSON surface: the calls return when done, and the shim reports progress from the result.
+//! the JSON surface: the import calls return when done with `lastProgress`, the arguments of
+//! WASM's last listener call (`null` when WASM would not call it), for the shim to replay.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use futures_util::StreamExt;
@@ -21,11 +23,12 @@ use crate::error::{CallError, CallResult};
 use crate::requests::RequestType;
 
 /// WASM `RoomKeyImportResult`; `keys()` (room → sender key → session IDs) as plain JSON.
-fn import_result(result: RoomKeyImportResult) -> Value {
+fn import_result(result: RoomKeyImportResult, last_progress: Option<Value>) -> Value {
     json!({
         "importedCount": result.imported_count,
         "totalCount": result.total_count,
         "keys": result.keys,
+        "lastProgress": last_progress,
     })
 }
 
@@ -52,11 +55,12 @@ pub async fn import_exported_room_keys(
     params: ImportExportedParams,
 ) -> CallResult {
     let keys: Vec<ExportedRoomKey> = serde_json::from_str(&params.exported_room_keys)?;
+    let last = Cell::new(None);
     let result = machine
         .store()
-        .import_exported_room_keys(keys, |_, _| {})
+        .import_exported_room_keys(keys, |progress, total| last.set(Some((progress, total))))
         .await?;
-    Ok(import_result(result))
+    Ok(import_result(result, last.get().map(|last| json!(last))))
 }
 
 #[derive(Deserialize)]
@@ -67,28 +71,39 @@ pub struct ImportBackedUpParams {
     backup_version: String,
 }
 
-/// As in WASM, a session that does not parse is skipped and left out of the counts.
+/// As in WASM, a session that does not parse is skipped, left out of `totalCount` and counted
+/// in `failures`; WASM's listener sees `(progress, valid keys + failures, failures)`.
 pub async fn import_backed_up_room_keys(
     machine: &OlmMachine,
     params: ImportBackedUpParams,
 ) -> CallResult {
     let mut keys = Vec::new();
+    let mut failures = 0;
     for (room_id, sessions) in params.backed_up_room_keys {
         for (session_id, data) in sessions {
-            if let Ok(key) = serde_json::from_value::<BackedUpRoomKey>(data) {
-                keys.push(ExportedRoomKey::from_backed_up_room_key(
+            match serde_json::from_value::<BackedUpRoomKey>(data) {
+                Ok(key) => keys.push(ExportedRoomKey::from_backed_up_room_key(
                     room_id.clone(),
                     session_id,
                     key,
-                ));
+                )),
+                Err(_) => failures += 1,
             }
         }
     }
+    let last = Cell::new(None);
     let result = machine
         .store()
-        .import_room_keys(keys, Some(&params.backup_version), |_, _| {})
+        .import_room_keys(keys, Some(&params.backup_version), |progress, total| {
+            last.set(Some((progress, total + failures)));
+        })
         .await?;
-    Ok(import_result(result))
+    let last_progress = last
+        .get()
+        .map(|(progress, total)| json!([progress, total, failures]));
+    let mut result = import_result(result, last_progress);
+    result["failures"] = json!(failures);
+    Ok(result)
 }
 
 /// WASM `RoomKeyCounts`.
@@ -136,7 +151,9 @@ pub async fn save_backup_decryption_key(
     params: SaveDecryptionKeyParams,
 ) -> CallResult {
     let encoded = Zeroizing::new(params.decryption_key_base64);
-    let key = BackupDecryptionKey::from_base64(&encoded).map_err(CallError::crypto)?;
+    // Unlike WASM, a fixed message: the decoder's names a character of the key and its offset.
+    let key = BackupDecryptionKey::from_base64(&encoded)
+        .map_err(|_| CallError::crypto("invalid backup decryption key"))?;
     machine
         .backup_machine()
         .save_decryption_key(Some(key), Some(params.version))
