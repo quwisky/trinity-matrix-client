@@ -84,9 +84,13 @@ caller's copies as soon as `init` returns.
 the release that `@matrix-org/matrix-sdk-crypto-wasm` in the root `package.json` is built on,
 so the web and phone apps run the same crypto. `Cargo.lock` started from the WASM release's
 own lock file, so every crate both use has the same version. Bump the WASM package and these
-pins together: `[package.metadata.trinity.wasm-pin]` in `Cargo.toml` records the pairing, and
+pins together: `[package.metadata.trinity.wasm-pin]` in `Cargo.toml` records the pairing,
+`wasm-lock.json` is a snapshot of that release's `Cargo.lock`, and
 `node scripts/native-crypto-pin.mjs` (also part of `pnpm nx test scripts`) fails when
-`package.json`, the pins or `Cargo.lock` disagree with it. Renovate leaves the three pins alone.
+`package.json`, the pins or `Cargo.lock` disagree with the pairing, or when a crate in both
+lock files has another version here than in the snapshot. On a WASM bump, refresh the snapshot
+with the commands at the top of that script, then move the pins and the lock to match.
+Renovate leaves this crate and its lock file alone until it ships in a release build.
 
 ## Licence
 

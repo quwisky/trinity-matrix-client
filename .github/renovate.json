@@ -205,13 +205,9 @@
       "enabled": false
     },
     {
-      "description": "native/crypto pins matrix-sdk-crypto, matrix-sdk-common and matrix-sdk-sqlite exactly to the release the root @matrix-org/matrix-sdk-crypto-wasm is built on, so web and phones run the same crypto. A Cargo bump alone splits them and scripts/native-crypto-pin.mjs fails it; move them by hand in the same change as the WASM version (native/crypto/README.md).",
+      "description": "native/crypto, its Cargo.lock included, is moved by hand with the WASM package until its release wiring exists: the lock mirrors the @matrix-org/matrix-sdk-crypto-wasm release's own lock, which scripts/native-crypto-pin.mjs checks against native/crypto/wasm-lock.json, so a dependency update or lock-file maintenance here would only fail that check. Re-enable when native/crypto ships in a release build (M4), with the matrix-sdk crates still left to the WASM bump.",
       "matchManagers": ["cargo"],
-      "matchPackageNames": [
-        "matrix-sdk-crypto",
-        "matrix-sdk-common",
-        "matrix-sdk-sqlite"
-      ],
+      "matchFileNames": ["native/crypto/**"],
       "enabled": false
     },
     {
