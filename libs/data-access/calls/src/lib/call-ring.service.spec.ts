@@ -148,10 +148,15 @@ describe('CallRingService', () => {
     const c = clients['@me:hs'];
     live(c, { ...ringEv(), type: 'm.room.encrypted', content: {} });
     expect(service.incomingRing()).toBeNull();
+    const set = vi.spyOn(
+      (service as unknown as { ring: { set(v: unknown): void } }).ring,
+      'set',
+    );
     c.emit('Event.decrypted', ev(ringEv()));
     expect(service.incomingRing()?.id).toBe('$ring');
     c.emit('Event.decrypted', ev(ringEv()));
     expect(service.incomingRing()?.id).toBe('$ring');
+    expect(set.mock.calls.filter(([ring]) => ring !== null)).toHaveLength(1);
 
     service.dismiss();
     live(c, {
@@ -173,7 +178,35 @@ describe('CallRingService', () => {
   it('clears when the caller leaves the call', () => {
     const c = clients['@me:hs'];
     live(c, ringEv());
+    c.members.length = 0;
     c.emit('RoomState.events', memberEv('@bob:hs', {}));
+    expect(service.incomingRing()).toBeNull();
+  });
+
+  it('keeps ringing while another caller device is still in the call', () => {
+    const c = clients['@me:hs'];
+    live(c, ringEv());
+    // The default member is the remaining device; the event is the other one leaving.
+    c.emit('RoomState.events', memberEv('@bob:hs', {}));
+    expect(service.incomingRing()).not.toBeNull();
+  });
+
+  it('rings when the caller membership and the ring arrive in one batch', () => {
+    const c = clients['@me:hs'];
+    c.members.length = 0;
+    c.members.push(
+      memberEv('@bob:hs', { memberships: [{ application: 'm.call' }] }),
+    );
+    c.emit('RoomState.events', c.members[0]);
+    live(c, ringEv());
+    expect(service.incomingRing()?.id).toBe('$ring');
+  });
+
+  it('forgets an encrypted ring that failed to decrypt', () => {
+    const c = clients['@me:hs'];
+    live(c, { ...ringEv(), type: 'm.room.encrypted', content: {} });
+    c.emit('Event.decrypted', ev({ ...ringEv(), failed: true }));
+    c.emit('Event.decrypted', ev(ringEv()));
     expect(service.incomingRing()).toBeNull();
   });
 

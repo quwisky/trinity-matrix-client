@@ -156,6 +156,15 @@
     --trinity-banner-inset-top: var(--trinity-top-inset);
   }
 
+  /* The incoming-call prompt is fixed, so it clears the strip by this estimate of the strip's
+   * height below its own top inset: padding, border and the tallest button (`call-host.scss`). */
+  .app-frame:has(> trn-call-host .call-host__strip) {
+    --call-strip-button: max(2rem, var(--trinity-interaction-target-min-size));
+    --trinity-call-strip-height: calc(
+      var(--trinity-space-1) * 2 + 1px + var(--call-strip-button)
+    );
+  }
+
   .app-frame > trn-banner ~ *,
   .app-frame > trn-call-host:has(.call-host__strip) ~ *,
   .rooms-shell > :not(.rooms-workspace):has(trn-banner) ~ * {

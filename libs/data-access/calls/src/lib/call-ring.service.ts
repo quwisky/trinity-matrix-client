@@ -130,8 +130,9 @@ export class CallRingService implements OnDestroy {
       }),
       onDecrypted: guard((event) => {
         const id = event.getId();
-        if (!id || !pending.has(id) || event.isDecryptionFailure()) return;
+        if (!id || !pending.has(id)) return;
         pending.delete(id);
+        if (event.isDecryptionFailure()) return;
         this.consider(userId, client, event);
       }),
       onState: guard((event) => this.onMemberState(userId, event)),
@@ -186,15 +187,11 @@ export class CallRingService implements OnDestroy {
     );
     if (expiresAt === null || !this.isDirect(client, roomId)) return;
     const room = client.getRoom(roomId);
-    const members = (room
-      ?.getLiveTimeline()
-      .getState(EventTimeline.FORWARDS)
-      ?.getStateEvents(CALL_MEMBER_TYPE) ?? []) as MatrixEvent[];
     const isLive = (who: string): boolean =>
-      members
-        .filter((m) => m.getSender() === who)
-        .some((m) => callParticipants([raw(m)], now).count > 0);
-    // A ring replayed by a reload must not outlive the caller's call.
+      this.isInCall(client, roomId, who, now);
+    // A ring replayed by a reload must not outlive the caller's call. Safe to require the caller's
+    // membership: Element Call sends the ring after its own membership echo, and membership is
+    // unencrypted state applied before later timeline events of the same sync.
     if (isLive(userId) || !isLive(sender)) return;
     this.clear();
     this.ring.set({
@@ -209,6 +206,22 @@ export class CallRingService implements OnDestroy {
     this.timer = setTimeout(() => {
       if (this.ring()?.id === id) this.clear();
     }, expiresAt - now);
+  }
+
+  private isInCall(
+    client: MatrixClient,
+    roomId: string,
+    who: string,
+    now: number,
+  ): boolean {
+    const members = (client
+      .getRoom(roomId)
+      ?.getLiveTimeline()
+      .getState(EventTimeline.FORWARDS)
+      ?.getStateEvents(CALL_MEMBER_TYPE) ?? []) as MatrixEvent[];
+    return members
+      .filter((m) => m.getSender() === who)
+      .some((m) => callParticipants([raw(m)], now).count > 0);
   }
 
   private isDirect(client: MatrixClient, roomId: string): boolean {
@@ -230,10 +243,17 @@ export class CallRingService implements OnDestroy {
     ) {
       return;
     }
-    const live = callParticipants([raw(event)], Date.now()).count > 0;
+    const now = Date.now();
+    const live = callParticipants([raw(event)], now).count > 0;
     const sender = event.getSender();
-    if ((sender === userId && live) || (sender === ring.callerId && !live)) {
+    if (sender === userId && live) {
       this.clear();
+    } else if (sender === ring.callerId && !live) {
+      // Another device of the caller may still be in the call.
+      const client = this.bindings.get(userId)?.client;
+      if (!client || !this.isInCall(client, ring.roomId, ring.callerId, now)) {
+        this.clear();
+      }
     }
   }
 }

@@ -5,6 +5,7 @@ import {
   type WorkspaceNavigationOutcome,
 } from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
+import { TrnToastService } from '@trinity/components/overlay';
 import {
   CallRingService,
   CallService,
@@ -43,6 +44,7 @@ async function build(
   // Reads the preference as the real service does, so a tracked call would re-run.
   const toneStart = vi.fn(() => void sound());
   const toneStop = vi.fn();
+  const announce = vi.fn();
   const order: string[] = [];
   const navigate = vi.fn((): Observable<WorkspaceNavigationOutcome> => {
     order.push('navigate');
@@ -54,6 +56,7 @@ async function build(
       provideTrnIcons(),
       MockProvider(CallRingService, { incomingRing, decline, dismiss }),
       MockProvider(CallService, { start }),
+      MockProvider(TrnToastService, { announceWhileAppHidden: announce }),
       MockProvider(RingToneService, { start: toneStart, stop: toneStop }),
       MockProvider(WorkspaceNavigationService, { navigate }),
       MockProvider(AppearanceEffects, {
@@ -89,6 +92,7 @@ async function build(
     order,
     toneStart,
     toneStop,
+    announce,
     sound,
     update,
   };
@@ -189,6 +193,19 @@ describe('CallRingComponent', () => {
     expect(toneStop).toHaveBeenCalled();
   });
 
+  it('stops the tone before a replacing ring starts its own', async () => {
+    const { incomingRing, toneStart, toneStop, update } = await build();
+    toneStart.mockClear();
+    toneStop.mockClear();
+    incomingRing.set({ ...RING, id: '$two', accountId: '@other:hs' });
+    await update();
+    expect(toneStop).toHaveBeenCalled();
+    expect(toneStart).toHaveBeenCalledWith('@other:hs');
+    expect(toneStop.mock.invocationCallOrder[0]).toBeLessThan(
+      toneStart.mock.invocationCallOrder[0],
+    );
+  });
+
   it('does not restart the tone when the sound preference flips', async () => {
     const { toneStart, update, sound } = await build();
     sound.set(false);
@@ -209,6 +226,39 @@ describe('CallRingComponent', () => {
     await build();
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Join' }),
+    );
+  });
+
+  it('leaves focus alone while the composer holds it', async () => {
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    composer.focus();
+    await build();
+    expect(document.activeElement).toBe(composer);
+    composer.remove();
+  });
+
+  it('describes the prompt by the caller line', async () => {
+    await build();
+    const dialog = screen.getByRole('alertdialog');
+    const id = dialog.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(id)?.textContent).toContain(
+      'Bob is calling',
+    );
+  });
+
+  it('announces the caller through the live region a modal cannot hide', async () => {
+    const { incomingRing, update, announce } = await build(null);
+    expect(announce).not.toHaveBeenCalled();
+    incomingRing.set(RING);
+    await update();
+    expect(announce).toHaveBeenCalledWith('Bob is calling', 'assertive');
+  });
+
+  it('sits below the call strip through a custom property', async () => {
+    await build();
+    expect(screen.getByRole('alertdialog').className).toContain(
+      'var(--trinity-call-strip-height,0px)',
     );
   });
 

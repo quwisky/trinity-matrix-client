@@ -14,6 +14,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AppearanceEffects } from '@trinity/application/appearance';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
+import { TrnToastService } from '@trinity/components/overlay';
 import { CallRingService, CallService } from '@trinity/data-access/calls';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
@@ -34,6 +35,7 @@ export class CallRingComponent {
   private readonly clients = inject(MatrixClientService);
   private readonly identities = inject(AccountIdentitiesService);
   private readonly document = inject(DOCUMENT);
+  private readonly toasts = inject(TrnToastService);
   private readonly appearance = inject(AppearanceEffects);
   private readonly destroyRef = inject(DestroyRef);
   private readonly join = viewChild<ElementRef<HTMLButtonElement>>('join');
@@ -63,16 +65,27 @@ export class CallRingComponent {
     effect(() => {
       // Untracked: start() reads the sound preference, which must not restart the tone.
       const accountId = this.ring()?.accountId;
-      untracked(() =>
-        accountId ? this.tone.start(accountId) : this.tone.stop(),
-      );
+      // Stops first: a ring for an account with sound off must silence a tone already playing.
+      untracked(() => {
+        this.tone.stop();
+        if (accountId) this.tone.start(accountId);
+      });
     });
     this.destroyRef.onDestroy(() => this.tone.stop());
     effect(() => {
       const join = this.join()?.nativeElement;
       const focused = this.document.activeElement;
-      if (join && !focused?.closest('[role="dialog"], [role="alertdialog"]')) {
-        join.focus();
+      // Never steals focus from the composer or any other element.
+      if (join && (!focused || focused === this.document.body)) join.focus();
+    });
+    effect(() => {
+      const ring = this.ring();
+      // The prompt lives inside the app root, which a modal hides from assistive tech.
+      if (ring) {
+        this.toasts.announceWhileAppHidden(
+          `${ring.callerName} is calling`,
+          'assertive',
+        );
       }
     });
   }

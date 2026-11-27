@@ -72,15 +72,25 @@ export class TrnToastService {
         toast(message, options);
     }
 
-    // CDK marks the app root aria-hidden while a modal is open, and sonner's live region lives
-    // inside that root, so screen readers cannot hear a toast exactly when a dialog error needs
-    // announcing. LiveAnnouncer owns a body-level aria-live node that CDK exempts from hiding.
-    // Announce only in this state, to avoid duplicating sonner's own announcement.
+    // Sonner's live region lives inside the app root, so it is silent while a modal hides the
+    // root; announce only then, to avoid duplicating sonner's own announcement.
+    this.announceWhileAppHidden(
+      message,
+      variant === 'danger' ? 'assertive' : 'polite',
+    );
+  }
+
+  /**
+   * CDK marks the app root aria-hidden while a modal is open, so screen readers cannot hear
+   * anything inside it exactly when it may matter. LiveAnnouncer owns a body-level aria-live
+   * node that CDK exempts from hiding. Announces only in that state.
+   */
+  announceWhileAppHidden(
+    message: string,
+    politeness: 'polite' | 'assertive',
+  ): void {
     if (this.document.querySelector('body > trn-root[aria-hidden="true"]')) {
-      void this.liveAnnouncer.announce(
-        message,
-        variant === 'danger' ? 'assertive' : 'polite',
-      );
+      void this.liveAnnouncer.announce(message, politeness);
     }
   }
 }
