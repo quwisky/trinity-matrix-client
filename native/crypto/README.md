@@ -64,9 +64,14 @@ Methods, parameter names and result shapes follow the
   `shieldState: { lax, strict }`. `undefined` becomes an absent field.
 - A JavaScript callback cannot cross the surface. `exportRoomKeys` takes no predicate and
   exports every key (matrix-js-sdk passes `() => true`); the import calls take no progress
-  listener and return when done. WASM objects passed in travel as their serialised form:
-  `saveBackupDecryptionKey` takes `decryptionKeyBase64`, `importBackedUpRoomKeys` takes
-  `{ roomId: { sessionId: data } }` for WASM's nested `Map`.
+  listener and return when done, with `lastProgress`: the arguments of WASM's last listener
+  call (`[progress, total]`, or `[progress, total, failures]` for `importBackedUpRoomKeys`),
+  `null` when WASM would not call it, for the shim to replay. `importBackedUpRoomKeys` also
+  returns `failures`, the sessions that did not parse. WASM objects passed in travel as their
+  serialised form: `saveBackupDecryptionKey` takes `decryptionKeyBase64`,
+  `importBackedUpRoomKeys` takes `{ roomId: { sessionId: data } }` for WASM's nested `Map`.
+- An invalid backup decryption key fails with code `CryptoError` and a fixed message, where
+  WASM's decoder message names a character of the key and its offset.
 
 ### Events
 
@@ -81,9 +86,10 @@ their calls land; `surface.json` names each one.
 - Every call moves the events it caused into the queue before it returns, so a poll right
   after a call sees them. Each event is delivered once; events of one type keep their order
   (WASM's separate callbacks give no order across types either).
-- `pollEvents` never waits for a call in flight: the queue has its own lock, held only while
-  events move, never across an await or while waiting for another lock, and released before
-  the host reads the response.
+- `pollEvents` never waits for a call in flight. The queue has its own lock, held only while
+  events move: a call takes it while holding its machine lock, `pollEvents` takes it holding
+  none, and nothing waits for another lock while holding it. It is released before the host
+  reads the response.
 - The queue keeps 1024 events. When the host falls behind, later events are not queued and
   `dropped` counts them (and any batch the store's broadcast channel skipped). A non-zero
   `dropped` means the host's view is stale: for room keys, retry every undecryptable event.
@@ -119,6 +125,10 @@ The crate wipes its own copies of the key, but it cannot wipe the request string
 buffers the key passed through on the way in, or on Android the JVM's own string and the
 buffer the JVM hands to native code. Pass the key only in `init`, and drop the
 caller's copies as soon as `init` returns.
+
+The backup decryption key is no better off: the crate wipes its own base64 copy in
+`saveBackupDecryptionKey`, but not the request string or serde's buffers, and the base64 that
+`getBackupKeys` returns stays in the response string, as it does in WASM's `BackupKeys`.
 
 ## For the JNI wrapper
 
