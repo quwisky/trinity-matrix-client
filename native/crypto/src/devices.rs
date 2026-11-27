@@ -268,6 +268,7 @@ pub struct EncryptToDeviceParams {
     content: Value,
     /// A WASM `CollectStrategy` constructor name; all devices when absent, as in WASM.
     share_strategy: Option<String>,
+    ed25519_key: Option<String>,
 }
 
 /// `Device.encryptToDeviceEvent`: the encrypted content as a JSON string.
@@ -279,10 +280,15 @@ pub async fn encrypt_to_device_event(
         Ok(matrix_sdk_crypto::CollectStrategy::AllDevices),
         collect_strategy,
     )?;
-    let encrypted = resolve_device(machine, &params.user_id, &params.device_id, None)
-        .await?
-        .encrypt_event_raw(&params.event_type, &params.content, strategy)
-        .await?;
+    let encrypted = resolve_device(
+        machine,
+        &params.user_id,
+        &params.device_id,
+        params.ed25519_key.as_deref(),
+    )
+    .await?
+    .encrypt_event_raw(&params.event_type, &params.content, strategy)
+    .await?;
     Ok(Value::String(encrypted.json().get().to_owned()))
 }
 

@@ -63,7 +63,7 @@
         "status": "done",
         "area": "devices-identities",
         "native": "encryptToDeviceEvent",
-        "note": "call: takes userId and deviceId; content is JSON, not a string"
+        "note": "call: takes userId, deviceId and ed25519Key (StaleObject when the device has another key now); content is JSON, not a string"
       },
       "free": {
         "status": "shim",
@@ -114,7 +114,8 @@
       },
       "requestVerification": {
         "status": "planned",
-        "area": "devices-identities"
+        "area": "devices-identities",
+        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
       },
       "setLocalTrust": {
         "status": "done",
@@ -451,11 +452,13 @@
       },
       "requestVerification": {
         "status": "planned",
-        "area": "devices-identities"
+        "area": "devices-identities",
+        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
       },
       "verificationRequestContent": {
         "status": "planned",
-        "area": "devices-identities"
+        "area": "devices-identities",
+        "note": "slice C: must take the snapshot's masterKey and refuse with StaleObject, as the other identity calls do"
       }
     },
     "OwnUserIdentity": {
@@ -478,7 +481,8 @@
       },
       "requestVerification": {
         "status": "planned",
-        "area": "devices-identities"
+        "area": "devices-identities",
+        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
       },
       "selfSigningKey": {
         "status": "done",
