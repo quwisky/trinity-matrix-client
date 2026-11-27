@@ -38,10 +38,15 @@ a native and a WASM observer see the same cross-signed users through the in-test
 another user's unverified device, verification and a later key change (violation, pinning,
 withdrawal), pinning a changed identity, local trust and blacklisting, own devices signed by
 cross-signing, signatures tampered with, cross-signing bootstrap and key import (also with wrong
-keys), tracked users marked dirty and backup info signed by own devices. All three suites share
-`scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails unless
-it called each entry's native method. Without cargo on `PATH` the suites are skipped and say
-why; with `CI` set they fail instead.
+keys), tracked users marked dirty and backup info signed by own devices. They also check what
+must stay untrusted: a reset of the own identity until it is verified again, a self-signing key
+its master key did not sign, a forged user-signing signature, a device signed by another user's
+self-signing key, and which devices each `deviceBasedStrategy` shares with. All three suites
+share `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails
+unless the answer of each entry's native method reached a comparison with WASM (`expectSame`,
+or the homeserver's comparison of the requests it saw); a call made only for setup, or whose
+answer is dropped, does not count. Without cargo on `PATH` the suites are skipped and say why;
+with `CI` set they fail instead.
 CI runs the crate checks and this test in the `Native crypto (Rust)` job when the crate, its
 scripts, the WASM version or the CI workflow change.
 
@@ -141,7 +146,9 @@ from its sources by `scripts/native-crypto-surface.mjs` (TypeScript's checker; t
 `.d.ts` and `declare module` augmentations). Members of stateful classes carry `status`
 (`done`: answered by the `native` call; `planned`; `shim`: answered in JavaScript, with a
 `note`), an `area`, and for callbacks the `event` type. `wasmHelpers` are stateless helpers that
-keep running on WASM; `pureJs` are value types the shim implements. `node
+keep running on WASM; `pureJs` are value types the shim implements, and `shimNotes` says what
+the shim must do for one of them or a helper where that is not obvious (such as mapping
+`CollectStrategy.deviceBasedStrategy` onto the crate's strategy names). `node
 scripts/native-crypto-surface.mjs write` regenerates the lists and keeps the hand-written
 fields; `scripts/native-crypto-surface.spec.mjs`, part of `pnpm nx test scripts`, fails when the
 manifest and matrix-js-sdk disagree or a `done` member has no contract case.
