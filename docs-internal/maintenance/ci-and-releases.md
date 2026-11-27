@@ -55,10 +55,11 @@ the Synapse nightly runs the same journeys against `main`. It is a step, not an
 
 A `calls` step decides the same way whether `calls-e2e` runs: `true` for a pull request that changes
 `libs/data-access/calls/`, the call host or ring prompt (`call-*/` under
-`libs/application/runtime/src/lib/application-root/`), the call card or stage in `libs/feature/rooms`
-(`call-card/`, `room-call/`), a `call-*.ts` helper in `libs/util/matrix`, the bundled Element Call's
+`libs/application/runtime/src/lib/application-root/`), the call card or stage, the room header or the room row in
+`libs/feature/rooms` (`call-card/`, `room-call/`, `room-header/`, `sidebar-room-row/`), a `call-*.ts` helper in `libs/util/matrix`, the bundled Element Call's
 `apps/trinity/src/element-call/`, the call stack (`e2e/support/homeserver/calls/`), the Synapse adapter
-or a shared harness file it layers on, or `e2e/browser/journeys/conversations/call.spec.mts`, or an
+or a shared harness file it layers on (including the shared `docker-compose.yml`), the support files the
+journey imports (`e2e/support/` `session.mts`, `app.mts`, `account.mts`, `message-composer.mts`), or `e2e/browser/journeys/conversations/call.spec.mts`, or an
 `@element-hq/element-call-embedded` line in a manifest. Pushes answer `false`; the Synapse nightly runs
 the journey against `main`.
 

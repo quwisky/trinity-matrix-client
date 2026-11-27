@@ -706,6 +706,13 @@ describe('Call journey', () => {
       'e2e/support/homeserver/kind.mts',
       'e2e/support/homeserver/synapse/adapter.mjs',
       'e2e/browser/journeys/conversations/call.spec.mts',
+      'e2e/support/homeserver/docker-compose.yml',
+      'e2e/support/session.mts',
+      'e2e/support/app.mts',
+      'e2e/support/account.mts',
+      'e2e/support/message-composer.mts',
+      'libs/feature/rooms/src/lib/room-header/room-header.component.html',
+      'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-row/sidebar-room-row.component.html',
     ])('runs the journey when a pull request changes %s', (path) => {
       expect(detect(path)).toBe('run=true');
     });
@@ -716,6 +723,8 @@ describe('Call journey', () => {
       'libs/util/matrix/src/lib/message-view.ts',
       'libs/application/runtime/src/lib/application-root/title-bar/title-bar.component.ts',
       'e2e/support/homeserver/lease.mts',
+      'e2e/support/sessions.mts',
+      'libs/feature/rooms/src/lib/channel-sidebar/sidebar-room-list/sidebar-room-list.component.ts',
       'e2e/browser/journeys/conversations/voice-message.spec.mts',
     ])('skips the journey when a pull request changes only %s', (path) => {
       expect(detect(path)).toBe('run=false');

@@ -129,9 +129,10 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
       # Whether a pull request touches what `calls-e2e` checks: the call capability, the call
-      # host, ring prompt, card and stage, the call helpers in libs/util/matrix, the bundled
-      # Element Call's config, the call stack and the Synapse and shared harness it layers on,
-      # the journey itself, and an Element Call version bump. Pushes answer false, as for
+      # host, ring prompt, card and stage, the room header's call button and the room row's
+      # call marker, the call helpers in libs/util/matrix, the bundled Element Call's config,
+      # the call stack and the Synapse and shared harness it layers on, the support files the
+      # journey imports, the journey itself, and an Element Call version bump. Pushes answer false, as for
       # `mas`: the Synapse nightly runs the journey against main.
       - id: calls
         env:
@@ -140,7 +141,7 @@ jobs:
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/data-access/calls/|libs/application/runtime/src/lib/application-root/call-[^/]+/|libs/feature/rooms/src/lib/(call-card|room-call)/|libs/util/matrix/src/lib/call-[^/]*\.ts$|apps/trinity/src/element-call/|e2e/support/homeserver/(calls|synapse)/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/conversations/call\.spec\.mts$)'
+            paths='^(libs/data-access/calls/|libs/application/runtime/src/lib/application-root/call-[^/]+/|libs/feature/rooms/src/lib/(call-card|room-call|room-header|channel-sidebar/sidebar-room-list/sidebar-room-row)/|libs/util/matrix/src/lib/call-[^/]*\.ts$|apps/trinity/src/element-call/|e2e/support/homeserver/(calls|synapse)/|e2e/support/homeserver/(Caddyfile|docker-compose\.yml|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/support/(session|app|account|message-composer)\.mts$|e2e/browser/journeys/conversations/call\.spec\.mts$)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
             if grep -qE "$paths" <<< "$changed" || grep -qE '^[+-].*@element-hq/element-call-embedded' <<< "$manifests"; then
