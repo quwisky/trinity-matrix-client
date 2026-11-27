@@ -268,6 +268,13 @@ describe('ApplicationRootComponent', () => {
     ).not.toBeNull();
   });
 
+  it('shows the ring prompt in the same deferred block as the call host', async () => {
+    const { fixture, container } = await setup(READY);
+    const [callHost] = await fixture.getDeferBlocks();
+    await callHost.render(DeferBlockState.Complete);
+    expect(container.querySelector('trn-call-ring')).not.toBeNull();
+  });
+
   it('puts the call strip under the title bar, above the routed page', async () => {
     const { fixture, container } = await setup(READY);
     const [callHost] = await fixture.getDeferBlocks();

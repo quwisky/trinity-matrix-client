@@ -55,6 +55,7 @@ import { VerificationHostComponent } from '../verification-host/verification-hos
 import { ApplicationRecoveryPresenter } from './application-recovery.presenter';
 import { AppLockCoverComponent } from './app-lock-cover/app-lock-cover.component';
 import { CallHostComponent } from './call-host/call-host.component';
+import { CallRingComponent } from './call-ring/call-ring.component';
 import { SessionLockNoticeComponent } from './session-lock-notice/session-lock-notice.component';
 import { sessionLockNotice } from './session-lock-notice/session-lock-notice.model';
 import type { SystemStatusComponent } from './system-status/system-status.component';
@@ -88,6 +89,7 @@ export const STARTUP_STALL_NOTICE_MS = 15_000;
     SessionLockNoticeComponent,
     AppLockCoverComponent,
     CallHostComponent,
+    CallRingComponent,
   ],
 })
 export class ApplicationRootComponent {

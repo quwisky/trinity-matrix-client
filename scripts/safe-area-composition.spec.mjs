@@ -69,6 +69,10 @@ const TOP_INSET_OWNERS = new Map([
     'a fixed, hidden probe measuring whether the page reaches under the status bar',
   ],
   [
+    'libs/application/runtime/src/lib/application-root/call-ring/call-ring.component.html',
+    'the fixed incoming-call prompt, under the status bar and the title row',
+  ],
+  [
     'libs/application/runtime/src/lib/application-root/app-lock-cover/app-lock-cover.component.html',
     'top-layer dialog moved to <body>',
   ],
