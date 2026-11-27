@@ -17,7 +17,8 @@ cargo test --all-features
 
 `cargo build --bin trinity-crypto-cli` builds a host binary that reads one request per line
 on stdin and writes one response per line on stdout; a line holding a JSON array is a batch.
-The interop test drives it against the WASM package; see "Interop with WASM" below.
+The interop and contract tests drive it against the WASM package; see "Interop with WASM"
+below.
 
 ## Interop with WASM
 
@@ -26,7 +27,14 @@ the repository's `@matrix-org/matrix-sdk-crypto-wasm` as the other, through a sm
 homeserver: key claims and room keys both ways, encryption both ways, a replayed to-device
 message, and the request shapes of each step compared with each other and with
 `scripts/native-crypto-interop.golden.json` (update it with `-u` after a deliberate change).
-Without cargo on `PATH` the suite is skipped and says why; with `CI` set it fails instead.
+The same target runs `scripts/native-crypto-contract.test.mjs`: each `done` call of the surface
+manifest (below) and its WASM counterpart run the same step and must answer the same, by value
+(by shape only where the answer is random, such as fresh ciphertext). Room keys exported on one
+side import on the other, a backup made on one side restores on the other, and a malformed key
+or a tampered backup signature fails the same way on both. Both suites share
+`scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails unless
+it called each entry's native method. Without cargo on `PATH` the suites are skipped and say
+why; with `CI` set they fail instead.
 CI runs the crate checks and this test in the `Native crypto (Rust)` job when the crate, its
 scripts, the WASM version or the CI workflow change.
 
@@ -54,6 +62,48 @@ Methods, parameter names and result shapes follow the
   a JSON string, exactly as WASM builds it.
 - A WASM method that takes `strict` (`shieldState`) is returned for both values:
   `shieldState: { lax, strict }`. `undefined` becomes an absent field.
+- A JavaScript callback cannot cross the surface. `exportRoomKeys` takes no predicate and
+  exports every key (matrix-js-sdk passes `() => true`); the import calls take no progress
+  listener and return when done. WASM objects passed in travel as their serialised form:
+  `saveBackupDecryptionKey` takes `decryptionKeyBase64`, `importBackedUpRoomKeys` takes
+  `{ roomId: { sessionId: data } }` for WASM's nested `Map`.
+
+### Events
+
+What WASM reports through `registerRoomKeyUpdatedCallback` and its siblings is queued per
+device and read with `pollEvents` (no parameters), which answers
+`{ "events": [ … ], "dropped": n }` and empties the queue. Each event is
+`{ "type", … }` with one callback invocation's payload: `roomKeysReceived` and
+`roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields. The
+other callbacks (devices, identities, secrets, verification) become event types of their own as
+their calls land; `surface.json` names each one.
+
+- Every call moves the events it caused into the queue before it returns, so a poll right
+  after a call sees them. Each event is delivered once; events of one type keep their order
+  (WASM's separate callbacks give no order across types either).
+- `pollEvents` never waits for a call in flight: the queue has its own lock, held only while
+  events move, never across an await or while waiting for another lock, and released before
+  the host reads the response.
+- The queue keeps 1024 events. When the host falls behind, later events are not queued and
+  `dropped` counts them (and any batch the store's broadcast channel skipped). A non-zero
+  `dropped` means the host's view is stale: for room keys, retry every undecryptable event.
+- After a panic drops the machine, `pollEvents` still returns what it queued, and `init`
+  listens to the reloaded machine. `close` discards the queue: poll before closing.
+- Not every loss can be counted: the store drops a withheld batch its broadcast channel
+  skipped without saying so. The channel holds 16 batches and every call drains it, so only a
+  single call that stores more than 16 withheld batches could lose one.
+
+### Surface manifest
+
+`surface.json` lists every WASM class and member the installed matrix-js-sdk uses, generated
+from its sources by `scripts/native-crypto-surface.mjs` (TypeScript's checker; the WASM
+`.d.ts` and `declare module` augmentations). Members of stateful classes carry `status`
+(`done`: answered by the `native` call; `planned`; `shim`: answered in JavaScript, with a
+`note`), an `area`, and for callbacks the `event` type. `wasmHelpers` are stateless helpers that
+keep running on WASM; `pureJs` are value types the shim implements. `node
+scripts/native-crypto-surface.mjs write` regenerates the lists and keeps the hand-written
+fields; `scripts/native-crypto-surface.spec.mjs`, part of `pnpm nx test scripts`, fails when the
+manifest and matrix-js-sdk disagree or a `done` member has no contract case.
 
 `init` opens the store and creates or loads the account. With `storePath` it opens a SQLite
 store with `storeKey`, a raw 32-byte key in base64 (never a passphrase); without either the
@@ -81,8 +131,8 @@ caller's copies as soon as `init` returns.
   while panics unwind.
 - Call from a background thread: a call blocks its thread until it is done, and must never
   run on a thread of the crate's own runtime.
-- Callbacks (M2) must be queued and delivered after the call that produced them returns, not
-  from inside the call.
+- Events are polled with `pollEvents` after a call returns (see "Events"); the crate never
+  calls into the JVM.
 
 ## Android (debug builds only)
 
