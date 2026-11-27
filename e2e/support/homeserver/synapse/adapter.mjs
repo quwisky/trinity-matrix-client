@@ -6,6 +6,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { DATA, HERE, REMOTE_DATA } from '../paths.mjs';
+import { withCalls } from '../calls/adapter.mjs';
 import {
   DEX_ISSUER,
   HS_TLS,
@@ -376,6 +377,10 @@ export async function ensureConfig(ctx) {
   const patched = `${yaml.replace(region, '\n').replace(/\s+$/, '')}${oidc}\n`;
   const oidcChanged = patched !== yaml;
   yaml = patched;
+  // Likewise rewritten every start: on with TRINITY_E2E_CALLS=1, gone without it.
+  const withRtc = withCalls(yaml, ctx.calls === true);
+  const callsChanged = withRtc !== yaml;
+  yaml = withRtc;
 
   if (
     additions.length ||
@@ -383,6 +388,7 @@ export async function ensureConfig(ctx) {
     listenerChanged ||
     syncCacheChanged ||
     oidcChanged ||
+    callsChanged ||
     trustedKeysChanged
   ) {
     await writeFile(CONFIG, yaml, 'utf8');

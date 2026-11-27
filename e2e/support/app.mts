@@ -118,6 +118,8 @@ export interface HomeserverSession {
     user: string;
     pass: string;
   };
+  /** True when the opt-in call stack (TRINITY_E2E_CALLS=1) runs; absent otherwise. */
+  calls?: boolean;
 }
 
 /** Read the homeserver session published by the invocation owner. */

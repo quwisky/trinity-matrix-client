@@ -1,0 +1,52 @@
+# Opt-in call stack (TRINITY_E2E_CALLS=1), layered on ../docker-compose.yml and
+# ../synapse/docker-compose.yml by paths.mjs.
+#
+# LiveKit (the SFU) and lk-jwt-service (MatrixRTC's token service) beside the primary
+# Synapse, which calls/adapter.mjs switches to MatrixRTC. The app's CSP allows only
+# https:/wss: connections, so Caddy fronts LiveKit's signalling on wss://localhost:7443;
+# media goes straight to LiveKit's published loopback ports. Nothing here keeps state:
+# stop.mjs always names this file, so `down` removes both containers.
+services:
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    container_name: trinity-e2e-livekit
+    restart: 'no'
+    command: ['--config', '/etc/livekit.yaml']
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/calls/livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - '127.0.0.1:7881:7881'
+      - '127.0.0.1:7882:7882/udp'
+    networks:
+      - trinity-e2e
+
+  # Shares Caddy's namespace, so the LIVEKIT_URL it hands to clients, wss://localhost:7443,
+  # is Caddy for it too; it trusts Caddy's local CA from the shared caddy-data volume.
+  lk-jwt:
+    image: ghcr.io/element-hq/lk-jwt-service:0.10.0
+    container_name: trinity-e2e-lk-jwt
+    restart: 'no'
+    environment:
+      LIVEKIT_URL: wss://localhost:7443
+      LIVEKIT_KEY: trinity-e2e
+      LIVEKIT_SECRET: trinity-e2e-livekit-secret-0123456789abcdef
+      LIVEKIT_JWT_BIND: ':6080'
+      LIVEKIT_FULL_ACCESS_HOMESERVERS: localhost
+      LIVEKIT_AS_REGISTRATION_FILE: /etc/lk/app-service.yaml
+      LIVEKIT_HS_SERVER_NAME: localhost
+      LIVEKIT_CS_API_URL_OVERRIDES: localhost=http://homeserver:8008
+      SSL_CERT_FILE: /caddy-data/caddy/pki/authorities/local/root.crt
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/calls/app-service.yaml:/etc/lk/app-service.yaml:ro
+      - caddy-data:/caddy-data:ro
+    network_mode: 'service:caddy'
+
+  homeserver:
+    volumes:
+      - ${TRINITY_E2E_STATE_DIR:-.}/calls/app-service.yaml:/calls/app-service.yaml:ro
+
+  caddy:
+    ports:
+      - '127.0.0.1:7443:7443'
+      # lk-jwt-service's own listener, for the harness's readiness check.
+      - '127.0.0.1:6080:6080'

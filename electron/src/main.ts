@@ -1,6 +1,7 @@
 import { app, powerMonitor, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
+import { installScreenShare } from './screen-share';
 import { buildMenu } from './menu';
 import {
   createWindow,
@@ -100,6 +101,7 @@ if (!mayStart) {
     // Electron would otherwise auto-approve every powerful permission; allow only app
     // media, geolocation and sanitized clipboard writes.
     installPermissionPolicy(session.defaultSession);
+    installScreenShare(session.defaultSession);
     buildMenu({ packaged: app.isPackaged });
     registerHostCapabilityHandshake();
     registerTitleBarIpc();

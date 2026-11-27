@@ -1,6 +1,6 @@
 import { app, BrowserWindow, shell } from 'electron';
 import * as path from 'node:path';
-import { isAppUrl, START_URL } from './scheme';
+import { isAppUrl, isCallFrameUrl, START_URL } from './scheme';
 import { processDeepLinkQueue } from './deep-link';
 import { windowIconOptions } from './icons';
 import { watchRendererRecovery } from './renderer-recovery';
@@ -87,12 +87,7 @@ export function hardenContents(contents: Electron.WebContents): void {
   contents.on('will-attach-webview', (event) => event.preventDefault());
 }
 
-/** The bundled Element Call page: the one subframe that may use the camera and microphone. */
-function isCallFrameUrl(url: string): boolean {
-  return isAppUrl(url) && new URL(url).pathname.startsWith('/element-call/');
-}
-
-/** The app's main frame gets the app permissions; the call frame gets media only. */
+/** The app's main frame gets the app permissions; the call frame gets media and screen capture. */
 function isAllowedFramePermission(
   isMainFrame: boolean,
   requestingUrl: string,
@@ -100,7 +95,8 @@ function isAllowedFramePermission(
 ): boolean {
   return isMainFrame
     ? isAppUrl(requestingUrl) && isAllowedAppPermission(permission)
-    : isCallFrameUrl(requestingUrl) && permission === 'media';
+    : isCallFrameUrl(requestingUrl) &&
+        (permission === 'media' || permission === 'display-capture');
 }
 
 /** Electron emits persistent-storage at runtime but omits it from its permission union. */
@@ -118,7 +114,8 @@ function isAllowedAppPermission(permission: string): boolean {
  * Restrict renderer permission requests to what the app uses: media (microphone for voice
  * messages, camera for QR verification), geolocation (location sharing), persistent
  * storage, sanitized clipboard writes for explicit copy actions, and element fullscreen
- * (the video player). Of subframes, only the bundled call frame gets media, for calls.
+ * (the video player). Of subframes, only the bundled call frame gets media and screen
+ * capture, for calls; screen-share.ts then asks the user which screen or window to share.
  * Without a handler Electron would auto-approve every other powerful permission.
  * Clipboard reads remain denied.
  */

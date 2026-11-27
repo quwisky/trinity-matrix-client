@@ -47,6 +47,7 @@ vi.mock('./scheme', () => ({
   registerAppProtocol: vi.fn(),
 }));
 vi.mock('./cors', () => ({ installMatrixCors: vi.fn() }));
+vi.mock('./screen-share', () => ({ installScreenShare: vi.fn() }));
 vi.mock('./cors-ipc', () => ({ registerCorsIpc: vi.fn() }));
 vi.mock('./menu', () => ({ buildMenu: vi.fn() }));
 vi.mock('./window', () => ({
@@ -92,6 +93,7 @@ vi.mock('./app-identity', () => ({
 import { app, dialog, powerMonitor, session } from 'electron';
 import { registerAppProtocol, registerPrivilegedScheme } from './scheme';
 import { installMatrixCors } from './cors';
+import { installScreenShare } from './screen-share';
 import { buildMenu } from './menu';
 import { createWindow, getMainWindow } from './window';
 import { registerDockBadge } from './dock-badge';
@@ -153,6 +155,15 @@ describe('main bootstrap', () => {
   it('installs the CORS shim on session.defaultSession', () => {
     expect(installMatrixCors).toHaveBeenCalledTimes(1);
     expect(installMatrixCors).toHaveBeenCalledWith(session.defaultSession);
+  });
+
+  it('installs screen sharing on session.defaultSession before creating the window', () => {
+    expect(installScreenShare).toHaveBeenCalledExactlyOnceWith(
+      session.defaultSession,
+    );
+    expect(firstOrder(vi.mocked(installScreenShare))).toBeLessThan(
+      firstOrder(vi.mocked(createWindow)),
+    );
   });
 
   it('registers the dock-badge IPC handler at startup', () => {

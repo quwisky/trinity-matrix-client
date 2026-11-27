@@ -409,6 +409,45 @@ describe('installPermissionPolicy', () => {
       allowed,
     );
   });
+
+  it.each([
+    [
+      'grants',
+      'the bundled call frame',
+      false,
+      'trinity://app/element-call/index.html',
+      true,
+    ],
+    ['refuses', 'the app main frame', true, 'trinity://app/rooms', false],
+    [
+      'refuses',
+      'a remote widget frame',
+      false,
+      'https://widget.example/',
+      false,
+    ],
+    [
+      'refuses',
+      'an app frame outside the call',
+      false,
+      'trinity://app/index.html',
+      false,
+    ],
+  ])(
+    '%s screen capture to %s',
+    (_verdict, _name, isMainFrame, url, allowed) => {
+      const s = fakeSession();
+      installPermissionPolicy(s as never);
+      const request = s.setPermissionRequestHandler.mock.calls[0][0];
+      const granted = vi.fn();
+
+      request(appContents, 'display-capture', granted, {
+        isMainFrame,
+        requestingUrl: url,
+      });
+      expect(granted).toHaveBeenCalledWith(allowed);
+    },
+  );
 });
 
 describe('titleBarOptions', () => {

@@ -128,6 +128,30 @@ export function resolveMasEnabled(
 }
 
 /**
+ * Whether `TRINITY_E2E_CALLS=1` asked for the opt-in call stack (calls/docker-compose.yml):
+ * LiveKit and lk-jwt-service beside the primary Synapse, which gets MatrixRTC turned on.
+ * Exact values only. It needs Docker and `TRINITY_E2E_HOMESERVER=synapse`.
+ */
+export function resolveCallsEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const value = env['TRINITY_E2E_CALLS'] ?? '';
+  if (value !== '' && value !== '0' && value !== '1') {
+    throw new Error(`Unknown TRINITY_E2E_CALLS "${value}"; expected 1 or 0`);
+  }
+  if (value !== '1') return false;
+  if (resolveHomeserverRuntime(env) === 'native') {
+    throw new Error('TRINITY_E2E_CALLS=1 needs the Docker runtime');
+  }
+  if (resolveHomeserverKind(env) !== 'synapse') {
+    throw new Error(
+      'TRINITY_E2E_CALLS=1 runs on Synapse; set TRINITY_E2E_HOMESERVER=synapse',
+    );
+  }
+  return true;
+}
+
+/**
  * Whether `TRINITY_E2E_SSO_PROVIDER=mock` asked Dex to sign in through its `mockCallback`
  * connector, which answers without a login form. The iOS runner sets it: the Simulator
  * drops keystrokes typed into the Safari view. Only the native runtime writes its own

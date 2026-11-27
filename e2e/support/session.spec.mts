@@ -219,4 +219,20 @@ describe('E2E session contract', () => {
       }),
     ).toThrow(/invalid MAS account/);
   });
+
+  it('carries the call stack flag and rejects a non-boolean one', () => {
+    const value = descriptor('/workspace');
+    expect(
+      validateSession({
+        ...value,
+        homeserver: { ...value.homeserver!, calls: true },
+      }).homeserver?.calls,
+    ).toBe(true);
+    expect(() =>
+      validateSession({
+        ...value,
+        homeserver: { ...value.homeserver!, calls: 'yes' },
+      }),
+    ).toThrow(/invalid call stack flag/);
+  });
 });

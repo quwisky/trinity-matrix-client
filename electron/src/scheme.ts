@@ -129,6 +129,11 @@ export function isAppUrl(url: string): boolean {
   }
 }
 
+/** The bundled Element Call page: the one subframe that may use the camera, microphone and screen. */
+export function isCallFrameUrl(url: string): boolean {
+  return isAppUrl(url) && new URL(url).pathname.startsWith('/element-call/');
+}
+
 /**
  * Custom-scheme file server: maps `<scheme>://app/<path>` to `www/<path>`. Extensionless
  * paths (Angular client routes) fall back to index.html so a reload boots the app. A
