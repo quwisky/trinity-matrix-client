@@ -256,9 +256,9 @@ jobs:
           fi
 
   # The native crypto crate: format, lints, its tests, the pin against the WASM package and
-  # the interop test that drives it against that package. Only when the classifier's
-  # `native-crypto` step says its inputs changed; no Android cross-build yet. It reports
-  # through `e2e-result`, the required check that accepts path-filtered jobs as skipped.
+  # the interop and contract tests that drive it against that package. Only when the
+  # classifier's `native-crypto` step says its inputs changed; no Android cross-build yet. It
+  # reports through `e2e-result`, the required check that accepts path-filtered jobs as skipped.
   native-crypto:
     needs: classify
     if: ${{ !cancelled() && needs.classify.outputs.native-crypto == 'true' }}
