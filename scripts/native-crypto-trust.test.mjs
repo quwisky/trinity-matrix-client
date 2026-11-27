@@ -15,6 +15,7 @@ import {
   covered,
   each,
   expectSame,
+  fromWasm,
   hasCargo,
   shape,
   skipped,
@@ -1228,21 +1229,48 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
     'does not trust another user whose self-signing key their master key did not sign',
     async () => {
       const server = new Homeserver();
+      // Two cross-signed users; the homeserver breaks one master-key signature of Bob's only.
+      const honest = await device('wasm');
       const bob = await device('wasm');
-      await server.flush(bob);
-      await bootstrap(server, bob);
+      for (const it of [honest, bob]) {
+        await server.flush(it);
+        await bootstrap(server, it);
+      }
       const { master_key: master, self_signing_key: selfSigning } =
         server.crossSigning.get(bob.userId);
-      const [masterId] = Object.keys(master.keys);
-      selfSigning.signatures[bob.userId][masterId] = flip(
-        selfSigning.signatures[bob.userId][masterId],
-      );
+      const [[masterId, masterKey]] = Object.entries(master.keys);
+      const valid = selfSigning.signatures[bob.userId][masterId];
+      expect(validSignature(selfSigning, masterKey, valid)).toBe(true);
+      selfSigning.signatures[bob.userId][masterId] = flip(valid);
+      expect(
+        validSignature(
+          selfSigning,
+          masterKey,
+          selfSigning.signatures[bob.userId][masterId],
+        ),
+      ).toBe(false);
 
       const observers = [await device('native'), await device('wasm')];
       for (const observer of observers) {
-        await join(server, observer, [bob.userId]);
+        await join(server, observer, [honest.userId, bob.userId]);
         await bootstrap(server, observer);
       }
+      // Control: the same fixture without the broken signature is verified and trusted.
+      await verifyUser(server, observers, honest.userId);
+      const control = await both(observers, (it) =>
+        it.getIdentity(honest.userId),
+      );
+      expectSame(control, 'getIdentity of the intact user', identityOf);
+      expect(control[0].result.isVerified).toBe(true);
+      const controlDevice = await both(observers, (it) =>
+        it.getDevice(honest.userId, honest.deviceId),
+      );
+      expectSame(controlDevice, 'getDevice of the intact user', trustOf);
+      expect(trust(controlDevice[0].result)).toMatchObject({
+        isVerified: true,
+        isCrossSigningTrusted: true,
+      });
+
       const identity = await both(observers, (it) =>
         it.getIdentity(bob.userId),
       );
@@ -1266,22 +1294,56 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
 
   covered(
     ['OtherUserIdentity.identityNeedsUserApproval', 'OlmMachine.getDevice'],
-    "does not trust a forged user-signing signature on another user's master key",
+    "does not trust a user-signing signature on another user's master key made by a stranger's key",
     async () => {
       const { server, bob, observers } = await world();
-      for (const observer of observers) await bootstrap(server, observer);
+      const honest = await device('wasm');
+      const stranger = await device('wasm');
+      for (const it of [honest, stranger]) {
+        await server.flush(it);
+        await bootstrap(server, it);
+      }
+      for (const observer of observers) {
+        await join(server, observer, [bob.userId, honest.userId]);
+        await bootstrap(server, observer);
+      }
+      // Control: a user verified with the observer's own user-signing key is verified.
+      await verifyUser(server, observers, honest.userId);
+      const control = await both(observers, (it) =>
+        it.getIdentity(honest.userId),
+      );
+      expectSame(control, 'getIdentity of a truly verified user', identityOf);
+      expect(control[0].result.isVerified).toBe(true);
+
       const requests = await each(observers, (it) =>
         it.verifyIdentity(bob.userId),
       );
       expectSame(requests, 'verifyIdentity', requestOf(observers));
-      // The homeserver stores the observer's signature with one character changed.
+      // The homeserver replaces the observer's signature with a valid one made by a
+      // stranger's user-signing key, under the observer's key ID.
+      const strangerSeed = result(
+        await stranger.exportCrossSigningKeys(),
+      ).userSigningKey;
+      const [[, strangerKey]] = Object.entries(
+        server.crossSigning.get(stranger.userId).user_signing_key.keys,
+      );
       for (const [index, observer] of observers.entries()) {
+        const { keys } = server.crossSigning.get(
+          observer.userId,
+        ).user_signing_key;
         const request = structuredClone(requests[index].result);
         const body = JSON.parse(request.body);
+        // One master key, signed once by the observer.
+        expect(Object.values(body[bob.userId])).toHaveLength(1);
         for (const key of Object.values(body[bob.userId])) {
           const signatures = key.signatures[observer.userId];
-          for (const id of Object.keys(signatures)) {
-            signatures[id] = flip(signatures[id]);
+          expect(Object.keys(signatures)).toHaveLength(1);
+          for (const [id, genuine] of Object.entries(signatures)) {
+            const forged = signWithSeed(key, strangerSeed);
+            expect(validSignature(key, keys[id], genuine)).toBe(true);
+            expect(validSignature(key, strangerKey, forged)).toBe(true);
+            expect(validSignature(key, keys[id], forged)).toBe(false);
+            signatures[id] = forged;
           }
         }
         request.body = JSON.stringify(body);
@@ -1361,7 +1423,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
   );
 
   covered(
-    ['OlmMachine.shareRoomKey'],
+    ['OlmMachine.shareRoomKey', 'OlmMachine.getMissingSessions'],
     'maps deviceBasedStrategy onto the same devices as WASM',
     async () => {
       const server = new Homeserver();
@@ -1380,19 +1442,30 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         await bootstrap(server, observer);
       }
       await verifyUser(server, observers, bob.userId);
-      for (const observer of observers) {
-        await server.send(
-          observer,
-          await observer.getMissingSessions([bob.userId]),
-        );
+      // One claim for both of Bob's devices: the request by shape (its ID is random).
+      const claims = await each(observers, (it) =>
+        it.getMissingSessions([bob.userId]),
+      );
+      expectSame(
+        claims,
+        'getMissingSessions for two devices',
+        (request, index) => requestShape(request, observers[index]),
+      );
+      expect(
+        Object.keys(
+          JSON.parse(claims[0].body).one_time_keys[bob.userId],
+        ).sort(),
+      ).toEqual([bob.deviceId, stray.deviceId].sort());
+      for (const [index, observer] of observers.entries()) {
+        await server.send(observer, claims[index]);
       }
 
-      // Which devices get the key and which a withheld notice, or that sharing failed.
+      // Which devices get the key and which a withheld notice, or the error.
       const recipients = (answer) =>
-        answer.failed
-          ? answer
+        answer.error
+          ? { error: answer.error }
           : Object.fromEntries(
-              answer.map(({ event_type: type, body }) => [
+              answer.result.map(({ event_type: type, body }) => [
                 type,
                 Object.entries(JSON.parse(body).messages)
                   .flatMap(([user, devices]) =>
@@ -1410,22 +1483,36 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
           'm.room_key.withheld': [strayId],
         },
         // Bob is verified and has an unverified device.
-        errorOnUnverifiedUserProblem: { failed: true },
+        errorOnUnverifiedUserProblem: {
+          error: {
+            code: 'CryptoError',
+            message:
+              'encryption failed due to an error collecting the recipient devices: one or more verified users have unsigned devices',
+          },
+        },
       };
       for (const only of [false, true]) {
         for (const error of [false, true]) {
           const roomId = `!strategy-${only}-${error}:localhost`;
-          const shared = await each(observers, async (it) => {
-            const strategy =
-              it.kind === 'native'
-                ? deviceBasedStrategy(only, error)
-                : wasm.CollectStrategy.deviceBasedStrategy(only, error);
-            try {
-              return await it.shareRoomKey(roomId, [bob.userId], strategy);
-            } catch {
-              return { failed: true };
-            }
-          });
+          // `{ result }` or `{ error }` on both sides, so an unknown strategy name cannot pass
+          // for the refusal WASM gives.
+          const shared = await each(observers, (it) =>
+            it.kind === 'native'
+              ? it.respond('shareRoomKey', {
+                  roomId,
+                  users: [bob.userId],
+                  encryptionSettings: {
+                    sharingStrategy: deviceBasedStrategy(only, error),
+                  },
+                })
+              : fromWasm.response(() =>
+                  it.shareRoomKey(
+                    roomId,
+                    [bob.userId],
+                    wasm.CollectStrategy.deviceBasedStrategy(only, error),
+                  ),
+                ),
+          );
           const step = `deviceBasedStrategy(${only}, ${error})`;
           expectSame(shared, step, recipients);
           expect(recipients(shared[0]), step).toEqual(
