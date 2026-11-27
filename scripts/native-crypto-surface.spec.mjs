@@ -110,6 +110,21 @@ describe('surfaceErrors', () => {
     ).toEqual(['Sas.confirm: covered by a contract case, not in the manifest']);
   });
 
+  it('keeps shim notes on pure JS and helper members and rejects notes on anything else', () => {
+    const manifest = surface();
+    manifest.shimNotes = { 'UserId.toString': 'kept in JS' };
+    expect(buildSurface(symbols, manifest).shimNotes).toEqual({
+      'UserId.toString': 'kept in JS',
+    });
+    expect(surfaceErrors(manifest, symbols, covered)).toEqual([]);
+    manifest.shimNotes['UserId.free'] = 'gone';
+    manifest.shimNotes['UserId.toBase64'] = '';
+    expect(surfaceErrors(manifest, symbols, covered)).toEqual([
+      'shimNotes: UserId.free is not a pureJs or wasmHelpers member',
+      'shimNotes: UserId.toBase64 is not a pureJs or wasmHelpers member',
+    ]);
+  });
+
   it('gives new entries planned with no area until one is assigned', () => {
     const built = buildSurface([...symbols, 'OlmMachine.getDevice']);
     expect(built.stateful.OlmMachine.getDevice).toEqual({
