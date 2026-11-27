@@ -46,6 +46,16 @@ describe('NotificationPolicy', () => {
     ).toBe(true);
   });
 
+  it('names a direct chat called after the sender once', () => {
+    const input = base();
+    const decision = policy.decide({
+      ...input,
+      event: { ...input.event, roomName: 'Bob' },
+    });
+
+    expect(decision.kind === 'present' && decision.intent.title).toBe('Bob');
+  });
+
   it.each([
     [
       'push-owns-background',
