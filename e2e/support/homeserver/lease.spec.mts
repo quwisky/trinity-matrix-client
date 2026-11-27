@@ -106,4 +106,17 @@ describe('homeserver lease', () => {
     await expect(acquireHomeserverLease()).rejects.toThrow(/TRINITY_E2E_MAS/);
     expect(existsSync(homeserverLockFile)).toBe(false);
   });
+
+  it('rejects TRINITY_E2E_CALLS on Tuwunel before a lock exists', async () => {
+    // A private HOME: were the check missing, the machine-wide port lock would be taken.
+    state = mkdtempSync(join(tmpdir(), 'homeserver-lease-'));
+    vi.stubEnv('HOME', state);
+    vi.stubEnv('TRINITY_E2E_HOMESERVER', 'tuwunel');
+    vi.stubEnv('TRINITY_E2E_CALLS', '1');
+    const { acquireHomeserverLease, homeserverLockFile } =
+      await import('./lease.mts');
+
+    await expect(acquireHomeserverLease()).rejects.toThrow(/TRINITY_E2E_CALLS/);
+    expect(existsSync(homeserverLockFile)).toBe(false);
+  });
 });

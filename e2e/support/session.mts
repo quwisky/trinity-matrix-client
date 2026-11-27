@@ -65,6 +65,8 @@ export interface HomeserverSessionDescriptor {
     readonly user: string;
     readonly pass: string;
   };
+  /** True when the opt-in call stack (TRINITY_E2E_CALLS=1) runs beside the homeserver. */
+  readonly calls?: boolean;
 }
 
 export interface E2ESessionDescriptor {
@@ -167,6 +169,9 @@ function assertHomeserver(
         ))
     ) {
       throw new Error('E2E session has an invalid MAS account');
+    }
+    if (value['calls'] !== undefined && typeof value['calls'] !== 'boolean') {
+      throw new Error('E2E session has an invalid call stack flag');
     }
     if (
       value['caddyRoot'] !== undefined &&

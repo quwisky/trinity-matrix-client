@@ -1,6 +1,9 @@
 import { join } from 'node:path';
 import { resultExitCode, runCommand } from './ci-run-command.mjs';
-import { resolveHomeserverKind } from '../e2e/support/homeserver/kind.mts';
+import {
+  resolveCallsEnabled,
+  resolveHomeserverKind,
+} from '../e2e/support/homeserver/kind.mts';
 
 const ROOT = join(import.meta.dirname, '..');
 const LOG_DIR = join(ROOT, 'dist', '.ci');
@@ -49,6 +52,10 @@ export async function runPrerequisites({
         `${homeserver}/docker-compose.yml`,
         '-f',
         `${homeserver}/${kind}/docker-compose.yml`,
+        // LiveKit and lk-jwt-service, when TRINITY_E2E_CALLS=1 adds them.
+        ...(resolveCallsEnabled(env)
+          ? ['-f', `${homeserver}/calls/docker-compose.yml`]
+          : []),
         'pull',
         '-q',
       ],

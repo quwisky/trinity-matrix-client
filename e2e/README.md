@@ -141,6 +141,17 @@ Mobile layer rule: a test belongs in `e2e/mobile` only if it needs the installed
   `mobile-mas-e2e` job.
 - CI runs iOS in the `E2E (iOS nightly)` workflow, never on pull requests.
 
+## Calls
+
+The call journey joins a real two-party call through LiveKit. It skips unless
+`TRINITY_E2E_CALLS=1` adds LiveKit and lk-jwt-service to the Synapse stack:
+
+```bash
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_CALLS=1 pnpm nx run trinity-e2e-browser:e2e -- conversations/call.spec.mts
+```
+
+See [Run the call journey](../apps/docs-developers/src/content/docs/testing/matrix-e2e-tests.md#call-journey).
+
 ## MSC2545 image-pack management
 
 The image-pack journey is shared by browser and Electron wrappers. It

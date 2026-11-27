@@ -1,0 +1,16 @@
+# lk-jwt-service's app-service registration (MSC4502, MSC4512), loaded by the primary
+# Synapse when TRINITY_E2E_CALLS=1. Synapse proxies the token endpoint under
+# /_matrix/client/unstable/io.element.msc4195/rtc/livekit/ to proxy_url.
+id: lk-jwt-service
+as_token: trinity-e2e-lk-jwt-as-token
+hs_token: trinity-e2e-lk-jwt-hs-token
+sender_localpart: _lk_jwt_service
+namespaces:
+  users:
+    - exclusive: false
+      regex: '.*'
+url: null
+io.element.msc4502.scopes:
+  ['urn:matrix:client:io.element.msc4502:rooms:is_joined']
+io.element.msc4512.proxy_prefix: rtc/livekit
+io.element.msc4512.proxy_url: http://caddy:6080

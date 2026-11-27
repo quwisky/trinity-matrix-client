@@ -1,0 +1,20 @@
+# LiveKit for the opt-in call stack (TRINITY_E2E_CALLS=1). The browser reaches signalling
+# through Caddy's https://localhost:7443 and media on the ports calls/docker-compose.yml
+# publishes on loopback, so LiveKit advertises 127.0.0.1.
+port: 7880
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: 127.0.0.1
+keys:
+  trinity-e2e: trinity-e2e-livekit-secret-0123456789abcdef
+room:
+  auto_create: false
+logging:
+  level: info
+# lk-jwt-service shares Caddy's network namespace, so it is reachable as caddy:6080.
+webhook:
+  api_key: trinity-e2e
+  urls:
+    - http://caddy:6080/sfu_webhook

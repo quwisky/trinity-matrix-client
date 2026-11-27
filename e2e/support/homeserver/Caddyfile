@@ -92,3 +92,11 @@ https://localhost:8451 {
 	tls internal
 	reverse_proxy mas:8080
 }
+
+# Opt-in call stack (TRINITY_E2E_CALLS=1). calls/docker-compose.yml publishes this port and
+# runs LiveKit; without it nothing reaches this site. The app's CSP allows only wss:, so
+# LiveKit's signalling is served here on TLS.
+https://localhost:7443 {
+	tls internal
+	reverse_proxy livekit:7880
+}
