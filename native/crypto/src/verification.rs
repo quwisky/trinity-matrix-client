@@ -641,8 +641,9 @@ pub struct ConfirmSasParams {
 pub async fn confirm_sas(machine: &OlmMachine, params: ConfirmSasParams) -> CallResult {
     let found = resolve_sas(machine, &params.user_id, &params.flow_id)?;
     let [a, b, c] = params.decimals;
-    let ended = found.is_done() || found.is_cancelled();
-    // An ended SAS confirms nothing upstream, so it answers as in WASM.
+    // A SAS that is over, or that we confirmed already (a double click), has nothing left to
+    // confirm upstream: it answers as in WASM.
+    let ended = found.is_done() || found.is_cancelled() || found.have_we_confirmed();
     if !ended && found.decimals() != Some((a, b, c)) {
         return Err(CallError::new(
             "StaleObject",
@@ -717,63 +718,77 @@ pub fn qr_code_bytes(machine: &OlmMachine, params: FlowParams) -> CallResult {
 /// flow ID, whether it is the request): a stand-in for WASM's `registerChangesCallback`.
 ///
 /// An object is watched from the first answer that hands it to the host, and dropped once it
-/// is done or cancelled, or its request is (an object that is already over is never watched). Each
+/// is done or cancelled, or its request is, or its request is passive past its deadline (which
+/// no change ends); an answer with an object that is already over drops its key's watch. Each
 /// key has one watch: a later answer re-subscribes to the object it holds, after the queue was
 /// drained, so a replaced object's watch is replaced. When a request changes, the `Sas` or
 /// `Qr` it now holds is watched afresh (or, when that one is over already, nothing is),
 /// because a flow can switch from QR to SAS, or replace its SAS, under the same key. A panic
 /// and opening a machine clear the watches: verifications live only in the machine's memory.
 #[derive(Default)]
-pub struct Watches(BTreeMap<(String, String, bool), Watch>);
+pub struct Watches(BTreeMap<Key, Watch>);
 
 struct Watch {
     object: Watched,
     changes: BoxStream<'static, ()>,
 }
 
+/// Done, cancelled, or stuck: upstream cancels a request past its deadline on the next sync,
+/// which ends its watch, but leaves a passive one as it is for good.
 fn request_final(request: &VerificationRequest) -> bool {
-    request.is_done() || request.is_cancelled()
+    request.is_done() || request.is_cancelled() || stuck(request)
+}
+
+#[cfg(not(test))]
+fn stuck(request: &VerificationRequest) -> bool {
+    request.is_passive() && request.timed_out()
+}
+
+/// Upstream's ten-minute deadline runs on a clock tests cannot move: the hook stands in for a
+/// passive request past it.
+#[cfg(test)]
+fn stuck(request: &VerificationRequest) -> bool {
+    (request.is_passive() && request.timed_out())
+        || crate::tests::hooks::EXPIRED
+            .lock()
+            .unwrap()
+            .contains(request.flow_id().as_str())
 }
 
 fn verification_final(verification: &Verification) -> bool {
     verification.is_done() || verification.is_cancelled()
 }
 
-fn watch(object: Watched) -> Option<((String, String, bool), Watch)> {
-    let (key, changes) = match &object {
-        Watched::Request(request) => {
-            if request_final(request) {
-                return None;
-            }
-            (
-                (
-                    request.other_user().to_string(),
-                    request.flow_id().as_str().to_owned(),
-                    true,
-                ),
-                request.changes().map(|_| ()).boxed(),
-            )
+type Key = (String, String, bool);
+
+fn key_of(object: &Watched) -> Key {
+    match object {
+        Watched::Request(request) => (
+            request.other_user().to_string(),
+            request.flow_id().as_str().to_owned(),
+            true,
+        ),
+        Watched::Verification(verification) => (
+            verification.other_user().to_string(),
+            verification.flow_id().to_owned(),
+            false,
+        ),
+    }
+}
+
+/// The object's key, and its watch unless it is over (then it never changes again).
+fn watch(object: Watched) -> (Key, Option<Watch>) {
+    let key = key_of(&object);
+    let changes = match &object {
+        Watched::Request(request) if !request_final(request) => {
+            Some(request.changes().map(|_| ()).boxed())
         }
-        Watched::Verification(verification) => {
-            if verification_final(verification) {
-                return None;
-            }
-            let changes = match verification {
-                Verification::SasV1(sas) => sas.changes().map(|_| ()).boxed(),
-                Verification::QrV1(qr) => qr.changes().map(|_| ()).boxed(),
-                _ => return None,
-            };
-            (
-                (
-                    verification.other_user().to_string(),
-                    verification.flow_id().to_owned(),
-                    false,
-                ),
-                changes,
-            )
-        }
+        Watched::Verification(verification) if verification_final(verification) => None,
+        Watched::Verification(Verification::SasV1(sas)) => Some(sas.changes().map(|_| ()).boxed()),
+        Watched::Verification(Verification::QrV1(qr)) => Some(qr.changes().map(|_| ()).boxed()),
+        _ => None,
     };
-    Some((key, Watch { object, changes }))
+    (key, changes.map(|changes| Watch { object, changes }))
 }
 
 impl Watches {
@@ -781,9 +796,11 @@ impl Watches {
     /// can be replaced under its key). Call it after draining, so no change is lost.
     pub fn add(&mut self, found: Found) {
         for object in found.0 {
-            if let Some((key, watch)) = watch(object) {
-                self.0.insert(key, watch);
-            }
+            match watch(object) {
+                (key, Some(watch)) => self.0.insert(key, watch),
+                // Over already: whatever watch the key had is done with too.
+                (key, None) => self.0.remove(&key),
+            };
         }
     }
 
@@ -803,6 +820,17 @@ impl Watches {
         mut ready: impl FnMut(&mut BoxStream<'static, ()>) -> bool,
     ) -> Vec<Value> {
         let mut events = Vec::new();
+        // A request that ends without a change (stuck) takes its verification's watch along.
+        let stuck: Vec<Key> = self
+            .0
+            .iter()
+            .filter(|(_, it)| matches!(&it.object, Watched::Request(found) if stuck(found)))
+            .map(|(key, _)| key.clone())
+            .collect();
+        for (user, flow, _) in stuck {
+            self.0.remove(&(user.clone(), flow.clone(), true));
+            self.0.remove(&(user, flow, false));
+        }
         for is_request in [false, true] {
             let keys: Vec<_> = self
                 .0
@@ -849,7 +877,7 @@ impl Watches {
                         {
                             // A verification that is over already replaces the watched one too.
                             self.0.remove(&verification_key);
-                            if let Some((key, watch)) = watch(Watched::Verification(verification)) {
+                            if let (key, Some(watch)) = watch(Watched::Verification(verification)) {
                                 self.0.insert(key, watch);
                             }
                         }

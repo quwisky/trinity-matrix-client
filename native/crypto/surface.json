@@ -664,7 +664,7 @@
         "status": "done",
         "area": "verification",
         "native": "confirmSas",
-        "note": "call: takes userId, flowId and decimals, required: the decimals the shim displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing); outgoing requests, a signature upload without an ID last"
+        "note": "call: takes userId, flowId and decimals, required: the decimals the shim displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last"
       },
       "decimals": {
         "status": "done",
