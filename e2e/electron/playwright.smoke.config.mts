@@ -7,5 +7,5 @@ import { e2eReportConfig } from '../support/playwright-config.mts';
 export default defineConfig({
   ...electronConfig,
   ...e2eReportConfig(ELECTRON_SMOKE_SUITE),
-  testMatch: 'app.electron.spec.mts',
+  testMatch: ['app.electron.spec.mts', 'screen-share.electron.spec.mts'],
 });
