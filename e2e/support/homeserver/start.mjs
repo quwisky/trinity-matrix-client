@@ -35,6 +35,8 @@ import {
   HOMESERVER_HTTP,
   HS_TLS,
   IDENTITY_SERVER_URL,
+  LIVEKIT_TLS,
+  LK_JWT_HTTP,
   MAILPIT_HTTP,
   MAS_HS_TLS,
   MAS_ISSUER,
@@ -57,6 +59,7 @@ import {
 } from './constants.mjs';
 import {
   optionalReady,
+  resolveCallsEnabled,
   resolveHomeserverKind,
   resolveHomeserverRuntime,
   resolveMasEnabled,
@@ -81,6 +84,7 @@ import {
 import { acquireHomeserverLease, releaseHomeserverLease } from './lease.mts';
 import { formatFailure } from '../http-failure.mts';
 import { masMountedConfig, prepareMas } from './mas/adapter.mjs';
+import { CALLS_CONFIG_FILES, callsMountedConfig } from './calls/adapter.mjs';
 import {
   SYDENT_CONFIG,
   ensureSydentConfig,
@@ -130,6 +134,7 @@ let operationSignal;
 let kind;
 let runtime;
 let masEnabled = false;
+let callsEnabled = false;
 let ssoMock = false;
 
 function secondaryServerName() {
@@ -141,7 +146,10 @@ async function compose(args, opts = {}) {
     'docker',
     [
       'compose',
-      ...composeFiles(kind, networkContainer, { mas: masEnabled }),
+      ...composeFiles(kind, networkContainer, {
+        mas: masEnabled,
+        calls: callsEnabled,
+      }),
       ...args,
     ],
     {
@@ -565,6 +573,7 @@ export async function start({ signal } = {}) {
   kind = resolveHomeserverKind();
   runtime = resolveHomeserverRuntime();
   masEnabled = resolveMasEnabled();
+  callsEnabled = resolveCallsEnabled();
   ssoMock = resolveSsoMock();
   if (runtime === 'native') return startNative();
   const adapter = ADAPTERS[kind];
@@ -572,6 +581,11 @@ export async function start({ signal } = {}) {
   if (masEnabled && networkContainer) {
     throw new Error(
       'TRINITY_E2E_MAS=1 needs published ports; the shared-namespace topology is not supported',
+    );
+  }
+  if (callsEnabled && networkContainer) {
+    throw new Error(
+      'TRINITY_E2E_CALLS=1 needs published ports; the shared-namespace topology is not supported',
     );
   }
   log(
@@ -584,17 +598,20 @@ export async function start({ signal } = {}) {
   await prepareStateDir([
     ...adapter.configFiles,
     ...(masEnabled ? ['mas/mas.yaml'] : []),
+    ...(callsEnabled ? CALLS_CONFIG_FILES : []),
   ]);
   await adapter.prepare({
     networkContainer,
     signal: operationSignal,
     log,
     secondaryServerName: secondaryServerName(),
+    calls: callsEnabled,
   });
   if (masEnabled) await prepareMas({ signal: operationSignal, log });
   const mounted = {
     ...mountedConfig(adapter),
     ...(masEnabled ? masMountedConfig : {}),
+    ...(callsEnabled ? callsMountedConfig : {}),
   };
   const fingerprints = await configFingerprints(mounted);
   const wasRunning = await runningServices(Object.keys(mounted));
@@ -623,8 +640,15 @@ export async function start({ signal } = {}) {
   const stale = wasRunning.filter(
     (service) => applied[service] !== fingerprints[service],
   );
+  // lk-jwt-service lives in Caddy's network namespace, as Sydent does.
+  const restartWith = callsEnabled
+    ? {
+        ...adapter.restartWith,
+        caddy: [...(adapter.restartWith.caddy ?? []), 'lk-jwt'],
+      }
+    : adapter.restartWith;
   for (const service of [...stale]) {
-    for (const dependent of adapter.restartWith[service] ?? []) {
+    for (const dependent of restartWith[service] ?? []) {
       // A dependent with no container (disabled by a profile under netns) has nothing to restart.
       if (
         !stale.includes(dependent) &&
@@ -699,6 +723,26 @@ export async function start({ signal } = {}) {
     await registerMasUser();
   }
 
+  if (callsEnabled) {
+    // LiveKit answers its root with 200 once it serves; this goes through Caddy's TLS site.
+    await waitFor(
+      'livekit (https)',
+      'livekit',
+      async () =>
+        (
+          await fetch(LIVEKIT_TLS.replace(/^wss:/, 'https:'), {
+            signal: operationSignal,
+          })
+        ).ok,
+    );
+    await waitFor(
+      'lk-jwt-service',
+      'lk-jwt',
+      async () =>
+        (await fetch(`${LK_JWT_HTTP}/healthz`, { signal: operationSignal })).ok,
+    );
+  }
+
   const version = await serverVersion();
   log(
     `up. ${kind} ${version} homeserver=${HS_TLS} secondary=${secondaryServerName()} user=@${TEST_USER}:${SERVER_NAME}`,
@@ -729,6 +773,7 @@ export async function start({ signal } = {}) {
           },
         }
       : {}),
+    ...(callsEnabled ? { calls: true } : {}),
   };
 }
 

@@ -98,3 +98,9 @@ export const MAS_ISSUER = `https://localhost:${PORTS.masIssuer}/`;
 export const MAS_SHARED_SECRET = 'trinity-e2e-mas-shared-secret';
 export const MAS_USER = 'mas-e2e';
 export const MAS_PASS = 'mas-e2e-pass-123';
+
+// The opt-in call stack (TRINITY_E2E_CALLS=1, see calls/). Fixed like the rest of the Docker
+// stack. LiveKit's signalling goes through Caddy's TLS (the URL clients get from
+// lk-jwt-service); lk-jwt-service's own listener is published only for readiness.
+export const LIVEKIT_TLS = 'wss://localhost:7443';
+export const LK_JWT_HTTP = 'http://127.0.0.1:6080';

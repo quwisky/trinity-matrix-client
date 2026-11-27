@@ -38,6 +38,8 @@ export declare const MAS_ISSUER: string;
 export declare const MAS_SHARED_SECRET: string;
 export declare const MAS_USER: string;
 export declare const MAS_PASS: string;
+export declare const LIVEKIT_TLS: string;
+export declare const LK_JWT_HTTP: string;
 
 /** A Dex-backed account: the homeserver creates it on the first completed round-trip. */
 export interface HomeserverSsoAccount {
@@ -87,6 +89,8 @@ export interface HomeserverHarness {
   /** A third SSO account, which the account-deletion journey deletes for good. */
   ssoDelete?: HomeserverSsoAccount;
   mas?: HomeserverMasAccount;
+  /** True when the opt-in call stack (TRINITY_E2E_CALLS=1) runs beside this Synapse. */
+  calls?: boolean;
   /** Caddy's local root certificate (native runtime), for hosts that must trust it. */
   caddyRoot?: string;
 }

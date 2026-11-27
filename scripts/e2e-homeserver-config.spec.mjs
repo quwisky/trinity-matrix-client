@@ -16,6 +16,7 @@ import {
   HOMESERVER_RUNTIMES,
   isTuwunel,
   resolveHomeserverKind,
+  resolveCallsEnabled,
   resolveHomeserverRuntime,
   resolveMasEnabled,
   resolveSsoMock,
@@ -648,5 +649,108 @@ describe('Opt-in MAS stack', () => {
     expect(caddy).toContain('reverse_proxy homeserver-mas:8008');
     expect(caddy).toContain('https://localhost:8451 {');
     expect(caddy).toContain('reverse_proxy mas:8080');
+  });
+});
+
+describe('Opt-in call stack', () => {
+  const callsDir = `${HERE}/calls`;
+  const callsCompose = () => parse(read(`${callsDir}/docker-compose.yml`));
+  const synapseCalls = { TRINITY_E2E_HOMESERVER: 'synapse' };
+
+  it('is off unless TRINITY_E2E_CALLS=1, and runs only on Docker Synapse', () => {
+    expect(resolveCallsEnabled({})).toBe(false);
+    expect(resolveCallsEnabled({ TRINITY_E2E_CALLS: '0' })).toBe(false);
+    expect(
+      resolveCallsEnabled({ ...synapseCalls, TRINITY_E2E_CALLS: '1' }),
+    ).toBe(true);
+    expect(() =>
+      resolveCallsEnabled({ ...synapseCalls, TRINITY_E2E_CALLS: 'yes' }),
+    ).toThrow(/TRINITY_E2E_CALLS/);
+    // The primary Synapse carries MatrixRTC, so the default Tuwunel refuses it.
+    expect(() => resolveCallsEnabled({ TRINITY_E2E_CALLS: '1' })).toThrow(
+      /TRINITY_E2E_HOMESERVER=synapse/,
+    );
+    expect(() =>
+      resolveCallsEnabled({
+        ...synapseCalls,
+        TRINITY_E2E_CALLS: '1',
+        TRINITY_E2E_HOMESERVER_RUNTIME: 'native',
+      }),
+    ).toThrow(/Docker/);
+  });
+
+  it('layers its compose file only when enabled', async () => {
+    const { composeFiles } =
+      await import('../e2e/support/homeserver/paths.mjs');
+    expect(composeFiles('synapse', '').join(' ')).not.toContain(
+      'calls/docker-compose.yml',
+    );
+    expect(composeFiles('synapse', '', { calls: true }).join(' ')).toContain(
+      'calls/docker-compose.yml',
+    );
+  });
+
+  it('pins LiveKit and lk-jwt-service', () => {
+    const { services } = callsCompose();
+    expect(services.livekit.image).toBe('livekit/livekit-server:v1.13.11');
+    expect(services['lk-jwt'].image).toBe(
+      'ghcr.io/element-hq/lk-jwt-service:0.10.0',
+    );
+  });
+
+  it('gives lk-jwt-service the keys LiveKit accepts and the registration Synapse loads', () => {
+    const { services } = callsCompose();
+    const env = services['lk-jwt'].environment;
+    const livekit = parse(read(`${callsDir}/livekit.yaml`));
+    expect(livekit.keys[env.LIVEKIT_KEY]).toBe(env.LIVEKIT_SECRET);
+    // Clients get this URL, so it is Caddy's TLS site: the app's CSP allows only wss:.
+    expect(env.LIVEKIT_URL).toBe('wss://localhost:7443');
+    expect(env.LIVEKIT_FULL_ACCESS_HOMESERVERS).toBe('localhost');
+    const registration = parse(read(`${callsDir}/app-service.yaml`));
+    expect(registration['io.element.msc4512.proxy_url']).toBe(
+      'http://caddy:6080',
+    );
+    expect(livekit.webhook.urls).toEqual(['http://caddy:6080/sfu_webhook']);
+    expect(livekit.webhook.api_key).toBe(env.LIVEKIT_KEY);
+  });
+
+  it('turns MatrixRTC on in the Synapse config, and off again when disabled', async () => {
+    const { withCalls } =
+      await import('../e2e/support/homeserver/calls/adapter.mjs');
+    const generated = 'server_name: "localhost"\nenable_registration: true\n';
+    const on = withCalls(generated, true);
+    expect(withCalls(on, true)).toBe(on);
+    const yaml = parse(on);
+    expect(yaml.matrix_rtc).toEqual({
+      transports: [{ type: 'livekit', url: 'wss://localhost:7443' }],
+    });
+    expect(yaml.experimental_features).toEqual({
+      msc4143_enabled: true,
+      msc4354_enabled: true,
+      msc4502_enabled: true,
+      msc4512_enabled: true,
+    });
+    expect(yaml.app_service_config_files).toEqual(['/calls/app-service.yaml']);
+    // MSC4140 delayed events are on only with a non-zero maximum delay.
+    expect(yaml.max_event_delay_duration).toBe('24h');
+    expect(yaml.enable_registration).toBe(true);
+    expect(withCalls(on, false)).toBe(generated);
+    expect(withCalls(generated, false)).toBe(generated);
+  });
+
+  it('mounts the registration where the Synapse config names it', () => {
+    const { services } = callsCompose();
+    expect(services.homeserver.volumes).toContain(
+      '${TRINITY_E2E_STATE_DIR:-.}/calls/app-service.yaml:/calls/app-service.yaml:ro',
+    );
+  });
+
+  it('fronts LiveKit signalling on TLS', () => {
+    const caddy = read(`${HERE}/Caddyfile`);
+    expect(caddy).toContain('https://localhost:7443 {');
+    expect(caddy).toContain('reverse_proxy livekit:7880');
+    expect(callsCompose().services.caddy.ports).toContain(
+      '127.0.0.1:7443:7443',
+    );
   });
 });

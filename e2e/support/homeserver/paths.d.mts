@@ -8,7 +8,7 @@ export declare function resolveNetworkContainer(): Promise<string>;
 export declare function composeFiles(
   kind: string,
   networkContainer: string,
-  options?: { mas?: boolean },
+  options?: { mas?: boolean; calls?: boolean },
 ): string[];
 export declare function prepareStateDir(
   configFiles?: readonly string[],

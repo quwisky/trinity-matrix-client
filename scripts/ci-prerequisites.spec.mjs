@@ -169,6 +169,28 @@ describe('runPrerequisites', () => {
     },
   );
 
+  it('also pre-pulls LiveKit and lk-jwt-service when the call stack is selected', async () => {
+    const calls = [];
+    await runPrerequisites({
+      logDir: makeLogDir(),
+      env: { TRINITY_E2E_HOMESERVER: 'synapse', TRINITY_E2E_CALLS: '1' },
+      run: async (spec) => {
+        calls.push(spec);
+        return { label: spec.label, exitCode: 0, signal: null };
+      },
+    });
+    const pull = calls.find(({ label }) => label === 'docker-pull');
+    const files = pull.args.filter((_, i) => pull.args[i - 1] === '-f');
+    expect(files).toEqual([
+      'e2e/support/homeserver/docker-compose.yml',
+      'e2e/support/homeserver/synapse/docker-compose.yml',
+      'e2e/support/homeserver/calls/docker-compose.yml',
+    ]);
+    expect(
+      existsSync(join(import.meta.dirname, '..', files.at(-1) ?? '')),
+    ).toBe(true);
+  });
+
   it.each([
     [{}, ['chromium', 'webkit']],
     [{ TRINITY_PLAYWRIGHT_BROWSERS: 'chromium' }, ['chromium']],

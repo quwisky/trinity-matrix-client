@@ -1,4 +1,5 @@
-// Tears the disposable homeserver + Caddy + Dex stack down and removes generated state.
+// Tears the disposable homeserver + Caddy + Dex stack down (with the opt-in MAS and call
+// services) and removes generated state.
 //
 // `docker compose down -v --remove-orphans` stops every container of the project — also
 // one of the other homeserver kind, left by a run with a different TRINITY_E2E_HOMESERVER
@@ -75,8 +76,12 @@ export async function stop({ keepData = false, signal } = {}) {
         'docker',
         [
           'compose',
-          // Always name the MAS services, whatever TRINITY_E2E_MAS is now.
-          ...composeFiles(teardownKind(), networkContainer, { mas: true }),
+          // Always name the MAS and call services, whatever TRINITY_E2E_MAS and
+          // TRINITY_E2E_CALLS are now, so neither outlives a run that started it.
+          ...composeFiles(teardownKind(), networkContainer, {
+            mas: true,
+            calls: true,
+          }),
           'down',
           '-v',
           '--remove-orphans',
