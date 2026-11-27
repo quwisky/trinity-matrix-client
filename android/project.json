@@ -60,12 +60,17 @@
       }
     },
     "build-release": {
+      "//": "The isolation check fails the build when the bundle holds the debug-only native crypto plugin or library (android/app/src/debug). CI builds no Android release yet, so it runs wherever this target runs.",
       "cache": false,
       "dependsOn": ["sync"],
       "outputs": ["{projectRoot}/app/build/outputs/bundle/release"],
       "executor": "nx:run-commands",
       "options": {
-        "command": "./gradlew bundleRelease",
+        "commands": [
+          "./gradlew bundleRelease",
+          "node ../scripts/android-release-isolation.mjs app/build/outputs/bundle/release/app-release.aab"
+        ],
+        "parallel": false,
         "cwd": "{projectRoot}"
       }
     },
