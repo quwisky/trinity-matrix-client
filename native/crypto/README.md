@@ -31,7 +31,14 @@ The same target runs `scripts/native-crypto-contract.test.mjs`: each `done` call
 manifest (below) and its WASM counterpart run the same step and must answer the same, by value
 (by shape only where the answer is random, such as fresh ciphertext). Room keys exported on one
 side import on the other, a backup made on one side restores on the other, and a malformed key
-or a tampered backup signature fails the same way on both. Both suites share
+or a tampered backup signature fails the same way on both.
+`scripts/native-crypto-trust.test.mjs` does the same for devices, identities and cross-signing:
+a native and a WASM observer see the same cross-signed users through the in-test homeserver
+(which also takes signing-key and signature uploads) and must give the same trust answers:
+another user's unverified device, verification and a later key change (violation, withdrawal),
+pinning a changed identity, local trust and blacklisting, own devices signed by cross-signing,
+signatures tampered with, cross-signing key import (also with wrong keys) and backup info signed
+by own devices. All three suites share
 `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails unless
 it called each entry's native method. Without cargo on `PATH` the suites are skipped and say
 why; with `CI` set they fail instead.
@@ -71,7 +78,24 @@ Methods, parameter names and result shapes follow the
   serialised form: `saveBackupDecryptionKey` takes `decryptionKeyBase64`,
   `importBackedUpRoomKeys` takes `{ roomId: { sessionId: data } }` for WASM's nested `Map`.
 - An invalid backup decryption key fails with code `CryptoError` and a fixed message, where
-  WASM's decoder message names a character of the key and its offset.
+  WASM's decoder message names a character of the key and its offset. So does an invalid
+  private key in `importCrossSigningKeys` (`Error while importing <secret name>: invalid key`).
+- Objects with identity are not handles. `getDevice` and `getUserDevices` return `Device`
+  snapshots: every getter matrix-js-sdk reads (`userId`, `deviceId`, `displayName` when set,
+  `keys` as key ID to base64, `algorithms`, `signatures` as signer to key ID to
+  `{ isValid, signature }` or `{ isValid, invalidSignatureSource }`) and the trust answers
+  (`isVerified`, `isCrossSigningTrusted`, `isCrossSignedByOwner`, `isLocallyTrusted`,
+  `isBlacklisted`, `localTrustState`, `isDeleted`, `isDehydrated`). `getIdentity` returns
+  `kind` (`own` or `other`), `isVerified`, `wasPreviouslyVerified`,
+  `hasVerificationViolation`, `masterKey` and `selfSigningKey`, plus `userSigningKey` (own)
+  or `identityNeedsUserApproval` (other); keys are the JSON strings WASM returns. A snapshot
+  is current when returned; ask again after a change. The objects' methods are calls that
+  take the object's keys and resolve it again: `setLocalTrust`, `verifyDevice`,
+  `encryptToDeviceEvent` (`userId`, `deviceId`) and `verifyIdentity`,
+  `withdrawVerification`, `pinCurrentMasterKey` (`userId`). A device or identity the
+  machine no longer knows fails with `UnknownDevice` or `UnknownIdentity`.
+- Signature uploads that a call returns (`verifyDevice`, `verifyIdentity`,
+  `bootstrapCrossSigning`) have no `id`, as in WASM: send them, do not mark them as sent.
 
 ### Events
 
@@ -79,9 +103,11 @@ What WASM reports through `registerRoomKeyUpdatedCallback` and its siblings is q
 device and read with `pollEvents` (no parameters), which answers
 `{ "events": [ … ], "dropped": n }` and empties the queue. Each event is
 `{ "type", … }` with one callback invocation's payload: `roomKeysReceived` and
-`roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields. The
-other callbacks (devices, identities, secrets, verification) become event types of their own as
-their calls land; `surface.json` names each one.
+`roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields;
+`userIdentityUpdated` carries `userId` (one event per new or changed identity, as WASM calls its
+callback per user); `devicesUpdated` carries `userIds`, sorted, once per store change (an empty
+list when only identities changed, as in WASM). The other callbacks (secrets, verification)
+become event types of their own as their calls land; `surface.json` names each one.
 
 - Every call moves the events it caused into the queue before it returns, so a poll right
   after a call sees them. Each event is delivered once; events of one type keep their order
@@ -95,9 +121,9 @@ their calls land; `surface.json` names each one.
   `dropped` means the host's view is stale: for room keys, retry every undecryptable event.
 - After a panic drops the machine, `pollEvents` still returns what it queued, and `init`
   listens to the reloaded machine. `close` discards the queue: poll before closing.
-- Not every loss can be counted: the store drops a withheld batch its broadcast channel
-  skipped without saying so. The channel holds 16 batches and every call drains it, so only a
-  single call that stores more than 16 withheld batches could lose one.
+- Not every loss can be counted: the store drops a withheld batch, or an identity and device
+  change, its broadcast channel skipped without saying so. Those channels hold 16 and 32
+  changes and every call drains them, so only a single call that stores more could lose one.
 
 ### Surface manifest
 
@@ -129,6 +155,11 @@ caller's copies as soon as `init` returns.
 The backup decryption key is no better off: the crate wipes its own base64 copy in
 `saveBackupDecryptionKey`, but not the request string or serde's buffers, and the base64 that
 `getBackupKeys` returns stays in the response string, as it does in WASM's `BackupKeys`.
+
+Private cross-signing keys leave the crate only through `exportCrossSigningKeys` (WASM's
+`CrossSigningKeyExport` getters, `self_signing_key` in snake case as there), never in events or
+errors. The upstream export type wipes itself; the keys in the response string and those passed
+to `importCrossSigningKeys` in the request string are not wiped.
 
 ## For the JNI wrapper
 
