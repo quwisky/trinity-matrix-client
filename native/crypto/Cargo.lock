@@ -2366,6 +2366,7 @@ name = "trinity-crypto"
 version = "0.0.0"
 dependencies = [
  "base64",
+ "futures-util",
  "jni",
  "matrix-sdk-common",
  "matrix-sdk-crypto",
@@ -2375,6 +2376,7 @@ dependencies = [
  "sha2 0.10.9",
  "simd_cesu8",
  "tokio",
+ "tokio-stream",
  "zeroize",
 ]
 

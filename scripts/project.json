@@ -56,7 +56,7 @@
       ]
     },
     "native-crypto-interop": {
-      "//": "Builds native/crypto with cargo and drives its CLI against the WASM package; kept out of `test` so the unit tests need no Rust toolchain. Skips with a stated reason when cargo is missing, and fails instead in CI.",
+      "//": "Builds native/crypto with cargo and drives its CLI against the WASM package (the interop and contract tests); kept out of `test` so the unit tests need no Rust toolchain. Skips with a stated reason when cargo is missing, and fails instead in CI.",
       "cache": false,
       "executor": "nx:run-commands",
       "options": {

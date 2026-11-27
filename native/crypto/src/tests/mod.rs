@@ -5,22 +5,25 @@ use serde_json::{Value, json};
 
 use crate::{call, call_batch};
 
+mod backup;
+mod events;
+
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 /// Tests share the process-wide registry, so each one uses its own users.
-fn unique_user(name: &str) -> String {
+pub(super) fn unique_user(name: &str) -> String {
     format!(
         "@{name}{}:localhost",
         NEXT_ID.fetch_add(1, Ordering::Relaxed)
     )
 }
 
-fn invoke(user: &str, device: &str, method: &str, params: Value) -> Value {
+pub(super) fn invoke(user: &str, device: &str, method: &str, params: Value) -> Value {
     let request = json!({ "method": method, "userId": user, "deviceId": device, "params": params });
     serde_json::from_str(&call(&request.to_string())).unwrap()
 }
 
-fn ok(user: &str, device: &str, method: &str, params: Value) -> Value {
+pub(super) fn ok(user: &str, device: &str, method: &str, params: Value) -> Value {
     let response = invoke(user, device, method, params);
     assert!(
         response.get("error").is_none(),
@@ -29,7 +32,7 @@ fn ok(user: &str, device: &str, method: &str, params: Value) -> Value {
     response["result"].clone()
 }
 
-fn body(request: &Value) -> Value {
+pub(super) fn body(request: &Value) -> Value {
     serde_json::from_str(request["body"].as_str().unwrap()).unwrap()
 }
 
@@ -40,10 +43,10 @@ const TO_DEVICE: u64 = 3;
 
 /// Just enough of a homeserver for two devices: published keys and to-device queues.
 #[derive(Default)]
-struct Homeserver {
+pub(super) struct Homeserver {
     device_keys: BTreeMap<String, Value>,
     one_time_keys: BTreeMap<String, Vec<(String, Value)>>,
-    inbox: BTreeMap<String, VecDeque<Value>>,
+    pub(super) inbox: BTreeMap<String, VecDeque<Value>>,
 }
 
 impl Homeserver {
@@ -104,14 +107,14 @@ impl Homeserver {
         }
     }
 
-    fn send_outgoing(&mut self, user: &str, device: &str) {
+    pub(super) fn send_outgoing(&mut self, user: &str, device: &str) {
         let requests = ok(user, device, "outgoingRequests", json!({}));
         for request in requests.as_array().unwrap() {
             self.send(user, device, request);
         }
     }
 
-    fn send(&mut self, user: &str, device: &str, request: &Value) {
+    pub(super) fn send(&mut self, user: &str, device: &str, request: &Value) {
         let response = self.respond(user, device, request);
         let marked = ok(
             user,
@@ -122,7 +125,7 @@ impl Homeserver {
         assert_eq!(marked, json!(true));
     }
 
-    fn sync(&mut self, user: &str, device: &str) -> Value {
+    pub(super) fn sync(&mut self, user: &str, device: &str) -> Value {
         let events: Vec<Value> = self
             .inbox
             .remove(&format!("{user}|{device}"))
@@ -141,7 +144,7 @@ impl Homeserver {
     }
 }
 
-fn room_event(sender: &str, room_id: &str, content: &str) -> String {
+pub(super) fn room_event(sender: &str, room_id: &str, content: &str) -> String {
     json!({
         "type": "m.room.encrypted",
         "event_id": "$event:localhost",
@@ -154,7 +157,7 @@ fn room_event(sender: &str, room_id: &str, content: &str) -> String {
 }
 
 /// Brings two devices to the point where `alice` has shared a room key with `bob`.
-fn two_devices_sharing_a_room(
+pub(super) fn two_devices_sharing_a_room(
     server: &mut Homeserver,
     alice: &str,
     bob: &str,
@@ -412,7 +415,7 @@ fn malformed_calls_return_errors() {
 }
 
 /// A fresh SQLite store directory and a base64 key for it.
-fn temp_store(name: &str, key_byte: u8) -> (std::path::PathBuf, String) {
+pub(super) fn temp_store(name: &str, key_byte: u8) -> (std::path::PathBuf, String) {
     use base64::Engine as _;
     let dir = std::env::temp_dir().join(format!(
         "trinity-crypto-{name}-{}-{}",
@@ -452,6 +455,8 @@ pub(crate) mod hooks {
 
     use crate::machine::MachineKey;
 
+    /// Tests that use the hooks take this first, so they never share them.
+    pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
     pub(crate) static HOLD: Mutex<Option<(Sender<()>, Receiver<()>)>> = Mutex::new(None);
     pub(crate) static QUEUED: Mutex<Option<(MachineKey, Sender<()>)>> = Mutex::new(None);
 
@@ -476,6 +481,7 @@ fn an_init_after_close_waits_for_the_call_in_flight() {
     use std::thread::spawn;
     use std::time::{Duration, Instant};
     const WAIT: Duration = Duration::from_secs(10);
+    let _serial = hooks::SERIAL.lock().unwrap();
     let user = unique_user("close");
     let (dir, key) = temp_store("close", 2);
     let params = json!({ "storePath": dir, "storeKey": key });
