@@ -6,7 +6,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
@@ -22,6 +22,7 @@ import {
   map,
   of,
   shareReplay,
+  skipWhile,
   startWith,
   switchMap,
   timeout,
@@ -34,7 +35,7 @@ import {
   formatCallElapsed,
   hasOngoingCall,
 } from './call-intent';
-import type { CallTransport } from './call-transport';
+import type { CallTransport, RawCallEvent } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { matrixCallTransport } from './matrix-call-transport';
 
@@ -63,6 +64,9 @@ interface Call {
 const CALL_WIDGET_ID = 'trinity-call';
 const MAX_TIMER_MS = 2 ** 31 - 1;
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
+
+// Element Call replaces its membership event when it refreshes it, so a gap this short is no leave.
+export const OWN_MEMBERSHIP_GRACE_MS = 3_000;
 
 // Same budget as the widget bridge: the runtime chunk is small, so this only trips on a dead network.
 export const CALL_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
@@ -112,6 +116,23 @@ export class CallService {
         this.joined.set({ id: call.id, at: Date.now() });
       }
     });
+    // Element Call can leave the session (an unanswered ring ends) without a hangup or close action.
+    this.activeCall$
+      .pipe(
+        map((active) =>
+          active?.state === 'joined' ? untracked(this.call) : null,
+        ),
+        distinctUntilChanged(),
+        switchMap((call) =>
+          call
+            ? ownMembershipLost(call.transport).pipe(map(() => call))
+            : EMPTY,
+        ),
+        takeUntilDestroyed(),
+      )
+      .subscribe((call) => {
+        if (this.call() === call) this.end();
+      });
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -329,4 +350,44 @@ export class CallService {
     this.ending.set(false);
     this.next = null;
   }
+}
+
+/** Emits once this device's membership, after it was first seen, stays gone for the grace period. */
+function ownMembershipLost(transport: CallTransport): Observable<void> {
+  return transport.roomEvents().pipe(
+    filter((event) => event.type === CALL_MEMBER_TYPE),
+    startWith(null),
+    map(() =>
+      transport
+        .readState(CALL_MEMBER_TYPE)
+        .some((event) => isOwnLiveMembership(event, transport, Date.now())),
+    ),
+    distinctUntilChanged(),
+    // Joining publishes the membership after the session reports `joined`.
+    skipWhile((live) => !live),
+    switchMap((live) =>
+      live ? EMPTY : timer(OWN_MEMBERSHIP_GRACE_MS).pipe(map(() => void 0)),
+    ),
+  );
+}
+
+function isOwnLiveMembership(
+  event: RawCallEvent,
+  transport: CallTransport,
+  now: number,
+): boolean {
+  if (event.sender !== transport.userId) return false;
+  const { device_id: deviceId, memberships } = event.content;
+  const ownDevice =
+    deviceId === transport.deviceId ||
+    // The legacy format lists every device of the user in one event.
+    (Array.isArray(memberships) &&
+      memberships.some(
+        (membership: unknown) =>
+          typeof membership === 'object' &&
+          membership !== null &&
+          (membership as Record<string, unknown>)['device_id'] ===
+            transport.deviceId,
+      ));
+  return ownDevice && callParticipants([event], now).count > 0;
 }

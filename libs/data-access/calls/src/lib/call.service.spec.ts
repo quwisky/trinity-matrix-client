@@ -403,6 +403,83 @@ describe('CallService', () => {
     });
   });
 
+  describe('when Element Call leaves without telling the widget', () => {
+    afterEach(() => vi.useRealTimers());
+
+    const own = (content: Record<string, unknown>) => ({
+      type: 'org.matrix.msc3401.call.member',
+      sender: '@me:hs',
+      state_key: '_@me:hs_DEV_m.call',
+      origin_server_ts: 0,
+      content,
+    });
+    const live = own({ device_id: 'DEV', application: 'm.call' });
+    const others = [
+      {
+        ...live,
+        state_key: '_@me:hs_OTHER_m.call',
+        content: { device_id: 'OTHER' },
+      },
+      {
+        ...live,
+        sender: '@bob:hs',
+        state_key: '_@bob:hs_B_m.call',
+        content: { device_id: 'DEV' },
+      },
+    ];
+    const publish = (members: unknown[]) => {
+      runtime.members = members;
+      runtime.listeners.forEach((listener) => listener(members[0] ?? live));
+      TestBed.tick();
+    };
+    const joined = async (members: unknown[]) => {
+      vi.useFakeTimers();
+      runtime.members = members;
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      return service;
+    };
+
+    it('ends the call once its own membership has stayed gone for the grace period', async () => {
+      const service = await joined([live, ...others]);
+      publish([own({}), ...others]);
+      vi.advanceTimersByTime(2_999);
+      expect(runtime.sessions[0].hangUp).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(runtime.sessions[0].hangUp).toHaveBeenCalledTimes(1);
+      expect(service.activeCall()?.state).toBe('ending');
+    });
+
+    it('keeps the call while its membership is not yet published', async () => {
+      vi.useFakeTimers();
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      publish([own({})]);
+      vi.advanceTimersByTime(10_000);
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      vi.advanceTimersByTime(10_000);
+      expect(runtime.sessions[0].hangUp).not.toHaveBeenCalled();
+      expect(service.activeCall()?.state).toBe('joined');
+    });
+
+    it('keeps the call when the membership is republished within the grace period', async () => {
+      const service = await joined([live]);
+      publish([own({})]);
+      vi.advanceTimersByTime(2_000);
+      publish([live]);
+      vi.advanceTimersByTime(10_000);
+      expect(runtime.sessions[0].hangUp).not.toHaveBeenCalled();
+      expect(service.activeCall()?.state).toBe('joined');
+    });
+  });
+
   describe('elapsed', () => {
     afterEach(() => vi.useRealTimers());
 
