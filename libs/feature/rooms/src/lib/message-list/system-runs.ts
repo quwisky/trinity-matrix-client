@@ -1,20 +1,18 @@
 import type { SystemLineCategory } from '@trinity/data-access/timeline';
 import type { MessageRow } from '../message-row/message-row.component';
 
-type CountedCategory = SystemLineCategory | 'other';
+type CountedCategory = Exclude<SystemLineCategory, 'call'> | 'other';
 
 const NOUNS: Readonly<Record<CountedCategory, readonly [string, string]>> = {
   membership: ['membership change', 'membership changes'],
   profile: ['profile change', 'profile changes'],
   room: ['room change', 'room changes'],
-  call: ['call', 'calls'],
   other: ['change', 'changes'],
 };
 const ORDER: readonly CountedCategory[] = [
   'membership',
   'profile',
   'room',
-  'call',
   'other',
 ];
 
@@ -29,7 +27,8 @@ export function summarizeSystemRun(events: readonly MessageRow[]): string {
         : `${names[0]} and ${names.length - 1} others`;
   const counts = new Map<CountedCategory, number>();
   for (const event of events) {
-    const category = event.systemCategory ?? 'other';
+    // A call line is never in a run (see groupSystemRuns).
+    const category = (event.systemCategory ?? 'other') as CountedCategory;
     counts.set(category, (counts.get(category) ?? 0) + 1);
   }
   const parts = ORDER.filter((category) => counts.has(category)).map(
@@ -83,9 +82,11 @@ export function groupSystemRuns(
 
   for (const row of rows) {
     const startsRun = row.daySeparator != null || row.id === firstUnreadId;
-    if (row.kind !== 'event' || startsRun) flush();
-    if (row.kind === 'event') run.push(row);
-    else result.push(row);
+    // A call line stays a row of its own, so the ongoing call is never summarized away.
+    const alone = row.kind !== 'event' || row.systemCategory === 'call';
+    if (alone || startsRun) flush();
+    if (alone) result.push(row);
+    else run.push(row);
   }
   flush();
   return { rows: result, runOf };

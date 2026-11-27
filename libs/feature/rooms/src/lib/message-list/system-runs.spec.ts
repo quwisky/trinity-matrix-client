@@ -127,4 +127,16 @@ describe('groupSystemRuns', () => {
     );
     expect(rows.map((r) => r.id)).toEqual(['group:e2']);
   });
+
+  it('never folds a call line into a run', () => {
+    const call = row('c', { systemCategory: 'call' });
+    const { rows, runOf } = groupSystemRuns(
+      [row('e1'), row('e2'), call, row('e3'), row('e4')],
+      null,
+      new Map(),
+    );
+    expect(rows.map((r) => r.id)).toEqual(['group:e2', 'c', 'group:e4']);
+    expect(rows[1]).toBe(call);
+    expect(runOf.has('c')).toBe(false);
+  });
 });
