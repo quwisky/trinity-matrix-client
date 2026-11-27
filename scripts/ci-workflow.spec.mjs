@@ -1341,7 +1341,7 @@ describe('native crypto job', () => {
       expect.stringMatching(/^rustup toolchain install /),
       'node scripts/native-crypto-pin.mjs',
       'cargo fmt --check',
-      'cargo clippy --locked --all-targets -- -D warnings',
+      'cargo clippy --locked --all-targets --all-features -- -D warnings',
       'cargo test --locked',
       'pnpm nx run scripts:native-crypto-interop',
     ]);

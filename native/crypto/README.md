@@ -11,7 +11,7 @@ Needs Rust and cargo (see `rust-version` of the pinned crates; 1.96 or newer).
 ```sh
 cd native/crypto
 cargo fmt --check
-cargo clippy --all-targets -- -D warnings
+cargo clippy --all-targets --all-features -- -D warnings
 cargo test
 ```
 
