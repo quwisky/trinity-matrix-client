@@ -65,8 +65,11 @@ const CALL_WIDGET_ID = 'trinity-call';
 const MAX_TIMER_MS = 2 ** 31 - 1;
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
 
-// Element Call replaces its membership event when it refreshes it, so a gap this short is no leave.
-export const OWN_MEMBERSHIP_GRACE_MS = 3_000;
+// Alone, a lost membership is the unanswered ring ending: nothing to lose by ending quickly.
+export const OWN_MEMBERSHIP_ALONE_GRACE_MS = 3_000;
+// With others, the server's delayed leave can publish `{}` after a network blip or a paused
+// tab, and Element Call rejoins on a later round trip.
+export const OWN_MEMBERSHIP_SHARED_GRACE_MS = 30_000;
 
 // Same budget as the widget bridge: the runtime chunk is small, so this only trips on a dead network.
 export const CALL_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
@@ -352,42 +355,66 @@ export class CallService {
   }
 }
 
-/** Emits once this device's membership, after it was first seen, stays gone for the grace period. */
+/**
+ * Emits once this device's membership, after it was first seen, stays gone for the grace period.
+ * shortcut: reads only `call.member` state; in sticky-event mode (`org.matrix.msc4143.rtc.member`)
+ * the membership never reaches state, so this never arms. Read sticky members when Element Call
+ * runs in that mode here.
+ */
 function ownMembershipLost(transport: CallTransport): Observable<void> {
   return transport.roomEvents().pipe(
     filter((event) => event.type === CALL_MEMBER_TYPE),
     startWith(null),
-    map(() =>
-      transport
-        .readState(CALL_MEMBER_TYPE)
-        .some((event) => isOwnLiveMembership(event, transport, Date.now())),
-    ),
+    map(() => ownMembershipState(transport, Date.now())),
     distinctUntilChanged(),
     // Joining publishes the membership after the session reports `joined`.
-    skipWhile((live) => !live),
-    switchMap((live) =>
-      live ? EMPTY : timer(OWN_MEMBERSHIP_GRACE_MS).pipe(map(() => void 0)),
+    skipWhile((state) => state !== 'live'),
+    switchMap((state) =>
+      state === 'live'
+        ? EMPTY
+        : timer(
+            state === 'gone-alone'
+              ? OWN_MEMBERSHIP_ALONE_GRACE_MS
+              : OWN_MEMBERSHIP_SHARED_GRACE_MS,
+          ).pipe(map(() => void 0)),
     ),
   );
 }
 
-function isOwnLiveMembership(
-  event: RawCallEvent,
+function ownMembershipState(
   transport: CallTransport,
   now: number,
-): boolean {
+): 'live' | 'gone-alone' | 'gone-with-others' {
+  let others = false;
+  for (const event of transport.readState(CALL_MEMBER_TYPE)) {
+    if (callParticipants([event], now).count === 0) continue;
+    if (isOwnDevice(event, transport)) return 'live';
+    others = true;
+  }
+  return others ? 'gone-with-others' : 'gone-alone';
+}
+
+function deviceOf(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const fields = value as Record<string, unknown>;
+  const member = fields['member'];
+  return (
+    fields['device_id'] ??
+    (typeof member === 'object' && member !== null
+      ? (member as Record<string, unknown>)['device_id']
+      : undefined)
+  );
+}
+
+function isOwnDevice(event: RawCallEvent, transport: CallTransport): boolean {
   if (event.sender !== transport.userId) return false;
-  const { device_id: deviceId, memberships } = event.content;
-  const ownDevice =
-    deviceId === transport.deviceId ||
+  const memberships = event.content['memberships'];
+  return (
+    deviceOf(event.content) === transport.deviceId ||
     // The legacy format lists every device of the user in one event.
     (Array.isArray(memberships) &&
       memberships.some(
-        (membership: unknown) =>
-          typeof membership === 'object' &&
-          membership !== null &&
-          (membership as Record<string, unknown>)['device_id'] ===
-            transport.deviceId,
-      ));
-  return ownDevice && callParticipants([event], now).count > 0;
+        (membership: unknown) => deviceOf(membership) === transport.deviceId,
+      ))
+  );
 }
