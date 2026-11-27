@@ -73,7 +73,11 @@ class Normalizer {
   #labels;
   #random = new Map();
 
-  constructor(roles) {
+  #omit;
+
+  /** `omit`: fields a case compares on its own, left out here. */
+  constructor(roles, omit = []) {
+    this.#omit = new Set(omit);
     const users = new Map();
     const labels = [];
     for (const [name, device] of Object.entries(roles)) {
@@ -142,9 +146,9 @@ class Normalizer {
     if (typeof value === 'string') return this.string(value);
     if (Array.isArray(value)) return value.map((item) => this.value(item));
     if (value && typeof value === 'object') {
-      const entries = Object.entries(value).sort(([a], [b]) =>
-        this.#order(a).localeCompare(this.#order(b)),
-      );
+      const entries = Object.entries(value)
+        .filter(([key]) => !this.#omit.has(key))
+        .sort(([a], [b]) => this.#order(a).localeCompare(this.#order(b)));
       return Object.fromEntries(
         entries.map(([key, item]) => [this.string(key), this.value(item, key)]),
       );
@@ -201,7 +205,8 @@ const oneUser = async (device, kinds) => {
     const name = 'ABC'[index];
     roles[name] = await device(kind, {
       userId,
-      deviceId: `${kind.toUpperCase()}${name}${world}`,
+      // The role name first, so A < B < C whatever the kinds (SAS tie-breaks compare them).
+      deviceId: `${name}${kind.toUpperCase()}${world}`,
     });
     await server.flush(roles[name]);
   }
@@ -323,8 +328,8 @@ const context = ({ server, roles }, traces) => {
       for (const name of names)
         record(name, `${label}: sync`, await server.sync(roles[name]));
     },
-    /** The last snapshot of a flow's request in a role's events: what its mirror shows. */
-    lastRequest: (name, flowId) =>
+    /** A flow's request snapshots in a role's events, in order: what its mirror showed. */
+    requestHistory: (name, flowId) =>
       traces[name]
         .filter(({ label }) => label.endsWith(': events'))
         .flatMap(({ value }) => value.result.events)
@@ -332,7 +337,9 @@ const context = ({ server, roles }, traces) => {
           ({ type, request }) =>
             type === 'verificationRequestChanged' && request.flowId === flowId,
         )
-        .at(-1)?.request,
+        .map(({ request }) => request),
+    /** The last snapshot of a flow's request in a role's events: what its mirror shows. */
+    lastRequest: (name, flowId) => ctx.requestHistory(name, flowId).at(-1),
     events: async (label) => {
       for (const name of names)
         await ctx.step(name, `${label}: events`, (it) => it.pollEvents());
@@ -345,7 +352,14 @@ const context = ({ server, roles }, traces) => {
  * Runs `phases` (scripts, each on every run before the next starts, with `between` in
  * between) for each pairing, then compares each role of each pairing with the reference.
  */
-const runAll = async (device, pairings, setup, phases, between) => {
+const runAll = async (
+  device,
+  pairings,
+  setup,
+  phases,
+  between,
+  { omit } = {},
+) => {
   const runs = [];
   for (const kinds of pairings) {
     const built = await setup(device, kinds);
@@ -369,8 +383,8 @@ const runAll = async (device, pairings, setup, phases, between) => {
         `the steps of ${where}`,
       ).toEqual(theirs.map(({ label }) => label));
       const normalizers = [
-        new Normalizer(run.built.roles),
-        new Normalizer(reference.built.roles),
+        new Normalizer(run.built.roles, omit),
+        new Normalizer(reference.built.roles, omit),
       ];
       mine.forEach((entry, index) =>
         expectSame(
@@ -841,6 +855,14 @@ describe.skipIf(!hasCargo)(
       async () => {
         await runAll(device, TWO, twoUsers, async (ctx) => {
           const flowId = await request(ctx, 'device');
+          // Not ready yet: no SAS to start, on both.
+          expect(
+            result(
+              await ctx.step('A', 'start too early', (it) =>
+                it.startSas(ctx.B.userId, flowId),
+              ),
+            ),
+          ).toBeNull();
           await ctx.send(
             'A',
             result(
@@ -1279,6 +1301,21 @@ describe.skipIf(!hasCargo)(
               await ctx.events('start');
             },
             async (ctx, state) => {
+              // Before a sync times it out, the SAS already says it has.
+              for (const [name, other] of [
+                ['A', ctx.B],
+                ['B', ctx.A],
+              ]) {
+                const sas = result(
+                  await ctx.step(name, 'expired SAS', (it) =>
+                    it.getVerification(other.userId, state.flowId),
+                  ),
+                );
+                expect(sas).toMatchObject({
+                  timedOut: true,
+                  isCancelled: false,
+                });
+              }
               await ctx.syncAll('timed out');
               await ctx.settle('cancel');
               await ctx.events('timed out');
@@ -1303,6 +1340,445 @@ describe.skipIf(!hasCargo)(
         );
       },
       120_000,
+    );
+
+    /** Both ends show the same SAS now; returns its decimals. */
+    const sameSas = async (ctx, flowId, label) => {
+      const shown = [];
+      for (const [name, other] of [
+        ['A', ctx.B],
+        ['B', ctx.A],
+      ]) {
+        shown.push(
+          result(
+            await ctx.step(name, label, (it) =>
+              it.getVerification(other.userId, flowId),
+            ),
+          ),
+        );
+      }
+      expect(shown[0].decimals).toHaveLength(3);
+      expect(shown[0].decimals).toEqual(shown[1].decimals);
+      expect(shown[0].emoji).toEqual(shown[1].emoji);
+      return shown[0].decimals;
+    };
+
+    /** B accepts the SAS it holds and both ends exchange keys. */
+    const acceptSas = async (ctx, flowId, label) => {
+      await ctx.send(
+        'B',
+        result(
+          await ctx.step('B', label, (it) =>
+            it.acceptSas(ctx.A.userId, flowId),
+          ),
+        ),
+      );
+      await ctx.settle(label);
+      await ctx.events(label);
+    };
+
+    /** Where `confirmSas` with the decimals of a replaced SAS goes: the crate refuses it. */
+    const confirmReplaced = async (ctx, name, flowId, decimals) => {
+      const other = name === 'A' ? ctx.B : ctx.A;
+      const answer = await ctx.step(
+        name,
+        'confirm the replaced SAS',
+        (it) => it.confirmSas(other.userId, flowId, decimals),
+        // Neither sends anything; WASM's new SAS (no keys yet) confirms nothing.
+        (it) => (it.error ? [] : it.result),
+      );
+      if (ctx[name].kind === 'native') {
+        expect(answer.error.code).toBe('StaleObject');
+      } else {
+        expect(result(answer)).toEqual([]);
+      }
+    };
+
+    covered(
+      [
+        'VerificationRequest.startSas',
+        'VerificationRequest.registerChangesCallback',
+        'Sas.accept',
+        'Sas.confirm',
+        'Sas.registerChangesCallback',
+        'Sas.decimals',
+        'Sas.emoji',
+      ],
+      'settles two SAS started at once on the one the lower device started, as WASM does',
+      async () => {
+        await runAll(device, TWO, oneUser, async (ctx) => {
+          const flowId = await request(ctx, 'self');
+          await accept(ctx, flowId);
+          for (const name of ['A', 'B']) {
+            const other = name === 'A' ? ctx.B : ctx.A;
+            const [, start] = result(
+              await ctx.step(name, 'start SAS at once', (it) =>
+                it.startSas(other.userId, flowId),
+              ),
+            );
+            await ctx.send(name, start);
+          }
+          await ctx.settle('both started');
+          await ctx.events('both started');
+          // A's device ID sorts lower: B drops its own SAS for A's (one more request change),
+          // A ignores B's.
+          expect(
+            ['A', 'B'].map((name) =>
+              ctx.requestHistory(name, flowId).map((it) => it.phase),
+            ),
+            'the mirrors show the replacement on B',
+          ).toEqual([
+            [Phase.Ready, Phase.Transitioned],
+            [Phase.Ready, Phase.Transitioned, Phase.Transitioned],
+          ]);
+          // A holds its own SAS, which it cannot accept; B holds A's, which it can.
+          expect(
+            result(
+              await ctx.step('A', 'accept own SAS', (it) =>
+                it.acceptSas(ctx.B.userId, flowId),
+              ),
+            ),
+          ).toBeNull();
+          await acceptSas(ctx, flowId, 'accept the surviving SAS');
+          const decimals = await sameSas(ctx, flowId, 'surviving SAS shown');
+          await confirmSas(ctx, flowId, decimals);
+          expect(await trustAfter(ctx)).toEqual({
+            A: { device: true, identity: true },
+            B: { device: true, identity: true },
+          });
+        });
+      },
+    );
+
+    covered(
+      ['Sas.confirm', 'Sas.decimals', 'Sas.registerChangesCallback'],
+      'replaces a SAS whose emoji were shown when a late start of the lower device arrives, and refuses its decimals',
+      async () => {
+        await runAll(device, TWO, oneUser, async (ctx) => {
+          const { A, B } = ctx;
+          const flowId = await request(ctx, 'self');
+          await accept(ctx, flowId);
+          const shown = await sasUntilEmoji(ctx, flowId);
+          // A start from A that arrives late (here: delivered again by the server). A's device
+          // sorts lower, so B replaces the SAS it showed, as matrix-sdk-crypto does.
+          ctx.server.deliver(B, [
+            {
+              type: 'm.key.verification.start',
+              sender: A.userId,
+              content: {
+                from_device: A.deviceId,
+                transaction_id: flowId,
+                method: 'm.sas.v1',
+                key_agreement_protocols: ['curve25519-hkdf-sha256'],
+                hashes: ['sha256'],
+                message_authentication_codes: ['hkdf-hmac-sha256.v2'],
+                short_authentication_string: ['decimal', 'emoji'],
+              },
+            },
+          ]);
+          await ctx.settle('late start');
+          await ctx.events('late start');
+          const replaced = result(
+            await ctx.step('B', 'replaced SAS', (it) =>
+              it.getVerification(A.userId, flowId),
+            ),
+          );
+          expect(replaced.decimals).toBeUndefined();
+          // The decimals the user saw belong to the replaced SAS.
+          await confirmReplaced(ctx, 'B', flowId, shown);
+          await ctx.settle('after');
+          await fetchKeys(ctx.server, B, [A.userId]);
+          expect(
+            result(
+              await ctx.step('B', 'still unverified', (it) =>
+                it.getDevice(A.userId, A.deviceId),
+              ),
+            ).isVerified,
+          ).toBe(false);
+        });
+      },
+    );
+
+    covered(
+      [
+        'VerificationRequest.generateQrCode',
+        'VerificationRequest.startSas',
+        'VerificationRequest.getVerification',
+        'Sas.registerChangesCallback',
+        'Qr.registerChangesCallback',
+        'Qr.state',
+      ],
+      'replaces a shown QR code nobody scanned with a SAS started on the same request, as WASM does',
+      async () => {
+        await runAll(device, TWO, oneUser, async (ctx) => {
+          const { A, B } = ctx;
+          const flowId = await request(ctx, 'self');
+          await accept(ctx, flowId);
+          expect(
+            result(
+              await ctx.step('B', 'show QR code', (it) =>
+                it.generateQrCode(A.userId, flowId),
+              ),
+            ).state,
+          ).toBe(QrState.Created);
+          await ctx.events('shown');
+          const [, start] = result(
+            await ctx.step('A', 'start SAS instead', (it) =>
+              it.startSas(B.userId, flowId),
+            ),
+          );
+          await ctx.send('A', start);
+          await ctx.settle('start');
+          await ctx.events('start');
+          expect(
+            ctx.requestHistory('B', flowId).map((it) => it.verification?.kind),
+            "B's mirror switches from the QR code to the SAS",
+          ).toEqual([undefined, 'qr', 'sas']);
+          const late = await ctx.step(
+            'B',
+            'confirm the replaced QR code',
+            (it) => it.confirmQrScanning(A.userId, flowId),
+            (it) => (it.error ? null : it.result),
+          );
+          // The crate finds no QR code on the flow; WASM's held one, never scanned, sends nothing.
+          if (B.kind === 'native')
+            expect(late.error.code).toBe('UnknownVerification');
+          else expect(result(late)).toBeNull();
+          await acceptSas(ctx, flowId, 'accept SAS');
+          const decimals = await sameSas(ctx, flowId, 'SAS shown');
+          await confirmSas(ctx, flowId, decimals);
+          expect(await trustAfter(ctx)).toEqual({
+            A: { device: true, identity: true },
+            B: { device: true, identity: true },
+          });
+        });
+      },
+    );
+
+    covered(
+      [
+        'Qr.cancel',
+        'Qr.cancelInfo',
+        'Qr.isCancelled',
+        'Qr.isDone',
+        'Qr.otherUserId',
+        'Qr.registerChangesCallback',
+        'Qr.state',
+      ],
+      'cancels a scanned QR code, as WASM does',
+      async () => {
+        await runAll(device, TWO, oneUser, async (ctx) => {
+          const { A, B } = ctx;
+          const flowId = await request(ctx, 'self');
+          await accept(ctx, flowId);
+          result(
+            await ctx.step('B', 'show QR code', (it) =>
+              it.generateQrCode(A.userId, flowId),
+            ),
+          );
+          const bytes = result(
+            await ctx.step(
+              'B',
+              'QR code bytes',
+              (it) => it.qrCodeBytes(A.userId, flowId),
+              (answer) => Buffer.from(answer.result, 'base64').length,
+            ),
+          );
+          result(
+            await ctx.step('A', 'scan', (it) =>
+              it.scanQrCode(B.userId, flowId, bytes),
+            ),
+          );
+          await ctx.send(
+            'A',
+            result(
+              await ctx.step('A', 'reciprocate', (it) =>
+                it.reciprocateQr(B.userId, flowId),
+              ),
+            ),
+          );
+          await ctx.settle('scanned');
+          await ctx.events('scanned');
+          await ctx.send(
+            'B',
+            result(
+              await ctx.step('B', 'cancel QR code', (it) =>
+                it.cancelQr(A.userId, flowId),
+              ),
+            ),
+          );
+          const cancelled = result(
+            await ctx.step('B', 'cancelled QR code', (it) =>
+              it.getVerification(A.userId, flowId),
+            ),
+          );
+          expect(cancelled).toMatchObject({
+            kind: 'qr',
+            state: QrState.Cancelled,
+            isCancelled: true,
+            isDone: false,
+            cancelInfo: { cancelCode: 'm.user', cancelledbyUs: true },
+          });
+          await ctx.settle('cancel');
+          await ctx.events('cancel');
+          const seen = await cancelSeen(ctx, flowId, 'cancelled');
+          expect(seen.A).toMatchObject({
+            cancelCode: 'm.user',
+            cancelledbyUs: false,
+          });
+        });
+      },
+    );
+
+    covered(
+      [
+        'OlmMachine.getVerificationRequest',
+        'VerificationRequest.theirSupportedMethods',
+      ],
+      'ignores a method it does not know in a request and verifies with the others',
+      async () => {
+        const runs = await runAll(
+          device,
+          TWO,
+          twoUsers,
+          async (ctx) => {
+            const { A, B } = ctx;
+            const [created, toDevice] = result(
+              await ctx.step('A', 'request', (it) =>
+                it.requestDeviceVerification(B.userId, B.deviceId, ALL_METHODS),
+              ),
+            );
+            // The request on the wire also offers a method nobody knows.
+            const body = JSON.parse(toDevice.body);
+            const content = body.messages[B.userId][B.deviceId];
+            content.methods = [...content.methods, 'org.example.unknown'];
+            await ctx.send('A', { ...toDevice, body: JSON.stringify(body) });
+            const flowId = created.flowId;
+            ctx.flows.push(flowId);
+            await ctx.settle('request');
+            await ctx.events('request');
+            const incoming = result(
+              await ctx.step('B', 'incoming request', (it) =>
+                it.getVerificationRequest(A.userId, flowId),
+              ),
+            );
+            // The crate leaves the unknown method out; WASM's getter throws on it.
+            expect(incoming.theirSupportedMethods).toEqual(
+              B.kind === 'native'
+                ? ALL_METHODS
+                : {
+                    throws: expect.stringContaining(
+                      'Unknown verification method',
+                    ),
+                  },
+            );
+            await accept(ctx, flowId);
+            const decimals = await sasUntilEmoji(ctx, flowId);
+            await confirmSas(ctx, flowId, decimals);
+            expect((await trustAfter(ctx)).A.device).toBe(true);
+          },
+          undefined,
+          // Compared above, per kind.
+          { omit: ['theirSupportedMethods'] },
+        );
+        expect(runs).toHaveLength(4);
+      },
+    );
+
+    covered(
+      ['Sas.accept'],
+      'shows no emoji for a SAS whose start offers only decimals, as WASM does',
+      async () => {
+        await runAll(device, TWO, twoUsers, async (ctx) => {
+          const { A, B } = ctx;
+          const flowId = await request(ctx, 'device');
+          await accept(ctx, flowId);
+          ctx.server.deliver(B, [
+            {
+              type: 'm.key.verification.start',
+              sender: A.userId,
+              content: {
+                from_device: A.deviceId,
+                transaction_id: flowId,
+                method: 'm.sas.v1',
+                key_agreement_protocols: ['curve25519-hkdf-sha256'],
+                hashes: ['sha256'],
+                message_authentication_codes: ['hkdf-hmac-sha256.v2'],
+                short_authentication_string: ['decimal'],
+              },
+            },
+          ]);
+          await ctx.settle('decimals only');
+          await ctx.events('decimals only');
+          const started = result(
+            await ctx.step('B', 'started SAS', (it) =>
+              it.getVerification(A.userId, flowId),
+            ),
+          );
+          expect(started).toMatchObject({
+            kind: 'sas',
+            supportsEmoji: false,
+            weStarted: false,
+          });
+          await ctx.step('B', 'accept SAS', (it) =>
+            it.acceptSas(A.userId, flowId),
+          );
+        });
+      },
+    );
+
+    covered(
+      ['VerificationRequest.isPassive', 'VerificationRequest.phase'],
+      "goes passive on an own device that sees another own device's ready, then done, as WASM does",
+      async () => {
+        await runAll(device, THREE, oneUser, async (ctx) => {
+          const { A, B, C } = ctx;
+          const flowId = await request(ctx, 'self');
+          result(
+            await ctx.step('C', 'incoming request', (it) =>
+              it.getVerificationRequest(A.userId, flowId),
+            ),
+          );
+          const ready = result(
+            await ctx.step('B', 'accept', (it) =>
+              it.acceptVerificationRequest(A.userId, flowId, ALL_METHODS),
+            ),
+          );
+          // A server that fans the ready out to C as well: C sees its own user answer.
+          const content = JSON.parse(ready.body).messages[A.userId][A.deviceId];
+          const toC = (type, body) => ({
+            type,
+            sender: A.userId,
+            content: body,
+          });
+          ctx.server.deliver(C, [toC('m.key.verification.ready', content)]);
+          await ctx.send('B', ready);
+          await ctx.settle('ready');
+          await ctx.events('ready');
+          const passive = result(
+            await ctx.step('C', 'answered elsewhere', (it) =>
+              it.getVerificationRequest(A.userId, flowId),
+            ),
+          );
+          // Passive reads as cancelled with no cancel info, as WASM's phase() maps it.
+          expect(passive).toMatchObject({
+            isPassive: true,
+            phase: Phase.Cancelled,
+          });
+          expect(passive.cancelInfo).toBeUndefined();
+          const decimals = await sasUntilEmoji(ctx, flowId);
+          await confirmSas(ctx, flowId, decimals);
+          ctx.server.deliver(C, [
+            toC('m.key.verification.done', { transaction_id: flowId }),
+          ]);
+          await ctx.settle('done elsewhere');
+          await ctx.events('done elsewhere');
+          expect(ctx.lastRequest('C', flowId)).toMatchObject({
+            phase: Phase.Done,
+            isPassive: false,
+          });
+        });
+      },
     );
   },
 );

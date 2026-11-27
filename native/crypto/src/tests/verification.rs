@@ -183,7 +183,14 @@ fn a_sas_flow_reports_its_changes_and_stops_watching_when_done() {
 fn unknown_replaced_and_stale_flows_are_refused_without_effect() {
     let mut server = Homeserver::default();
     let (alice, bob) = two_users(&mut server, "stale");
-    let unknown = json!({ "userId": bob, "flowId": "no-such-flow" });
+    let unknown = json!({ "userId": bob, "flowId": "no-such-flow", "decimals": [1, 2, 3] });
+    let flow_only = |method: &str| {
+        let mut params = unknown.clone();
+        if method != "confirmSas" {
+            params.as_object_mut().unwrap().remove("decimals");
+        }
+        params
+    };
     for method in [
         "acceptVerificationRequest",
         "cancelVerificationRequest",
@@ -198,7 +205,7 @@ fn unknown_replaced_and_stale_flows_are_refused_without_effect() {
         "qrCodeBytes",
     ] {
         assert_eq!(
-            error_code(&invoke(&alice, "ALICE", method, unknown.clone())),
+            error_code(&invoke(&alice, "ALICE", method, flow_only(method))),
             "UnknownVerification",
             "{method}"
         );
@@ -228,6 +235,11 @@ fn unknown_replaced_and_stale_flows_are_refused_without_effect() {
             "{method}"
         );
     }
+    // Confirming needs the decimals the host showed.
+    assert_eq!(
+        error_code(&invoke(&alice, "ALICE", "confirmSas", on_flow.clone())),
+        "InvalidRequest"
+    );
     // Decimals the host did not show: a SAS of another flow under the same ID.
     let sas = ok(&alice, "ALICE", "getVerification", on_flow.clone());
     let mut other = sas["decimals"].clone();
@@ -519,4 +531,145 @@ fn the_qr_secret_leaves_only_through_qr_code_bytes() {
             assert!(!text.contains(leaked.trim_end_matches('=')), "{text}");
         }
     }
+}
+
+/// Alice asks to verify Bob's device and Bob accepts; both know each other's identity.
+fn ready_with_identities(server: &mut Homeserver, name: &str) -> (String, String, String) {
+    let (alice, bob) = two_users(server, name);
+    let requests = ok(
+        &alice,
+        "ALICE",
+        "bootstrapCrossSigning",
+        json!({ "reset": true }),
+    );
+    server.upload_signing_keys(&alice, &requests["uploadSigningKeysRequest"]);
+    let query = ok(
+        &bob,
+        "BOB",
+        "queryKeysForUsers",
+        json!({ "users": [alice] }),
+    );
+    server.send(&bob, "BOB", &query);
+    let all = json!([0, 1, 2, 3]);
+    let started = ok(
+        &alice,
+        "ALICE",
+        "requestDeviceVerification",
+        json!({ "userId": bob, "deviceId": "BOB", "methods": all }),
+    );
+    server.send(&alice, "ALICE", &started[1]);
+    let flow = started[0]["flowId"].as_str().unwrap().to_owned();
+    server.sync(&bob, "BOB");
+    ok(
+        &bob,
+        "BOB",
+        "getVerificationRequest",
+        json!({ "userId": alice, "flowId": flow }),
+    );
+    let ready = ok(
+        &bob,
+        "BOB",
+        "acceptVerificationRequest",
+        json!({ "userId": alice, "flowId": flow, "methods": all }),
+    );
+    server.send(&bob, "BOB", &ready);
+    server.sync(&alice, "ALICE");
+    (alice, bob, flow)
+}
+
+#[test]
+fn a_sas_that_replaces_a_shown_qr_code_is_watched_instead() {
+    let mut server = Homeserver::default();
+    let (alice, bob, flow) = ready_with_identities(&mut server, "swap");
+    let on_alice = json!({ "userId": alice, "flowId": flow });
+    assert_eq!(
+        ok(&bob, "BOB", "generateQrCode", on_alice.clone())["kind"],
+        json!("qr")
+    );
+    assert_eq!(
+        watched(&bob, "BOB"),
+        json!(2),
+        "the request and its QR code"
+    );
+    ok(&bob, "BOB", "pollEvents", json!({}));
+
+    // Alice starts SAS instead: it replaces Bob's QR code, which nobody scanned.
+    let started = ok(
+        &alice,
+        "ALICE",
+        "startSas",
+        json!({ "userId": bob, "flowId": flow }),
+    );
+    server.send(&alice, "ALICE", &started[1]);
+    server.sync(&bob, "BOB");
+    let replaced = events_of(&bob, "BOB", "verificationRequestChanged");
+    assert_eq!(
+        replaced.last().unwrap()["request"]["verification"]["kind"],
+        json!("sas")
+    );
+    assert_eq!(watched(&bob, "BOB"), json!(2), "the request and its SAS");
+    let accept = ok(&bob, "BOB", "acceptSas", on_alice.clone());
+    server.send(&bob, "BOB", &accept);
+    let changed = events_of(&bob, "BOB", "verificationChanged");
+    assert_eq!(
+        changed.last().unwrap()["verification"]["kind"],
+        json!("sas"),
+        "the new SAS is watched: {changed:?}"
+    );
+    assert_eq!(
+        error_code(&invoke(&bob, "BOB", "confirmQrScanning", on_alice.clone())),
+        "UnknownVerification",
+        "the replaced QR code is gone"
+    );
+    // Before keys are exchanged the new SAS shows no decimals: any the host has are stale.
+    let mut confirm = on_alice.clone();
+    confirm["decimals"] = json!([1000, 2000, 3000]);
+    assert_eq!(
+        error_code(&invoke(&bob, "BOB", "confirmSas", confirm)),
+        "StaleObject"
+    );
+}
+
+#[test]
+fn a_shown_qr_code_replaced_by_a_cancelled_sas_is_not_watched() {
+    let mut server = Homeserver::default();
+    let (alice, bob, flow) = ready_with_identities(&mut server, "gone");
+    ok(
+        &bob,
+        "BOB",
+        "generateQrCode",
+        json!({ "userId": alice, "flowId": flow }),
+    );
+    assert_eq!(watched(&bob, "BOB"), json!(2));
+    let on_bob = json!({ "userId": bob, "flowId": flow });
+    let started = ok(&alice, "ALICE", "startSas", on_bob.clone());
+    server.send(&alice, "ALICE", &started[1]);
+    let cancel = ok(&alice, "ALICE", "cancelSas", on_bob);
+    server.send(&alice, "ALICE", &cancel);
+    // Bob gets the start and the cancel in one sync: the SAS replaces the QR code and ends.
+    server.sync(&bob, "BOB");
+    assert_eq!(
+        watched(&bob, "BOB"),
+        json!(0),
+        "neither the QR code nor the SAS"
+    );
+}
+
+#[test]
+fn a_panic_drops_the_watches_at_once() {
+    let mut server = Homeserver::default();
+    let (alice, bob) = two_users(&mut server, "dead");
+    ok(
+        &alice,
+        "ALICE",
+        "requestDeviceVerification",
+        json!({ "userId": bob, "deviceId": "BOB" }),
+    );
+    assert_eq!(watched(&alice, "ALICE"), json!(1));
+    invoke(&alice, "ALICE", "debugPanic", json!({}));
+    assert_eq!(
+        watched(&alice, "ALICE"),
+        json!(0),
+        "the dead machine's objects are not kept until the next init"
+    );
 }

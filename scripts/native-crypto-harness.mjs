@@ -520,7 +520,14 @@ export const fromWasm = {
       otherDeviceId: request.otherDeviceId?.toString(),
       roomId: request.roomId?.toString(),
       cancelInfo: fromWasm.cancelInfo(request.cancelInfo),
-      theirSupportedMethods: request.theirSupportedMethods,
+      // The getter throws on a method WASM does not know.
+      theirSupportedMethods: (() => {
+        try {
+          return request.theirSupportedMethods;
+        } catch (error) {
+          return { throws: String(error.message ?? error) };
+        }
+      })(),
       ourSupportedMethods: request.ourSupportedMethods,
       verification: fromWasm.verification(request.getVerification()),
     }),
@@ -618,7 +625,15 @@ const wasmDevice = async (userId, deviceId) => {
   machine.registerDevicesUpdatedCallback(async (userIds) => {
     events.push({ type: 'devicesUpdated', userIds: [...userIds].sort() });
   });
-  const respond = fromWasm.response;
+  // WASM runs change callbacks on its own promise chain, some time after the call. The
+  // native crate queues a call's events before it returns: let the callbacks run first, so
+  // both see the objects as the call left them.
+  const callbacksRun = () => new Promise((done) => setTimeout(done, 0));
+  const respond = async (run, map) => {
+    const answer = await fromWasm.response(run, map);
+    await callbacksRun();
+    return answer;
+  };
   // WASM's object methods; native resolves the object by its keys on each call.
   const onDevice = async (user, id) => {
     const found = await machine.getDevice(
@@ -633,35 +648,50 @@ const wasmDevice = async (userId, deviceId) => {
     if (!found) throw new Error(`unknown identity ${user}`);
     return found;
   };
-  // Verification objects as matrix-js-sdk holds them: the first object of each kind seen for a
-  // flow is kept and acted on, and its changes callback (registered once, as the native crate
-  // watches each object once) queues the same events native does.
+  // Verification objects as matrix-js-sdk holds them: the request first seen for a flow, and
+  // the latest Sas or Qr (matrix-js-sdk switches its verifier when the request changes). Change
+  // callbacks follow the native crate's watches: one live callback per object key, replaced
+  // when the object is handed out again or its request changes while it holds one, and ended
+  // with the object. (A replaced object gets no more events, so nothing else needs ending.)
   const held = new Map();
+  const live = new Map();
   const heldKey = (user, flowId, kind) => `${user}|${flowId}|${kind}`;
+  const kindOf = (object) =>
+    object instanceof wasm.VerificationRequest
+      ? 'request'
+      : object instanceof wasm.Sas
+        ? 'sas'
+        : 'qr';
+  const over = (object) => object.isDone() || object.isCancelled();
   const seen = (object) => {
     if (!object) return object;
-    const kind =
-      object instanceof wasm.VerificationRequest
-        ? 'request'
-        : object instanceof wasm.Sas
-          ? 'sas'
-          : 'qr';
-    const key = heldKey(object.otherUserId.toString(), object.flowId, kind);
-    if (held.has(key)) return object;
-    held.set(key, object);
-    if (object.isDone() || object.isCancelled()) return object;
+    const kind = kindOf(object);
+    const user = object.otherUserId.toString();
+    const flowId = object.flowId;
+    const watchKey = `${user}|${flowId}|${kind === 'request'}`;
+    if (kind !== 'request' || !held.has(heldKey(user, flowId, kind)))
+      held.set(heldKey(user, flowId, kind), object);
+    if (over(object)) return object;
+    const token = {};
+    live.set(watchKey, token);
     object.registerChangesCallback(async () => {
+      if (live.get(watchKey) !== token) return;
       if (kind === 'request') {
         events.push({
           type: 'verificationRequestChanged',
           request: fromWasm.verificationRequest(object),
         });
-        seen(object.getVerification());
+        if (over(object)) {
+          live.delete(watchKey);
+        } else if (object.getVerification()) {
+          seen(object.getVerification());
+        }
       } else {
         events.push({
           type: 'verificationChanged',
           verification: fromWasm.verification(object),
         });
+        if (over(object)) live.delete(watchKey);
       }
     });
     return object;
@@ -695,18 +725,21 @@ const wasmDevice = async (userId, deviceId) => {
       curve25519: machine.identityKeys.curve25519.toBase64(),
     },
     outgoingRequests: async () => (await machine.outgoingRequests()).map(plain),
-    markRequestAsSent: async (id, type, response) => ({
-      result: await machine.markRequestAsSent(id, type, response),
-    }),
-    receiveSyncChanges: async (toDeviceEvents, counts) =>
-      (
-        await machine.receiveSyncChanges(
-          toDeviceEvents,
-          new wasm.DeviceLists(),
-          new Map(Object.entries(counts)),
-          new Set(),
-        )
-      ).map((event) => defined(fromWasm.toDevice(event))),
+    markRequestAsSent: async (id, type, response) => {
+      const result = await machine.markRequestAsSent(id, type, response);
+      await callbacksRun();
+      return { result };
+    },
+    receiveSyncChanges: async (toDeviceEvents, counts) => {
+      const received = await machine.receiveSyncChanges(
+        toDeviceEvents,
+        new wasm.DeviceLists(),
+        new Map(Object.entries(counts)),
+        new Set(),
+      );
+      await callbacksRun();
+      return received.map((event) => defined(fromWasm.toDevice(event)));
+    },
     updateTrackedUsers: async (list) =>
       (await machine.updateTrackedUsers(users(list))) ?? null,
     getMissingSessions: async (list) => {

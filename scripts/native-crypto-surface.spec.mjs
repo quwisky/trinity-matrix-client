@@ -217,4 +217,48 @@ describe('usedSymbols', () => {
       'make',
     ]);
   });
+
+  it('credits each member of a union a generic is constrained to', () => {
+    const fixture = mkdtempSync(join(tmpdir(), 'native-crypto-surface-'));
+    const write = (path, text) => {
+      mkdirSync(dirname(join(fixture, path)), { recursive: true });
+      writeFileSync(join(fixture, path), text);
+    };
+    try {
+      const wasmPackage = 'node_modules/@matrix-org/matrix-sdk-crypto-wasm';
+      write(
+        `${wasmPackage}/package.json`,
+        '{ "name": "@matrix-org/matrix-sdk-crypto-wasm", "types": "index.d.ts" }',
+      );
+      write(
+        `${wasmPackage}/index.d.ts`,
+        [
+          'export declare class Sas { cancel(): void; isDone(): boolean; emoji(): string; }',
+          'export declare class Qr { cancel(): void; isDone(): boolean; state(): number; }',
+        ].join('\n'),
+      );
+      write(
+        'node_modules/matrix-js-sdk/src/a.ts',
+        [
+          'import { type Qr, type Sas } from "@matrix-org/matrix-sdk-crypto-wasm";',
+          'export class Base<Inner extends Qr | Sas> {',
+          '  constructor(protected inner: Inner) {}',
+          '  stop(): boolean { this.inner.cancel(); return this.inner.isDone(); }',
+          '}',
+          'export const shown = (sas: Sas) => sas.emoji();',
+        ].join('\n'),
+      );
+      expect(usedSymbols(join(fixture, 'node_modules/matrix-js-sdk'))).toEqual([
+        'Qr',
+        'Qr.cancel',
+        'Qr.isDone',
+        'Sas',
+        'Sas.cancel',
+        'Sas.emoji',
+        'Sas.isDone',
+      ]);
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
 });
