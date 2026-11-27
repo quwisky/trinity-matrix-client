@@ -10,6 +10,8 @@ use std::sync::LazyLock;
 use serde_json::{Value, json};
 
 mod error;
+#[cfg(feature = "jni")]
+mod jni;
 mod machine;
 mod requests;
 mod responses;

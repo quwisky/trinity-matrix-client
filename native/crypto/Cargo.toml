@@ -14,6 +14,12 @@ matrix-sdk-crypto = "0.19.1"
 
 [lib]
 name = "trinity_crypto"
+# cdylib: the Android `.so` (see build-android.sh); rlib: the CLI and the tests.
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The JNI entry points for the Android debug plugin.
+jni = ["dep:jni"]
 
 [[bin]]
 name = "trinity-crypto-cli"
@@ -23,6 +29,7 @@ path = "src/bin/trinity-crypto-cli.rs"
 # README.md, "The pin rule"), with WASM's matrix-sdk-crypto features minus `js`.
 [dependencies]
 base64 = "0.23.1"
+jni = { version = "0.22.4", optional = true }
 matrix-sdk-common = { version = "=0.19.1", features = ["experimental-encrypted-state-events"] }
 matrix-sdk-crypto = { version = "=0.19.1", default-features = false, features = [
   "automatic-room-key-forwarding",

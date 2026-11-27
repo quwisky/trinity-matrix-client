@@ -70,14 +70,31 @@ caller's copies as soon as `init` returns.
 
 ## For the JNI wrapper
 
-- Read the request with the `jni` crate's `get_string`: Java strings are modified UTF-8, not
-  plain UTF-8, so never read their bytes directly.
+- Read the request with `JString::try_to_string` (jni 0.22's replacement for the deprecated
+  `get_string`): Java strings are modified UTF-8, not plain UTF-8, so never read their bytes
+  directly. `src/jni.rs` (cargo feature `jni`) does this.
 - Never build with `panic = "abort"`: panics are caught and returned as `Panic` errors only
   while panics unwind.
 - Call from a background thread: a call blocks its thread until it is done, and must never
   run on a thread of the crate's own runtime.
 - Callbacks (M2) must be queued and delivered after the call that produced them returns, not
   from inside the call.
+
+## Android (debug builds only)
+
+`native/crypto/build-android.sh [abi …]` (default `x86_64`, the emulator) cross-builds
+`libtrinity_crypto.so` with the `jni` feature into `android/app/src/debug/jniLibs/`, which git
+ignores. It needs an Android NDK (the Android Gradle Plugin's default, 28.2.13676358, through
+`sdkmanager`), `rustup target add x86_64-linux-android` (one target per ABI) and
+`cargo install cargo-ndk`.
+
+Debug builds then have the Capacitor plugin `TrinityCryptoDebug`: `call({ request })` and
+`callBatch({ requests })` take the JSON strings above and resolve `{ response, nativeMs }`.
+Calls run one at a time on one background thread. A debug-only `Application` registers the
+plugin (Android 10 or newer), so `MainActivity` never names it. Without the library the plugin
+rejects with `NOT_BUILT`; `pnpm android:build` and the mobile E2E suite need neither Rust nor
+the NDK. Release builds hold neither the plugin nor the library: `pnpm android:build:release`
+checks the bundle with `scripts/android-release-isolation.mjs`.
 
 ## The pin rule
 
