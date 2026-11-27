@@ -325,6 +325,13 @@ pub async fn tracked_users(machine: &OlmMachine) -> CallResult {
     Ok(json!(users))
 }
 
+/// Marks every tracked user's device list as outdated, so the next `outgoingRequests` queries
+/// them all again.
+pub async fn mark_all_tracked_users_as_dirty(machine: &OlmMachine) -> CallResult {
+    machine.mark_all_tracked_users_as_dirty().await?;
+    Ok(Value::Null)
+}
+
 /// WASM `CrossSigningStatus`.
 fn cross_signing_status(status: CrossSigningStatus) -> Value {
     json!({

@@ -29,7 +29,7 @@ The interop target drives the crate's command-line binary and the repository's W
 
 | Area               | Done | Planned | Shim |
 | ------------------ | ---- | ------- | ---- |
-| core               | 16   | 7       | 0    |
+| core               | 17   | 6       | 0    |
 | events             | 4    | 1       | 0    |
 | room-keys          | 4    | 0       | 0    |
 | backup             | 10   | 0       | 0    |

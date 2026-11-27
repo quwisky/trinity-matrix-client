@@ -312,7 +312,11 @@
         "area": "backup",
         "native": "isBackupEnabled"
       },
-      "markAllTrackedUsersAsDirty": { "status": "planned", "area": "core" },
+      "markAllTrackedUsersAsDirty": {
+        "status": "done",
+        "area": "core",
+        "native": "markAllTrackedUsersAsDirty"
+      },
       "markRequestAsSent": {
         "status": "done",
         "area": "core",
