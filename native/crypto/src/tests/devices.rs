@@ -205,7 +205,17 @@ fn a_device_the_host_did_not_see_is_refused_and_left_unchanged() {
     stale["ed25519Key"] = json!(old_key);
     let mut trust = stale.clone();
     trust["localState"] = json!(0);
-    for (method, params) in [("setLocalTrust", trust), ("verifyDevice", stale)] {
+    let message = json!({ "eventType": "m.test", "content": { "hello": "bob" } });
+    let mut encrypt = stale.clone();
+    encrypt
+        .as_object_mut()
+        .unwrap()
+        .extend(message.as_object().unwrap().clone());
+    for (method, params) in [
+        ("setLocalTrust", trust),
+        ("verifyDevice", stale),
+        ("encryptToDeviceEvent", encrypt.clone()),
+    ] {
         assert_eq!(
             error_code(&invoke(&alice, "ALICE", method, params)),
             "StaleObject",
@@ -217,6 +227,28 @@ fn a_device_the_host_did_not_see_is_refused_and_left_unchanged() {
         json!(3),
         "a refused call changes nothing"
     );
+
+    // With the key the host saw, the message reaches Bob's new device.
+    let claim = ok(
+        &alice,
+        "ALICE",
+        "getMissingSessions",
+        json!({ "users": [bob] }),
+    );
+    server.send(&alice, "ALICE", &claim);
+    encrypt["ed25519Key"] = json!(new_key);
+    let encrypted = ok(&alice, "ALICE", "encryptToDeviceEvent", encrypt);
+    server
+        .inbox
+        .entry(format!("{bob}|BOB"))
+        .or_default()
+        .push_back(json!({
+            "type": "m.room.encrypted",
+            "sender": alice,
+            "content": serde_json::from_str::<Value>(encrypted.as_str().unwrap()).unwrap(),
+        }));
+    let received = server.sync(&bob, "BOB");
+    assert_eq!(received[0]["type"], json!(0), "decrypted: {received}");
 
     let mut fresh = device.clone();
     fresh["ed25519Key"] = json!(new_key);
