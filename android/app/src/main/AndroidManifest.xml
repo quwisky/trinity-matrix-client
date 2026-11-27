@@ -105,6 +105,9 @@
     <!-- Composer voice messages and location sharing use the corresponding Web APIs
          inside the Capacitor WebView, whose runtime grants still require manifest entries. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Capacitor's WebChromeClient asks for this with RECORD_AUDIO on every microphone
+         request (calls, voice messages) and denies the request when it is not declared. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>
