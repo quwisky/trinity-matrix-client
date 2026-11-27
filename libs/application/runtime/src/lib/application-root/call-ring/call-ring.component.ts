@@ -7,6 +7,7 @@ import {
   computed,
   effect,
   inject,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -14,9 +15,9 @@ import { AppearanceEffects } from '@trinity/application/appearance';
 import { WorkspaceNavigationService } from '@trinity/application/workspace';
 import { TrnButton } from '@trinity/components/controls';
 import { CallRingService, CallService } from '@trinity/data-access/calls';
-import { RingToneService } from './ring-tone.service';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { RingToneService } from './ring-tone.service';
 
 /** The prompt and ring tone for a call coming in on any signed-in account. */
 @Component({
@@ -60,8 +61,9 @@ export class CallRingComponent {
 
   constructor() {
     effect(() => {
-      if (this.ring()) this.tone.start();
-      else this.tone.stop();
+      // Untracked: start() reads the sound preference, which must not restart the tone.
+      const ringing = !!this.ring();
+      untracked(() => (ringing ? this.tone.start() : this.tone.stop()));
     });
     this.destroyRef.onDestroy(() => this.tone.stop());
     effect(() => {
@@ -76,7 +78,6 @@ export class CallRingComponent {
   protected accept(): void {
     const ring = this.ring();
     if (!ring) return;
-    this.ringService.dismiss();
     // Navigating to another account's room switches to that account first.
     this.workspace
       .navigate({
@@ -87,7 +88,9 @@ export class CallRingComponent {
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((outcome) => {
+        // Anything else leaves the ring showing, so the user can retry or decline.
         if (outcome.kind !== 'ready') return;
+        this.ringService.dismiss();
         this.calls.start(ring.roomId, {
           video: ring.video ?? true,
           dm: true,

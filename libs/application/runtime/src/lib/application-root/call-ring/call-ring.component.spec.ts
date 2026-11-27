@@ -1,20 +1,24 @@
 import { signal } from '@angular/core';
 import { AppearanceEffects } from '@trinity/application/appearance';
-import { WorkspaceNavigationService } from '@trinity/application/workspace';
+import {
+  WorkspaceNavigationService,
+  type WorkspaceNavigationOutcome,
+} from '@trinity/application/workspace';
 import { provideTrnIcons } from '@trinity/components/foundations';
 import {
   CallRingService,
   CallService,
   type IncomingRing,
 } from '@trinity/data-access/calls';
-import { RingToneService } from './ring-tone.service';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { NotificationSoundService } from '@trinity/data-access/notifications';
 import { render, screen } from '@trinity/testing';
 import { MockProvider } from 'ng-mocks';
-import { of } from 'rxjs';
+import { of, type Observable } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { CallRingComponent } from './call-ring.component';
+import { RingToneService } from './ring-tone.service';
 
 const RING: IncomingRing = {
   id: '$ring',
@@ -29,6 +33,7 @@ const RING: IncomingRing = {
 async function build(
   initial: IncomingRing | null = RING,
   accountIds: string[] = ['@me:hs'],
+  outcome: { kind: string } = { kind: 'ready' },
 ) {
   const incomingRing = signal<IncomingRing | null>(initial);
   const decline = vi.fn();
@@ -37,9 +42,10 @@ async function build(
   const toneStart = vi.fn();
   const toneStop = vi.fn();
   const order: string[] = [];
-  const navigate = vi.fn(() => {
+  const sound = signal(true);
+  const navigate = vi.fn((): Observable<WorkspaceNavigationOutcome> => {
     order.push('navigate');
-    return of({ kind: 'ready' as const, change: 'committed' as const });
+    return of(outcome as WorkspaceNavigationOutcome);
   });
   start.mockImplementation(() => order.push('start'));
   const result = await render(CallRingComponent, {
@@ -55,6 +61,7 @@ async function build(
       MockProvider(MatrixClientService, {
         accountIds: signal(accountIds),
       }),
+      MockProvider(NotificationSoundService, { enabled: sound }),
       MockProvider(AccountIdentitiesService, {
         identities: signal(
           new Map([
@@ -81,6 +88,7 @@ async function build(
     order,
     toneStart,
     toneStop,
+    sound,
     update,
   };
 }
@@ -146,6 +154,16 @@ describe('CallRingComponent', () => {
     expect(screen.getByText('for Me Myself')).toBeTruthy();
   });
 
+  it('keeps the ring when the room does not open', async () => {
+    const { dismiss, start } = await build(RING, ['@me:hs'], {
+      kind: 'unavailable',
+    });
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+  });
+
   it('declines', async () => {
     const { decline } = await build();
     screen.getByRole('button', { name: 'Decline' }).click();
@@ -169,6 +187,15 @@ describe('CallRingComponent', () => {
     expect(toneStop).toHaveBeenCalled();
   });
 
+  it('does not restart the tone when the sound preference flips', async () => {
+    const { toneStart, update, sound } = await build();
+    sound.set(false);
+    await update();
+    sound.set(true);
+    await update();
+    expect(toneStart).toHaveBeenCalledTimes(1);
+  });
+
   it('truncates a long caller name', async () => {
     await build({ ...RING, callerName: 'B'.repeat(200) });
     expect(
@@ -176,10 +203,22 @@ describe('CallRingComponent', () => {
     ).toContain('truncate');
   });
 
-  it('focuses Join unless a dialog already holds focus', async () => {
+  it('focuses Join when nothing holds focus', async () => {
     await build();
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Join' }),
     );
+  });
+
+  it('leaves focus alone while a dialog holds it', async () => {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const inner = document.createElement('button');
+    dialog.append(inner);
+    document.body.append(dialog);
+    inner.focus();
+    await build();
+    expect(document.activeElement).toBe(inner);
+    dialog.remove();
   });
 });

@@ -9,6 +9,7 @@ function fakeContext() {
     currentTime: 0,
     destination: {},
     close: vi.fn(() => Promise.resolve()),
+    resume: vi.fn(() => Promise.resolve()),
     createOscillator: vi.fn(() => ({
       type: '',
       frequency: { setValueAtTime: vi.fn() },
@@ -75,6 +76,13 @@ describe('RingToneService', () => {
     expect(create).toHaveBeenCalledTimes(1);
     tone.stop();
     expect(contexts[0].close).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes a suspended context, ignoring a refusal', () => {
+    TestBed.inject(RingToneService).start();
+    expect(contexts[0].resume).toHaveBeenCalled();
+    contexts[0].resume.mockRejectedValue(new Error('no gesture'));
+    expect(() => TestBed.inject(RingToneService).start()).not.toThrow();
   });
 
   it('bursts again every three seconds at a low gain', () => {

@@ -17,6 +17,8 @@ export class RingToneService {
     if (this.context || !this.sound.enabled()) return;
     try {
       this.context = new AudioContext();
+      // Made without a gesture it starts suspended.
+      void this.context.resume?.().catch(() => undefined);
     } catch {
       return;
     }
@@ -37,7 +39,7 @@ export class RingToneService {
     const at = context.currentTime;
     const gain = context.createGain();
     gain.gain.setValueAtTime(0, at);
-    gain.gain.linearRampToValueAtTime(PEAK_GAIN, at + 0.05);
+    gain.gain.linearRampToValueAtTime(PEAK_GAIN / TONES_HZ.length, at + 0.05);
     gain.gain.linearRampToValueAtTime(0, at + BURST_SECONDS);
     gain.connect(context.destination);
     for (const hz of TONES_HZ) {
