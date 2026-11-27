@@ -39,10 +39,11 @@ async function build(
   const decline = vi.fn();
   const dismiss = vi.fn();
   const start = vi.fn();
-  const toneStart = vi.fn();
+  const sound = signal(true);
+  // Reads the preference as the real service does, so a tracked call would re-run.
+  const toneStart = vi.fn(() => void sound());
   const toneStop = vi.fn();
   const order: string[] = [];
-  const sound = signal(true);
   const navigate = vi.fn((): Observable<WorkspaceNavigationOutcome> => {
     order.push('navigate');
     return of(outcome as WorkspaceNavigationOutcome);

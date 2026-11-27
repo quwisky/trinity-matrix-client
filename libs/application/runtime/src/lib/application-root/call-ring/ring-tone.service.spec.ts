@@ -4,12 +4,23 @@ import { NotificationSoundService } from '@trinity/data-access/notifications';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RingToneService } from './ring-tone.service';
 
-function fakeContext() {
+const refusalHandlers: ((error: unknown) => void)[] = [];
+
+function fakeContext(resumeRejects = false) {
   return {
     currentTime: 0,
     destination: {},
     close: vi.fn(() => Promise.resolve()),
-    resume: vi.fn(() => Promise.resolve()),
+    resume: vi.fn(() =>
+      resumeRejects
+        ? {
+            catch: (handler: (error: unknown) => void) => {
+              refusalHandlers.push(handler);
+              return Promise.resolve();
+            },
+          }
+        : Promise.resolve(),
+    ),
     createOscillator: vi.fn(() => ({
       type: '',
       frequency: { setValueAtTime: vi.fn() },
@@ -31,14 +42,17 @@ function fakeContext() {
 describe('RingToneService', () => {
   const enabled = signal(true);
   let contexts: ReturnType<typeof fakeContext>[];
+  let resumeRejects = false;
   let create: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     enabled.set(true);
+    resumeRejects = false;
+    refusalHandlers.length = 0;
     contexts = [];
     create = vi.fn(function () {
-      const context = fakeContext();
+      const context = fakeContext(resumeRejects);
       contexts.push(context);
       return context;
     });
@@ -78,11 +92,17 @@ describe('RingToneService', () => {
     expect(contexts[0].close).toHaveBeenCalledTimes(1);
   });
 
-  it('resumes a suspended context, ignoring a refusal', () => {
+  it('resumes a suspended context', () => {
     TestBed.inject(RingToneService).start();
     expect(contexts[0].resume).toHaveBeenCalled();
-    contexts[0].resume.mockRejectedValue(new Error('no gesture'));
+  });
+
+  it('ignores a refused resume', () => {
+    resumeRejects = true;
     expect(() => TestBed.inject(RingToneService).start()).not.toThrow();
+    // The fake's refusal carries a handler slot; the service must have filled it.
+    expect(refusalHandlers).toHaveLength(1);
+    expect(refusalHandlers[0](new Error('no gesture'))).toBeUndefined();
   });
 
   it('bursts again every three seconds at a low gain', () => {
