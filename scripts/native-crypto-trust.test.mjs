@@ -11,8 +11,9 @@ import {
   Homeserver,
   anonymise,
   both,
-  compared,
   covered,
+  each,
+  expectSame,
   hasCargo,
   shape,
   skipped,
@@ -22,21 +23,10 @@ import {
 const { LocalTrust, RequestType, SignatureState } = wasm;
 const BACKUP_ALGORITHM = 'm.megolm_backup.v1.curve25519-aes-sha2';
 
-const expectSame = ([native, wasmAnswer], step) =>
-  expect(native, step).toEqual(wasmAnswer);
-
 const result = (response) => {
   expect(response.error).toBeUndefined();
   return response.result;
 };
-
-/** Runs a compared step on each device and returns the raw answers, to send on afterwards. */
-const each = (devices, run) =>
-  compared(async () => {
-    const answers = [];
-    for (const it of devices) answers.push(await run(it));
-    return answers;
-  });
 
 /** Base64 keys (fresh on each side) in JSON keys, such as `ed25519:<key>`. */
 const freshKeys = (name) => name.replace(/[A-Za-z0-9+/]{43}/g, '<key>');
@@ -98,9 +88,15 @@ const identityTrust = (identity) => {
   };
 };
 
-/** Each answer's identity through `identityTrust`. */
-const identities = (answers) =>
-  answers.map(({ result: identity }) => identityTrust(identity));
+/** An answer's identity through `identityTrust`, as a view for `expectSame`. */
+const identityOf = (answer) => identityTrust(answer.result);
+
+/** An answer's device trust, as a view for `expectSame`. */
+const trustOf = (answer) => trust(answer.result);
+
+/** A view for `expectSame`: an answered request by shape, for the device at each index. */
+const requestOf = (devices) => (answer, index) =>
+  requestShape(answer.result, devices[index]);
 
 /** Creates and uploads `device`'s cross-signing keys and signs its device with them. */
 const bootstrap = async (server, device) => {
@@ -113,9 +109,24 @@ const bootstrap = async (server, device) => {
   return requests;
 };
 
-/** `/keys/query` for `users` now, as matrix-js-sdk does with `queryKeysForUsers`. */
-const query = async (server, device, users) =>
+/** `/keys/query` for `users` now, as matrix-js-sdk does with `queryKeysForUsers` (setup). */
+const fetchKeys = async (server, device, users) =>
   server.send(device, result(await device.queryKeysForUsers(users)));
+
+/**
+ * `/keys/query` for `users` on each device, compared: the request by shape (its ID is random)
+ * and markRequestAsSent's answer by value.
+ */
+const query = async (server, devices, users, step) => {
+  const answers = await each(devices, async (it) => {
+    const request = await it.queryKeysForUsers(users);
+    return { request, marked: await server.send(it, result(request)) };
+  });
+  expectSame(answers, step, ({ request, marked }, index) => ({
+    request: requestShape(request.result, devices[index]),
+    marked,
+  }));
+};
 
 /** Uploads keys and tracks `users`, fetching their keys. */
 const join = async (server, device, users) => {
@@ -143,18 +154,13 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
   const verifyUser = async (server, observers, user) => {
     const requests = await each(observers, (it) => it.verifyIdentity(user));
     // The signature is fresh on each side: same request, compared by shape.
-    expectSame(
-      requests.map(({ result: request }, index) =>
-        requestShape(request, observers[index]),
-      ),
-      'verifyIdentity',
-    );
+    expectSame(requests, 'verifyIdentity', requestOf(observers));
     expect(requests[0].result.type).toBe(RequestType.SignatureUpload);
     expect(requests[0].result.id).toBeUndefined();
     for (const [index, observer] of observers.entries()) {
       await server.send(observer, requests[index].result);
-      await compared(() => query(server, observer, [user]));
     }
+    await query(server, observers, [user], 'query after verifyIdentity');
   };
 
   covered(
@@ -199,9 +205,8 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       ).toBe(true);
 
       const tracked = await both(observers, (it) => it.trackedUsers());
-      expectSame(
-        tracked.map(({ result: users }) => [...users].sort()),
-        'trackedUsers',
+      expectSame(tracked, 'trackedUsers', ({ result: users }) =>
+        [...users].sort(),
       );
       expect(tracked[0].result).toContain(bob.userId);
 
@@ -258,7 +263,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       );
 
       // A query answered again with nothing new changes nothing.
-      await both(observers, (it) => query(server, it, [bob.userId]));
+      await query(server, observers, [bob.userId], 'an unchanged query');
       expectSame(
         await both(observers, (it) => it.pollEvents()),
         'pollEvents after an unchanged query',
@@ -268,7 +273,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       server.deviceKeys.get(bob.userId)[bob.deviceId].unsigned = {
         device_display_name: "Bob's phone",
       };
-      await both(observers, (it) => query(server, it, [bob.userId]));
+      await query(server, observers, [bob.userId], 'query for a display name');
       expectSame(
         await both(observers, (it) => it.pollEvents()),
         'pollEvents after a display name change',
@@ -378,7 +383,9 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         it.bootstrapCrossSigning(true),
       );
       expectSame(
-        bootstrapped.map(({ result: requests }, index) => ({
+        bootstrapped,
+        'bootstrapCrossSigning',
+        ({ result: requests }, index) => ({
           keys: requestShape(
             requests.uploadSigningKeysRequest,
             observers[index],
@@ -387,8 +394,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
             requests.uploadSignaturesRequest,
             observers[index],
           ),
-        })),
-        'bootstrapCrossSigning',
+        }),
       );
       for (const [index, observer] of observers.entries()) {
         const requests = bootstrapped[index].result;
@@ -409,7 +415,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         it.getIdentity(bob.userId),
       );
       // The observer's own signature on Bob's master key is fresh: keys by shape.
-      expectSame(identities(verified), 'getIdentity once verified');
+      expectSame(verified, 'getIdentity once verified', identityOf);
       expect(verified[0].result).toMatchObject({
         isVerified: true,
         wasPreviouslyVerified: true,
@@ -429,7 +435,12 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       // Bob resets his cross-signing keys: no longer verified, and the change must be flagged.
       await bootstrap(server, bob);
       await both(observers, (it) => it.pollEvents());
-      await both(observers, (it) => query(server, it, [bob.userId]));
+      await query(
+        server,
+        observers,
+        [bob.userId],
+        'query after the key change',
+      );
       const changed = await both(observers, (it) => it.pollEvents());
       expectSame(changed, 'pollEvents after the key change');
       expect(changed[0].result.events).toContainEqual({
@@ -439,7 +450,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       const violated = await both(observers, (it) =>
         it.getIdentity(bob.userId),
       );
-      expectSame(identities(violated), 'getIdentity after the key change');
+      expectSame(violated, 'getIdentity after the key change', identityOf);
       expect(violated[0].result).toMatchObject({
         isVerified: false,
         wasPreviouslyVerified: true,
@@ -462,8 +473,9 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       );
       const pinned = await both(observers, (it) => it.getIdentity(bob.userId));
       expectSame(
-        identities(pinned),
+        pinned,
         'getIdentity once the violation is pinned',
+        identityOf,
       );
       expect(pinned[0].result).toMatchObject({
         isVerified: false,
@@ -480,8 +492,9 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         it.getIdentity(bob.userId),
       );
       expectSame(
-        identities(withdrawn),
+        withdrawn,
         'getIdentity after withdrawVerification',
+        identityOf,
       );
       expect(withdrawn[0].result).toMatchObject({
         isVerified: false,
@@ -500,7 +513,12 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
     async () => {
       const { server, bob, observers } = await world();
       await bootstrap(server, bob);
-      await both(observers, (it) => query(server, it, [bob.userId]));
+      await query(
+        server,
+        observers,
+        [bob.userId],
+        'query after the key change',
+      );
       const changed = await both(observers, (it) => it.getIdentity(bob.userId));
       expectSame(changed, 'getIdentity after the key change');
       expect(changed[0].result).toMatchObject({
@@ -549,28 +567,26 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       }
       const other = (it) => siblings[primaries.indexOf(it)].deviceId;
       // The sibling's keys differ per side: its trust by value, the rest by shape.
-      const sibling = async (it) => {
-        const answer = await it.getDevice(it.userId, other(it));
-        return { trust: trust(answer.result), shape: shape(answer, freshKeys) };
-      };
+      const sibling = (it) => it.getDevice(it.userId, other(it));
+      const siblingView = (answer) => ({
+        trust: trust(answer.result),
+        shape: shape(answer, freshKeys),
+      });
 
       const before = await both(primaries, sibling);
-      expectSame(before, 'getDevice of an own unsigned device');
-      expect(before[0].trust).toEqual({
+      expectSame(before, 'getDevice of an own unsigned device', siblingView);
+      expect(trust(before[0].result)).toEqual({
         ...UNTRUSTED,
         isCrossSignedByOwner: false,
       });
-      const self = await both(primaries, async (it) => {
-        const answer = await it.getDevice(it.userId, it.deviceId);
-        return trust(answer.result);
-      });
-      expectSame(self, 'getDevice of the device itself');
-
-      const identity = await both(primaries, async (it) =>
-        identityTrust(result(await it.getIdentity(it.userId))),
+      const self = await both(primaries, (it) =>
+        it.getDevice(it.userId, it.deviceId),
       );
-      expectSame(identity, 'getIdentity of the own user');
-      expect(identity[0]).toMatchObject({
+      expectSame(self, 'getDevice of the device itself', trustOf);
+
+      const identity = await both(primaries, (it) => it.getIdentity(it.userId));
+      expectSame(identity, 'getIdentity of the own user', identityOf);
+      expect(identity[0].result).toMatchObject({
         kind: 'own',
         isVerified: true,
         hasVerificationViolation: false,
@@ -586,20 +602,15 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       const requests = await each(primaries, (it) =>
         it.verifyDevice(it.userId, other(it)),
       );
-      expectSame(
-        requests.map(({ result: request }, index) =>
-          requestShape(request, primaries[index]),
-        ),
-        'verifyDevice',
-      );
+      expectSame(requests, 'verifyDevice', requestOf(primaries));
       expect(requests[0].result.type).toBe(RequestType.SignatureUpload);
       for (const [index, primary] of primaries.entries()) {
         await server.send(primary, requests[index].result);
-        await query(server, primary, [primary.userId]);
+        await fetchKeys(server, primary, [primary.userId]);
       }
       const after = await both(primaries, sibling);
-      expectSame(after, 'getDevice of an own device once signed');
-      expect(after[0].trust).toMatchObject({
+      expectSame(after, 'getDevice of an own device once signed', siblingView);
+      expect(trust(after[0].result)).toMatchObject({
         isVerified: true,
         isCrossSigningTrusted: true,
         isCrossSignedByOwner: true,
@@ -657,11 +668,11 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         await both(importers, (it) => it.exportCrossSigningKeys()),
         'exportCrossSigningKeys without keys',
       );
-      const unverified = await both(importers, async (it) =>
-        identityTrust(result(await it.getIdentity(it.userId))),
+      const unverified = await both(importers, (it) =>
+        it.getIdentity(it.userId),
       );
-      expectSame(unverified, 'getIdentity before the import');
-      expect(unverified[0].isVerified).toBe(false);
+      expectSame(unverified, 'getIdentity before the import', identityOf);
+      expect(unverified[0].result.isVerified).toBe(false);
 
       const wrong = {
         'malformed keys': () => ({
@@ -716,11 +727,9 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         hasSelfSigning: true,
         hasUserSigning: true,
       });
-      const verified = await both(importers, async (it) =>
-        identityTrust(result(await it.getIdentity(it.userId))),
-      );
-      expectSame(verified, 'getIdentity after the import');
-      expect(verified[0].isVerified).toBe(true);
+      const verified = await both(importers, (it) => it.getIdentity(it.userId));
+      expectSame(verified, 'getIdentity after the import', identityOf);
+      expect(verified[0].result.isVerified).toBe(true);
       // The keys come back out exactly as they went in.
       const again = await each(importers, async (it) =>
         result(await it.exportCrossSigningKeys()),
@@ -751,7 +760,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       for (const it of [bob, forged, broken]) await server.flush(it);
       await bootstrap(server, bob);
       await join(server, bob, [bob.userId]);
-      await query(server, bob, [bob.userId]);
+      await fetchKeys(server, bob, [bob.userId]);
       for (const signed of [forged, broken]) {
         const request = result(
           await bob.verifyDevice(bob.userId, signed.deviceId),
@@ -816,27 +825,30 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
     'queries every tracked user again once marked dirty, as WASM does',
     async () => {
       const { server, bob, observers } = await world();
+      const pending = () => each(observers, (it) => it.outgoingRequests());
       // The users each pending key query asks for, the observer itself as `<self>`.
-      const queried = async (it) =>
-        (await it.outgoingRequests())
+      const queried = (requests, index) =>
+        requests
           .filter(({ type }) => type === RequestType.KeysQuery)
           .map(({ body }) =>
             Object.keys(JSON.parse(body).device_keys)
-              .map((user) => (user === it.userId ? '<self>' : user))
+              .map((user) =>
+                user === observers[index].userId ? '<self>' : user,
+              )
               .sort(),
           );
-      const before = await both(observers, queried);
-      expectSame(before, 'key queries before');
-      expect(before[0]).toEqual([]);
+      const before = await pending();
+      expectSame(before, 'key queries before', queried);
+      expect(queried(before[0], 0)).toEqual([]);
       expectSame(
         await both(observers, (it) => it.markAllTrackedUsersAsDirty()),
         'markAllTrackedUsersAsDirty',
       );
-      const after = await both(observers, queried);
-      expectSame(after, 'key queries once marked dirty');
-      expect(after[0]).toEqual([['<self>', bob.userId].sort()]);
+      const after = await pending();
+      expectSame(after, 'key queries once marked dirty', queried);
+      expect(queried(after[0], 0)).toEqual([['<self>', bob.userId].sort()]);
       for (const observer of observers) await server.flush(observer);
-      expectSame(await both(observers, queried), 'key queries once answered');
+      expectSame(await pending(), 'key queries once answered', queried);
     },
   );
 
@@ -851,15 +863,15 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       );
       // Fresh keys and request IDs: the three requests by shape.
       expectSame(
-        bootstrapped.map(({ result: requests }, index) =>
+        bootstrapped,
+        'bootstrapCrossSigning before the keys upload',
+        ({ result: requests }, index) =>
           Object.fromEntries(
             Object.entries(requests).map(([name, request]) => [
               name,
               requestShape(request, fresh[index]),
             ]),
           ),
-        ),
-        'bootstrapCrossSigning before the keys upload',
       );
       expect(bootstrapped[0].result.uploadKeysRequest.type).toBe(
         RequestType.KeysUpload,
@@ -875,11 +887,11 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         await both(fresh, (it) => it.crossSigningStatus()),
         'crossSigningStatus after the bootstrap',
       );
-      const self = await both(fresh, async (it) =>
-        trust(result(await it.getDevice(it.userId, it.deviceId))),
+      const self = await both(fresh, (it) =>
+        it.getDevice(it.userId, it.deviceId),
       );
-      expectSame(self, 'getDevice of the bootstrapped device');
-      expect(self[0]).toMatchObject({
+      expectSame(self, 'getDevice of the bootstrapped device', trustOf);
+      expect(trust(self[0].result)).toMatchObject({
         isCrossSigningTrusted: true,
         isCrossSignedByOwner: true,
       });
@@ -900,9 +912,8 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         it.encryptToDeviceEvent(bob.userId, bob.deviceId, 'm.test', content),
       );
       // Fresh ciphertext: same shape, and Bob decrypts each.
-      expectSame(
-        encrypted.map(({ result: json }) => shape(JSON.parse(json), freshKeys)),
-        'encryptToDeviceEvent',
+      expectSame(encrypted, 'encryptToDeviceEvent', ({ result: json }) =>
+        shape(JSON.parse(json), freshKeys),
       );
       for (const [index, observer] of observers.entries()) {
         server.deliver(bob, [
@@ -927,7 +938,8 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
   );
 
   covered(
-    ['OlmMachine.verifyBackup', 'OlmMachine.sign'],
+    // `sign` only makes the signatures here; its answer is compared in the contract test.
+    ['OlmMachine.verifyBackup'],
     'trusts backup info only when signed by a verified own device or identity',
     async () => {
       const server = new Homeserver();
@@ -1001,7 +1013,7 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
           await primary.verifyDevice(primary.userId, siblings[index].deviceId),
         );
         await server.send(primary, request);
-        await query(server, primary, [primary.userId]);
+        await fetchKeys(server, primary, [primary.userId]);
       }
       const verified = await both(primaries, (it) =>
         it.verifyBackup(siblingInfo(it)),

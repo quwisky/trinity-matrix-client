@@ -54,29 +54,87 @@ const buildCli = () => {
   return executable;
 };
 
-/** The native methods called inside `compared` since the current `covered` case started. */
-const nativeCalls = new Set();
-let comparing = 0;
+/** Native answer objects (and every object inside one) → the native method that answered. */
+const answerOf = new WeakMap();
+const claim = (method, node) => {
+  if (!node || typeof node !== 'object' || answerOf.has(node)) return;
+  answerOf.set(node, method);
+  for (const child of Object.values(node)) claim(method, child);
+};
 
-/** Runs a step whose answers the case compares with WASM; only its native calls count. */
-export const compared = async (run) => {
-  comparing += 1;
-  try {
-    return await run();
-  } finally {
-    comparing -= 1;
+/** Per running `both`/`each` step and device: the native calls made, with their results. */
+const frames = [];
+
+/**
+ * The native methods whose own answers `value` holds: any object a call returned (or that is
+ * inside one), or, when `value` is a primitive, the one call of the step that returned it.
+ */
+const answered = (value, calls = []) => {
+  const methods = new Set();
+  const seen = new Set();
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || seen.has(node)) return;
+    seen.add(node);
+    const method = answerOf.get(node);
+    if (method) methods.add(method);
+    for (const child of Object.values(node)) walk(child);
+  };
+  walk(value);
+  if (value === null || typeof value !== 'object') {
+    const same = calls.filter((call) => call.result === value);
+    if (same.length === 1) methods.add(same[0].method);
   }
+  return methods;
+};
+
+/** Answers of `both`/`each` → the native methods whose answers they hold. */
+const answersOf = new WeakMap();
+/** The native methods whose answers reached a comparison in the current `covered` case. */
+const comparedCalls = new Set();
+
+/** Runs `run` on each device in turn (native first) and keeps the raw answers. */
+const stepOn = async (devices, run, map) => {
+  const answers = [];
+  const methods = new Set();
+  for (const device of devices) {
+    const calls = [];
+    frames.push(calls);
+    let value;
+    try {
+      value = await run(device);
+    } finally {
+      frames.splice(frames.indexOf(calls), 1);
+    }
+    for (const method of answered(value, calls)) methods.add(method);
+    answers.push(map(value, device));
+  }
+  answersOf.set(answers, methods);
+  return answers;
 };
 
 /** Runs the same step on each device (native first), with each device's own IDs replaced. */
-export const both = (devices, run) =>
-  compared(async () => {
-    const answers = [];
-    for (const device of devices) {
-      answers.push(anonymise(await run(device), device));
+export const both = (devices, run) => stepOn(devices, run, anonymise);
+
+/** Runs the same step on each device (native first) and returns the raw answers. */
+export const each = (devices, run) => stepOn(devices, run, (value) => value);
+
+/**
+ * Compares the native answer (first) with WASM's, both through `view` (answer, index), and
+ * counts every native call whose own answer the compared answers hold. Answers made by
+ * `both`/`each`, or holding native answer objects, count; a value computed from an answer
+ * does not.
+ */
+export const expectSame = (answers, step, view = (answer) => answer) => {
+  const [native, other] = answers.map((answer, index) => view(answer, index));
+  expect(native, step).toEqual(other);
+  for (const source of [answers, ...answers]) {
+    if (source && typeof source === 'object') {
+      for (const method of answersOf.get(source) ?? [])
+        comparedCalls.add(method);
     }
-    return answers;
-  });
+  }
+  for (const method of answered(answers)) comparedCalls.add(method);
+};
 
 const startCli = (executable) => {
   const child = spawn(executable, [], { stdio: ['pipe', 'pipe', 'inherit'] });
@@ -85,11 +143,15 @@ const startCli = (executable) => {
   ]();
   return {
     async call(request) {
-      if (comparing) nativeCalls.add(request.method);
       child.stdin.write(`${JSON.stringify(request)}\n`);
       const { value, done } = await lines.next();
       if (done) throw new Error('trinity-crypto-cli exited');
-      return JSON.parse(value);
+      const response = JSON.parse(value);
+      claim(request.method, response);
+      for (const calls of frames) {
+        calls.push({ method: request.method, result: response.result });
+      }
+      return response;
     },
     stop: () => child.stdin.end(),
   };
@@ -101,20 +163,21 @@ const surface = JSON.parse(
 
 /**
  * A test case for the surface entries it lists (`Class.member`), which
- * scripts/native-crypto-surface.spec.mjs reads statically. The case fails unless it called
- * each entry's native method inside a compared step (`compared` or `both`), so setup calls
- * do not count.
+ * scripts/native-crypto-surface.spec.mjs reads statically. The case fails unless the answer of
+ * each entry's native method reached a comparison with WASM (`expectSame`, or
+ * `expectSameRequests` for the requests the homeserver saw), so neither setup calls nor calls
+ * whose answer is dropped count.
  */
 export const covered = (entries, title, run) =>
   it(`${title} [${entries.join(', ')}]`, async () => {
-    nativeCalls.clear();
+    comparedCalls.clear();
     await run();
     for (const entry of entries) {
       const [owner, member] = entry.split('.');
       const { native } = surface.stateful[owner]?.[member] ?? {};
       expect(
-        nativeCalls.has(native),
-        `${entry} calls native ${native} in a compared step`,
+        comparedCalls.has(native),
+        `${entry}: the answer of native ${native} is compared with WASM`,
       ).toBe(true);
     }
   });
@@ -176,8 +239,17 @@ const nativeDevice = async (cli, userId, deviceId) => {
     description,
     respond,
     outgoingRequests: () => call('outgoingRequests'),
-    markRequestAsSent: (requestId, requestType, response) =>
-      call('markRequestAsSent', { requestId, requestType, response }),
+    // The whole answer, so a comparison of it counts (scripts/native-crypto-harness.mjs).
+    markRequestAsSent: async (requestId, requestType, response) => {
+      const answer = await respond('markRequestAsSent', {
+        requestId,
+        requestType,
+        response,
+      });
+      if (answer.error)
+        throw new Error(`markRequestAsSent: ${JSON.stringify(answer.error)}`);
+      return answer;
+    },
     receiveSyncChanges: (toDeviceEvents, oneTimeKeysCounts) =>
       call('receiveSyncChanges', {
         toDeviceEvents,
@@ -444,8 +516,9 @@ const wasmDevice = async (userId, deviceId) => {
       curve25519: machine.identityKeys.curve25519.toBase64(),
     },
     outgoingRequests: async () => (await machine.outgoingRequests()).map(plain),
-    markRequestAsSent: (id, type, response) =>
-      machine.markRequestAsSent(id, type, response),
+    markRequestAsSent: async (id, type, response) => ({
+      result: await machine.markRequestAsSent(id, type, response),
+    }),
     receiveSyncChanges: async (toDeviceEvents, counts) =>
       (
         await machine.receiveSyncChanges(
@@ -455,7 +528,8 @@ const wasmDevice = async (userId, deviceId) => {
           new Set(),
         )
       ).map((event) => defined(fromWasm.toDevice(event))),
-    updateTrackedUsers: (list) => machine.updateTrackedUsers(users(list)),
+    updateTrackedUsers: async (list) =>
+      (await machine.updateTrackedUsers(users(list))) ?? null,
     getMissingSessions: async (list) => {
       const request = await machine.getMissingSessions(users(list));
       return request ? plain(request) : null;
@@ -733,6 +807,10 @@ export class Homeserver {
   inbox = new Map();
   /** The first request of each type a device kind sent, as a shape. */
   shapes = { native: {}, wasm: {} };
+  /** markRequestAsSent's answer to the first request of each type a device kind sent. */
+  marked = { native: {}, wasm: {} };
+  /** The native methods whose answers are in `shapes` and `marked`. */
+  answered = new Set();
 
   constructor(requestShape = () => undefined) {
     this.requestShape = requestShape;
@@ -875,19 +953,39 @@ export class Homeserver {
       (signature.startsWith('A') ? 'B' : 'A') + signature.slice(1);
   }
 
+  /** Answers `request`, marks it as sent and returns markRequestAsSent's answer. */
   async send(device, request) {
-    this.shapes[device.kind][request.type] ??= this.requestShape(
-      request,
-      device,
-    );
+    const first = !(request.type in this.shapes[device.kind]);
+    if (first) {
+      this.shapes[device.kind][request.type] = this.requestShape(
+        request,
+        device,
+      );
+      for (const method of answered(request)) this.answered.add(method);
+    }
     const response = this.#respond(device, request);
     // A signature upload returned by a call (not by outgoingRequests) has no ID to mark.
-    if (request.id === undefined) return;
-    await device.markRequestAsSent(
+    if (request.id === undefined) return undefined;
+    const marked = await device.markRequestAsSent(
       request.id,
       request.type,
       JSON.stringify(response),
     );
+    if (first) {
+      this.marked[device.kind][request.type] = marked;
+      for (const method of answered(marked)) this.answered.add(method);
+    }
+    return marked;
+  }
+
+  /**
+   * Compares the requests each device kind sent (the first of each type, by shape) and the
+   * answers to marking them as sent, and counts the native calls that made them.
+   */
+  expectSameRequests() {
+    expect(this.shapes.native, 'request shapes').toEqual(this.shapes.wasm);
+    expect(this.marked.native, 'markRequestAsSent').toEqual(this.marked.wasm);
+    for (const method of this.answered) comparedCalls.add(method);
   }
 
   async flush(device) {
