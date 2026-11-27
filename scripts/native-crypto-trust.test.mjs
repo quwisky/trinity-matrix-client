@@ -263,6 +263,24 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         await both(observers, (it) => it.pollEvents()),
         'pollEvents after an unchanged query',
       );
+
+      // The homeserver adds the display name outside the signed keys.
+      server.deviceKeys.get(bob.userId)[bob.deviceId].unsigned = {
+        device_display_name: "Bob's phone",
+      };
+      await both(observers, (it) => query(server, it, [bob.userId]));
+      expectSame(
+        await both(observers, (it) => it.pollEvents()),
+        'pollEvents after a display name change',
+      );
+      const named = await both(observers, (it) =>
+        it.getDevice(bob.userId, bob.deviceId),
+      );
+      expectSame(named, 'getDevice with a display name');
+      expect(named[0].result).toMatchObject({
+        ...UNTRUSTED,
+        displayName: "Bob's phone",
+      });
     },
   );
 
@@ -320,6 +338,12 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
           isCrossSigningTrusted: false,
         });
       }
+      // Only the owner can cross-sign a device, and neither observer has keys.
+      const refused = await both(observers, (it) =>
+        it.verifyDevice(bob.userId, bob.deviceId),
+      );
+      expectSame(refused, "verifyDevice of another user's device");
+      expect(refused[0].error).toBeDefined();
       const [native] = observers;
       expect(
         (await native.setLocalTrust(bob.userId, 'NOPE', LocalTrust.Verified))
@@ -759,6 +783,88 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
       expect(
         (await observers[0].getDevice(bob.userId, broken.deviceId)).result,
       ).toBeNull();
+
+      // The same three devices from one WASM user: compared by value, the broken one left out.
+      const all = await both(observers, (it) => it.getUserDevices(bob.userId));
+      expectSame(all, 'getUserDevices with tampered devices');
+      expect(all[0].result.map(({ deviceId }) => deviceId)).toEqual(
+        [bob.deviceId, forged.deviceId].sort(),
+      );
+    },
+  );
+
+  covered(
+    ['OlmMachine.markAllTrackedUsersAsDirty'],
+    'queries every tracked user again once marked dirty, as WASM does',
+    async () => {
+      const { server, bob, observers } = await world();
+      // The users each pending key query asks for, the observer itself as `<self>`.
+      const queried = async (it) =>
+        (await it.outgoingRequests())
+          .filter(({ type }) => type === RequestType.KeysQuery)
+          .map(({ body }) =>
+            Object.keys(JSON.parse(body).device_keys)
+              .map((user) => (user === it.userId ? '<self>' : user))
+              .sort(),
+          );
+      const before = await both(observers, queried);
+      expectSame(before, 'key queries before');
+      expect(before[0]).toEqual([]);
+      expectSame(
+        await both(observers, (it) => it.markAllTrackedUsersAsDirty()),
+        'markAllTrackedUsersAsDirty',
+      );
+      const after = await both(observers, queried);
+      expectSame(after, 'key queries once marked dirty');
+      expect(after[0]).toEqual([['<self>', bob.userId].sort()]);
+      for (const observer of observers) await server.flush(observer);
+      expectSame(await both(observers, queried), 'key queries once answered');
+    },
+  );
+
+  covered(
+    ['OlmMachine.bootstrapCrossSigning', 'OlmMachine.crossSigningStatus'],
+    'bootstraps cross-signing before the device keys are uploaded, as WASM does',
+    async () => {
+      const server = new Homeserver();
+      const fresh = [await device('native'), await device('wasm')];
+      const bootstrapped = await each(fresh, (it) =>
+        it.bootstrapCrossSigning(false),
+      );
+      // Fresh keys and request IDs: the three requests by shape.
+      expectSame(
+        bootstrapped.map(({ result: requests }, index) =>
+          Object.fromEntries(
+            Object.entries(requests).map(([name, request]) => [
+              name,
+              requestShape(request, fresh[index]),
+            ]),
+          ),
+        ),
+        'bootstrapCrossSigning before the keys upload',
+      );
+      expect(bootstrapped[0].result.uploadKeysRequest.type).toBe(
+        RequestType.KeysUpload,
+      );
+      for (const [index, it] of fresh.entries()) {
+        const requests = bootstrapped[index].result;
+        await server.send(it, requests.uploadKeysRequest);
+        server.uploadSigningKeys(it, requests.uploadSigningKeysRequest);
+        await server.send(it, requests.uploadSignaturesRequest);
+        await join(server, it, [it.userId]);
+      }
+      expectSame(
+        await both(fresh, (it) => it.crossSigningStatus()),
+        'crossSigningStatus after the bootstrap',
+      );
+      const self = await both(fresh, async (it) =>
+        trust(result(await it.getDevice(it.userId, it.deviceId))),
+      );
+      expectSame(self, 'getDevice of the bootstrapped device');
+      expect(self[0]).toMatchObject({
+        isCrossSigningTrusted: true,
+        isCrossSignedByOwner: true,
+      });
     },
   );
 

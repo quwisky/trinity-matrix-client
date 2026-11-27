@@ -217,10 +217,16 @@ const nativeDevice = async (cli, userId, deviceId) => {
     verifyBackup: (backupInfo) => respond('verifyBackup', { backupInfo }),
     sign: (message) => respond('sign', { message }),
     trackedUsers: () => respond('trackedUsers'),
+    markAllTrackedUsersAsDirty: () => respond('markAllTrackedUsersAsDirty'),
     queryKeysForUsers: (users) => respond('queryKeysForUsers', { users }),
     getDevice: (user, id) =>
       respond('getDevice', { userId: user, deviceId: id }),
-    getUserDevices: (user) => respond('getUserDevices', { userId: user }),
+    // Native answers in no order, WASM sorted below: the shim keys them by device ID.
+    getUserDevices: async (user) => {
+      const answer = await respond('getUserDevices', { userId: user });
+      answer.result?.sort((a, b) => a.deviceId.localeCompare(b.deviceId));
+      return answer;
+    },
     getIdentity: (user) => respond('getIdentity', { userId: user }),
     setLocalTrust: (user, id, localState) =>
       respond('setLocalTrust', { userId: user, deviceId: id, localState }),
@@ -563,6 +569,8 @@ const wasmDevice = async (userId, deviceId) => {
         () => machine.sign(message),
         (signatures) => JSON.parse(signatures.asJSON()),
       ),
+    markAllTrackedUsersAsDirty: () =>
+      respond(() => machine.markAllTrackedUsersAsDirty()),
     trackedUsers: () =>
       respond(
         () => machine.trackedUsers(),
