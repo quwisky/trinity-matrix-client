@@ -21,10 +21,12 @@ import type { RawCallEvent } from './call-transport';
 
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
 const ENCRYPTED_TYPE = 'm.room.encrypted';
+const PENDING_TTL_MS = 120_000;
 
 interface Binding {
   readonly client: MatrixClient;
-  readonly pending: Set<string>;
+  /** Undecrypted event ids and when they arrived. */
+  readonly pending: Map<string, number>;
   readonly onTimeline: (
     event: MatrixEvent,
     room: unknown,
@@ -105,7 +107,7 @@ export class CallRingService implements OnDestroy {
   }
 
   private bind(userId: string, client: MatrixClient): void {
-    const pending = new Set<string>();
+    const pending = new Map<string, number>();
     const guard =
       <A extends unknown[]>(fn: (...args: A) => void) =>
       (...args: A): void => {
@@ -123,16 +125,20 @@ export class CallRingService implements OnDestroy {
         if (data?.liveEvent !== true) return;
         if (event.getType() === ENCRYPTED_TYPE) {
           const id = event.getId();
-          if (id) pending.add(id);
+          const now = Date.now();
+          for (const [old, at] of pending) {
+            if (now - at > PENDING_TTL_MS) pending.delete(old);
+          }
+          if (id) pending.set(id, now);
           return;
         }
         this.consider(userId, client, event);
       }),
       onDecrypted: guard((event) => {
         const id = event.getId();
-        if (!id || !pending.has(id)) return;
+        // Keys often arrive just after the event: a failure stays pending for the retry.
+        if (!id || !pending.has(id) || event.isDecryptionFailure()) return;
         pending.delete(id);
-        if (event.isDecryptionFailure()) return;
         this.consider(userId, client, event);
       }),
       onState: guard((event) => this.onMemberState(userId, event)),

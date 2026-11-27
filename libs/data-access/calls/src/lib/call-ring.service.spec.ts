@@ -202,12 +202,26 @@ describe('CallRingService', () => {
     expect(service.incomingRing()?.id).toBe('$ring');
   });
 
-  it('forgets an encrypted ring that failed to decrypt', () => {
+  it('rings when a failed decryption is retried successfully in time', () => {
     const c = clients['@me:hs'];
     live(c, { ...ringEv(), type: 'm.room.encrypted', content: {} });
     c.emit('Event.decrypted', ev({ ...ringEv(), failed: true }));
-    c.emit('Event.decrypted', ev(ringEv()));
     expect(service.incomingRing()).toBeNull();
+    c.emit('Event.decrypted', ev(ringEv()));
+    expect(service.incomingRing()?.id).toBe('$ring');
+  });
+
+  it('prunes encrypted ids that never decrypted after two minutes', () => {
+    const c = clients['@me:hs'];
+    const pending = (
+      service as unknown as {
+        bindings: Map<string, { pending: Map<string, number> }>;
+      }
+    ).bindings.get('@me:hs')?.pending;
+    live(c, { ...ringEv({ id: '$old' }), type: 'm.room.encrypted' });
+    vi.setSystemTime(NOW + 121_000);
+    live(c, { ...ringEv({ id: '$new' }), type: 'm.room.encrypted' });
+    expect([...(pending?.keys() ?? [])]).toEqual(['$new']);
   });
 
   it('clears when own membership appears, here or on another device', () => {
