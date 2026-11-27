@@ -7,6 +7,7 @@ import {
   computed,
   effect,
   inject,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -19,6 +20,10 @@ import { CallRingService, CallService } from '@trinity/data-access/calls';
 import { AccountIdentitiesService } from '@trinity/data-access/identity';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { RingToneService } from './ring-tone.service';
+
+/** The full-width bars at the top of the app frame, the ones global.scss gives the top inset. */
+const TOP_BARS =
+  '.app-frame > :is(trn-title-bar, trn-banner), .call-host__strip, .rooms-shell > :not(.rooms-workspace)';
 
 /** The prompt and ring tone for a call coming in on any signed-in account. */
 @Component({
@@ -41,6 +46,8 @@ export class CallRingComponent {
   private readonly join = viewChild<ElementRef<HTMLButtonElement>>('join');
 
   protected readonly ring = this.ringService.incomingRing;
+  /** Viewport offset of the lowest top bar's bottom edge, so the prompt covers none of them. */
+  protected readonly barsBottom = signal(0);
 
   protected readonly kind = computed(() => {
     const video = this.ring()?.video;
@@ -72,6 +79,10 @@ export class CallRingComponent {
       });
     });
     this.destroyRef.onDestroy(() => this.tone.stop());
+    effect((onCleanup) => {
+      if (!this.ring()) return;
+      onCleanup(this.trackTopBars());
+    });
     effect(() => {
       const join = this.join()?.nativeElement;
       const focused = this.document.activeElement;
@@ -117,5 +128,48 @@ export class CallRingComponent {
 
   protected decline(): void {
     this.ringService.decline();
+  }
+
+  protected onEscape(event: Event): void {
+    // The rooms page's own Escape skips a handled key.
+    event.preventDefault();
+    this.decline();
+  }
+
+  /** Follows the bars as they show, hide and resize; returns the cleanup. */
+  private trackTopBars(): () => void {
+    let bars: HTMLElement[] = [];
+    const measure = (): void => {
+      let bottom = 0;
+      for (const bar of bars) {
+        const rect = bar.getBoundingClientRect();
+        if (rect.height > 0) bottom = Math.max(bottom, rect.bottom);
+      }
+      this.barsBottom.set(bottom);
+    };
+    const resizes = new ResizeObserver(measure);
+    const track = (): void => {
+      const next = [...this.document.querySelectorAll<HTMLElement>(TOP_BARS)];
+      if (
+        next.length !== bars.length ||
+        next.some((bar, i) => bar !== bars[i])
+      ) {
+        bars = next;
+        resizes.disconnect();
+        for (const bar of bars) resizes.observe(bar);
+      }
+      measure();
+    };
+    // Bars come and go anywhere below the frame, inside a routed page too.
+    const mutations = new MutationObserver(track);
+    mutations.observe(
+      this.document.querySelector('.app-frame') ?? this.document.body,
+      { childList: true, subtree: true },
+    );
+    track();
+    return () => {
+      mutations.disconnect();
+      resizes.disconnect();
+    };
   }
 }

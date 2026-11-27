@@ -175,6 +175,30 @@ describe('CallRingComponent', () => {
     expect(decline).toHaveBeenCalled();
   });
 
+  it('declines on Escape inside the prompt, and keeps the key from the page', async () => {
+    const { decline } = await build();
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    screen.getByRole('button', { name: 'Join' }).dispatchEvent(event);
+    expect(decline).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('ignores Escape pressed outside the prompt', async () => {
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    composer.focus();
+    const { decline } = await build();
+    composer.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(decline).not.toHaveBeenCalled();
+    composer.remove();
+  });
+
   it('rings while the prompt shows and stops when it clears or is destroyed', async () => {
     const { incomingRing, toneStart, toneStop, update, fixture } =
       await build(null);
@@ -255,11 +279,41 @@ describe('CallRingComponent', () => {
     expect(announce).toHaveBeenCalledWith('Bob is calling', 'assertive');
   });
 
-  it('sits below the call strip through a custom property', async () => {
-    await build();
+  it('sits below the lowest bar showing at the top of the app, as bars come and go', async () => {
+    const frame = document.createElement('div');
+    frame.className = 'app-frame';
+    frame.innerHTML = `
+      <trn-title-bar></trn-title-bar>
+      <trn-call-host><div class="call-host__strip"></div></trn-call-host>
+      <div class="rooms-shell">
+        <trn-connectivity-banner></trn-connectivity-banner>
+        <trn-encryption-banner></trn-encryption-banner>
+        <div class="rooms-workspace"></div>
+      </div>`;
+    document.body.append(frame);
+    const place = (selector: string, bottom: number, height: number) => {
+      const element = frame.querySelector(selector) as HTMLElement;
+      element.getBoundingClientRect = () => ({ bottom, height }) as DOMRect;
+      return element;
+    };
+    place('.call-host__strip', 40, 40);
+    const banner = place('trn-encryption-banner', 100, 60);
+    // Empty banner wrappers and the page below the bars do not count.
+    place('trn-connectivity-banner', 0, 0);
+    place('.rooms-workspace', 800, 700);
+    const { update } = await build();
+    const top = () =>
+      screen.getByRole('alertdialog').style.getPropertyValue('--call-ring-top');
+    expect(top()).toBe('100px');
+
+    banner.remove();
+    await new Promise((resolve) => setTimeout(resolve));
+    await update();
+    expect(top()).toBe('40px');
     expect(screen.getByRole('alertdialog').className).toContain(
-      'var(--trinity-call-strip-height,0px)',
+      'var(--call-ring-top,0px)',
     );
+    frame.remove();
   });
 
   it('leaves focus alone while a dialog holds it', async () => {
