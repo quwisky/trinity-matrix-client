@@ -2,7 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { PushService } from '@trinity/data-access/notifications';
 import { signal } from '@angular/core';
-import { HostLifecycleService } from '@trinity/runtime/host';
+import {
+  BackgroundActivityService,
+  HostLifecycleService,
+} from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
 import { Subject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +14,7 @@ import { BackgroundSync } from './background-sync.service';
 type LifecycleEvent = { readonly kind: 'active' | 'background' };
 
 function setup(suspendedInBackground: boolean, notifiesFromSync = false) {
+  const inCall = signal(false);
   const events = new Subject<LifecycleEvent>();
   const notifiesFromBackgroundSync = signal(notifiesFromSync);
   TestBed.configureTestingModule({
@@ -20,12 +24,13 @@ function setup(suspendedInBackground: boolean, notifiesFromSync = false) {
         events,
         suspendedInBackground,
       }),
+      MockProvider(BackgroundActivityService, { active: inCall }),
       MockProvider(MatrixClientService),
     ],
   });
   const matrix = TestBed.inject(MatrixClientService);
   const subscription = TestBed.inject(BackgroundSync).run().subscribe();
-  return { events, matrix, subscription, notifiesFromBackgroundSync };
+  return { events, matrix, subscription, notifiesFromBackgroundSync, inCall };
 }
 
 describe('BackgroundSync', () => {
@@ -56,6 +61,31 @@ describe('BackgroundSync', () => {
     notifiesFromBackgroundSync.set(false);
     events.next({ kind: 'background' });
     expect(matrix.suspendSync).toHaveBeenCalledOnce();
+    subscription.unsubscribe();
+  });
+
+  it('keeps syncing in the background during a call and stops once it ends there', () => {
+    const { events, matrix, subscription, inCall } = setup(true);
+
+    inCall.set(true);
+    events.next({ kind: 'background' });
+    expect(matrix.suspendSync).not.toHaveBeenCalled();
+
+    inCall.set(false);
+    TestBed.tick();
+    expect(matrix.suspendSync).toHaveBeenCalledOnce();
+    subscription.unsubscribe();
+  });
+
+  it('does not stop sync when a call ends in the foreground', () => {
+    const { events, matrix, subscription, inCall } = setup(true);
+
+    inCall.set(true);
+    events.next({ kind: 'background' });
+    events.next({ kind: 'active' });
+    inCall.set(false);
+    TestBed.tick();
+    expect(matrix.suspendSync).not.toHaveBeenCalled();
     subscription.unsubscribe();
   });
 

@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { BackgroundActivityService } from '@trinity/runtime/host';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
   EMPTY,
@@ -123,6 +124,8 @@ export class CallService {
   private readonly activeCall$ = toObservable(this.activeCall);
 
   constructor() {
+    const background = inject(BackgroundActivityService);
+    effect(() => background.set(this.inCall()));
     effect(() => {
       const call = this.activeCall();
       if (call?.state === 'joined' && untracked(this.joined)?.id !== call.id) {

@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { BackgroundActivityService } from '@trinity/runtime/host';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import { Observable, Subject, firstValueFrom } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -836,6 +837,19 @@ describe('CallService', () => {
       expect(service.inCall()).toBe(false);
       runtime.sessions[0].onEnded();
       expect(service.inCall()).toBe(false);
+    });
+
+    it('marks background activity for as long as it is in a call', () => {
+      const service = TestBed.inject(CallService);
+      const activity = TestBed.inject(BackgroundActivityService);
+      TestBed.tick();
+      expect(activity.active()).toBe(false);
+      service.start('!r', opts);
+      TestBed.tick();
+      expect(activity.active()).toBe(true);
+      service.hangUp();
+      TestBed.tick();
+      expect(activity.active()).toBe(false);
     });
   });
 });

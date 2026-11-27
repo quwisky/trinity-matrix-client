@@ -1,3 +1,4 @@
+export * from './lib/background-activity.service';
 export * from './lib/host-app-name';
 export * from './lib/host-badge.service';
 export * from './lib/host-capabilities.service';
