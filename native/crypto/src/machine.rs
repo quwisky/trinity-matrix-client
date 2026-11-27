@@ -24,7 +24,9 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
+use crate::backup;
 use crate::error::{CallError, CallResult};
+use crate::events;
 use crate::requests::{self, RequestType};
 use crate::responses;
 use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
@@ -43,9 +45,23 @@ struct OpenMachine {
     store: StoreIdentity,
 }
 
-/// A device's slot. Its mutex is held for a whole call, so calls for one device never
-/// interleave; `None` means not open (never opened, closed, or dropped after a panic).
-type Slot = Arc<Mutex<Option<OpenMachine>>>;
+/// A device's slot. The machine mutex is held for a whole call, so calls for one device
+/// never interleave; `None` means not open (never opened, closed, or dropped after a panic).
+/// The event queue outlives a panic (its events are still delivered) but not a `close`.
+#[derive(Default)]
+struct Device {
+    machine: Mutex<Option<OpenMachine>>,
+    events: std::sync::Mutex<events::Queue>,
+}
+
+type Slot = Arc<Device>;
+
+/// The queue lock is only held while moving events, never across an await or another lock.
+fn events(slot: &Slot) -> std::sync::MutexGuard<'_, events::Queue> {
+    slot.events
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 /// Lock order: a slot, then the registry. The registry lock is never held while waiting
 /// for a slot.
@@ -62,6 +78,18 @@ const MACHINE_METHODS: &[&str] = &[
     "encryptRoomEvent",
     "decryptRoomEvent",
     "getRoomEventEncryptionInfo",
+    "exportRoomKeys",
+    "importExportedRoomKeys",
+    "importBackedUpRoomKeys",
+    "roomKeyCounts",
+    "backupRoomKeys",
+    "getBackupKeys",
+    "saveBackupDecryptionKey",
+    "enableBackupV1",
+    "disableBackup",
+    "isBackupEnabled",
+    "verifyBackup",
+    "sign",
     #[cfg(test)]
     "debugPanic",
     #[cfg(test)]
@@ -108,6 +136,7 @@ pub async fn dispatch(request: Request) -> CallResult {
     match method {
         "init" => return init(key, request.params).await,
         "close" => return close(&key).await,
+        "pollEvents" => return poll_events(&key).await,
         _ if !MACHINE_METHODS.contains(&method) => {
             return Err(CallError::new(
                 "UnknownMethod",
@@ -116,10 +145,21 @@ pub async fn dispatch(request: Request) -> CallResult {
         }
         _ => {}
     }
-    let slot = MACHINES.lock().await.get(&key).cloned();
-    let guard = DropOnPanic(lock_slot(&key, slot.as_ref().ok_or_else(unknown_machine)?).await);
+    let slot = MACHINES
+        .lock()
+        .await
+        .get(&key)
+        .cloned()
+        .ok_or_else(unknown_machine)?;
+    let guard = DropOnPanic(lock_slot(&key, &slot).await);
     let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
-    let args = request.params;
+    let result = run(machine, method, request.params).await;
+    // Coop budgeting could make a ready event look pending; the drain must see everything.
+    tokio::task::unconstrained(async { events(&slot).drain() }).await;
+    result
+}
+
+async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
     match method {
         "identityKeys" => Ok(identity_keys(machine)),
         "outgoingRequests" => outgoing_requests(machine).await,
@@ -133,6 +173,22 @@ pub async fn dispatch(request: Request) -> CallResult {
         "getRoomEventEncryptionInfo" => {
             get_room_event_encryption_info(machine, params(args)?).await
         }
+        "exportRoomKeys" => backup::export_room_keys(machine).await,
+        "importExportedRoomKeys" => backup::import_exported_room_keys(machine, params(args)?).await,
+        "importBackedUpRoomKeys" => {
+            backup::import_backed_up_room_keys(machine, params(args)?).await
+        }
+        "roomKeyCounts" => backup::room_key_counts(machine).await,
+        "backupRoomKeys" => backup::backup_room_keys(machine).await,
+        "getBackupKeys" => backup::get_backup_keys(machine).await,
+        "saveBackupDecryptionKey" => {
+            backup::save_backup_decryption_key(machine, params(args)?).await
+        }
+        "enableBackupV1" => backup::enable_backup_v1(machine, params(args)?).await,
+        "disableBackup" => backup::disable_backup(machine).await,
+        "isBackupEnabled" => backup::is_backup_enabled(machine).await,
+        "verifyBackup" => backup::verify_backup(machine, params(args)?).await,
+        "sign" => backup::sign(machine, params(args)?).await,
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]
@@ -178,14 +234,14 @@ fn store_key(value: Option<Value>) -> CallResult<Option<Zeroizing<Vec<u8>>>> {
 
 #[cfg(not(test))]
 async fn lock_slot<'a>(_key: &MachineKey, slot: &'a Slot) -> MutexGuard<'a, Option<OpenMachine>> {
-    slot.lock().await
+    slot.machine.lock().await
 }
 
 /// Tells the close-race test when a call has to queue behind another one.
 #[cfg(test)]
 async fn lock_slot<'a>(key: &MachineKey, slot: &'a Slot) -> MutexGuard<'a, Option<OpenMachine>> {
     use std::future::Future as _;
-    let mut lock = std::pin::pin!(slot.lock());
+    let mut lock = std::pin::pin!(slot.machine.lock());
     let mut first = true;
     std::future::poll_fn(|cx| {
         let polled = lock.as_mut().poll(cx);
@@ -259,6 +315,7 @@ async fn init(key: MachineKey, mut raw: Value) -> CallResult {
         let opened = open(&key, identity.path.as_deref(), store_key.as_deref()).await;
         return match opened {
             Ok(machine) => {
+                events(&slot).subscribe(&machine);
                 let description = describe(&machine);
                 *guard = Some(OpenMachine {
                     machine,
@@ -302,6 +359,18 @@ async fn close(key: &MachineKey) -> CallResult {
         unregister(key, &slot).await;
     }
     Ok(Value::Null)
+}
+
+/// The events queued since the last poll, without waiting for a call in flight. Works after a
+/// panic dropped the machine, so its last events still arrive; a `close` discards them.
+async fn poll_events(key: &MachineKey) -> CallResult {
+    let slot = MACHINES
+        .lock()
+        .await
+        .get(key)
+        .cloned()
+        .ok_or_else(unknown_machine)?;
+    Ok(tokio::task::unconstrained(async { events(&slot).take() }).await)
 }
 
 fn describe(machine: &OlmMachine) -> Value {

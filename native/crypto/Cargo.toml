@@ -29,6 +29,7 @@ path = "src/bin/trinity-crypto-cli.rs"
 # README.md, "The pin rule"), with WASM's matrix-sdk-crypto features minus `js`.
 [dependencies]
 base64 = "0.23.1"
+futures-util = { version = "0.3.34", default-features = false }
 jni = { version = "0.22.4", optional = true }
 matrix-sdk-common = { version = "=0.19.1", features = ["experimental-encrypted-state-events"] }
 matrix-sdk-crypto = { version = "=0.19.1", default-features = false, features = [
@@ -49,4 +50,5 @@ serde_json = "1.0.91"
 sha2 = "0.10.9"
 simd_cesu8 = { version = "1.2.0", optional = true }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "sync"] }
+tokio-stream = { version = "0.1.19", default-features = false, features = ["sync"] }
 zeroize = "1.6.0"
