@@ -8,6 +8,7 @@ use crate::{call, call_batch};
 mod backup;
 mod devices;
 mod events;
+mod verification;
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
