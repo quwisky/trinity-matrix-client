@@ -66,7 +66,7 @@ Give reviewers a disposable password account on a legacy-API homeserver in the r
 
 ## Calls {#calls}
 
-`CallSessionPlugin` (in `MainViewController.swift`) sets the audio session for a call (`.playAndRecord`, `.videoChat`, Bluetooth and speaker allowed) on `begin` and releases it on `end`. `UIBackgroundModes` has `audio`, which keeps a call's sound running in the background; there is no `voip` mode, CallKit or PushKit, so nothing rings while the app is closed. Capacitor already grants camera and microphone capture to the Element Call frame and allows inline playback. An audio interruption (an incoming phone call) is not handled yet, and the call path has not been run on a device.
+`CallSessionPlugin` (in `MainViewController.swift`) sets the audio session for a call (`.playAndRecord`, `.videoChat`, Bluetooth and speaker allowed) on `begin` and releases it on `end`. `UIBackgroundModes` has `audio`, which is meant to keep a call's sound running in the background; there is no `voip` mode, CallKit or PushKit, so nothing rings while the app is closed. Capacitor already grants camera and microphone capture to the Element Call frame and allows inline playback. An audio interruption (an incoming phone call) is not handled yet, and the call path has not been run on a device.
 
 ## Respect native ownership {#native-ownership}
 

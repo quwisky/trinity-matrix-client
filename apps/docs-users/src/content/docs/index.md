@@ -408,8 +408,8 @@ you have clicked in the page.
 In the Android app, a call keeps running when you switch to another app or turn the screen
 off. A **Call in progress** notification shows while it does, with **Hang up**. Android asks
 for the camera and microphone the first time; if you refuse, you join without sending sound
-or video. The iOS app keeps the call's sound running in the background too, but its camera
-pauses there, and calls on iOS have not been tested on a device yet. Neither app rings while
+or video. The iOS app is set up to keep a call's sound running in the background, but this
+has not been tested on a device yet. Neither app rings while
 it is closed or the phone is locked.
 
 If the call can't start,
