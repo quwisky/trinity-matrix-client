@@ -35,10 +35,10 @@ or a tampered backup signature fails the same way on both.
 `scripts/native-crypto-trust.test.mjs` does the same for devices, identities and cross-signing:
 a native and a WASM observer see the same cross-signed users through the in-test homeserver
 (which also takes signing-key and signature uploads) and must give the same trust answers:
-another user's unverified device, verification and a later key change (violation, withdrawal),
-pinning a changed identity, local trust and blacklisting, own devices signed by cross-signing,
-signatures tampered with, cross-signing key import (also with wrong keys) and backup info signed
-by own devices. All three suites share
+another user's unverified device, verification and a later key change (violation, pinning,
+withdrawal), pinning a changed identity, local trust and blacklisting, own devices signed by
+cross-signing, signatures tampered with, cross-signing bootstrap and key import (also with wrong
+keys), tracked users marked dirty and backup info signed by own devices. All three suites share
 `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails unless
 it called each entry's native method. Without cargo on `PATH` the suites are skipped and say
 why; with `CI` set they fail instead.
