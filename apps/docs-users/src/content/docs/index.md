@@ -413,13 +413,13 @@ has not been tested on a device yet. Neither app rings while
 it is closed or the phone is locked.
 
 In the desktop app, the call's screen-share button shares a screen or a window. Trinity lists
-your screens, then your windows, in a menu; choose one to start sharing, or press Esc or click
-outside the menu to cancel. When there is only one thing to share, sharing starts without the
-menu: on Linux with Wayland, the system has already asked you what to share. On macOS 15 and
-later, macOS shows its own picker instead. macOS also asks you to allow Trinity under System
-Settings › Privacy & Security › Screen Recording (Screen & System Audio Recording on macOS 15)
-the first time; reopen Trinity after allowing it. Sharing sends no sound. The desktop app's
-screen sharing has not yet been tried on Windows or macOS.
+your screens, then your windows, in a menu, even when there is only one; choose one to start
+sharing, or press Esc or click outside the menu to cancel. Trinity shares only the picture,
+without sound. On Linux with Wayland, the system asks you what to share instead, and Trinity
+shares what you chose there. On macOS 15 and later, macOS shows its own picker instead of the
+menu, and what is shared, sound included, is up to that picker. macOS also asks you to allow Trinity under System Settings › Privacy & Security › Screen
+Recording (Screen & System Audio Recording on macOS 15) the first time; reopen Trinity after
+allowing it. The desktop app's screen sharing has not yet been tried on Windows or macOS.
 
 If the call can't start,
 Trinity shows "The call could not start" with **Close**, in the card or the strip: your server may not be
