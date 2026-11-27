@@ -30,4 +30,13 @@ describe('normalizeNotificationEvent for a call event', () => {
       normalizeNotificationEvent('a', ringEvent('notification'), room, true),
     ).toMatchObject({ body: 'Call started', kind: 'message' });
   });
+
+  it('carries whether the room is a direct chat', () => {
+    expect(
+      normalizeNotificationEvent('a', ringEvent('ring'), room, true, true),
+    ).toMatchObject({ direct: true });
+    expect(
+      normalizeNotificationEvent('a', ringEvent('ring'), room, true, false),
+    ).toMatchObject({ direct: false });
+  });
 });

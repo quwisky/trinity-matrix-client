@@ -1,4 +1,9 @@
-import type { MatrixEvent, Room } from 'matrix-js-sdk';
+import {
+  EventType,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+} from 'matrix-js-sdk';
 import {
   displayContent,
   RING_EVENT_TYPES,
@@ -8,13 +13,15 @@ import type { NotificationEvent } from './notification-intent';
 
 /**
  * Narrow one SDK event into the value-only record consumed by Notifications policy.
- * `roomEncrypted` is whether the room counts as encrypted (see `RoomEncryptionFlags`).
+ * `roomEncrypted` is whether the room counts as encrypted (see `RoomEncryptionFlags`);
+ * `direct`, whether `m.direct` lists it ({@link directRoomIds}).
  */
 export function normalizeNotificationEvent(
   accountId: string,
   event: MatrixEvent,
   room: Room,
   roomEncrypted: boolean,
+  direct = false,
 ): NotificationEvent {
   const senderId = event.getSender() ?? '';
   const senderName = event.sender?.name ?? (senderId || 'Someone');
@@ -39,7 +46,24 @@ export function normalizeNotificationEvent(
     senderId,
     senderName,
     roomName: room.name || null,
+    direct,
     body: previewable ? rawBody : null,
     kind: typeof rawBody === 'string' ? 'message' : 'unsupported',
   });
+}
+
+/** Room ids the `m.direct` account data lists as DMs. */
+export function directRoomIds(client: MatrixClient): ReadonlySet<string> {
+  const map =
+    client
+      .getAccountData(EventType.Direct)
+      ?.getContent<Record<string, unknown>>() ?? {};
+  const ids = new Set<string>();
+  for (const roomIds of Object.values(map)) {
+    if (!Array.isArray(roomIds)) continue;
+    for (const roomId of roomIds) {
+      if (typeof roomId === 'string') ids.add(roomId);
+    }
+  }
+  return ids;
 }

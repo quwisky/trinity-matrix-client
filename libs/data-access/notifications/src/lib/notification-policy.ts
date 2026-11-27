@@ -84,9 +84,8 @@ export class NotificationPolicy {
     }
     const intent: NotificationIntent = Object.freeze({
       id,
-      // A direct chat is usually named after the other person.
       title:
-        event.roomName && event.roomName !== heading
+        event.roomName && !(event.direct && event.roomName === heading)
           ? `${heading} · ${event.roomName}`
           : heading,
       body: reaction
