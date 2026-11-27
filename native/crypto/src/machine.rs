@@ -31,6 +31,7 @@ use crate::events;
 use crate::requests::{self, RequestType};
 use crate::responses;
 use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
+use crate::verification;
 
 pub(crate) type MachineKey = (OwnedUserId, OwnedDeviceId);
 
@@ -108,8 +109,29 @@ const MACHINE_METHODS: &[&str] = &[
     "bootstrapCrossSigning",
     "exportCrossSigningKeys",
     "importCrossSigningKeys",
+    "getVerificationRequest",
+    "getVerificationRequests",
+    "getVerification",
+    "receiveVerificationEvent",
+    "requestDeviceVerification",
+    "requestIdentityVerification",
+    "verificationRequestContent",
+    "acceptVerificationRequest",
+    "cancelVerificationRequest",
+    "startSas",
+    "generateQrCode",
+    "scanQrCode",
+    "acceptSas",
+    "confirmSas",
+    "cancelSas",
+    "cancelQr",
+    "confirmQrScanning",
+    "reciprocateQr",
+    "qrCodeBytes",
     #[cfg(test)]
     "debugPanic",
+    #[cfg(test)]
+    "debugWatches",
     #[cfg(test)]
     "debugHold",
 ];
@@ -169,15 +191,30 @@ pub async fn dispatch(request: Request) -> CallResult {
         .get(&key)
         .cloned()
         .ok_or_else(unknown_machine)?;
+    #[cfg(test)]
+    if method == "debugWatches" {
+        return Ok(json!(events(&slot).watches.len()));
+    }
     let guard = DropOnPanic(lock_slot(&key, &slot).await);
     let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
-    let result = run(machine, method, request.params).await;
+    let mut found = verification::Found::default();
+    let result = run(machine, method, request.params, &mut found).await;
     // Coop budgeting could make a ready event look pending; the drain must see everything.
-    tokio::task::unconstrained(async { events(&slot).drain() }).await;
+    tokio::task::unconstrained(async {
+        let mut queue = events(&slot);
+        queue.watches.add(found);
+        queue.drain();
+    })
+    .await;
     result
 }
 
-async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
+async fn run(
+    machine: &OlmMachine,
+    method: &str,
+    args: Value,
+    found: &mut verification::Found,
+) -> CallResult {
     match method {
         "identityKeys" => Ok(identity_keys(machine)),
         "outgoingRequests" => outgoing_requests(machine).await,
@@ -225,6 +262,41 @@ async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
         "importCrossSigningKeys" => {
             devices::import_cross_signing_keys(machine, params(args)?).await
         }
+        "getVerificationRequest" => {
+            verification::get_verification_request(machine, params(args)?, found)
+        }
+        "getVerificationRequests" => {
+            verification::get_verification_requests(machine, params(args)?, found)
+        }
+        "getVerification" => verification::get_verification(machine, params(args)?, found),
+        "receiveVerificationEvent" => {
+            verification::receive_verification_event(machine, params(args)?).await
+        }
+        "requestDeviceVerification" => {
+            verification::request_device_verification(machine, params(args)?, found).await
+        }
+        "requestIdentityVerification" => {
+            verification::request_identity_verification(machine, params(args)?, found).await
+        }
+        "verificationRequestContent" => {
+            verification::verification_request_content(machine, params(args)?).await
+        }
+        "acceptVerificationRequest" => {
+            verification::accept_verification_request(machine, params(args)?)
+        }
+        "cancelVerificationRequest" => {
+            verification::cancel_verification_request(machine, params(args)?)
+        }
+        "startSas" => verification::start_sas(machine, params(args)?, found).await,
+        "generateQrCode" => verification::generate_qr_code(machine, params(args)?, found).await,
+        "scanQrCode" => verification::scan_qr_code(machine, params(args)?, found).await,
+        "acceptSas" => verification::accept_sas(machine, params(args)?),
+        "confirmSas" => verification::confirm_sas(machine, params(args)?).await,
+        "cancelSas" => verification::cancel_sas(machine, params(args)?),
+        "cancelQr" => verification::cancel_qr(machine, params(args)?),
+        "confirmQrScanning" => verification::confirm_qr_scanning(machine, params(args)?),
+        "reciprocateQr" => verification::reciprocate_qr(machine, params(args)?),
+        "qrCodeBytes" => verification::qr_code_bytes(machine, params(args)?),
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]

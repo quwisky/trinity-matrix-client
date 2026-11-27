@@ -41,6 +41,8 @@ pub struct Queue {
     dropped: u64,
     /// The streams of the open machine, or of the last one until a new machine opens.
     streams: Option<Streams>,
+    /// The verification objects the host holds, until they are done or cancelled.
+    pub(crate) watches: crate::verification::Watches,
 }
 
 /// WASM `EncryptionAlgorithm`.
@@ -86,6 +88,7 @@ impl Queue {
     /// Listens to a newly opened machine, after taking what the previous one left.
     pub fn subscribe(&mut self, machine: &OlmMachine) {
         self.drain();
+        self.watches.clear();
         let store = machine.store();
         self.streams = Some(Streams {
             room_keys_received: store
@@ -148,6 +151,9 @@ impl Queue {
             self.push(json!({ "type": "devicesUpdated", "userIds": users }));
         }
         self.streams = Some(streams);
+        for event in self.watches.drain(|changes| ready(changes).is_some()) {
+            self.push(event);
+        }
     }
 
     /// Hands over the queued events in order, and how many were dropped after them.

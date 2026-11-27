@@ -123,7 +123,7 @@ pub fn signature_upload_without_id(request: &SignatureUploadRequest) -> CallResu
     Ok(json!({ "type": RequestType::SignatureUpload as u8, "body": body }))
 }
 
-fn room_message(id: String, request: &RoomMessageRequest) -> CallResult {
+pub fn room_message(id: String, request: &RoomMessageRequest) -> CallResult {
     Ok(json!({
         "id": id,
         "type": RequestType::RoomMessage as u8,

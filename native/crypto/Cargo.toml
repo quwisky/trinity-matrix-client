@@ -37,6 +37,7 @@ matrix-sdk-crypto = { version = "=0.19.1", default-features = false, features = 
   "experimental-encrypted-state-events",
   "experimental-push-secrets",
   "experimental-x509-identity-verification",
+  "qrcode",
   "rust-x509-verifier-impl",
 ] }
 matrix-sdk-sqlite = { version = "=0.19.1", default-features = false, features = [

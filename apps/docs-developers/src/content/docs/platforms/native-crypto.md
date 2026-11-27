@@ -34,9 +34,9 @@ The interop target drives the crate's command-line binary and the repository's W
 | room-keys          | 4    | 0       | 0    |
 | backup             | 10   | 0       | 0    |
 | store              | 0    | 0       | 3    |
-| devices-identities | 28   | 4       | 4    |
+| devices-identities | 32   | 0       | 4    |
 | cross-signing      | 4    | 0       | 0    |
-| verification       | 0    | 38      | 0    |
+| verification       | 38   | 0       | 0    |
 | secrets            | 0    | 5       | 0    |
 | key-bundles        | 0    | 10      | 0    |
 | dehydrated-devices | 0    | 7       | 3    |
