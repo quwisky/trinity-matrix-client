@@ -1,0 +1,58 @@
+{
+  "0": {
+    "body": {
+      "device_keys": {
+        "algorithms": ["string", "string"],
+        "device_id": "string",
+        "keys": {
+          "curve25519:<device>": "string",
+          "ed25519:<device>": "string"
+        },
+        "signatures": { "<user>": { "ed25519:<device>": "string" } },
+        "user_id": "string"
+      },
+      "fallback_keys": {},
+      "one_time_keys": {
+        "signed_curve25519:<key>": {
+          "key": "string",
+          "signatures": { "<user>": { "ed25519:<device>": "string" } }
+        }
+      }
+    },
+    "id": "string",
+    "type": 0
+  },
+  "1": {
+    "body": { "device_keys": { "<user>": [] } },
+    "id": "string",
+    "type": 1
+  },
+  "2": {
+    "body": {
+      "one_time_keys": { "<other user>": { "<other device>": "string" } },
+      "timeout": "number"
+    },
+    "id": "string",
+    "type": 2
+  },
+  "3": {
+    "body": {
+      "messages": {
+        "<other user>": {
+          "<other device>": {
+            "algorithm": "m.olm.v1.curve25519-aes-sha2",
+            "ciphertext": {
+              "<curve25519 key>": { "body": "string", "type": 0 }
+            },
+            "org.matrix.msgid": "string",
+            "sender_key": "string"
+          }
+        }
+      }
+    },
+    "event_type": "m.room.encrypted",
+    "id": "string",
+    "txn_id": "string",
+    "type": 3
+  }
+}
