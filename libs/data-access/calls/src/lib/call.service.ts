@@ -163,7 +163,10 @@ export class CallService {
         this.endHosting();
       }
     });
-    inject(DestroyRef).onDestroy(() => this.endHosting());
+    inject(DestroyRef).onDestroy(() => {
+      this.endHosting();
+      background.set(false);
+    });
     this.host.hangUpRequests
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.hangUp());

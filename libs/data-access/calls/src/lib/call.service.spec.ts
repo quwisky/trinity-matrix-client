@@ -851,5 +851,47 @@ describe('CallService', () => {
       TestBed.tick();
       expect(activity.active()).toBe(false);
     });
+
+    describe('leaves background activity off when', () => {
+      async function activeCall() {
+        const service = TestBed.inject(CallService);
+        const activity = TestBed.inject(BackgroundActivityService);
+        service.start('!r', opts);
+        service.attach(iframe).subscribe();
+        await loaded();
+        TestBed.tick();
+        expect(activity.active()).toBe(true);
+        return { service, activity };
+      }
+
+      it('the call fails before it joined', async () => {
+        const { activity } = await activeCall();
+        runtime.sessions[0].state.set('failed');
+        TestBed.tick();
+        expect(activity.active()).toBe(false);
+      });
+
+      it('the widget ends the call', async () => {
+        const { activity } = await activeCall();
+        runtime.sessions[0].state.set('joined');
+        TestBed.tick();
+        runtime.sessions[0].onEnded();
+        TestBed.tick();
+        expect(activity.active()).toBe(false);
+      });
+
+      it('the account switches', async () => {
+        const { activity } = await activeCall();
+        activeUserId.set('@you:hs');
+        TestBed.tick();
+        expect(activity.active()).toBe(false);
+      });
+
+      it('the service is destroyed mid-call', async () => {
+        const { activity } = await activeCall();
+        TestBed.resetTestingModule();
+        expect(activity.active()).toBe(false);
+      });
+    });
   });
 });
