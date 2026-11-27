@@ -48,6 +48,7 @@ describe('stop', () => {
       vi.stubEnv('TRINITY_E2E_NETWORK_CONTAINER', '');
       vi.stubEnv('TRINITY_E2E_HOMESERVER', 'synapse');
       vi.stubEnv('TRINITY_E2E_CALLS', '');
+      vi.stubEnv('TRINITY_E2E_HOMESERVER_RUNTIME', 'docker');
       vi.spyOn(console, 'log').mockImplementation(() => undefined);
       const { stop } = await import('./stop.mjs');
 

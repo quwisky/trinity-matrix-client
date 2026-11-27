@@ -16,13 +16,15 @@ import {
   type ApiUser,
 } from '../../../support/account.mts';
 import { settleOpenedRoom } from '../../../support/message-composer.mts';
+import { resolveCallsEnabled } from '../../../support/homeserver/kind.mts';
 
 // A real two-party MatrixRTC call: two browser contexts, a direct chat, the bundled Element
 // Call widget, LiveKit and lk-jwt-service. A starts a video call, B gets the ring prompt
 // and joins, both see two participants, and when A hangs up the call ends for both.
 //
 // Opt-in: TRINITY_E2E_CALLS=1 with TRINITY_E2E_HOMESERVER=synapse adds the stack
-// (e2e/support/homeserver/calls/); without it the test skips.
+// (e2e/support/homeserver/calls/); without it the test skips. With it, a session that
+// does not report the stack fails the test: a skip would turn the CI job green unrun.
 const session = homeserverSession();
 
 const CALL_FRAME = 'iframe.call-host__frame';
@@ -115,7 +117,7 @@ async function showDirectChat(page: Page, name: string): Promise<void> {
 
 test.describe('Calls', () => {
   test.skip(
-    !session.calls,
+    !resolveCallsEnabled(),
     'needs the opt-in call stack (TRINITY_E2E_CALLS=1, TRINITY_E2E_HOMESERVER=synapse)',
   );
 
@@ -126,6 +128,7 @@ test.describe('Calls', () => {
   }) => {
     // Two cold sign-ins and an SFU join on top of the usual budget.
     test.setTimeout(240_000);
+    expect(session.calls, 'TRINITY_E2E_CALLS=1, but no call stack').toBe(true);
     const hs = session.hs as string;
     const runId = `${testResourceId('run')}call`;
     const callerName = `Caller ${runId}`;

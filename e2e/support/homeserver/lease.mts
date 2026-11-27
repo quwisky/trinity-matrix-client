@@ -10,6 +10,7 @@ import {
 import {
   resolveHomeserverKind,
   resolveHomeserverRuntime,
+  resolveCallsEnabled,
   resolveMasEnabled,
 } from './kind.mts';
 import {
@@ -71,6 +72,7 @@ export async function acquireHomeserverLease(
   resolveHomeserverKind();
   const runtime = resolveHomeserverRuntime();
   resolveMasEnabled();
+  resolveCallsEnabled();
   const lease = acquireLocks();
   let native: string[];
   try {

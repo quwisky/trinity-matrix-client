@@ -759,6 +759,16 @@ describe('Opt-in call stack', () => {
     );
   });
 
+  it('fails the call journey, rather than skipping it, when the stack was asked for', () => {
+    // A skipped test is green: gated on the session alone, calls-e2e could pass unrun.
+    const journey = read('e2e/browser/journeys/conversations/call.spec.mts');
+    expect(journey).toContain('test.skip(\n    !resolveCallsEnabled(),');
+    expect(journey).toMatch(
+      /expect\(session\.calls,[^)]*\)\.toBe\(\s*true,?\s*\)/,
+    );
+    expect(journey).not.toMatch(/test\.skip\([^)]*session\.calls/);
+  });
+
   it('fronts LiveKit signalling on TLS', () => {
     const caddy = read(`${HERE}/Caddyfile`);
     expect(caddy).toContain('https://localhost:7443 {');
