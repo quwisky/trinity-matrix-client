@@ -409,19 +409,33 @@ describe('installPermissionPolicy', () => {
       allowed,
     );
   });
+
   it.each([
     [
+      'grants',
       'the bundled call frame',
       false,
       'trinity://app/element-call/index.html',
       true,
     ],
-    ['the app main frame', true, 'trinity://app/rooms', false],
-    ['a remote widget frame', false, 'https://widget.example/', false],
-    ['an app frame outside the call', false, 'trinity://app/index.html', false],
+    ['refuses', 'the app main frame', true, 'trinity://app/rooms', false],
+    [
+      'refuses',
+      'a remote widget frame',
+      false,
+      'https://widget.example/',
+      false,
+    ],
+    [
+      'refuses',
+      'an app frame outside the call',
+      false,
+      'trinity://app/index.html',
+      false,
+    ],
   ])(
-    'lets %s ask to capture the screen',
-    (_name, isMainFrame, url, allowed) => {
+    '%s screen capture to %s',
+    (_verdict, _name, isMainFrame, url, allowed) => {
       const s = fakeSession();
       installPermissionPolicy(s as never);
       const request = s.setPermissionRequestHandler.mock.calls[0][0];

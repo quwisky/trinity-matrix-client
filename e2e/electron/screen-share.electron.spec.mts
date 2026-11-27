@@ -90,6 +90,14 @@ test.beforeAll(async () => {
     };
   });
   callFrame = await addFrame('trinity://app/element-call/index.html');
+  // The shell refuses capture while its window is hidden, as it is until ready-to-show.
+  await expect
+    .poll(() =>
+      app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.isVisible(),
+      ),
+    )
+    .toBe(true);
 });
 
 test.afterAll(async () => {
