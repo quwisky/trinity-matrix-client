@@ -308,12 +308,55 @@ describe('CallRingComponent', () => {
 
     banner.remove();
     await new Promise((resolve) => setTimeout(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
     await update();
     expect(top()).toBe('40px');
     expect(screen.getByRole('alertdialog').className).toContain(
       'var(--call-ring-top,0px)',
     );
     frame.remove();
+  });
+
+  it('measures at most once a frame however many mutations land, and cancels the frame on cleanup', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let lastFrame = 0;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.set(++lastFrame, callback);
+      return lastFrame;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) =>
+      frames.delete(id),
+    );
+    const runFrames = () => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(0);
+    };
+    const frame = document.createElement('div');
+    frame.className = 'app-frame';
+    frame.innerHTML = '<div class="call-host__strip"></div>';
+    document.body.append(frame);
+    const rect = vi.fn(() => ({ bottom: 40, height: 40 }) as DOMRect);
+    (frame.firstElementChild as HTMLElement).getBoundingClientRect = rect;
+    const { incomingRing, update } = await build();
+    runFrames();
+    rect.mockClear();
+
+    for (let i = 0; i < 5; i++) frame.append(document.createElement('p'));
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(rect).not.toHaveBeenCalled();
+    runFrames();
+    expect(rect).toHaveBeenCalledTimes(1);
+
+    frame.append(document.createElement('p'));
+    await new Promise((resolve) => setTimeout(resolve));
+    incomingRing.set(null);
+    await update();
+    rect.mockClear();
+    runFrames();
+    expect(rect).not.toHaveBeenCalled();
+    frame.remove();
+    vi.restoreAllMocks();
   });
 
   it('leaves focus alone while a dialog holds it', async () => {

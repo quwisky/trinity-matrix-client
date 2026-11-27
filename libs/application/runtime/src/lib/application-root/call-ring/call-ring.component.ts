@@ -160,14 +160,22 @@ export class CallRingComponent {
       }
       measure();
     };
-    // Bars come and go anywhere below the frame, inside a routed page too.
-    const mutations = new MutationObserver(track);
+    // Bars come and go anywhere below the frame, inside a routed page too; the timeline's
+    // mutations come in bursts, so measure at most once a frame.
+    let frame: number | null = null;
+    const mutations = new MutationObserver(() => {
+      frame ??= requestAnimationFrame(() => {
+        frame = null;
+        track();
+      });
+    });
     mutations.observe(
       this.document.querySelector('.app-frame') ?? this.document.body,
       { childList: true, subtree: true },
     );
     track();
     return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
       mutations.disconnect();
       resizes.disconnect();
     };
