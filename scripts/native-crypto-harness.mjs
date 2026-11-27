@@ -203,8 +203,11 @@ const decryptionSettings = {
 };
 
 /**
- * Events grouped by type, each type in arrival order: neither side orders events across types
- * (WASM's callbacks run on separate promise chains).
+ * Events grouped by type, each type in arrival order, so the comparison holds only what is
+ * guaranteed. Within a type the order is fixed on both sides: WASM awaits each callback before
+ * the next item of its stream, and native queues a stream's items in order. Across types
+ * nothing is: WASM runs each callback registration on its own promise chain, so native's queue
+ * order between types is not compared.
  */
 const byType = (response) => {
   const events = response.result?.events;
