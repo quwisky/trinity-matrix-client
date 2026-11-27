@@ -454,6 +454,24 @@ describe.skipIf(!hasCargo)(`native crypto trust with WASM${skipped}`, () => {
         isCrossSignedByOwner: true,
       });
 
+      // Pinning the new key settles the approval, not the violation: only withdrawing does.
+      expect(violated[0].result.identityNeedsUserApproval).toBe(true);
+      expectSame(
+        await both(observers, (it) => it.pinCurrentMasterKey(bob.userId)),
+        'pinCurrentMasterKey of a violated identity',
+      );
+      const pinned = await both(observers, (it) => it.getIdentity(bob.userId));
+      expectSame(
+        identities(pinned),
+        'getIdentity once the violation is pinned',
+      );
+      expect(pinned[0].result).toMatchObject({
+        isVerified: false,
+        wasPreviouslyVerified: true,
+        hasVerificationViolation: true,
+        identityNeedsUserApproval: false,
+      });
+
       expectSame(
         await both(observers, (it) => it.withdrawVerification(bob.userId)),
         'withdrawVerification',
