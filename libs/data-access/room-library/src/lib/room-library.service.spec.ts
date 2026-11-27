@@ -108,6 +108,8 @@ function fakeRoom(opts: {
    * thread has none yet, which is when the SDK's `replyToEvent` is null.
    */
   threads?: { rootTs: number; replyTs?: number }[];
+  /** The room's `org.matrix.msc3401.call.member` state events. */
+  callMembers?: { ts: number; content: Record<string, unknown> }[];
 }) {
   return {
     roomId: opts.roomId,
@@ -158,6 +160,16 @@ function fakeRoom(opts: {
         getStateEvents: (type: string, stateKey?: string) => {
           if (type === 'm.room.encryption' && opts.encryptedAt !== undefined) {
             return { getTs: () => opts.encryptedAt };
+          }
+          if (
+            type === 'org.matrix.msc3401.call.member' &&
+            stateKey === undefined
+          ) {
+            return (opts.callMembers ?? []).map((m) => ({
+              getType: () => type,
+              getTs: () => m.ts,
+              getContent: () => m.content,
+            }));
           }
           if (type === 'm.space.child' && stateKey === undefined) {
             return (opts.children ?? []).map((id) => ({
@@ -431,8 +443,18 @@ describe('RoomLibraryService', () => {
         '!c:hs': 0,
       };
       const built = new Set<string>();
+      const calls: Record<
+        string,
+        { ts: number; content: Record<string, unknown> }[]
+      > = {};
       const make = (id: string) => {
-        const room = fakeRoom({ roomId: id, name: id });
+        const room = fakeRoom({
+          roomId: id,
+          name: id,
+          get callMembers() {
+            return calls[id];
+          },
+        });
         room.getLastActiveTimestamp = () => activity[id];
         // Only a summary build reads the marked-unread flag, so it counts builds.
         const accountData = room.getAccountData;
@@ -464,6 +486,7 @@ describe('RoomLibraryService', () => {
         svc,
         activity,
         unread,
+        calls,
         sync,
         emit,
         room,
@@ -589,6 +612,28 @@ describe('RoomLibraryService', () => {
       expect(await endSync()).toEqual(['!a:hs', '!b:hs', '!c:hs']);
     });
 
+    it('shows and clears the call marker when call membership changes, with no other event', async () => {
+      const { svc, calls, emit, endSync } = setupMany();
+      const memberEvent = {
+        getType: () => 'org.matrix.msc3401.call.member',
+        getRoomId: () => '!a:hs',
+      };
+      const marked = () =>
+        svc.rooms().find((r) => r.id === '!a:hs')?.callActive;
+
+      calls['!a:hs'] = [
+        { ts: Date.now(), content: { expires_ts: Date.now() + 1e6 } },
+      ];
+      emit(RoomStateEvent.Events, memberEvent, { roomId: '!a:hs' });
+      expect(await endSync()).toEqual(['!a:hs']);
+      expect(marked()).toBe(true);
+
+      calls['!a:hs'] = [{ ts: Date.now(), content: {} }];
+      emit(RoomStateEvent.Events, memberEvent, { roomId: '!a:hs' });
+      await endSync();
+      expect(marked()).toBe(false);
+    });
+
     it('rebuilds every room when an event names no room', async () => {
       const { emit, endSync } = setupMany();
 
@@ -655,6 +700,37 @@ describe('RoomLibraryService', () => {
     const before = reads;
     await pageIn();
     expect(reads).toBe(before);
+  });
+
+  describe('call in progress', () => {
+    const live = {
+      ts: Date.now(),
+      content: { expires_ts: Date.now() + 3.6e6 },
+    };
+
+    it('is set by a live call member', () => {
+      const svc = setup([
+        fakeRoom({ roomId: '!r:hs', name: 'R', callMembers: [live] }),
+      ]);
+
+      expect(svc.rooms()[0].callActive).toBe(true);
+    });
+
+    it('is not set by only expired or left members, or no call state', () => {
+      const svc = setup([
+        fakeRoom({
+          roomId: '!a:hs',
+          name: 'A',
+          callMembers: [
+            { ts: 1, content: { expires_ts: 2 } },
+            { ts: 1, content: {} },
+          ],
+        }),
+        fakeRoom({ roomId: '!b:hs', name: 'B' }),
+      ]);
+
+      expect(svc.rooms().map((r) => r.callActive)).toEqual([false, false]);
+    });
   });
 
   describe('marked unread', () => {

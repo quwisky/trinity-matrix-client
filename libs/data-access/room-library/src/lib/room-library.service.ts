@@ -107,6 +107,8 @@ export interface RoomSummary {
   highlightCount: number;
   /** Convenience flag: there are unread notifications, or the room is flagged unread. */
   hasUnread: boolean;
+  /** A call in the room has a live member, so the row shows the call marker. */
+  callActive: boolean;
   /** The user flagged this room to come back to (`m.marked_unread`, MSC2867). */
   markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */

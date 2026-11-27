@@ -363,6 +363,7 @@ export function projectSelectedRooms(
         ),
         hasUnread: existing.hasUnread || summary.hasUnread,
         markedUnread: existing.markedUnread || summary.markedUnread,
+        callActive: existing.callActive || summary.callActive,
         lowPriority: existing.lowPriority || summary.lowPriority,
       });
     }

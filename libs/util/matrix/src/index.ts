@@ -41,3 +41,4 @@ export * from './lib/oidc-issuer-discovery';
 export * from './lib/resend-echo';
 export * from './lib/server-input';
 export * from './lib/call-ring-event';
+export * from './lib/call-participants';
