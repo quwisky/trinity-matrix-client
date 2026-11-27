@@ -1,0 +1,26 @@
+@if (ring(); as current) {
+  <div
+    class="fixed inset-x-0 top-[calc(max(var(--call-ring-top,0px),var(--trinity-title-row-inset,0px)+env(safe-area-inset-top,0px))+var(--trinity-space-2))] z-[var(--trinity-z-feedback)] mx-auto flex w-max max-w-[calc(100%-var(--trinity-space-4))] items-center gap-2 rounded-xl border border-[var(--trinity-border-subtle)] bg-[var(--trinity-surface-pane)] px-3 py-2 shadow-floating"
+    role="alertdialog"
+    aria-label="Incoming call"
+    aria-describedby="trn-call-ring-caller"
+    [style.--call-ring-top.px]="barsBottom()"
+    (keydown.escape)="onEscape($event)"
+  >
+    <div class="flex min-w-0 flex-1 flex-col">
+      <span id="trn-call-ring-caller" class="truncate font-semibold"
+        >{{ current.callerName }} is calling</span
+      >
+      <span class="text-xs text-[var(--trinity-text-muted)]">{{ kind() }}</span>
+      @if (calledAccount(); as account) {
+        <span class="truncate text-xs text-[var(--trinity-text-muted)]"
+          >for {{ account }}</span
+        >
+      }
+    </div>
+    <button trnBtn size="sm" variant="danger" (click)="decline()">
+      Decline
+    </button>
+    <button #join trnBtn size="sm" (click)="accept()">Join</button>
+  </div>
+}

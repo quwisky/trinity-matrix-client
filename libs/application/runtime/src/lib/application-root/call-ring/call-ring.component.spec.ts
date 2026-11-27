@@ -1,0 +1,373 @@
+import { signal } from '@angular/core';
+import { AppearanceEffects } from '@trinity/application/appearance';
+import {
+  WorkspaceNavigationService,
+  type WorkspaceNavigationOutcome,
+} from '@trinity/application/workspace';
+import { provideTrnIcons } from '@trinity/components/foundations';
+import { TrnToastService } from '@trinity/components/overlay';
+import {
+  CallRingService,
+  CallService,
+  type IncomingRing,
+} from '@trinity/data-access/calls';
+import { AccountIdentitiesService } from '@trinity/data-access/identity';
+import { MatrixClientService } from '@trinity/data-access/matrix-client';
+import { NotificationSoundService } from '@trinity/data-access/notifications';
+import { render, screen } from '@trinity/testing';
+import { MockProvider } from 'ng-mocks';
+import { of, type Observable } from 'rxjs';
+import { describe, expect, it, vi } from 'vitest';
+import { CallRingComponent } from './call-ring.component';
+import { RingToneService } from './ring-tone.service';
+
+const RING: IncomingRing = {
+  id: '$ring',
+  roomId: '!dm:hs',
+  accountId: '@me:hs',
+  callerId: '@bob:hs',
+  callerName: 'Bob',
+  video: true,
+  expiresAt: 0,
+};
+
+async function build(
+  initial: IncomingRing | null = RING,
+  accountIds: string[] = ['@me:hs'],
+  outcome: { kind: string } = { kind: 'ready' },
+) {
+  const incomingRing = signal<IncomingRing | null>(initial);
+  const decline = vi.fn();
+  const dismiss = vi.fn();
+  const start = vi.fn();
+  const sound = signal(true);
+  // Reads the preference as the real service does, so a tracked call would re-run.
+  const toneStart = vi.fn(() => void sound());
+  const toneStop = vi.fn();
+  const announce = vi.fn();
+  const order: string[] = [];
+  const navigate = vi.fn((): Observable<WorkspaceNavigationOutcome> => {
+    order.push('navigate');
+    return of(outcome as WorkspaceNavigationOutcome);
+  });
+  start.mockImplementation(() => order.push('start'));
+  const result = await render(CallRingComponent, {
+    providers: [
+      provideTrnIcons(),
+      MockProvider(CallRingService, { incomingRing, decline, dismiss }),
+      MockProvider(CallService, { start }),
+      MockProvider(TrnToastService, { announceWhileAppHidden: announce }),
+      MockProvider(RingToneService, { start: toneStart, stop: toneStop }),
+      MockProvider(WorkspaceNavigationService, { navigate }),
+      MockProvider(AppearanceEffects, {
+        resolved: signal({ mode: 'dark' }) as never,
+      }),
+      MockProvider(MatrixClientService, {
+        accountIds: signal(accountIds),
+      }),
+      MockProvider(NotificationSoundService, { enabled: sound }),
+      MockProvider(AccountIdentitiesService, {
+        identities: signal(
+          new Map([
+            [
+              '@me:hs',
+              { userId: '@me:hs', displayName: 'Me Myself', avatarMxc: null },
+            ],
+          ]),
+        ),
+      }),
+    ],
+  });
+  const update = async () => {
+    result.fixture.detectChanges();
+    await result.fixture.whenStable();
+  };
+  return {
+    ...result,
+    incomingRing,
+    decline,
+    dismiss,
+    start,
+    navigate,
+    order,
+    toneStart,
+    toneStop,
+    announce,
+    sound,
+    update,
+  };
+}
+
+describe('CallRingComponent', () => {
+  it('renders nothing without a ring', async () => {
+    await build(null);
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('announces the caller and the call kind', async () => {
+    await build();
+    expect(
+      screen.getByRole('alertdialog', { name: 'Incoming call' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Bob is calling')).toBeTruthy();
+    expect(screen.getByText('Incoming video call')).toBeTruthy();
+    expect(screen.queryByText(/^for /)).toBeNull();
+  });
+
+  it('joins a video ring: dismiss, navigate, then start', async () => {
+    const { dismiss, navigate, start, order } = await build();
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(dismiss).toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith({
+      kind: 'room',
+      accountId: '@me:hs',
+      roomId: '!dm:hs',
+      origin: 'room-action',
+    });
+    expect(start).toHaveBeenCalledWith('!dm:hs', {
+      video: true,
+      dm: true,
+      theme: 'dark',
+      roomName: 'Bob',
+    });
+    expect(order).toEqual(['navigate', 'start']);
+  });
+
+  it('joins a voice ring without video', async () => {
+    const { start } = await build({ ...RING, video: false });
+    expect(screen.getByText('Incoming voice call')).toBeTruthy();
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(start.mock.calls[0][1]).toMatchObject({ video: false });
+  });
+
+  it('joins a ring of unknown intent with video', async () => {
+    const { start } = await build({ ...RING, video: null });
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(start.mock.calls[0][1]).toMatchObject({ video: true });
+  });
+
+  it('opens the room on the called account, which switches to it', async () => {
+    const { navigate } = await build({ ...RING, accountId: '@other:hs' });
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ accountId: '@other:hs' }),
+    );
+  });
+
+  it('names the called account only with several signed in', async () => {
+    await build(RING, ['@me:hs', '@other:hs']);
+    expect(screen.getByText('for Me Myself')).toBeTruthy();
+  });
+
+  it('keeps the ring when the room does not open', async () => {
+    const { dismiss, start } = await build(RING, ['@me:hs'], {
+      kind: 'unavailable',
+    });
+    screen.getByRole('button', { name: 'Join' }).click();
+    expect(dismiss).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+  });
+
+  it('declines', async () => {
+    const { decline } = await build();
+    screen.getByRole('button', { name: 'Decline' }).click();
+    expect(decline).toHaveBeenCalled();
+  });
+
+  it('declines on Escape inside the prompt, and keeps the key from the page', async () => {
+    const { decline } = await build();
+    const event = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    screen.getByRole('button', { name: 'Join' }).dispatchEvent(event);
+    expect(decline).toHaveBeenCalledTimes(1);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it('ignores Escape pressed outside the prompt', async () => {
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    composer.focus();
+    const { decline } = await build();
+    composer.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+    expect(decline).not.toHaveBeenCalled();
+    composer.remove();
+  });
+
+  it('rings while the prompt shows and stops when it clears or is destroyed', async () => {
+    const { incomingRing, toneStart, toneStop, update, fixture } =
+      await build(null);
+    expect(toneStart).not.toHaveBeenCalled();
+    incomingRing.set(RING);
+    await update();
+    expect(toneStart).toHaveBeenCalledTimes(1);
+    expect(toneStart).toHaveBeenCalledWith(RING.accountId);
+    incomingRing.set(null);
+    await update();
+    expect(toneStop).toHaveBeenCalled();
+    incomingRing.set(RING);
+    await update();
+    toneStop.mockClear();
+    fixture.destroy();
+    expect(toneStop).toHaveBeenCalled();
+  });
+
+  it('stops the tone before a replacing ring starts its own', async () => {
+    const { incomingRing, toneStart, toneStop, update } = await build();
+    toneStart.mockClear();
+    toneStop.mockClear();
+    incomingRing.set({ ...RING, id: '$two', accountId: '@other:hs' });
+    await update();
+    expect(toneStop).toHaveBeenCalled();
+    expect(toneStart).toHaveBeenCalledWith('@other:hs');
+    expect(toneStop.mock.invocationCallOrder[0]).toBeLessThan(
+      toneStart.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not restart the tone when the sound preference flips', async () => {
+    const { toneStart, update, sound } = await build();
+    sound.set(false);
+    await update();
+    sound.set(true);
+    await update();
+    expect(toneStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('truncates a long caller name', async () => {
+    await build({ ...RING, callerName: 'B'.repeat(200) });
+    expect(
+      screen.getByText(`${'B'.repeat(200)} is calling`).classList,
+    ).toContain('truncate');
+  });
+
+  it('focuses Join when nothing holds focus', async () => {
+    await build();
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Join' }),
+    );
+  });
+
+  it('leaves focus alone while the composer holds it', async () => {
+    const composer = document.createElement('textarea');
+    document.body.append(composer);
+    composer.focus();
+    await build();
+    expect(document.activeElement).toBe(composer);
+    composer.remove();
+  });
+
+  it('describes the prompt by the caller line', async () => {
+    await build();
+    const dialog = screen.getByRole('alertdialog');
+    const id = dialog.getAttribute('aria-describedby') ?? '';
+    expect(document.getElementById(id)?.textContent).toContain(
+      'Bob is calling',
+    );
+  });
+
+  it('announces the caller through the live region a modal cannot hide', async () => {
+    const { incomingRing, update, announce } = await build(null);
+    expect(announce).not.toHaveBeenCalled();
+    incomingRing.set(RING);
+    await update();
+    expect(announce).toHaveBeenCalledWith('Bob is calling', 'assertive');
+  });
+
+  it('sits below the lowest bar showing at the top of the app, as bars come and go', async () => {
+    const frame = document.createElement('div');
+    frame.className = 'app-frame';
+    frame.innerHTML = `
+      <trn-title-bar></trn-title-bar>
+      <trn-call-host><div class="call-host__strip"></div></trn-call-host>
+      <div class="rooms-shell">
+        <trn-connectivity-banner></trn-connectivity-banner>
+        <trn-encryption-banner></trn-encryption-banner>
+        <div class="rooms-workspace"></div>
+      </div>`;
+    document.body.append(frame);
+    const place = (selector: string, bottom: number, height: number) => {
+      const element = frame.querySelector(selector) as HTMLElement;
+      element.getBoundingClientRect = () => ({ bottom, height }) as DOMRect;
+      return element;
+    };
+    place('.call-host__strip', 40, 40);
+    const banner = place('trn-encryption-banner', 100, 60);
+    // Empty banner wrappers and the page below the bars do not count.
+    place('trn-connectivity-banner', 0, 0);
+    place('.rooms-workspace', 800, 700);
+    const { update } = await build();
+    const top = () =>
+      screen.getByRole('alertdialog').style.getPropertyValue('--call-ring-top');
+    expect(top()).toBe('100px');
+
+    banner.remove();
+    await new Promise((resolve) => setTimeout(resolve));
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await update();
+    expect(top()).toBe('40px');
+    expect(screen.getByRole('alertdialog').className).toContain(
+      'var(--call-ring-top,0px)',
+    );
+    frame.remove();
+  });
+
+  it('measures at most once a frame however many mutations land, and cancels the frame on cleanup', async () => {
+    const frames = new Map<number, FrameRequestCallback>();
+    let lastFrame = 0;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.set(++lastFrame, callback);
+      return lastFrame;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) =>
+      frames.delete(id),
+    );
+    const runFrames = () => {
+      const pending = [...frames.values()];
+      frames.clear();
+      for (const callback of pending) callback(0);
+    };
+    const frame = document.createElement('div');
+    frame.className = 'app-frame';
+    frame.innerHTML = '<div class="call-host__strip"></div>';
+    document.body.append(frame);
+    const rect = vi.fn(() => ({ bottom: 40, height: 40 }) as DOMRect);
+    (frame.firstElementChild as HTMLElement).getBoundingClientRect = rect;
+    const { incomingRing, update } = await build();
+    runFrames();
+    rect.mockClear();
+
+    for (let i = 0; i < 5; i++) frame.append(document.createElement('p'));
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(rect).not.toHaveBeenCalled();
+    runFrames();
+    expect(rect).toHaveBeenCalledTimes(1);
+
+    frame.append(document.createElement('p'));
+    await new Promise((resolve) => setTimeout(resolve));
+    incomingRing.set(null);
+    await update();
+    rect.mockClear();
+    runFrames();
+    expect(rect).not.toHaveBeenCalled();
+    frame.remove();
+    vi.restoreAllMocks();
+  });
+
+  it('leaves focus alone while a dialog holds it', async () => {
+    const dialog = document.createElement('div');
+    dialog.setAttribute('role', 'dialog');
+    const inner = document.createElement('button');
+    dialog.append(inner);
+    document.body.append(dialog);
+    inner.focus();
+    await build();
+    expect(document.activeElement).toBe(inner);
+    dialog.remove();
+  });
+});

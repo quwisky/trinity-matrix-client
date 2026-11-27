@@ -6,7 +6,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { toObservable } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatrixClientService } from '@trinity/data-access/matrix-client';
 import type { MatrixClient } from 'matrix-js-sdk';
 import {
@@ -22,6 +22,7 @@ import {
   map,
   of,
   shareReplay,
+  skipWhile,
   startWith,
   switchMap,
   timeout,
@@ -34,7 +35,7 @@ import {
   formatCallElapsed,
   hasOngoingCall,
 } from './call-intent';
-import type { CallTransport } from './call-transport';
+import type { CallTransport, RawCallEvent } from './call-transport';
 import type { CallSession, CallSessionState } from './call-runtime';
 import { matrixCallTransport } from './matrix-call-transport';
 
@@ -63,6 +64,12 @@ interface Call {
 const CALL_WIDGET_ID = 'trinity-call';
 const MAX_TIMER_MS = 2 ** 31 - 1;
 const CALL_MEMBER_TYPE = 'org.matrix.msc3401.call.member';
+
+// Alone, a lost membership is the unanswered ring ending: nothing to lose by ending quickly.
+export const OWN_MEMBERSHIP_ALONE_GRACE_MS = 3_000;
+// With others, the server's delayed leave can publish `{}` after a network blip or a paused
+// tab, and Element Call rejoins on a later round trip.
+export const OWN_MEMBERSHIP_SHARED_GRACE_MS = 30_000;
 
 // Same budget as the widget bridge: the runtime chunk is small, so this only trips on a dead network.
 export const CALL_RUNTIME_LOAD_TIMEOUT_MS = 20_000;
@@ -112,6 +119,23 @@ export class CallService {
         this.joined.set({ id: call.id, at: Date.now() });
       }
     });
+    // Element Call can leave the session (an unanswered ring ends) without a hangup or close action.
+    this.activeCall$
+      .pipe(
+        map((active) =>
+          active?.state === 'joined' ? untracked(this.call) : null,
+        ),
+        distinctUntilChanged(),
+        switchMap((call) =>
+          call
+            ? ownMembershipLost(call.transport).pipe(map(() => call))
+            : EMPTY,
+        ),
+        takeUntilDestroyed(),
+      )
+      .subscribe((call) => {
+        if (this.call() === call) this.end();
+      });
     effect(() => {
       const accountId = this.clients.activeUserId();
       const call = this.call();
@@ -329,4 +353,68 @@ export class CallService {
     this.ending.set(false);
     this.next = null;
   }
+}
+
+/**
+ * Emits once this device's membership, after it was first seen, stays gone for the grace period.
+ * shortcut: reads only `call.member` state; in sticky-event mode (`org.matrix.msc4143.rtc.member`)
+ * the membership never reaches state, so this never arms. Read sticky members when Element Call
+ * runs in that mode here.
+ */
+function ownMembershipLost(transport: CallTransport): Observable<void> {
+  return transport.roomEvents().pipe(
+    filter((event) => event.type === CALL_MEMBER_TYPE),
+    startWith(null),
+    map(() => ownMembershipState(transport, Date.now())),
+    distinctUntilChanged(),
+    // Joining publishes the membership after the session reports `joined`.
+    skipWhile((state) => state !== 'live'),
+    switchMap((state) =>
+      state === 'live'
+        ? EMPTY
+        : timer(
+            state === 'gone-alone'
+              ? OWN_MEMBERSHIP_ALONE_GRACE_MS
+              : OWN_MEMBERSHIP_SHARED_GRACE_MS,
+          ).pipe(map(() => void 0)),
+    ),
+  );
+}
+
+function ownMembershipState(
+  transport: CallTransport,
+  now: number,
+): 'live' | 'gone-alone' | 'gone-with-others' {
+  let others = false;
+  for (const event of transport.readState(CALL_MEMBER_TYPE)) {
+    if (callParticipants([event], now).count === 0) continue;
+    if (isOwnDevice(event, transport)) return 'live';
+    others = true;
+  }
+  return others ? 'gone-with-others' : 'gone-alone';
+}
+
+function deviceOf(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const fields = value as Record<string, unknown>;
+  const member = fields['member'];
+  return (
+    fields['device_id'] ??
+    (typeof member === 'object' && member !== null
+      ? (member as Record<string, unknown>)['device_id']
+      : undefined)
+  );
+}
+
+function isOwnDevice(event: RawCallEvent, transport: CallTransport): boolean {
+  if (event.sender !== transport.userId) return false;
+  const memberships = event.content['memberships'];
+  return (
+    deviceOf(event.content) === transport.deviceId ||
+    // The legacy format lists every device of the user in one event.
+    (Array.isArray(memberships) &&
+      memberships.some(
+        (membership: unknown) => deviceOf(membership) === transport.deviceId,
+      ))
+  );
 }

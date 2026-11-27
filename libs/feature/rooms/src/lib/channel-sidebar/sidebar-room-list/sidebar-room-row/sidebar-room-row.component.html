@@ -43,7 +43,19 @@
       } @else if (r.hasUnread && !r.markedUnread) {
         <span class="sr-only">, unread</span>
       }
+      @if (r.callActive) {
+        <span class="sr-only">, call in progress</span>
+      }
     </div>
+    @if (r.callActive) {
+      <trn-icon
+        class="channel__call"
+        name="phone"
+        size="xs"
+        label="Call in progress"
+        data-testid="room-call"
+      />
+    }
     @if (mode() !== 'all') {
       <trn-icon
         class="channel__muted"

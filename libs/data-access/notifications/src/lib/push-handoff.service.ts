@@ -34,6 +34,7 @@ import {
   timeout,
 } from 'rxjs';
 import type { NotificationTextMode } from './notification-text.port';
+import { directRoomIds } from './matrix-notification-event.adapter';
 import {
   LEGACY_NOTIFICATION_SOUND_EVENT,
   NOTIFICATION_SOUND_EVENT,
@@ -501,20 +502,4 @@ export class PushHandoffService {
 
 function canSaveTokens(granted: BackgroundWork): boolean {
   return granted.protectedDataAvailable && !granted.locking;
-}
-
-/** Room ids the `m.direct` account data lists as DMs. */
-function directRoomIds(client: MatrixClient): ReadonlySet<string> {
-  const map =
-    client
-      .getAccountData(EventType.Direct)
-      ?.getContent<Record<string, unknown>>() ?? {};
-  const ids = new Set<string>();
-  for (const roomIds of Object.values(map)) {
-    if (!Array.isArray(roomIds)) continue;
-    for (const roomId of roomIds) {
-      if (typeof roomId === 'string') ids.add(roomId);
-    }
-  }
-  return ids;
 }

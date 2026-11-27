@@ -403,6 +403,143 @@ describe('CallService', () => {
     });
   });
 
+  describe('when Element Call leaves without telling the widget', () => {
+    afterEach(() => vi.useRealTimers());
+
+    const member = (
+      sender: string,
+      stateKey: string,
+      content: Record<string, unknown>,
+    ) => ({
+      type: 'org.matrix.msc3401.call.member',
+      sender,
+      state_key: stateKey,
+      origin_server_ts: 0,
+      content,
+    });
+    const own = (content: Record<string, unknown>) =>
+      member('@me:hs', '_@me:hs_DEV_m.call', content);
+    const live = own({ device_id: 'DEV', application: 'm.call' });
+    const left = own({});
+    const bob = member('@bob:hs', '_@bob:hs_B_m.call', { device_id: 'B' });
+    const myOtherDevice = (content: Record<string, unknown>) =>
+      member('@me:hs', '_@me:hs_OTHER_m.call', content);
+    const publish = (members: unknown[]) => {
+      runtime.members = members;
+      runtime.listeners.forEach((listener) => listener(members[0]));
+      TestBed.tick();
+    };
+    const start = async (members: unknown[]) => {
+      vi.useFakeTimers();
+      runtime.members = members;
+      const service = TestBed.inject(CallService);
+      service.start('!r', opts);
+      service.attach(iframe).subscribe();
+      await loaded();
+      return service;
+    };
+    const joined = async (members: unknown[]) => {
+      const service = await start(members);
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      return service;
+    };
+    const hangUps = () => runtime.sessions[0].hangUp.mock.calls.length;
+    /** Ends exactly when the alone grace runs out. */
+    const endsAfterAloneGrace = (service: CallService) => {
+      vi.advanceTimersByTime(2_999);
+      expect(hangUps()).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(hangUps()).toBe(1);
+      expect(service.activeCall()?.state).toBe('ending');
+    };
+
+    it('ends 3 s after its own membership is gone, with nobody else in the call', async () => {
+      const service = await joined([live, myOtherDevice({})]);
+      publish([left]);
+      endsAfterAloneGrace(service);
+    });
+
+    it('waits 30 s while someone else is in the call', async () => {
+      await joined([live, bob]);
+      publish([left, bob]);
+      vi.advanceTimersByTime(29_999);
+      expect(hangUps()).toBe(0);
+      vi.advanceTimersByTime(1);
+      expect(hangUps()).toBe(1);
+    });
+
+    it('keeps the call when it rejoins 5 s later while someone else is in it', async () => {
+      await joined([live, bob]);
+      publish([left, bob]);
+      vi.advanceTimersByTime(5_000);
+      publish([live, bob]);
+      vi.advanceTimersByTime(60_000);
+      expect(hangUps()).toBe(0);
+    });
+
+    it('arms only once its membership is published after the join', async () => {
+      const service = await start([left]);
+      vi.advanceTimersByTime(10_000);
+      runtime.sessions[0].state.set('joined');
+      TestBed.tick();
+      vi.advanceTimersByTime(10_000);
+      expect(hangUps()).toBe(0);
+
+      publish([live]);
+      publish([left]);
+      endsAfterAloneGrace(service);
+    });
+
+    it('keeps the call when the membership is republished within the grace period', async () => {
+      const service = await joined([live]);
+      publish([left]);
+      vi.advanceTimersByTime(2_000);
+      publish([live]);
+      vi.advanceTimersByTime(10_000);
+      expect(hangUps()).toBe(0);
+
+      publish([left]);
+      endsAfterAloneGrace(service);
+    });
+
+    it("keeps the call when only the user's other device leaves", async () => {
+      const service = await joined([
+        live,
+        myOtherDevice({ device_id: 'OTHER' }),
+      ]);
+      publish([live, myOtherDevice({})]);
+      vi.advanceTimersByTime(60_000);
+      expect(hangUps()).toBe(0);
+
+      publish([left]);
+      endsAfterAloneGrace(service);
+    });
+
+    it('reads the device from the legacy memberships list', async () => {
+      const legacy = (memberships: unknown[]) =>
+        member('@me:hs', '@me:hs', { memberships });
+      const service = await joined([legacy([{ device_id: 'DEV' }])]);
+      publish([legacy([])]);
+      endsAfterAloneGrace(service);
+    });
+
+    it('reads the device from the nested member field', async () => {
+      const service = await joined([own({ member: { device_id: 'DEV' } })]);
+      publish([left]);
+      endsAfterAloneGrace(service);
+    });
+
+    it('drops the grace timer when the account switches', async () => {
+      await joined([live]);
+      publish([left]);
+      expect(vi.getTimerCount()).toBe(1);
+      activeUserId.set('@other:hs');
+      TestBed.tick();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
   describe('elapsed', () => {
     afterEach(() => vi.useRealTimers());
 

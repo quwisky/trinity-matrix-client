@@ -7,6 +7,7 @@ import {
 } from 'matrix-js-sdk';
 import {
   arrivedInClear,
+  callParticipants,
   initialOf,
   liveRoomState,
   messagePreview,
@@ -20,6 +21,8 @@ import { type RoomSummary } from './room-library.service';
 
 /** State event type linking a space to a child room. */
 const SPACE_CHILD_EVENT = 'm.space.child';
+
+const CALL_MEMBER_EVENT = 'org.matrix.msc3401.call.member';
 
 /**
  * The unstable prefix some clients still write for MSC2867's marked-unread flag. Read as
@@ -209,6 +212,7 @@ export function buildRoomSummary(
     unreadCount,
     highlightCount,
     markedUnread,
+    callActive: roomCall(room, Date.now()).count > 0,
     // A flagged room reads as unread even with nothing new in it, so the badge and the
     // sidebar's unread filter both follow.
     hasUnread: unreadCount > 0 || markedUnread,
@@ -219,6 +223,23 @@ export function buildRoomSummary(
     lowPriority: room.tags?.['m.lowpriority'] !== undefined,
     directUserId,
   };
+}
+
+/** The room's live call members and their earliest expiry, from its `call.member` state. */
+export function roomCall(
+  room: Room,
+  nowMs: number,
+): { count: number; nextExpiryMs: number | null } {
+  return callParticipants(
+    (liveRoomState(room)?.getStateEvents(CALL_MEMBER_EVENT) ?? []).map(
+      (event) => ({
+        type: CALL_MEMBER_EVENT,
+        origin_server_ts: event.getTs(),
+        content: event.getContent(),
+      }),
+    ),
+    nowMs,
+  );
 }
 
 /**

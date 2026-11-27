@@ -50,6 +50,7 @@ import {
   sdkMovedRow,
   isMarkedUnread,
   reuseUnchanged,
+  roomCall,
   sameRooms,
 } from './room-projection';
 import {
@@ -107,6 +108,8 @@ export interface RoomSummary {
   highlightCount: number;
   /** Convenience flag: there are unread notifications, or the room is flagged unread. */
   hasUnread: boolean;
+  /** A call in the room has a live member, so the row shows the call marker. */
+  callActive: boolean;
   /** The user flagged this room to come back to (`m.marked_unread`, MSC2867). */
   markedUnread: boolean;
   /** Single-line preview of the room's most recent message (`''` when none). */
@@ -208,6 +211,11 @@ export class RoomLibraryService {
    * Events mark a room here rather than rebuilding it, so a sync rebuilds the rooms it touched.
    */
   private dirtyRooms = new Set<string>();
+  /** One timer per room with a live call, re-reading its row when the earliest membership expires. */
+  private readonly callExpiryTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   /** Rebuild every row next time: something that no single room names has changed. */
   private rebuildAll = true;
   /** Sync state of the last rebuild; a change (a reconnect, a catch-up) rebuilds every row. */
@@ -370,6 +378,7 @@ export class RoomLibraryService {
       this._directRoomIds.set(new Set());
       this.dmPeers = new Set();
       this.typing.reset();
+      this.clearCallExpiryTimers();
     },
   });
 
@@ -852,7 +861,10 @@ export class RoomLibraryService {
           if (answered > 0) rebuild();
         });
     }
+    if (all) this.clearCallExpiryTimers();
+    const now = Date.now();
     for (const room of rebuilt) {
+      this.armCallExpiry(room, now);
       const timeline = room.getLiveTimeline();
       this.builtFrom.set(
         room.roomId,
@@ -861,6 +873,31 @@ export class RoomLibraryService {
     }
     this._directRoomIds.set(direct);
     this.dmPeers = new Set(userByRoom.values());
+  }
+
+  /** A membership can end by expiry alone, with no event to rebuild the row. */
+  private armCallExpiry(room: Room, now: number): void {
+    clearTimeout(this.callExpiryTimers.get(room.roomId));
+    this.callExpiryTimers.delete(room.roomId);
+    const { nextExpiryMs } = roomCall(room, now);
+    if (nextExpiryMs === null) return;
+    const roomId = room.roomId;
+    this.callExpiryTimers.set(
+      roomId,
+      setTimeout(
+        () => {
+          this.callExpiryTimers.delete(roomId);
+          this.onRoomChanged(roomId);
+        },
+        // setTimeout fires at once past 2**31-1 ms; a clamped timer just rebuilds and re-arms.
+        Math.min(nextExpiryMs - now + 1, 2 ** 31 - 1),
+      ),
+    );
+  }
+
+  private clearCallExpiryTimers(): void {
+    for (const timer of this.callExpiryTimers.values()) clearTimeout(timer);
+    this.callExpiryTimers.clear();
   }
 
   /** Overlay an in-flight marked-unread write, and forget it once /sync agrees. */

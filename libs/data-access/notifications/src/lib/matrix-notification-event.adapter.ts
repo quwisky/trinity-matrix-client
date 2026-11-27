@@ -1,27 +1,44 @@
-import type { MatrixEvent, Room } from 'matrix-js-sdk';
-import { displayContent, validReplacement } from '@trinity/util/matrix';
+import {
+  EventType,
+  type MatrixClient,
+  type MatrixEvent,
+  type Room,
+} from 'matrix-js-sdk';
+import {
+  displayContent,
+  RING_EVENT_TYPES,
+  validReplacement,
+} from '@trinity/util/matrix';
 import type { NotificationEvent } from './notification-intent';
 
 /**
  * Narrow one SDK event into the value-only record consumed by Notifications policy.
- * `roomEncrypted` is whether the room counts as encrypted (see `RoomEncryptionFlags`).
+ * `roomEncrypted` is whether the room counts as encrypted (see `RoomEncryptionFlags`);
+ * `direct`, whether `m.direct` lists it ({@link directRoomIds}).
  */
 export function normalizeNotificationEvent(
   accountId: string,
   event: MatrixEvent,
   room: Room,
   roomEncrypted: boolean,
+  direct = false,
 ): NotificationEvent {
   const senderId = event.getSender() ?? '';
   const senderName = event.sender?.name ?? (senderId || 'Someone');
   const content = displayContent(event);
-  const rawBody = content?.['body'];
+  const ring = RING_EVENT_TYPES.includes(event.getType());
+  const rawBody = ring
+    ? content?.['notification_type'] === 'ring'
+      ? 'Incoming call'
+      : 'Call started'
+    : content?.['body'];
   // Text that arrived in the clear in an encrypted room is not previewed: the
   // notification falls back to the generic "New message". The text shown is the edit's
   // when there is one, so it is the edit that must have been encrypted.
   const shown = validReplacement(event) ?? event;
   const previewable =
-    typeof rawBody === 'string' && (shown.isEncrypted() || !roomEncrypted);
+    typeof rawBody === 'string' &&
+    (ring || shown.isEncrypted() || !roomEncrypted);
   return Object.freeze({
     accountId,
     roomId: room.roomId,
@@ -29,7 +46,24 @@ export function normalizeNotificationEvent(
     senderId,
     senderName,
     roomName: room.name || null,
+    direct,
     body: previewable ? rawBody : null,
     kind: typeof rawBody === 'string' ? 'message' : 'unsupported',
   });
+}
+
+/** Room ids the `m.direct` account data lists as DMs. */
+export function directRoomIds(client: MatrixClient): ReadonlySet<string> {
+  const map =
+    client
+      .getAccountData(EventType.Direct)
+      ?.getContent<Record<string, unknown>>() ?? {};
+  const ids = new Set<string>();
+  for (const roomIds of Object.values(map)) {
+    if (!Array.isArray(roomIds)) continue;
+    for (const roomId of roomIds) {
+      if (typeof roomId === 'string') ids.add(roomId);
+    }
+  }
+  return ids;
 }

@@ -107,6 +107,63 @@ describe('isPresentableSystemEvent', () => {
   });
 });
 
+describe('call ring events', () => {
+  const ring = (init: Partial<EventInit> = {}): MatrixEvent =>
+    stateEvent({
+      type: 'org.matrix.msc4075.rtc.notification',
+      state: false,
+      sender: '@alice:hs',
+      content: { notification_type: 'ring', 'm.call.intent': 'video' },
+      ...init,
+    });
+
+  it('is presentable when decrypted and not redacted, whatever its notification type', () => {
+    expect(isPresentableSystemEvent(ring())).toBe(true);
+    expect(
+      isPresentableSystemEvent(
+        ring({
+          type: 'm.rtc.notification',
+          content: { notification_type: 'notification' },
+        }),
+      ),
+    ).toBe(true);
+    expect(isPresentableSystemEvent(ring({ redacted: true }))).toBe(false);
+    expect(isPresentableSystemEvent(ring({ type: 'm.room.encrypted' }))).toBe(
+      false,
+    );
+  });
+
+  it('normalizes to a call-started change with the intent', () => {
+    const view = (event: MatrixEvent) =>
+      normalizeTimelineEvent(client, room, event, null, false);
+    expect(view(ring())).toMatchObject({
+      type: 'system',
+      change: { kind: 'call-started', actorName: 'Alice', video: true },
+    });
+    expect(view(ring({ content: { 'm.call.intent': 'audio' } }))).toMatchObject(
+      { change: { video: false } },
+    );
+    expect(view(ring({ content: {} }))).toMatchObject({
+      change: { video: null },
+    });
+  });
+
+  it('words the line by intent, in the call category', () => {
+    const present = (content: Record<string, unknown>) =>
+      presentNormalizedTimelineEvent(
+        normalizeTimelineEvent(client, room, ring({ content }), null, false)!,
+      );
+    expect(present({ 'm.call.intent': 'video' })).toMatchObject({
+      body: 'Alice started a video call',
+      systemCategory: 'call',
+    });
+    expect(present({ 'm.call.intent': 'audio' })?.body).toBe(
+      'Alice started a voice call',
+    );
+    expect(present({})?.body).toBe('Alice started a call');
+  });
+});
+
 describe('describeTimelineEvent — membership', () => {
   it('joins, invites, knocks', () => {
     expect(membership('join')).toBe('Bob joined the room');

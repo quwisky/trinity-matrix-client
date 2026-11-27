@@ -30,7 +30,10 @@ import {
 } from './notification-sound.service';
 import { copyLegacyAccountData } from './legacy-account-data';
 import { Observable, Subscriber, Subscription, take, timeout } from 'rxjs';
-import { normalizeNotificationEvent } from './matrix-notification-event.adapter';
+import {
+  directRoomIds,
+  normalizeNotificationEvent,
+} from './matrix-notification-event.adapter';
 import type { NotificationRuntimeEvent } from './notification-intent';
 import { NotificationPolicy } from './notification-policy';
 import { NotificationPresenterService } from './notification-presenter.service';
@@ -575,6 +578,7 @@ export class NotificationService {
       event,
       room,
       encryption.isEncrypted(room),
+      directRoomIds(client).has(room.roomId),
     );
     const key = this.key(userId, normalized.eventId);
     const decision = this.policy.decide({

@@ -47,6 +47,22 @@ describe('NotificationPolicy', () => {
   });
 
   it.each([
+    [true, 'Bob'],
+    [false, 'Bob · Bob'],
+  ])(
+    'names a room called after the sender once only in a direct chat (direct: %s)',
+    (direct, title) => {
+      const input = base();
+      const decision = policy.decide({
+        ...input,
+        event: { ...input.event, roomName: 'Bob', direct },
+      });
+
+      expect(decision.kind === 'present' && decision.intent.title).toBe(title);
+    },
+  );
+
+  it.each([
     [
       'push-owns-background',
       {

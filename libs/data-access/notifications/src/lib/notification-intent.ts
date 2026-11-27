@@ -8,6 +8,8 @@ interface NotificationEventContext {
   readonly senderId: string;
   readonly senderName: string;
   readonly roomName: string | null;
+  /** A direct chat, usually named after the other person. */
+  readonly direct?: boolean;
   readonly body: string | null;
 }
 

@@ -17,6 +17,8 @@ import {
   reactionsFor,
   readReceiptsFor,
   replyPreview,
+  RING_EVENT_TYPES,
+  ringVideo,
   validReplacement,
 } from '@trinity/util/matrix';
 import type {
@@ -54,9 +56,10 @@ const SYSTEM_EVENT_TYPES = new Set<string>([
 export function isPresentableSystemEvent(event: MatrixEvent): boolean {
   return read(
     () =>
-      event.isState() &&
       !event.isRedacted() &&
-      SYSTEM_EVENT_TYPES.has(event.getType()),
+      (event.isState()
+        ? SYSTEM_EVENT_TYPES.has(event.getType())
+        : RING_EVENT_TYPES.includes(event.getType())),
     false,
   );
 }
@@ -483,6 +486,18 @@ export function normalizeTimelineEvent(
           'unsupported-message',
           false,
         );
+  }
+
+  if (RING_EVENT_TYPES.includes(type) && !read(() => event.isState(), true)) {
+    return Object.freeze({
+      ...normalizeCommon(client, room, event, projection),
+      type: 'system',
+      change: Object.freeze({
+        kind: 'call-started',
+        actorName: actorName(event, room),
+        video: ringVideo(record(event.getContent())),
+      }),
+    });
   }
 
   if (SYSTEM_EVENT_TYPES.has(type)) {

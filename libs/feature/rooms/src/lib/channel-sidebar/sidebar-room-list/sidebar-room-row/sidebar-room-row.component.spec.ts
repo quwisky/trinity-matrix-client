@@ -104,6 +104,33 @@ describe('SidebarRoomRowComponent', () => {
     expect(actions).toEqual([{ kind: 'notify', room: room(), mode: 'mute' }]);
   });
 
+  it('marks a room with a call in progress, and only then', async () => {
+    const { container, fixture } = await renderRow();
+    expect(container.querySelector('[data-testid="room-call"]')).toBeNull();
+
+    fixture.componentRef.setInput('room', room({ callActive: true }));
+    fixture.detectChanges();
+
+    const marker = container.querySelector('[data-testid="room-call"]')!;
+    expect(marker.getAttribute('aria-label')).toBe('Call in progress');
+    expect(container.querySelector('.channel__text')?.textContent).toContain(
+      ', call in progress',
+    );
+  });
+
+  it('shows the call marker before the mute icon', async () => {
+    const { container } = await renderRow(
+      { room: room({ callActive: true }) },
+      undefined,
+      'mixed',
+    );
+
+    const marker = container.querySelector('[data-testid="room-call"]')!;
+    expect(marker.nextElementSibling?.getAttribute('data-testid')).toBe(
+      'room-muted',
+    );
+  });
+
   it('reads the notification level once, not on every change detection', async () => {
     const { fixture, modeForAccounts } = await renderRow();
     expect(modeForAccounts).toHaveBeenCalledTimes(1);
