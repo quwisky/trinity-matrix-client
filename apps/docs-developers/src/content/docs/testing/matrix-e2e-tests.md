@@ -54,6 +54,18 @@ CI runs the journeys in two places. The `E2E (Synapse nightly)` workflow runs th
 
 `e2e/mobile/specs/mas-native-tokens.e2e.mts` covers what those web journeys can't: on Android the native vault makes the refreshes. It runs on the same stack with `TRINITY_E2E_MAS=1 TRINITY_MOBILE_SPECS=./specs/mas-native-tokens.e2e.mts pnpm e2e:mobile`, needs a `google_apis` emulator the runner can restart as root to trust the run's Caddy root, and is in a non-blocking CI job, `Mobile E2E (Android mas, non-blocking)`. It doesn't block a merge, but read a red run: a failure may be a real product bug. iOS can't run it: its runner has no Docker.
 
+## Run the call journey {#call-journey}
+
+`e2e/browser/journeys/conversations/call.spec.mts` joins a real two-party call: two browser contexts with Chromium's fake camera and microphone, a direct chat, the bundled Element Call, LiveKit and lk-jwt-service. The caller starts a video call, the callee sees the ring prompt and the call marker on the chat's row, joins, and both calls show two participants; when the caller hangs up, the call and its strip end on both sides and the marker leaves the callee's row. It needs the opt-in call stack, which `TRINITY_E2E_CALLS=1` adds on top of Synapse. Without it the test skips.
+
+```bash
+TRINITY_E2E_HOMESERVER=synapse TRINITY_E2E_CALLS=1 pnpm nx run trinity-e2e-browser:e2e -- conversations/call.spec.mts
+```
+
+The stack (`e2e/support/homeserver/calls/`) runs LiveKit 1.13.11 and lk-jwt-service 0.10.0, and turns MatrixRTC on in the primary Synapse: `matrix_rtc.transports`, MSC4140 delayed events, MSC4143, MSC4354, MSC4502 and MSC4512, and lk-jwt-service's app-service registration, through which Synapse serves the call token endpoint. No `.well-known` `rtc_foci` is needed. The app's CSP allows only `https:` and `wss:` connections, so Caddy serves LiveKit's signalling on `wss://localhost:7443`; media goes to LiveKit's loopback ports 7881 (TCP) and 7882 (UDP). It brings no Synapse of its own, so it refuses Tuwunel, the native runtime and `TRINITY_E2E_NETWORK_CONTAINER`. Stopping the stack always removes the LiveKit and lk-jwt-service containers, and an ordinary run never starts them. The test itself takes about ten seconds.
+
+A pull request runs it in its `E2E browser journeys (calls)` job when it changes call code (`libs/data-access/calls`, the call host, ring prompt, card and stage, the call helpers in `libs/util/matrix`), the Element Call version or its config, the call stack or the Synapse harness, or the journey; the `E2E (Synapse nightly)` workflow runs it every night in `Browser E2E (calls)`.
+
 ## The new-device check in journeys {#new-device-check}
 
 A sign-in that creates a new device for an account with a cross-signing identity opens the new-device check (`/encryption/confirm`) before Rooms. Browser and protocol journeys run the development build, whose check offers "Skip for now (debug build)". `login()`, `addAccountViaUi()`, `ssoLogin()`, `signInWithMas()` and the protocol suite's sign-in call `settleSignIn()`, which takes that skip by default, so a journey that signs a second device into such an account continues with an unverified device. Pass `'expect'` to stop on the check, or `'forbid'` to fail if it appears. `publishIdentityWithoutRecovery()` in `e2e/support/cross-signing.mts` gives a throwaway account an identity with no recovery, and `setUpEncryption()` in `e2e/browser/support/encryption-journey.mts` sets up recovery from the app. The shared harness account has no identity, so journeys that sign it in never meet the check. The production renderer suite runs the release build, which never offers the skip; its accounts have no identity.
