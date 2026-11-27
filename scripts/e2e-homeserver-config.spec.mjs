@@ -167,7 +167,8 @@ describe('Nightly Synapse workflow', () => {
     const { on } = workflow();
     expect(on.schedule).toEqual([{ cron: '47 2 * * *' }]);
     expect(on).toHaveProperty('workflow_dispatch');
-    // ci.yml picks a server only for QR sign-in on Tuwunel OAuth, never Synapse.
+    // ci.yml picks a server only for QR sign-in on Tuwunel OAuth, and Synapse only for the
+    // call journey, whose stack needs it.
     const ci = loadWorkflow('ci.yml');
     expect(JSON.stringify(ci.env ?? {})).not.toContain(
       'TRINITY_E2E_HOMESERVER',
@@ -175,6 +176,8 @@ describe('Nightly Synapse workflow', () => {
     for (const [id, job] of Object.entries(ci.jobs)) {
       if (id === 'tuwunel-oauth-e2e') {
         expect(job.env.TRINITY_E2E_HOMESERVER).toBe('tuwunel-oauth');
+      } else if (id === 'calls-e2e') {
+        expect(job.env.TRINITY_E2E_HOMESERVER).toBe('synapse');
       } else {
         expect(JSON.stringify(job), id).not.toContain('TRINITY_E2E_HOMESERVER');
       }
@@ -206,6 +209,17 @@ describe('Nightly Synapse workflow', () => {
     );
     // The Synapse browser shards stay MAS-free: the MAS stack is opt-in and has its own job.
     expect(jobs.browser.env?.TRINITY_E2E_MAS).toBeUndefined();
+  });
+
+  it('runs the call journey in its own job, with the call stack on Synapse', () => {
+    const { jobs } = workflow();
+    expect(jobs.calls.env.TRINITY_E2E_CALLS).toBe('1');
+    expect(commands(jobs.calls)).toContain(
+      '--timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- conversations/call.spec.mts',
+    );
+    expect(jobs.notify.needs).toContain('calls');
+    // The Synapse browser shards stay off the call stack: it is opt-in and has its own job.
+    expect(jobs.browser.env?.TRINITY_E2E_CALLS).toBeUndefined();
   });
 
   it('runs the browser journeys as three shards', () => {

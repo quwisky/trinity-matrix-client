@@ -7,7 +7,8 @@ name: E2E (Synapse nightly)
 # The browser journeys split into three shards, as in pull-request CI: one process no longer
 # finishes the suite inside its 20-minute ceiling. A separate job runs the MAS sign-in
 # journeys every night; pull requests run them only when they touch sign-in code (the
-# `mas-e2e` job in ci.yml).
+# `mas-e2e` job in ci.yml). Another runs the call journey on the opt-in call stack
+# (`calls-e2e` in ci.yml for pull requests that touch call code).
 on:
   schedule:
     - cron: '47 2 * * *'
@@ -180,10 +181,54 @@ jobs:
           surface: browser-mas-qr
           report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
 
+  # The two-party call journey (conversations/call.spec.mts) against the opt-in call stack:
+  # LiveKit and lk-jwt-service beside Synapse. Its own job, so the Synapse browser shards
+  # above never start the call services.
+  calls:
+    name: Browser E2E (calls)
+    runs-on: ubuntu-latest
+    # Hang containment. Expected ~8 min: setup and build ~5, images and stack ~1, journey ~1.
+    timeout-minutes: 30
+    env:
+      TRINITY_E2E_CALLS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/setup-playwright
+        with:
+          browsers: chromium
+          install: 'false'
+          with-deps: 'false'
+      - name: Prepare e2e prerequisites
+        id: prerequisites
+        env:
+          TRINITY_PLAYWRIGHT_BROWSERS: chromium
+          TRINITY_PLAYWRIGHT_WITH_DEPS: 'false'
+        run: node scripts/ci-prerequisites.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'failure' }}
+        with:
+          name: prerequisites-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}-calls
+          path: dist/.ci/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - id: browser
+        run: |
+          echo 'started=true' >> "$GITHUB_OUTPUT"
+          node scripts/ci-run-command.mjs --timeout-ms 1200000 -- pnpm exec nx run trinity-e2e-browser:e2e -- conversations/call.spec.mts
+      - uses: ./.github/actions/upload-playwright-diagnostics
+        if: ${{ !cancelled() && steps.browser.outputs.started == 'true' }}
+        with:
+          surface: browser-calls
+          report-path: dist/.playwright/trinity-e2e-browser/*/browser.canonical/**
+
   # A red cron run notifies nobody: open (or update) an issue, and close it on the next green run.
   notify:
     name: Nightly failure issue
-    needs: [browser, electron, protocol, mas]
+    needs: [browser, electron, protocol, mas, calls]
     if: ${{ always() && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     permissions:
       issues: write

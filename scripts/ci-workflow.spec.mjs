@@ -196,6 +196,7 @@ describe('split E2E jobs', () => {
       'mas-e2e',
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
+      'calls-e2e',
     ]);
     for (const id of [
       'e2e',
@@ -204,6 +205,7 @@ describe('split E2E jobs', () => {
       'mas-e2e',
       'tuwunel-oauth-e2e',
       'scrollbars-e2e',
+      'calls-e2e',
     ]) {
       expect(jobs[id].name).not.toBe('E2E (Playwright + homeserver)');
     }
@@ -375,7 +377,12 @@ describe('MAS sign-in journeys', () => {
     });
 
     // Each is skipped by design when a pull request leaves the paths it checks alone.
-    const pathFiltered = ['mas-e2e', 'tuwunel-oauth-e2e', 'scrollbars-e2e'];
+    const pathFiltered = [
+      'mas-e2e',
+      'tuwunel-oauth-e2e',
+      'scrollbars-e2e',
+      'calls-e2e',
+    ];
 
     it.each(pathFiltered)('passes when only %s was skipped', (id) => {
       expect(run({ [id]: 'skipped' }).status).toBe(0);
@@ -577,6 +584,165 @@ describe('MAS sign-in journeys', () => {
     it('leaves pushes to the nightly run', () => {
       expect(
         detect({ 'libs/data-access/auth/src/index.ts': 'changed\n' }, 'push'),
+      ).toBe('run=false');
+    });
+  });
+});
+
+describe('Call journey', () => {
+  const jobs = workflow.jobs;
+  const job = jobs['calls-e2e'];
+  const browser = job.steps.find((candidate) => candidate.id === 'browser');
+
+  it('runs only when the classifier found call changes in a pull request', () => {
+    expect([job.needs].flat()).toEqual(['classify']);
+    expect(jobs.classify.outputs.calls).toBe('${{ steps.calls.outputs.run }}');
+    expect(job.if).toContain('!cancelled()');
+    expect(job.if).toContain("github.event_name != 'schedule'");
+    expect(job.if).toContain("needs.classify.outputs.calls == 'true'");
+    expect(jobs['e2e-result'].needs).toContain('calls-e2e');
+  });
+
+  it('starts the call stack on Synapse for every step and runs only the call journey', () => {
+    // At job level, so the prerequisites step pulls LiveKit and lk-jwt-service too.
+    expect(job.env).toEqual({
+      TRINITY_E2E_HOMESERVER: 'synapse',
+      TRINITY_E2E_CALLS: '1',
+    });
+    expect(browser.env).toEqual({
+      TRINITY_E2E_SPEC: 'conversations/call.spec.mts',
+    });
+    expect(browser.run).toContain(
+      '-- pnpm exec nx run trinity-e2e-browser:e2e\n',
+    );
+    expect(browser.run).toContain('--timeout-ms 1200000 --');
+    expect(job['timeout-minutes']).toBeGreaterThan(0);
+    expect(
+      job.steps.some((candidate) => candidate.id === 'prerequisites'),
+    ).toBe(true);
+  });
+
+  it('leaves every other job off the call stack', () => {
+    for (const [id, other] of Object.entries(jobs)) {
+      if (id === 'calls-e2e') continue;
+      expect(JSON.stringify(other), id).not.toContain('TRINITY_E2E_CALLS');
+    }
+  });
+
+  it('keeps its diagnostics and prerequisites artifacts apart', () => {
+    expect(diagnosticsUpload(job).with.surface).toBe('browser-calls');
+    expect(diagnosticsUpload(job).with['report-path']).toBe(
+      'dist/.playwright/trinity-e2e-browser/*/browser.canonical/**',
+    );
+    expect(
+      job.steps.find((candidate) => candidate.with?.path === 'dist/.ci/').with
+        .name,
+    ).toContain('${{ github.job }}');
+  });
+
+  describe('change detection', () => {
+    const detect = (path, content = 'changed\n', event = 'pull_request') => {
+      const repo = mkdtempSync(join(tmpdir(), 'trinity-calls-detect-'));
+      try {
+        const git = (...args) =>
+          execFileSync('git', ['-C', repo, ...args], {
+            encoding: 'utf8',
+            env: {
+              ...process.env,
+              GIT_CONFIG_GLOBAL: '/dev/null',
+              GIT_CONFIG_SYSTEM: '/dev/null',
+              GIT_AUTHOR_NAME: 'test',
+              GIT_AUTHOR_EMAIL: 'test@example.invalid',
+              GIT_COMMITTER_NAME: 'test',
+              GIT_COMMITTER_EMAIL: 'test@example.invalid',
+            },
+          });
+        git('init', '-q', '-b', 'main');
+        git('commit', '-q', '--allow-empty', '-m', 'base');
+        const base = git('rev-parse', 'HEAD').trim();
+        mkdirSync(dirname(join(repo, path)), { recursive: true });
+        writeFileSync(join(repo, path), content);
+        git('add', '-A');
+        git('commit', '-q', '-m', 'change');
+        const output = join(repo, '.output');
+        const result = spawnSync(
+          'bash',
+          [
+            '-e',
+            '-c',
+            jobs.classify.steps.find(({ id }) => id === 'calls').run,
+          ],
+          {
+            cwd: repo,
+            env: {
+              ...process.env,
+              BASE: event === 'pull_request' ? base : '',
+              GITHUB_EVENT_NAME: event,
+              GITHUB_OUTPUT: output,
+            },
+            encoding: 'utf8',
+          },
+        );
+        expect(result.status, result.stderr).toBe(0);
+        return readFileSync(output, 'utf8').trim();
+      } finally {
+        rmSync(repo, { recursive: true, force: true });
+      }
+    };
+
+    it.each([
+      'libs/data-access/calls/src/lib/call.service.ts',
+      'libs/application/runtime/src/lib/application-root/call-host/call-host.component.html',
+      'libs/application/runtime/src/lib/application-root/call-ring/call-ring.component.ts',
+      'libs/feature/rooms/src/lib/call-card/call-card.component.ts',
+      'libs/feature/rooms/src/lib/room-call/call-stage.directive.ts',
+      'libs/util/matrix/src/lib/call-ring-event.ts',
+      'libs/util/matrix/src/lib/call-participants.ts',
+      'apps/trinity/src/element-call/config.json',
+      'e2e/support/homeserver/calls/livekit.yaml',
+      'e2e/support/homeserver/Caddyfile',
+      'e2e/support/homeserver/start.mjs',
+      'e2e/support/homeserver/stop.mjs',
+      'e2e/support/homeserver/kind.mts',
+      'e2e/support/homeserver/synapse/adapter.mjs',
+      'e2e/browser/journeys/conversations/call.spec.mts',
+    ])('runs the journey when a pull request changes %s', (path) => {
+      expect(detect(path)).toBe('run=true');
+    });
+
+    it.each([
+      'libs/data-access/media/src/index.ts',
+      'libs/feature/rooms/src/lib/message-row/message-row.component.ts',
+      'libs/util/matrix/src/lib/message-view.ts',
+      'libs/application/runtime/src/lib/application-root/title-bar/title-bar.component.ts',
+      'e2e/support/homeserver/lease.mts',
+      'e2e/browser/journeys/conversations/voice-message.spec.mts',
+    ])('skips the journey when a pull request changes only %s', (path) => {
+      expect(detect(path)).toBe('run=false');
+    });
+
+    it.each([
+      [
+        'package.json',
+        'true',
+        '"@element-hq/element-call-embedded": "0.28.3"\n',
+      ],
+      [
+        'pnpm-lock.yaml',
+        'true',
+        "'@element-hq/element-call-embedded@0.28.3':\n",
+      ],
+      ['package.json', 'false', '"rxjs": "^7.8.0"\n'],
+    ])(
+      'answers for a manifest change to %s: run=%s',
+      (path, expected, content) => {
+        expect(detect(path, content)).toBe(`run=${expected}`);
+      },
+    );
+
+    it('leaves pushes to the nightly run', () => {
+      expect(
+        detect('libs/data-access/calls/src/index.ts', 'changed\n', 'push'),
       ).toBe('run=false');
     });
   });
