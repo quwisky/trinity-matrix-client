@@ -1,3 +1,4 @@
+import AVFoundation
 import Capacitor
 import UIKit
 import UserNotifications
@@ -33,6 +34,7 @@ class MainViewController: CAPBridgeViewController {
         bridge?.registerPluginInstance(NativeNavigationPlugin())
         bridge?.registerPluginInstance(AppSettingsPlugin())
         bridge?.registerPluginInstance(KeyboardFramePlugin())
+        bridge?.registerPluginInstance(CallSessionPlugin())
     }
 }
 
@@ -160,5 +162,40 @@ class AppSettingsPlugin: CAPInstancePlugin, CAPBridgedPlugin {
             }
             call.resolve(["value": value])
         }
+    }
+}
+
+/**
+ * Holds the app's audio session for a call (`NativeCallSessionAdapter`). An active
+ * `.playAndRecord` session and the `audio` background mode keep the Element Call iframe's
+ * audio running with the screen locked or another app in front. iOS has no ongoing notification,
+ * so this plugin never sends `hangUp`. Failures resolve `started: false`: the call goes on.
+ */
+@objc(CallSessionPlugin)
+class CallSessionPlugin: CAPInstancePlugin, CAPBridgedPlugin {
+    let identifier = "CallSessionPlugin"
+    let jsName = "CallSession"
+    let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "begin", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "end", returnType: CAPPluginReturnPromise)
+    ]
+
+    @objc func begin(_ call: CAPPluginCall) {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.allowBluetoothHFP, .defaultToSpeaker])
+            try session.setActive(true)
+            call.resolve(["started": true])
+        } catch {
+            call.resolve(["started": false, "reason": error.localizedDescription])
+        }
+    }
+
+    @objc func end(_ call: CAPPluginCall) {
+        let session = AVAudioSession.sharedInstance()
+        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        // Back to the default category, so later app sounds follow the silent switch again.
+        try? session.setCategory(.soloAmbient)
+        call.resolve()
     }
 }

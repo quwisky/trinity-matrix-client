@@ -22,7 +22,8 @@ const callSession = registerPlugin<CallSessionPlugin>(PLUGIN_NAME);
 
 /**
  * The calls capability's session host: on Android, the local `CallSession` plugin's foreground
- * service and its ongoing notification; nothing on a host without the plugin.
+ * service and its ongoing notification; on iOS, its audio session, which never asks to hang up;
+ * nothing on a host without the plugin.
  */
 @Injectable({ providedIn: 'root' })
 export class NativeCallSessionAdapter {

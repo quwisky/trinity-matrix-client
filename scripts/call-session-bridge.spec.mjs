@@ -29,6 +29,32 @@ describe('call session bridge', () => {
     );
   });
 
+  it('registers an iOS CallSession plugin that holds the audio session for the call', () => {
+    const swift = read('ios/App/App/MainViewController.swift');
+    const info = read('ios/App/App/Info.plist');
+
+    expect(swift).toMatch(
+      /class CallSessionPlugin:\s*CAPInstancePlugin,\s*CAPBridgedPlugin/,
+    );
+    expect(swift).toContain('let jsName = "CallSession"');
+    for (const method of ['begin', 'end']) {
+      expect(swift).toContain(
+        `CAPPluginMethod(name: "${method}", returnType: CAPPluginReturnPromise)`,
+      );
+    }
+    expect(swift).toContain('.setCategory(.playAndRecord, mode: .videoChat');
+    expect(swift).toContain(
+      '.setActive(false, options: .notifyOthersOnDeactivation)',
+    );
+    expect(swift).toContain(
+      'bridge?.registerPluginInstance(CallSessionPlugin())',
+    );
+    expect(info).toMatch(
+      /<key>UIBackgroundModes<\/key>\s*<array>\s*<string>audio<\/string>\s*<\/array>/,
+    );
+    expect(info).not.toContain('<string>voip</string>');
+  });
+
   it('declares the foreground service with its types and permissions', () => {
     const manifest = read('android/app/src/main/AndroidManifest.xml');
 
