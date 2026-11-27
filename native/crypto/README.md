@@ -56,9 +56,27 @@ Methods, parameter names and result shapes follow the
   `shieldState: { lax, strict }`. `undefined` becomes an absent field.
 
 `init` opens the store and creates or loads the account. With `storePath` it opens a SQLite
-store with `storeKey`, a raw 32-byte key in base64 (never a passphrase); without it the store
-is in memory. One machine exists per user and device for the whole process; calls for it run
-one at a time; `close` drops it.
+store with `storeKey`, a raw 32-byte key in base64 (never a passphrase); without either the
+store is in memory. One machine exists per user and device for the whole process; calls for it
+run one at a time. `init` again with the same store returns the open machine, with another
+store it fails with `AlreadyOpen`. `close` waits for a call in flight, then drops the machine;
+calls queued behind it get `UnknownMachine`. A call that panics drops its machine too, so the
+next call needs `init`, which reloads the account from the store.
+
+The crate wipes its own copies of the key, but it cannot wipe the request string or the serde
+buffers the key passed through on the way in. Pass the key only in `init`, and drop the
+caller's copies as soon as `init` returns.
+
+## For the JNI wrapper
+
+- Read the request with the `jni` crate's `get_string`: Java strings are modified UTF-8, not
+  plain UTF-8, so never read their bytes directly.
+- Never build with `panic = "abort"`: panics are caught and returned as `Panic` errors only
+  while panics unwind.
+- Call from a background thread: a call blocks its thread until it is done, and must never
+  run on a thread of the crate's own runtime.
+- Callbacks (M2) must be queued and delivered after the call that produced them returns, not
+  from inside the call.
 
 ## The pin rule
 

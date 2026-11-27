@@ -20,6 +20,7 @@ use matrix_sdk_sqlite::SqliteCryptoStore;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tokio::sync::Mutex;
 use zeroize::Zeroizing;
 
@@ -30,9 +31,25 @@ use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
 
 type MachineKey = (OwnedUserId, OwnedDeviceId);
 
-/// A machine's mutex is held for a whole call, so calls for one device never interleave.
-static MACHINES: LazyLock<Mutex<HashMap<MachineKey, Arc<Mutex<OlmMachine>>>>> =
-    LazyLock::new(Default::default);
+/// Which store a machine was opened on; the key only as a hash.
+#[derive(PartialEq, Eq)]
+struct StoreIdentity {
+    path: Option<PathBuf>,
+    key_hash: Option<[u8; 32]>,
+}
+
+struct OpenMachine {
+    machine: OlmMachine,
+    store: StoreIdentity,
+}
+
+/// A device's slot. Its mutex is held for a whole call, so calls for one device never
+/// interleave; `None` means not open (never opened, closed, or dropped after a panic).
+type Slot = Arc<Mutex<Option<OpenMachine>>>;
+
+/// Lock order: a slot, then the registry. The registry lock is never held while waiting
+/// for a slot.
+static MACHINES: LazyLock<Mutex<HashMap<MachineKey, Slot>>> = LazyLock::new(Default::default);
 
 const MACHINE_METHODS: &[&str] = &[
     "identityKeys",
@@ -45,6 +62,10 @@ const MACHINE_METHODS: &[&str] = &[
     "encryptRoomEvent",
     "decryptRoomEvent",
     "getRoomEventEncryptionInfo",
+    #[cfg(test)]
+    "debugPanic",
+    #[cfg(test)]
+    "debugSleep",
 ];
 
 #[derive(Deserialize)]
@@ -65,6 +86,22 @@ fn params<T: DeserializeOwned>(params: Value) -> CallResult<T> {
     })?)
 }
 
+fn unknown_machine() -> CallError {
+    CallError::new("UnknownMachine", "call init for this user and device first")
+}
+
+/// Drops the machine if the call holding it panics: the store keeps what was written, and
+/// the next `init` reloads from it instead of reusing half-updated memory.
+struct DropOnPanic<'a>(tokio::sync::MutexGuard<'a, Option<OpenMachine>>);
+
+impl Drop for DropOnPanic<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            *self.0 = None;
+        }
+    }
+}
+
 pub async fn dispatch(request: Request) -> CallResult {
     let key = (request.user_id, request.device_id);
     let method = request.method.as_str();
@@ -79,24 +116,30 @@ pub async fn dispatch(request: Request) -> CallResult {
         }
         _ => {}
     }
-    let machine = MACHINES.lock().await.get(&key).cloned();
-    let machine = machine.ok_or_else(|| {
-        CallError::new("UnknownMachine", "call init for this user and device first")
-    })?;
-    let machine = machine.lock().await;
+    let slot = MACHINES.lock().await.get(&key).cloned();
+    let guard = DropOnPanic(slot.as_ref().ok_or_else(unknown_machine)?.lock().await);
+    let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
     let args = request.params;
     match method {
-        "identityKeys" => Ok(identity_keys(&machine)),
-        "outgoingRequests" => outgoing_requests(&machine).await,
-        "markRequestAsSent" => mark_request_as_sent(&machine, params(args)?).await,
-        "receiveSyncChanges" => receive_sync_changes(&machine, params(args)?).await,
-        "updateTrackedUsers" => update_tracked_users(&machine, params(args)?).await,
-        "getMissingSessions" => get_missing_sessions(&machine, params(args)?).await,
-        "shareRoomKey" => share_room_key(&machine, params(args)?).await,
-        "encryptRoomEvent" => encrypt_room_event(&machine, params(args)?).await,
-        "decryptRoomEvent" => decrypt_room_event(&machine, params(args)?).await,
+        "identityKeys" => Ok(identity_keys(machine)),
+        "outgoingRequests" => outgoing_requests(machine).await,
+        "markRequestAsSent" => mark_request_as_sent(machine, params(args)?).await,
+        "receiveSyncChanges" => receive_sync_changes(machine, params(args)?).await,
+        "updateTrackedUsers" => update_tracked_users(machine, params(args)?).await,
+        "getMissingSessions" => get_missing_sessions(machine, params(args)?).await,
+        "shareRoomKey" => share_room_key(machine, params(args)?).await,
+        "encryptRoomEvent" => encrypt_room_event(machine, params(args)?).await,
+        "decryptRoomEvent" => decrypt_room_event(machine, params(args)?).await,
         "getRoomEventEncryptionInfo" => {
-            get_room_event_encryption_info(&machine, params(args)?).await
+            get_room_event_encryption_info(machine, params(args)?).await
+        }
+        #[cfg(test)]
+        "debugPanic" => panic!("debugPanic called"),
+        #[cfg(test)]
+        "debugSleep" => {
+            let ms = args["ms"].as_u64().unwrap_or(0);
+            std::thread::sleep(std::time::Duration::from_millis(ms));
+            Ok(Value::Null)
         }
         _ => unreachable!("MACHINE_METHODS lists {method}"),
     }
@@ -112,54 +155,125 @@ struct InitParams {
 
 const STORE_KEY_ERROR: &str = "storeKey must be 32 bytes, base64-encoded";
 
-fn store_key(value: Option<Value>) -> CallResult<Zeroizing<Vec<u8>>> {
-    let Some(Value::String(encoded)) = value else {
-        return Err(CallError::invalid(STORE_KEY_ERROR));
+/// Takes the key out of the parameters, wiped on every path once it is no longer needed.
+fn store_key(value: Option<Value>) -> CallResult<Option<Zeroizing<Vec<u8>>>> {
+    let encoded = match value {
+        None => return Ok(None),
+        Some(Value::String(encoded)) => Zeroizing::new(encoded),
+        Some(_) => return Err(CallError::invalid(STORE_KEY_ERROR)),
     };
-    let encoded = Zeroizing::new(encoded);
-    let key = Zeroizing::new(
-        base64::engine::general_purpose::STANDARD
-            .decode(encoded.as_bytes())
-            .map_err(|_| CallError::invalid(STORE_KEY_ERROR))?,
-    );
+    let key = base64::engine::general_purpose::STANDARD
+        .decode(encoded.as_bytes())
+        .map(Zeroizing::new)
+        .map_err(|_| CallError::invalid(STORE_KEY_ERROR))?;
     if key.len() != 32 {
         return Err(CallError::invalid(STORE_KEY_ERROR));
     }
-    Ok(key)
+    Ok(Some(key))
+}
+
+/// The registered slot for `key`, a new empty one if there is none.
+async fn slot(key: &MachineKey) -> Slot {
+    MACHINES
+        .lock()
+        .await
+        .entry(key.clone())
+        .or_default()
+        .clone()
+}
+
+/// Removes `slot` from the registry unless another slot has replaced it.
+async fn unregister(key: &MachineKey, slot: &Slot) {
+    let mut machines = MACHINES.lock().await;
+    if machines
+        .get(key)
+        .is_some_and(|current| Arc::ptr_eq(current, slot))
+    {
+        machines.remove(key);
+    }
 }
 
 /// Opens the store (SQLite with a raw key, or memory when `storePath` is absent) and
-/// creates or loads the account. A machine that is already open is returned as it is.
+/// creates or loads the account. Again with the same store it returns the open machine;
+/// with another store it fails with `AlreadyOpen`.
 async fn init(key: MachineKey, params: InitParams) -> CallResult {
-    let mut machines = MACHINES.lock().await;
-    if let Some(machine) = machines.get(&key) {
-        return Ok(describe(&*machine.lock().await));
+    let store_key = store_key(params.store_key)?;
+    if params.store_path.is_some() != store_key.is_some() {
+        return Err(CallError::invalid(
+            "storePath and storeKey go together: both for SQLite, neither for memory",
+        ));
     }
+    let identity = StoreIdentity {
+        key_hash: store_key
+            .as_ref()
+            .map(|key| Sha256::digest(key.as_slice()).into()),
+        path: params.store_path,
+    };
+    loop {
+        let slot = slot(&key).await;
+        let mut guard = slot.lock().await;
+        if let Some(open) = guard.as_ref() {
+            if open.store != identity {
+                return Err(CallError::new(
+                    "AlreadyOpen",
+                    "this device is open on another store; close it first",
+                ));
+            }
+            return Ok(describe(&open.machine));
+        }
+        // A close or a failed init removed this slot while we waited for it.
+        if !MACHINES
+            .lock()
+            .await
+            .get(&key)
+            .is_some_and(|current| Arc::ptr_eq(current, &slot))
+        {
+            continue;
+        }
+        let opened = open(&key, identity.path.as_deref(), store_key.as_deref()).await;
+        return match opened {
+            Ok(machine) => {
+                let description = describe(&machine);
+                *guard = Some(OpenMachine {
+                    machine,
+                    store: identity,
+                });
+                Ok(description)
+            }
+            Err(error) => {
+                unregister(&key, &slot).await;
+                Err(error)
+            }
+        };
+    }
+}
+
+async fn open(
+    key: &MachineKey,
+    path: Option<&std::path::Path>,
+    store_key: Option<&Vec<u8>>,
+) -> CallResult<OlmMachine> {
     let builder = OlmMachineBuilder::new(&key.0, &key.1);
-    let builder = match params.store_path {
-        Some(path) => {
-            let store_key = store_key(params.store_key)?;
-            let store = SqliteCryptoStore::open_with_key(path, Some(&store_key))
+    let builder = match (path, store_key) {
+        (Some(path), Some(store_key)) => {
+            let store = SqliteCryptoStore::open_with_key(path, Some(store_key))
                 .await
                 .map_err(|error| CallError::new("StoreError", error))?;
             builder.with_crypto_store(store)
         }
-        None if params.store_key.is_some() => {
-            return Err(CallError::invalid("storeKey needs a storePath"));
-        }
-        None => builder,
+        _ => builder,
     };
-    let machine = builder.build().await?;
-    let description = describe(&machine);
-    machines.insert(key, Arc::new(Mutex::new(machine)));
-    Ok(description)
+    Ok(builder.build().await?)
 }
 
 /// Waits for a call in flight, then drops the machine and with it the store connection.
+/// Calls queued behind it find no machine.
 async fn close(key: &MachineKey) -> CallResult {
-    let machine = MACHINES.lock().await.remove(key);
-    if let Some(machine) = machine {
-        drop(machine.lock().await);
+    let slot = MACHINES.lock().await.get(key).cloned();
+    if let Some(slot) = slot {
+        let mut guard = slot.lock().await;
+        *guard = None;
+        unregister(key, &slot).await;
     }
     Ok(Value::Null)
 }

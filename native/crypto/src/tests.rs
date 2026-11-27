@@ -411,19 +411,101 @@ fn malformed_calls_return_errors() {
     );
 }
 
+/// A fresh SQLite store directory and a base64 key for it.
+fn temp_store(name: &str, key_byte: u8) -> (std::path::PathBuf, String) {
+    use base64::Engine as _;
+    let dir = std::env::temp_dir().join(format!(
+        "trinity-crypto-{name}-{}-{}",
+        std::process::id(),
+        NEXT_ID.fetch_add(1, Ordering::Relaxed)
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    (
+        dir,
+        base64::engine::general_purpose::STANDARD.encode([key_byte; 32]),
+    )
+}
+
 #[test]
-fn a_panic_is_returned_as_an_error_and_the_engine_keeps_working() {
+fn a_panic_drops_the_machine_until_it_is_initialised_again() {
     let user = unique_user("panic");
-    ok(&user, "P", "init", json!({}));
-    // matrix-sdk-crypto panics when a room key was never shared.
-    let response = invoke(
-        &user,
-        "P",
-        "encryptRoomEvent",
-        json!({ "roomId": "!p:l", "eventType": "m.room.message", "content": "{}" }),
-    );
+    let (dir, key) = temp_store("panic", 1);
+    let params = json!({ "storePath": dir, "storeKey": key });
+    let opened = ok(&user, "P", "init", params.clone());
+
+    let response = invoke(&user, "P", "debugPanic", json!({}));
     assert_eq!(response["error"]["code"], json!("Panic"), "{response}");
-    assert!(ok(&user, "P", "identityKeys", json!({}))["curve25519"].is_string());
+    let after = invoke(&user, "P", "identityKeys", json!({}));
+    assert_eq!(after["error"]["code"], json!("UnknownMachine"), "{after}");
+
+    let reopened = ok(&user, "P", "init", params);
+    assert_eq!(reopened["identityKeys"], opened["identityKeys"]);
+    ok(&user, "P", "close", json!({}));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn close_waits_for_the_call_in_flight_and_no_second_machine_opens_meanwhile() {
+    use std::thread::{sleep, spawn};
+    use std::time::{Duration, Instant};
+    let user = unique_user("close");
+    let (dir, key) = temp_store("close", 2);
+    let params = json!({ "storePath": dir, "storeKey": key });
+    let opened = ok(&user, "C", "init", params.clone());
+    let run = |method: &'static str, params: Value| {
+        let user = user.clone();
+        spawn(move || (invoke(&user, "C", method, params), Instant::now()))
+    };
+
+    let in_flight = run("debugSleep", json!({ "ms": 500 }));
+    sleep(Duration::from_millis(100));
+    let closing = run("close", json!({}));
+    sleep(Duration::from_millis(100));
+    let queued = run("identityKeys", json!({}));
+    sleep(Duration::from_millis(100));
+    let reopening = run("init", params);
+
+    let (in_flight, in_flight_done) = in_flight.join().unwrap();
+    assert_eq!(in_flight, json!({ "result": null }));
+    assert_eq!(closing.join().unwrap().0, json!({ "result": null }));
+    let queued = queued.join().unwrap().0;
+    assert_eq!(queued["error"]["code"], json!("UnknownMachine"), "{queued}");
+    // The store is opened again only after the old machine let go of it.
+    let (reopened, reopened_done) = reopening.join().unwrap();
+    assert!(reopened_done >= in_flight_done);
+    assert_eq!(reopened["result"]["identityKeys"], opened["identityKeys"]);
+    ok(&user, "C", "close", json!({}));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn init_on_an_open_device_needs_the_same_store() {
+    let user = unique_user("again");
+    let (dir, key) = temp_store("again", 3);
+    let (other_dir, other_key) = temp_store("again-other", 4);
+    let params = json!({ "storePath": dir, "storeKey": key });
+    let opened = ok(&user, "A", "init", params.clone());
+    assert_eq!(
+        ok(&user, "A", "init", params)["identityKeys"],
+        opened["identityKeys"]
+    );
+
+    for other in [
+        json!({ "storePath": dir, "storeKey": other_key }),
+        json!({ "storePath": other_dir, "storeKey": key }),
+        json!({}),
+    ] {
+        let response = invoke(&user, "A", "init", other);
+        assert_eq!(
+            response["error"]["code"],
+            json!("AlreadyOpen"),
+            "{response}"
+        );
+        assert!(!response.to_string().contains(&other_key));
+    }
+    ok(&user, "A", "close", json!({}));
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&other_dir);
 }
 
 #[test]
