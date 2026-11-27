@@ -32,6 +32,8 @@ The static verifier checks host contracts. Native verification runs Android unit
 
 The release target creates an AAB but remains unsigned unless external signing is configured. Build it after the release is published, with the release notes the app bundles: `TRINITY_RELEASE_NOTES=required GITHUB_TOKEN=$(gh auth token) pnpm android:build:release`. Keep credentials and publishing procedure out of public documentation.
 
+The experimental native crypto crate has its own debug-only Android plugin; see [Native crypto](../native-crypto/).
+
 ## Push rendering {#push-rendering}
 
 `TrinityMessagingService` replaces the push plugin's messaging service and renders push notifications while Trinity is closed or in the background. It lives with the `PushHandoff` plugin in the `:trinity-capacitor-push` Gradle module, which synchronization adds from the workspace package in `libs/native/capacitor-push/android`. Its Kotlin text rules and resolver have JVM unit tests, driven by the fixture shared with iOS, that run under `testDebugUnitTest`: `pnpm nx run trinity-android:verify-native` locally and CI's Android step. The app keeps the manifest removal of the plugin's own messaging service and points the module's notification icon and accent at its resources in `res/values/push_notification_appearance.xml`.
