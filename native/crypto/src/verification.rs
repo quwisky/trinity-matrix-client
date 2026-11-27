@@ -552,7 +552,12 @@ pub async fn start_sas(machine: &OlmMachine, params: FlowParams, found: &mut Fou
         Some((started, outgoing_request)) => {
             let snapshot = sas(&started);
             found.verification(Verification::SasV1(Box::new(started)));
-            Ok(json!([snapshot, outgoing(&outgoing_request)?]))
+            // WASM's fixed message when the request does not serialise; a store error passes
+            // through unchanged on both.
+            let built = outgoing(&outgoing_request).map_err(|_| {
+                CallError::crypto("Failed to build the outgoing verification request")
+            })?;
+            Ok(json!([snapshot, built]))
         }
         None => Ok(Value::Null),
     }
@@ -628,17 +633,17 @@ pub struct ConfirmSasParams {
     user_id: OwnedUserId,
     flow_id: String,
     /// The decimals the host showed the user: refused with `StaleObject` when the SAS on this
-    /// flow now shows others (another flow under the same ID).
-    decimals: Option<[u16; 3]>,
+    /// flow now shows others or none yet (a SAS that replaced the one the host showed).
+    decimals: [u16; 3],
 }
 
 /// `Sas.confirm`: the requests to send, a signature upload (without an ID) last.
 pub async fn confirm_sas(machine: &OlmMachine, params: ConfirmSasParams) -> CallResult {
     let found = resolve_sas(machine, &params.user_id, &params.flow_id)?;
-    // Without decimals (cancelled, or keys not exchanged yet) confirming does nothing upstream.
-    if let (Some(expected), Some(current)) = (params.decimals, found.decimals())
-        && current != (expected[0], expected[1], expected[2])
-    {
+    let [a, b, c] = params.decimals;
+    let ended = found.is_done() || found.is_cancelled();
+    // An ended SAS confirms nothing upstream, so it answers as in WASM.
+    if !ended && found.decimals() != Some((a, b, c)) {
         return Err(CallError::new(
             "StaleObject",
             "the SAS on this flow is not the one the host showed; read it again",
@@ -712,11 +717,12 @@ pub fn qr_code_bytes(machine: &OlmMachine, params: FlowParams) -> CallResult {
 /// flow ID, whether it is the request): a stand-in for WASM's `registerChangesCallback`.
 ///
 /// An object is watched from the first answer that hands it to the host, and dropped once it
-/// is done or cancelled (an object that is already done or cancelled is never watched). Each
-/// key is watched once: a later answer with the same object does not subscribe again. When a
-/// request changes, the `Sas` or `Qr` it now holds is watched afresh, because a flow can
-/// switch from QR to SAS, or replace its SAS, under the same key. Opening a machine (also
-/// after a panic) clears the watches: verifications live only in the machine's memory.
+/// is done or cancelled, or its request is (an object that is already over is never watched). Each
+/// key has one watch: a later answer re-subscribes to the object it holds, after the queue was
+/// drained, so a replaced object's watch is replaced. When a request changes, the `Sas` or
+/// `Qr` it now holds is watched afresh (or, when that one is over already, nothing is),
+/// because a flow can switch from QR to SAS, or replace its SAS, under the same key. A panic
+/// and opening a machine clear the watches: verifications live only in the machine's memory.
 #[derive(Default)]
 pub struct Watches(BTreeMap<(String, String, bool), Watch>);
 
@@ -771,11 +777,12 @@ fn watch(object: Watched) -> Option<((String, String, bool), Watch)> {
 }
 
 impl Watches {
-    /// Watches what a call handed to the host, unless it is watched already.
+    /// Watches what a call handed to the host, replacing the watch of the same key (an object
+    /// can be replaced under its key). Call it after draining, so no change is lost.
     pub fn add(&mut self, found: Found) {
         for object in found.0 {
             if let Some((key, watch)) = watch(object) {
-                self.0.entry(key).or_insert(watch);
+                self.0.insert(key, watch);
             }
         }
     }
@@ -830,14 +837,21 @@ impl Watches {
                         events.push(
                             json!({ "type": "verificationRequestChanged", "request": request(&found) }),
                         );
+                        let verification_key = (key.0.clone(), key.1.clone(), false);
                         if request_final(&found) {
+                            // Its verification's last change was drained above; a replaced one
+                            // (a shown QR code) would never end.
                             self.0.remove(&key);
-                        }
-                        if let VerificationRequestState::Transitioned { verification, .. } =
-                            found.state()
-                            && let Some((key, watch)) = watch(Watched::Verification(verification))
+                            self.0.remove(&verification_key);
+                        } else if let VerificationRequestState::Transitioned {
+                            verification, ..
+                        } = found.state()
                         {
-                            self.0.insert(key, watch);
+                            // A verification that is over already replaces the watched one too.
+                            self.0.remove(&verification_key);
+                            if let Some((key, watch)) = watch(Watched::Verification(verification)) {
+                                self.0.insert(key, watch);
+                            }
                         }
                     }
                 }

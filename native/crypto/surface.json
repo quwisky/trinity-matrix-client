@@ -454,6 +454,18 @@
         "native": "getIdentity",
         "note": "snapshot field: only on kind \"other\""
       },
+      "isVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)"
+      },
+      "masterKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
       "pinCurrentMasterKey": {
         "status": "done",
         "area": "devices-identities",
@@ -466,11 +478,29 @@
         "note": "call: takes userId, roomId, requestEventId, methods and masterKey (StaleObject when the identity has another master key now); the request snapshot",
         "native": "requestIdentityVerification"
       },
+      "selfSigningKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
       "verificationRequestContent": {
         "status": "done",
         "area": "devices-identities",
         "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); the content as a JSON string",
         "native": "verificationRequestContent"
+      },
+      "wasPreviouslyVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
+      "withdrawVerification": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "withdrawVerification",
+        "note": "call: takes userId; either identity kind"
       }
     },
     "OwnUserIdentity": {
@@ -529,6 +559,18 @@
       }
     },
     "Qr": {
+      "cancel": {
+        "status": "done",
+        "area": "verification",
+        "native": "cancelQr",
+        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+      },
+      "cancelInfo": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
       "confirmScanning": {
         "status": "done",
         "area": "verification",
@@ -541,11 +583,36 @@
         "native": "getVerification",
         "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
       },
+      "isCancelled": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "isDone": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "otherUserId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
       "reciprocate": {
         "status": "done",
         "area": "verification",
         "native": "reciprocateQr",
         "note": "call: takes userId and flowId; the outgoing request or null"
+      },
+      "registerChangesCallback": {
+        "status": "done",
+        "area": "verification",
+        "native": "pollEvents",
+        "note": "event verificationChanged with the full Qr snapshot",
+        "event": "verificationChanged"
       },
       "state": {
         "status": "done",
@@ -579,7 +646,7 @@
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId and flowId; the outgoing request or null"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancelInfo": {
         "status": "done",
@@ -591,13 +658,13 @@
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId, flowId and code; the outgoing request or null"
+        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
       },
       "confirm": {
         "status": "done",
         "area": "verification",
         "native": "confirmSas",
-        "note": "call: takes userId, flowId and decimals (StaleObject when the SAS on the flow shows others); outgoing requests, a signature upload without an ID last"
+        "note": "call: takes userId, flowId and decimals, required: the decimals the shim displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing); outgoing requests, a signature upload without an ID last"
       },
       "decimals": {
         "status": "done",
@@ -672,13 +739,13 @@
         "status": "done",
         "area": "verification",
         "native": "acceptVerificationRequest",
-        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null"
+        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancel": {
         "status": "done",
         "area": "verification",
         "native": "cancelVerificationRequest",
-        "note": "call: takes userId and flowId; the outgoing request or null"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancelInfo": {
         "status": "done",
@@ -874,9 +941,10 @@
     "HistoryVisibility": ["Invited", "Joined", "Shared", "WorldReadable"],
     "IdentityKeys": ["curve25519", "ed25519"],
     "initAsync": [],
-    "KeysBackupRequest": ["body", "version"],
-    "KeysClaimRequest": ["body"],
-    "KeysQueryRequest": ["body"],
+    "InvalidToDeviceEvent": ["rawEvent", "type"],
+    "KeysBackupRequest": ["body", "id", "type", "version"],
+    "KeysClaimRequest": ["body", "id", "type"],
+    "KeysQueryRequest": ["body", "id", "type"],
     "KeysUploadRequest": ["body", "id", "type"],
     "LocalTrust": ["BlackListed", "Unset", "Verified"],
     "MaybeSignature": ["isValid", "signature"],
@@ -891,6 +959,7 @@
       "senderSigningKey"
     ],
     "PickledSession": ["creationTime", "lastUseTime", "pickle", "senderKey"],
+    "PlainTextToDeviceEvent": ["rawEvent", "type"],
     "ProcessedToDeviceEventType": [
       "Decrypted",
       "Invalid",
@@ -911,7 +980,14 @@
     "RoomKeyCounts": ["backedUp", "total"],
     "RoomKeyInfo": ["roomId", "senderKey", "sessionId"],
     "RoomKeyWithheldInfo": ["roomId", "sessionId"],
-    "RoomMessageRequest": ["body", "event_type", "room_id", "txn_id"],
+    "RoomMessageRequest": [
+      "body",
+      "event_type",
+      "id",
+      "room_id",
+      "txn_id",
+      "type"
+    ],
     "RoomPendingKeyBundleDetails": [
       "inviteAcceptedAtMillis",
       "inviterId",
@@ -935,7 +1011,7 @@
     ],
     "Signature": ["toBase64"],
     "Signatures": ["asJSON", "get"],
-    "SignatureUploadRequest": ["body"],
+    "SignatureUploadRequest": ["body", "id", "type"],
     "SignatureVerification": ["trusted"],
     "StoredRoomKeyBundleData": ["url"],
     "ToDeviceEncryptionInfo": [
@@ -944,10 +1020,11 @@
       "senderCurve25519Key",
       "senderDevice"
     ],
-    "ToDeviceRequest": ["body", "event_type", "txn_id"],
+    "ToDeviceRequest": ["body", "event_type", "id", "txn_id", "type"],
     "TrustRequirement": ["CrossSignedOrLegacy", "Untrusted"],
     "UploadSigningKeysRequest": ["body"],
     "UserId": ["clone", "toString"],
+    "UTDToDeviceEvent": ["rawEvent", "type"],
     "VerificationMethod": [
       "QrCodeScanV1",
       "QrCodeShowV1",

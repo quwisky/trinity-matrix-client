@@ -160,12 +160,14 @@ fn unknown_machine() -> CallError {
 
 /// Drops the machine if the call holding it panics: the store keeps what was written, and
 /// the next `init` reloads from it instead of reusing half-updated memory.
-struct DropOnPanic<'a>(MutexGuard<'a, Option<OpenMachine>>);
+/// The verification watches go too: they hold the dead machine's objects, store and account.
+struct DropOnPanic<'a>(MutexGuard<'a, Option<OpenMachine>>, &'a Slot);
 
 impl Drop for DropOnPanic<'_> {
     fn drop(&mut self) {
         if std::thread::panicking() {
             *self.0 = None;
+            events(self.1).watches.clear();
         }
     }
 }
@@ -195,15 +197,15 @@ pub async fn dispatch(request: Request) -> CallResult {
     if method == "debugWatches" {
         return Ok(json!(events(&slot).watches.len()));
     }
-    let guard = DropOnPanic(lock_slot(&key, &slot).await);
+    let guard = DropOnPanic(lock_slot(&key, &slot).await, &slot);
     let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
     let mut found = verification::Found::default();
     let result = run(machine, method, request.params, &mut found).await;
     // Coop budgeting could make a ready event look pending; the drain must see everything.
     tokio::task::unconstrained(async {
         let mut queue = events(&slot);
-        queue.watches.add(found);
         queue.drain();
+        queue.watches.add(found);
     })
     .await;
     result
