@@ -765,6 +765,40 @@ describe('RoomLibraryService', () => {
       expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('drops the timer of a room with a live call that is left', async () => {
+      vi.useFakeTimers();
+      const now = Date.now();
+      const handlers: [string, (...args: unknown[]) => void][] = [];
+      let rooms = [
+        fakeRoom({
+          roomId: '!r:hs',
+          name: 'R',
+          callMembers: [{ ts: now, content: { expires_ts: now + 60_000 } }],
+        }),
+        fakeRoom({ roomId: '!s:hs', name: 'S' }),
+      ];
+      const client = {
+        baseUrl: 'https://hs.example',
+        getRooms: () => rooms,
+        on: (event: string, handler: (...args: unknown[]) => void) => {
+          handlers.push([event, handler]);
+        },
+        off: () => {},
+      };
+      const { svc } = provideRooms(client);
+      svc.runProjection().subscribe();
+      await windowEnds();
+      expect(vi.getTimerCount()).toBe(1);
+
+      rooms = [rooms[1]];
+      for (const [event, handler] of handlers) {
+        if (event === RoomEvent.MyMembership) handler(rooms[0], 'leave');
+      }
+      await windowEnds();
+      expect(svc.rooms().map((r) => r.id)).toEqual(['!s:hs']);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('re-reads the row once its only membership expires', async () => {
       vi.useFakeTimers();
       const now = Date.now();
