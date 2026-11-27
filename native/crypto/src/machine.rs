@@ -21,7 +21,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
 use crate::error::{CallError, CallResult};
@@ -29,7 +29,7 @@ use crate::requests::{self, RequestType};
 use crate::responses;
 use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
 
-type MachineKey = (OwnedUserId, OwnedDeviceId);
+pub(crate) type MachineKey = (OwnedUserId, OwnedDeviceId);
 
 /// Which store a machine was opened on; the key only as a hash.
 #[derive(PartialEq, Eq)]
@@ -65,7 +65,7 @@ const MACHINE_METHODS: &[&str] = &[
     #[cfg(test)]
     "debugPanic",
     #[cfg(test)]
-    "debugSleep",
+    "debugHold",
 ];
 
 #[derive(Deserialize)]
@@ -92,7 +92,7 @@ fn unknown_machine() -> CallError {
 
 /// Drops the machine if the call holding it panics: the store keeps what was written, and
 /// the next `init` reloads from it instead of reusing half-updated memory.
-struct DropOnPanic<'a>(tokio::sync::MutexGuard<'a, Option<OpenMachine>>);
+struct DropOnPanic<'a>(MutexGuard<'a, Option<OpenMachine>>);
 
 impl Drop for DropOnPanic<'_> {
     fn drop(&mut self) {
@@ -106,7 +106,7 @@ pub async fn dispatch(request: Request) -> CallResult {
     let key = (request.user_id, request.device_id);
     let method = request.method.as_str();
     match method {
-        "init" => return init(key, params(request.params)?).await,
+        "init" => return init(key, request.params).await,
         "close" => return close(&key).await,
         _ if !MACHINE_METHODS.contains(&method) => {
             return Err(CallError::new(
@@ -117,7 +117,7 @@ pub async fn dispatch(request: Request) -> CallResult {
         _ => {}
     }
     let slot = MACHINES.lock().await.get(&key).cloned();
-    let guard = DropOnPanic(slot.as_ref().ok_or_else(unknown_machine)?.lock().await);
+    let guard = DropOnPanic(lock_slot(&key, slot.as_ref().ok_or_else(unknown_machine)?).await);
     let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
     let args = request.params;
     match method {
@@ -136,9 +136,8 @@ pub async fn dispatch(request: Request) -> CallResult {
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]
-        "debugSleep" => {
-            let ms = args["ms"].as_u64().unwrap_or(0);
-            std::thread::sleep(std::time::Duration::from_millis(ms));
+        "debugHold" => {
+            crate::tests::hooks::hold();
             Ok(Value::Null)
         }
         _ => unreachable!("MACHINE_METHODS lists {method}"),
@@ -146,14 +145,19 @@ pub async fn dispatch(request: Request) -> CallResult {
 }
 
 #[derive(Deserialize)]
+/// `storeKey` is taken out first (see [`take_store_key`]): kept raw, never parsed by serde.
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InitParams {
     store_path: Option<PathBuf>,
-    /// Kept as a raw value: a typed field would quote a malformed key in its error.
-    store_key: Option<Value>,
 }
 
 const STORE_KEY_ERROR: &str = "storeKey must be 32 bytes, base64-encoded";
+
+/// Takes the raw key out of the `init` parameters before anything else parses them, so it
+/// is wiped even when another parameter is invalid.
+pub(crate) fn take_store_key(params: &mut Value) -> Option<Value> {
+    params.as_object_mut()?.remove("storeKey")
+}
 
 /// Takes the key out of the parameters, wiped on every path once it is no longer needed.
 fn store_key(value: Option<Value>) -> CallResult<Option<Zeroizing<Vec<u8>>>> {
@@ -170,6 +174,27 @@ fn store_key(value: Option<Value>) -> CallResult<Option<Zeroizing<Vec<u8>>>> {
         return Err(CallError::invalid(STORE_KEY_ERROR));
     }
     Ok(Some(key))
+}
+
+#[cfg(not(test))]
+async fn lock_slot<'a>(_key: &MachineKey, slot: &'a Slot) -> MutexGuard<'a, Option<OpenMachine>> {
+    slot.lock().await
+}
+
+/// Tells the close-race test when a call has to queue behind another one.
+#[cfg(test)]
+async fn lock_slot<'a>(key: &MachineKey, slot: &'a Slot) -> MutexGuard<'a, Option<OpenMachine>> {
+    use std::future::Future as _;
+    let mut lock = std::pin::pin!(slot.lock());
+    let mut first = true;
+    std::future::poll_fn(|cx| {
+        let polled = lock.as_mut().poll(cx);
+        if std::mem::take(&mut first) && polled.is_pending() {
+            crate::tests::hooks::queued(key);
+        }
+        polled
+    })
+    .await
 }
 
 /// The registered slot for `key`, a new empty one if there is none.
@@ -196,8 +221,9 @@ async fn unregister(key: &MachineKey, slot: &Slot) {
 /// Opens the store (SQLite with a raw key, or memory when `storePath` is absent) and
 /// creates or loads the account. Again with the same store it returns the open machine;
 /// with another store it fails with `AlreadyOpen`.
-async fn init(key: MachineKey, params: InitParams) -> CallResult {
-    let store_key = store_key(params.store_key)?;
+async fn init(key: MachineKey, mut raw: Value) -> CallResult {
+    let store_key = store_key(take_store_key(&mut raw))?;
+    let params: InitParams = params(raw)?;
     if params.store_path.is_some() != store_key.is_some() {
         return Err(CallError::invalid(
             "storePath and storeKey go together: both for SQLite, neither for memory",
@@ -211,7 +237,7 @@ async fn init(key: MachineKey, params: InitParams) -> CallResult {
     };
     loop {
         let slot = slot(&key).await;
-        let mut guard = slot.lock().await;
+        let mut guard = lock_slot(&key, &slot).await;
         if let Some(open) = guard.as_ref() {
             if open.store != identity {
                 return Err(CallError::new(
@@ -271,7 +297,7 @@ async fn open(
 async fn close(key: &MachineKey) -> CallResult {
     let slot = MACHINES.lock().await.get(key).cloned();
     if let Some(slot) = slot {
-        let mut guard = slot.lock().await;
+        let mut guard = lock_slot(key, &slot).await;
         *guard = None;
         unregister(key, &slot).await;
     }

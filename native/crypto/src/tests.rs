@@ -444,38 +444,118 @@ fn a_panic_drops_the_machine_until_it_is_initialised_again() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Hooks for the close race: `debugHold` reports that it holds its device and then waits for
+/// a release; a call that has to wait for a held device reports that it is queued.
+pub(crate) mod hooks {
+    use std::sync::Mutex;
+    use std::sync::mpsc::{Receiver, Sender};
+
+    use crate::machine::MachineKey;
+
+    pub(crate) static HOLD: Mutex<Option<(Sender<()>, Receiver<()>)>> = Mutex::new(None);
+    pub(crate) static QUEUED: Mutex<Option<(MachineKey, Sender<()>)>> = Mutex::new(None);
+
+    pub(crate) fn hold() {
+        let (held, release) = HOLD.lock().unwrap().take().expect("a test set up the hold");
+        held.send(()).unwrap();
+        release.recv().unwrap();
+    }
+
+    pub(crate) fn queued(key: &MachineKey) {
+        if let Some((watched, queued)) = QUEUED.lock().unwrap().as_ref()
+            && watched == key
+        {
+            queued.send(()).unwrap();
+        }
+    }
+}
+
 #[test]
-fn close_waits_for_the_call_in_flight_and_no_second_machine_opens_meanwhile() {
-    use std::thread::{sleep, spawn};
+fn an_init_after_close_waits_for_the_call_in_flight() {
+    use std::sync::mpsc::{RecvTimeoutError, channel};
+    use std::thread::spawn;
     use std::time::{Duration, Instant};
+    const WAIT: Duration = Duration::from_secs(10);
     let user = unique_user("close");
     let (dir, key) = temp_store("close", 2);
     let params = json!({ "storePath": dir, "storeKey": key });
     let opened = ok(&user, "C", "init", params.clone());
+    let (held_tx, held) = channel();
+    let (release, release_rx) = channel();
+    *hooks::HOLD.lock().unwrap() = Some((held_tx, release_rx));
+    let (queued_tx, queued) = channel();
+    *hooks::QUEUED.lock().unwrap() = Some(((user.parse().unwrap(), "C".into()), queued_tx));
     let run = |method: &'static str, params: Value| {
         let user = user.clone();
-        spawn(move || (invoke(&user, "C", method, params), Instant::now()))
+        let (done_tx, done) = channel();
+        spawn(move || done_tx.send((invoke(&user, "C", method, params), Instant::now())));
+        done
     };
 
-    let in_flight = run("debugSleep", json!({ "ms": 500 }));
-    sleep(Duration::from_millis(100));
+    let in_flight = run("debugHold", json!({}));
+    held.recv_timeout(WAIT).expect("debugHold holds the device");
+    // Each call below is queued on the device before the next one is issued.
     let closing = run("close", json!({}));
-    sleep(Duration::from_millis(100));
-    let queued = run("identityKeys", json!({}));
-    sleep(Duration::from_millis(100));
+    queued
+        .recv_timeout(WAIT)
+        .expect("close waits for the call in flight");
+    let behind_close = run("identityKeys", json!({}));
+    queued.recv_timeout(WAIT).expect("identityKeys waits");
     let reopening = run("init", params);
+    queued.recv_timeout(WAIT).expect("init waits");
+    assert_eq!(
+        reopening.recv_timeout(Duration::from_millis(50)),
+        Err(RecvTimeoutError::Timeout),
+        "init returned while the old call was in flight"
+    );
+    release.send(()).unwrap();
 
-    let (in_flight, in_flight_done) = in_flight.join().unwrap();
+    let (in_flight, in_flight_done) = in_flight.recv_timeout(WAIT).unwrap();
     assert_eq!(in_flight, json!({ "result": null }));
-    assert_eq!(closing.join().unwrap().0, json!({ "result": null }));
-    let queued = queued.join().unwrap().0;
-    assert_eq!(queued["error"]["code"], json!("UnknownMachine"), "{queued}");
-    // The store is opened again only after the old machine let go of it.
-    let (reopened, reopened_done) = reopening.join().unwrap();
+    assert_eq!(
+        closing.recv_timeout(WAIT).unwrap().0,
+        json!({ "result": null })
+    );
+    let behind_close = behind_close.recv_timeout(WAIT).unwrap().0;
+    assert_eq!(
+        behind_close["error"]["code"],
+        json!("UnknownMachine"),
+        "{behind_close}"
+    );
+    let (reopened, reopened_done) = reopening.recv_timeout(WAIT).unwrap();
     assert!(reopened_done >= in_flight_done);
     assert_eq!(reopened["result"]["identityKeys"], opened["identityKeys"]);
+    // The init ran after the close, so the device is open again.
+    assert_eq!(
+        ok(&user, "C", "identityKeys", json!({})),
+        opened["identityKeys"]
+    );
+    *hooks::QUEUED.lock().unwrap() = None;
     ok(&user, "C", "close", json!({}));
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn init_takes_the_store_key_out_before_parsing_the_other_params() {
+    let (dir, key) = temp_store("unknown-field", 5);
+    let mut params = json!({ "storePath": dir, "storeKey": key, "nope": 1 });
+    let taken = crate::machine::take_store_key(&mut params);
+    assert_eq!(taken, Some(json!(key)));
+    assert!(params.get("storeKey").is_none());
+
+    let user = unique_user("unknown");
+    let response = invoke(
+        &user,
+        "U",
+        "init",
+        json!({ "storePath": dir, "storeKey": key, "nope": 1 }),
+    );
+    assert_eq!(
+        response["error"]["code"],
+        json!("InvalidRequest"),
+        "{response}"
+    );
+    assert!(!response.to_string().contains(&key));
 }
 
 #[test]

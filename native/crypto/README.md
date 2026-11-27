@@ -60,7 +60,8 @@ store with `storeKey`, a raw 32-byte key in base64 (never a passphrase); without
 store is in memory. One machine exists per user and device for the whole process; calls for it
 run one at a time. `init` again with the same store returns the open machine, with another
 store it fails with `AlreadyOpen`. `close` waits for a call in flight, then drops the machine;
-calls queued behind it get `UnknownMachine`. A call that panics drops its machine too, so the
+calls queued behind it get `UnknownMachine`. Two device IDs must never share one store path:
+the crate does not stop them, and their machines would overwrite each other's account. A call that panics drops its machine too, so the
 next call needs `init`, which reloads the account from the store.
 
 The crate wipes its own copies of the key, but it cannot wipe the request string or the serde
