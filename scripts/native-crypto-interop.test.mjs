@@ -87,9 +87,15 @@ const plain = (request) =>
     ),
   );
 
+const decryptionSettings = {
+  sender_device_trust_requirement: wasm.TrustRequirement.Untrusted,
+};
+
 const nativeDevice = async (cli, userId, deviceId) => {
-  const call = async (method, params = {}) => {
-    const response = await cli.call({ method, userId, deviceId, params });
+  const respond = (method, params = {}) =>
+    cli.call({ method, userId, deviceId, params });
+  const call = async (method, params) => {
+    const response = await respond(method, params);
     if (response.error)
       throw new Error(`${method}: ${JSON.stringify(response.error)}`);
     return response.result;
@@ -108,24 +114,76 @@ const nativeDevice = async (cli, userId, deviceId) => {
         toDeviceEvents,
         changedDevices: { changed: [], left: [] },
         oneTimeKeysCounts,
+        unusedFallbackKeys: [],
       }),
     updateTrackedUsers: (users) => call('updateTrackedUsers', { users }),
     getMissingSessions: (users) => call('getMissingSessions', { users }),
     shareRoomKey: (roomId, users) => call('shareRoomKey', { roomId, users }),
     encryptRoomEvent: (roomId, eventType, content) =>
       call('encryptRoomEvent', { roomId, eventType, content }),
-    async decryptRoomEvent(event, roomId) {
-      const decrypted = await call('decryptRoomEvent', {
-        event,
-        roomId,
-        decryptionSettings: {
-          sender_device_trust_requirement: wasm.TrustRequirement.Untrusted,
-        },
-      });
-      return { ...decrypted, shieldColor: decrypted.shieldState.lax.color };
-    },
+    decryptRoomEvent: (event, roomId) =>
+      respond('decryptRoomEvent', { event, roomId, decryptionSettings }),
+    getRoomEventEncryptionInfo: (event, roomId) =>
+      respond('getRoomEventEncryptionInfo', { event, roomId }),
     close: () => call('close'),
   };
+};
+
+/** Drops `undefined` fields, as the native JSON leaves them out. */
+const defined = (value) => JSON.parse(JSON.stringify(value));
+
+/** The WASM getters, read into the native crate's JSON shapes (native/crypto/README.md). */
+const fromWasm = {
+  shield: ({ color, code, message }) => ({ color, code, message }),
+  encryptionInfo: (info) => ({
+    sender: info.sender.toString(),
+    senderDevice: info.senderDevice?.toString(),
+    forwarder: info.forwarder?.toString(),
+    forwarderDevice: info.forwarderDevice?.toString(),
+    senderCurve25519Key: info.senderCurve25519Key,
+    senderClaimedEd25519Key: info.senderClaimedEd25519Key,
+    shieldState: {
+      lax: fromWasm.shield(info.shieldState(false)),
+      strict: fromWasm.shield(info.shieldState(true)),
+    },
+  }),
+  decrypted: (decrypted) => ({
+    ...fromWasm.encryptionInfo(decrypted),
+    event: decrypted.event,
+    forwardingCurve25519KeyChain: decrypted.forwardingCurve25519KeyChain,
+  }),
+  error: (error) =>
+    error instanceof wasm.MegolmDecryptionError
+      ? {
+          code: 'MegolmDecryptionError',
+          message: error.description,
+          details: {
+            code: error.code,
+            description: error.description,
+            withheldCode: error.withheldCode,
+            maybe_withheld: error.maybe_withheld,
+          },
+        }
+      : { code: 'CryptoError', message: String(error.message ?? error) },
+  toDevice: (event) => ({
+    type: event.type,
+    rawEvent: event.rawEvent,
+    encryptionInfo: event.encryptionInfo && {
+      senderCurve25519Key: event.encryptionInfo.senderCurve25519Key,
+      sender: event.encryptionInfo.sender.toString(),
+      senderDevice: event.encryptionInfo.senderDevice?.toString(),
+      isSenderVerified: event.encryptionInfo.isSenderVerified(),
+    },
+    utdInfo: event.utdInfo && { reason: event.utdInfo.reason },
+  }),
+  /** `{ result }` or `{ error }`, as a native call answers. */
+  async response(run, map) {
+    try {
+      return defined({ result: map(await run()) });
+    } catch (error) {
+      return defined({ error: fromWasm.error(error) });
+    }
+  },
 };
 
 const wasmDevice = async (userId, deviceId) => {
@@ -134,6 +192,7 @@ const wasmDevice = async (userId, deviceId) => {
     new wasm.DeviceId(deviceId),
   );
   const users = (list) => list.map((user) => new wasm.UserId(user));
+  const room = (roomId) => new wasm.RoomId(roomId);
   return {
     kind: 'wasm',
     userId,
@@ -153,7 +212,7 @@ const wasmDevice = async (userId, deviceId) => {
           new Map(Object.entries(counts)),
           new Set(),
         )
-      ).map(({ type, rawEvent }) => ({ type, rawEvent })),
+      ).map((event) => defined(fromWasm.toDevice(event))),
     updateTrackedUsers: (list) => machine.updateTrackedUsers(users(list)),
     getMissingSessions: async (list) => {
       const request = await machine.getMissingSessions(users(list));
@@ -162,32 +221,59 @@ const wasmDevice = async (userId, deviceId) => {
     shareRoomKey: async (roomId, list) =>
       (
         await machine.shareRoomKey(
-          new wasm.RoomId(roomId),
+          room(roomId),
           users(list),
           new wasm.EncryptionSettings(),
         )
       ).map(plain),
     encryptRoomEvent: (roomId, eventType, content) =>
-      machine.encryptRoomEvent(new wasm.RoomId(roomId), eventType, content),
-    async decryptRoomEvent(event, roomId) {
-      const decrypted = await machine.decryptRoomEvent(
-        event,
-        new wasm.RoomId(roomId),
-        new wasm.DecryptionSettings(wasm.TrustRequirement.Untrusted),
-      );
-      return {
-        event: decrypted.event,
-        sender: decrypted.sender.toString(),
-        senderCurve25519Key: decrypted.senderCurve25519Key,
-        shieldColor: decrypted.shieldState(false).color,
-      };
-    },
+      machine.encryptRoomEvent(room(roomId), eventType, content),
+    decryptRoomEvent: (event, roomId) =>
+      fromWasm.response(
+        () =>
+          machine.decryptRoomEvent(
+            event,
+            room(roomId),
+            new wasm.DecryptionSettings(wasm.TrustRequirement.Untrusted),
+          ),
+        fromWasm.decrypted,
+      ),
+    getRoomEventEncryptionInfo: (event, roomId) =>
+      fromWasm.response(
+        () => machine.getRoomEventEncryptionInfo(event, room(roomId)),
+        fromWasm.encryptionInfo,
+      ),
     close: () => machine.close(),
   };
 };
 
-/** Placeholders for IDs and key IDs, so two runs of the same step compare equal. */
-const shapeOf = (value, device) => {
+/** Values that are kept in a shape; every other leaf becomes its type. */
+const LITERAL = new Set([
+  'type',
+  'event_type',
+  'algorithm',
+  'algorithms',
+  'color',
+  'code',
+  'reason',
+]);
+
+/** Leaves to types (except `LITERAL` fields), keys through `key`, sorted. */
+const shape = (node, key = (name) => name, name = undefined) => {
+  if (LITERAL.has(name)) return node;
+  if (Array.isArray(node)) return node.map((item) => shape(item, key));
+  if (node && typeof node === 'object') {
+    return Object.fromEntries(
+      Object.entries(node)
+        .map(([child, item]) => [key(child), shape(item, key, child)])
+        .sort(([a], [b]) => a.localeCompare(b)),
+    );
+  }
+  return node === null ? 'null' : typeof node;
+};
+
+/** Placeholders for IDs and key IDs, so two runs of the same request compare equal. */
+const requestShape = (request, device) => {
   const key = (name) =>
     name
       .replaceAll(device.userId, '<user>')
@@ -200,20 +286,18 @@ const shapeOf = (value, device) => {
       .replace(new RegExp(`^${device.deviceId}$`), '<device>')
       .replace(/^[A-Z]+\d+$/, '<other device>')
       .replace(/^[A-Za-z0-9+/]{43}$/, '<curve25519 key>');
-  const shape = (node, name) => {
-    if (Array.isArray(node)) return node.map((item) => shape(item));
-    if (node && typeof node === 'object') {
-      return Object.fromEntries(
-        Object.entries(node)
-          .map(([child, item]) => [key(child), shape(item, child)])
-          .sort(([a], [b]) => a.localeCompare(b)),
-      );
-    }
-    if (['type', 'event_type', 'algorithm'].includes(name)) return node;
-    return node === null ? 'null' : typeof node;
-  };
-  return shape({ ...value, body: JSON.parse(value.body) });
+  return shape({ ...request, body: JSON.parse(request.body) }, key);
 };
+
+/** Replaces what differs between two receivers of the same message: their IDs and keys. */
+const anonymise = (value, receiver) =>
+  JSON.parse(
+    JSON.stringify(value)
+      .replaceAll(receiver.userId, '<receiver>')
+      .replaceAll(receiver.deviceId, '<receiver device>')
+      .replaceAll(receiver.identityKeys.ed25519, '<receiver ed25519>')
+      .replaceAll(receiver.identityKeys.curve25519, '<receiver curve25519>'),
+  );
 
 class Homeserver {
   deviceKeys = new Map();
@@ -287,7 +371,7 @@ class Homeserver {
   }
 
   async send(device, request) {
-    this.shapes[device.kind][request.type] ??= shapeOf(request, device);
+    this.shapes[device.kind][request.type] ??= requestShape(request, device);
     const response = this.#respond(device, request);
     await device.markRequestAsSent(
       request.id,
@@ -318,21 +402,25 @@ class Homeserver {
   }
 }
 
-/** Both devices publish keys and track each other; `sender` claims a key and shares a room key. */
-const shareRoom = async (server, sender, receiver, roomId) => {
-  await server.flush(sender);
-  await server.flush(receiver);
-  for (const device of [sender, receiver]) {
-    await device.updateTrackedUsers([sender.userId, receiver.userId]);
+/** Everyone publishes keys and tracks everyone; `sender` claims keys and shares a room key. */
+const shareRoom = async (server, sender, receivers, roomId) => {
+  const everyone = [sender, ...receivers];
+  const users = everyone.map(({ userId }) => userId);
+  for (const device of everyone) await server.flush(device);
+  for (const device of everyone) {
+    await device.updateTrackedUsers(users);
     await server.flush(device);
   }
-  const claim = await sender.getMissingSessions([receiver.userId]);
+  const claim = await sender.getMissingSessions(
+    receivers.map(({ userId }) => userId),
+  );
   expect(claim?.type).toBe(wasm.RequestType.KeysClaim);
   await server.send(sender, claim);
-  for (const share of await sender.shareRoomKey(roomId, [
-    sender.userId,
-    receiver.userId,
-  ])) {
+  await shareKey(server, sender, users, roomId);
+};
+
+const shareKey = async (server, sender, users, roomId) => {
+  for (const share of await sender.shareRoomKey(roomId, users)) {
     await server.send(sender, share);
   }
 };
@@ -364,6 +452,89 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     return created;
   };
 
+  /**
+   * One sender, a native and a WASM receiver, the same messages to both. Returns, per step,
+   * what each receiver answered (native first), with the receivers' own IDs and keys replaced.
+   */
+  const exchange = async (server, senderKind) => {
+    const sender = await device(senderKind);
+    const receivers = [await device('native'), await device('wasm')];
+    const users = [sender, ...receivers].map(({ userId }) => userId);
+    const each = async (run) => {
+      const answers = [];
+      for (const receiver of receivers) {
+        answers.push(anonymise(await run(receiver), receiver));
+      }
+      return answers;
+    };
+    const toDevice = (events, rawEvent) =>
+      events.map((event) => ({ ...event, rawEvent: rawEvent(event.rawEvent) }));
+    const roomId = `!${senderKind}:localhost`;
+    await shareRoom(server, sender, receivers, roomId);
+    const copies = receivers.map((receiver) => server.pending(receiver));
+
+    const roomKey = await each(async (receiver) =>
+      toDevice(await server.sync(receiver), JSON.parse),
+    );
+    receivers.forEach((receiver, index) =>
+      server.deliver(receiver, copies[index]),
+    );
+    // A replayed olm message carries fresh ciphertext per receiver: compare its shape.
+    const replay = await each(async (receiver) =>
+      toDevice(await server.sync(receiver), (raw) => raw),
+    ).then((answers) =>
+      answers.map((events) =>
+        toDevice(events, (raw) => shape(JSON.parse(raw))),
+      ),
+    );
+
+    const content = { msgtype: 'm.text', body: `from ${senderKind}` };
+    const event = roomEvent(
+      sender,
+      roomId,
+      await sender.encryptRoomEvent(
+        roomId,
+        'm.room.message',
+        JSON.stringify(content),
+      ),
+    );
+    const decrypted = await each((receiver) =>
+      receiver.decryptRoomEvent(event, roomId),
+    );
+    const encryptionInfo = await each((receiver) =>
+      receiver.getRoomEventEncryptionInfo(event, roomId),
+    );
+
+    const lonelyRoom = `!${senderKind}-alone:localhost`;
+    await shareKey(server, sender, [sender.userId], lonelyRoom);
+    const lonely = roomEvent(
+      sender,
+      lonelyRoom,
+      await sender.encryptRoomEvent(lonelyRoom, 'm.room.message', '{}'),
+    );
+    const missingKey = await each((receiver) =>
+      receiver.decryptRoomEvent(lonely, lonelyRoom),
+    );
+
+    await shareKey(server, sender, users, `!${senderKind}-later:localhost`);
+    const afterReplay = await each(async (receiver) =>
+      (await server.sync(receiver)).map(({ type }) => type),
+    );
+
+    return {
+      sender,
+      content,
+      steps: {
+        roomKey,
+        replay,
+        decrypted,
+        encryptionInfo,
+        missingKey,
+        afterReplay,
+      },
+    };
+  };
+
   beforeAll(async () => {
     await wasm.initAsync();
     cli = startCli(buildCli());
@@ -374,84 +545,40 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     cli?.stop();
   });
 
-  describe.each([
-    ['native', 'wasm'],
-    ['wasm', 'native'],
-  ])('%s encrypts, %s decrypts', (senderKind, receiverKind) => {
-    it('exchanges a room key and a message', async () => {
-      const server = new Homeserver();
-      const sender = await device(senderKind);
-      const receiver = await device(receiverKind);
-      const roomId = '!interop:localhost';
-      await shareRoom(server, sender, receiver, roomId);
-
-      const received = await server.sync(receiver);
-      expect(received.map(({ type }) => type)).toEqual([Decrypted]);
-      expect(JSON.parse(received[0].rawEvent).type).toBe('m.room_key');
-
-      const content = JSON.stringify({
-        msgtype: 'm.text',
-        body: `from ${senderKind}`,
-      });
-      const encrypted = await sender.encryptRoomEvent(
-        roomId,
-        'm.room.message',
-        content,
+  describe.each(['native', 'wasm'])('%s sender', (senderKind) => {
+    it('decrypts on native and WASM with the same results', async () => {
+      const { sender, content, steps } = await exchange(
+        new Homeserver(),
+        senderKind,
       );
-      const decrypted = await receiver.decryptRoomEvent(
-        roomEvent(sender, roomId, encrypted),
-        roomId,
-      );
-      expect(JSON.parse(decrypted.event).content).toEqual(JSON.parse(content));
-      expect(decrypted.sender).toBe(sender.userId);
-      expect(decrypted.senderCurve25519Key).toBe(
-        sender.identityKeys.curve25519,
-      );
-      // Neither device is cross-signed, so both sides show the same red shield.
-      expect(decrypted.shieldColor).toBe(wasm.ShieldColor.Red);
-    });
+      for (const [step, [native, wasmAnswer]] of Object.entries(steps)) {
+        expect(native, step).toEqual(wasmAnswer);
+      }
 
-    it('reports a replayed to-device message and keeps the session working', async () => {
-      const server = new Homeserver();
-      const sender = await device(senderKind);
-      const receiver = await device(receiverKind);
-      await shareRoom(server, sender, receiver, '!first:localhost');
-      const copy = server.pending(receiver);
-
-      expect((await server.sync(receiver)).map(({ type }) => type)).toEqual([
-        Decrypted,
-      ]);
-      server.deliver(receiver, copy);
-      expect((await server.sync(receiver)).map(({ type }) => type)).toEqual([
+      expect(steps.roomKey[0].map(({ type }) => type)).toEqual([Decrypted]);
+      expect(steps.roomKey[0][0].rawEvent.type).toBe('m.room_key');
+      expect(steps.replay[0].map(({ type }) => type)).toEqual([
         UnableToDecrypt,
       ]);
+      expect(steps.afterReplay[0]).toEqual([Decrypted]);
 
-      for (const share of await sender.shareRoomKey('!second:localhost', [
-        sender.userId,
-        receiver.userId,
-      ])) {
-        await server.send(sender, share);
-      }
-      expect((await server.sync(receiver)).map(({ type }) => type)).toEqual([
-        Decrypted,
-      ]);
+      const { result } = steps.decrypted[0];
+      expect(JSON.parse(result.event).content).toEqual(content);
+      expect(result.sender).toBe(sender.userId);
+      expect(result.senderCurve25519Key).toBe(sender.identityKeys.curve25519);
+      expect(result.senderClaimedEd25519Key).toBe(sender.identityKeys.ed25519);
+      // Neither device is cross-signed, so the shield is red.
+      expect(result.shieldState.lax.color).toBe(wasm.ShieldColor.Red);
+      expect(steps.missingKey[0].error.details.code).toBe(
+        wasm.DecryptionErrorCode.MissingRoomKey,
+      );
     });
   });
 
-  it('emits the same request shapes as WASM for the same steps', async () => {
+  it('emits the same request shapes as WASM and matches the golden file', async () => {
     const server = new Homeserver();
-    await shareRoom(
-      server,
-      await device('native'),
-      await device('wasm'),
-      '!a:localhost',
-    );
-    await shareRoom(
-      server,
-      await device('wasm'),
-      await device('native'),
-      '!b:localhost',
-    );
+    const { steps } = await exchange(server, 'native');
+    await exchange(server, 'wasm');
 
     const { RequestType } = wasm;
     expect(Object.keys(server.shapes.wasm).map(Number).sort()).toEqual(
@@ -463,6 +590,9 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
       ].sort(),
     );
     expect(server.shapes.native).toEqual(server.shapes.wasm);
+    const responses = Object.fromEntries(
+      Object.entries(steps).map(([step, [native]]) => [step, shape(native)]),
+    );
     // Written as Prettier writes it, so `pnpm format:check` accepts the updated file.
     const golden = resolve(
       import.meta.dirname,
@@ -470,7 +600,10 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     );
     const options = { ...(await resolveConfig(golden)), filepath: golden };
     await expect(
-      await format(JSON.stringify(server.shapes.wasm), options),
+      await format(
+        JSON.stringify({ requests: server.shapes.wasm, responses }),
+        options,
+      ),
     ).toMatchFileSnapshot(golden);
   });
 });

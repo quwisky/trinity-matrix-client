@@ -1,58 +1,137 @@
 {
-  "0": {
-    "body": {
-      "device_keys": {
-        "algorithms": ["string", "string"],
-        "device_id": "string",
-        "keys": {
-          "curve25519:<device>": "string",
-          "ed25519:<device>": "string"
+  "requests": {
+    "0": {
+      "body": {
+        "device_keys": {
+          "algorithms": [
+            "m.olm.v1.curve25519-aes-sha2",
+            "m.megolm.v1.aes-sha2"
+          ],
+          "device_id": "string",
+          "keys": {
+            "curve25519:<device>": "string",
+            "ed25519:<device>": "string"
+          },
+          "signatures": { "<user>": { "ed25519:<device>": "string" } },
+          "user_id": "string"
         },
-        "signatures": { "<user>": { "ed25519:<device>": "string" } },
-        "user_id": "string"
-      },
-      "fallback_keys": {},
-      "one_time_keys": {
-        "signed_curve25519:<key>": {
-          "key": "string",
-          "signatures": { "<user>": { "ed25519:<device>": "string" } }
+        "fallback_keys": {},
+        "one_time_keys": {
+          "signed_curve25519:<key>": {
+            "key": "string",
+            "signatures": { "<user>": { "ed25519:<device>": "string" } }
+          }
         }
+      },
+      "id": "string",
+      "type": 0
+    },
+    "1": {
+      "body": { "device_keys": { "<user>": [] } },
+      "id": "string",
+      "type": 1
+    },
+    "2": {
+      "body": {
+        "one_time_keys": { "<other user>": { "<other device>": "string" } },
+        "timeout": "number"
+      },
+      "id": "string",
+      "type": 2
+    },
+    "3": {
+      "body": {
+        "messages": {
+          "<other user>": {
+            "<other device>": {
+              "algorithm": "m.olm.v1.curve25519-aes-sha2",
+              "ciphertext": {
+                "<curve25519 key>": { "body": "string", "type": 0 }
+              },
+              "org.matrix.msgid": "string",
+              "sender_key": "string"
+            }
+          }
+        }
+      },
+      "event_type": "m.room.encrypted",
+      "id": "string",
+      "txn_id": "string",
+      "type": 3
+    }
+  },
+  "responses": {
+    "roomKey": [
+      {
+        "encryptionInfo": {
+          "isSenderVerified": "boolean",
+          "sender": "string",
+          "senderCurve25519Key": "string"
+        },
+        "rawEvent": {
+          "content": {
+            "algorithm": "m.megolm.v1.aes-sha2",
+            "room_id": "string",
+            "session_id": "string",
+            "session_key": "string"
+          },
+          "sender": "string",
+          "type": "m.room_key"
+        },
+        "type": 0
       }
-    },
-    "id": "string",
-    "type": 0
-  },
-  "1": {
-    "body": { "device_keys": { "<user>": [] } },
-    "id": "string",
-    "type": 1
-  },
-  "2": {
-    "body": {
-      "one_time_keys": { "<other user>": { "<other device>": "string" } },
-      "timeout": "number"
-    },
-    "id": "string",
-    "type": 2
-  },
-  "3": {
-    "body": {
-      "messages": {
-        "<other user>": {
-          "<other device>": {
+    ],
+    "replay": [
+      {
+        "rawEvent": {
+          "content": {
             "algorithm": "m.olm.v1.curve25519-aes-sha2",
             "ciphertext": {
-              "<curve25519 key>": { "body": "string", "type": 0 }
+              "<receiver curve25519>": { "body": "string", "type": 0 }
             },
             "org.matrix.msgid": "string",
             "sender_key": "string"
-          }
+          },
+          "sender": "string",
+          "type": "m.room.encrypted"
+        },
+        "type": 1,
+        "utdInfo": { "reason": 0 }
+      }
+    ],
+    "decrypted": {
+      "result": {
+        "event": "string",
+        "forwardingCurve25519KeyChain": [],
+        "sender": "string",
+        "senderClaimedEd25519Key": "string",
+        "senderCurve25519Key": "string",
+        "senderDevice": "string",
+        "shieldState": {
+          "lax": { "code": 2, "color": 0, "message": "string" },
+          "strict": { "code": 3, "color": 0, "message": "string" }
         }
       }
     },
-    "event_type": "m.room.encrypted",
-    "id": "string",
-    "txn_id": "string",
-    "type": 3
+    "encryptionInfo": {
+      "result": {
+        "sender": "string",
+        "senderClaimedEd25519Key": "string",
+        "senderCurve25519Key": "string",
+        "senderDevice": "string",
+        "shieldState": {
+          "lax": { "code": 2, "color": 0, "message": "string" },
+          "strict": { "code": 3, "color": 0, "message": "string" }
+        }
+      }
+    },
+    "missingKey": {
+      "error": {
+        "code": "MegolmDecryptionError",
+        "details": { "code": 0, "description": "string" },
+        "message": "string"
+      }
+    },
+    "afterReplay": ["number"]
   }
 }
