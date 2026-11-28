@@ -1,7 +1,7 @@
 import { setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 
-import { CallQueue } from './call-queue';
+import { CallQueue, QUIET_METHODS } from './call-queue';
 import {
   NativeBridgeError,
   NativeCryptoError,
@@ -301,6 +301,67 @@ describe('CallQueue', () => {
     }
     expect(gone).toBe(true);
   });
+
+  it('treats every call that carries key material or plaintext as quiet', () => {
+    expect([...QUIET_METHODS].sort()).toEqual(
+      [
+        'createDehydratedDevice',
+        'encryptRoomEvent',
+        'encryptStateEvent',
+        'encryptToDeviceEvent',
+        'importBackedUpRoomKeys',
+        'importCrossSigningKeys',
+        'importExportedRoomKeys',
+        'importSecretsBundle',
+        'init',
+        'rehydrateDevice',
+        'saveBackupDecryptionKey',
+        'saveDehydratedDeviceKey',
+        'scanQrCode',
+      ].sort(),
+    );
+  });
+
+  it.each([...QUIET_METHODS])(
+    'keeps the bridge failure out of a batch that carries %s: fixed message, no cause',
+    async (method) => {
+      const failing = () =>
+        Promise.reject(new Error('request {"params":{"value":"secret"}}'));
+      const queue = new CallQueue({ call: failing, callBatch: failing });
+      const answers = await Promise.allSettled([
+        call(queue, method, 'secret'),
+        call(queue, 'trackedUsers'),
+      ]);
+      for (const answer of answers) {
+        expect(answer.status).toBe('rejected');
+        const reason = (answer as PromiseRejectedResult).reason as Error;
+        expect(reason).toBeInstanceOf(NativeBridgeError);
+        expect(reason.message).not.toMatch(/secret/);
+        expect(reason.cause).toBeUndefined();
+      }
+    },
+  );
+
+  it.each([...QUIET_METHODS].filter((method) => method !== 'init'))(
+    'lets go of the parameters of %s once the batch is with the bridge',
+    async (method) => {
+      setFlagsFromString('--expose-gc');
+      const gc = runInNewContext('gc') as () => void;
+      const never = () => new Promise<string>(() => undefined);
+      const queue = new CallQueue({ call: never, callBatch: never });
+      let params: Record<string, string> | undefined = { value: 'secret' };
+      const ref = new WeakRef(params);
+      void queue.call({ method, ...alice, params });
+      params = undefined;
+      let gone = false;
+      for (let attempt = 0; attempt < 10 && !gone; attempt++) {
+        await new Promise((done) => setTimeout(done, 0));
+        gc();
+        gone = !ref.deref();
+      }
+      expect(gone).toBe(true);
+    },
+  );
 
   it('sends each machine its own batch, so a stuck one loses only its own calls', async () => {
     const { batches, bridge } = fakeBridge(echo);
