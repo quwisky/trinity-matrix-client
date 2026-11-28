@@ -350,6 +350,33 @@ describe.skipIf(missing)(
               }
               await own.setDeviceVerified(userId, deviceId, false);
               expect((await status()).localVerified).toBe(false);
+
+              // Read after write on the same object: WASM's Device shows its own change at
+              // once, and so must the stand-in (each sender is on the other kind in shim mode).
+              const held = await machineOf(sender).getDevice(
+                new wasm.UserId(userId),
+                new wasm.DeviceId(deviceId),
+              );
+              const seen = [];
+              for (const trust of [
+                wasm.LocalTrust.BlackListed,
+                wasm.LocalTrust.Verified,
+                wasm.LocalTrust.Unset,
+              ]) {
+                await held.setLocalTrust(trust);
+                seen.push([
+                  held.localTrustState,
+                  held.isBlacklisted(),
+                  held.isLocallyTrusted(),
+                  held.isVerified(),
+                ]);
+              }
+              held.free();
+              expect(seen).toEqual([
+                [wasm.LocalTrust.BlackListed, true, false, false],
+                [wasm.LocalTrust.Verified, false, true, true],
+                [wasm.LocalTrust.Unset, false, false, false],
+              ]);
             }
           }, 180_000);
 
@@ -634,6 +661,16 @@ describe.skipIf(missing)(
               }
               held.free();
 
+              // Read after write on the same object, as WASM's object answers it.
+              const live = await machineOf(viewer).getIdentity(
+                new wasm.UserId(userId),
+              );
+              expect(live.wasPreviouslyVerified()).toBe(true);
+              await live.withdrawVerification();
+              expect(live.wasPreviouslyVerified()).toBe(false);
+              expect(live.identityNeedsUserApproval()).toBe(false);
+              live.free();
+              // And through matrix-js-sdk (nothing left to withdraw).
               await own.withdrawVerificationRequirement(userId);
               const withdrawn = await userStatus(viewer, subject);
               expect(withdrawn.wasCrossSigningVerified()).toBe(false);
@@ -649,6 +686,13 @@ describe.skipIf(missing)(
               await expect(
                 own.pinCurrentUserIdentity(viewer.account.userId),
               ).rejects.toThrow(/own user/);
+              const changed = await machineOf(viewer).getIdentity(
+                new wasm.UserId(userId),
+              );
+              expect(changed.identityNeedsUserApproval()).toBe(true);
+              await changed.pinCurrentMasterKey();
+              expect(changed.identityNeedsUserApproval()).toBe(false);
+              changed.free();
               await own.pinCurrentUserIdentity(userId);
               const pinned = await userStatus(viewer, subject);
               expect(pinned.needsUserApproval).toBe(false);
