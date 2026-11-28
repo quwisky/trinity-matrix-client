@@ -728,7 +728,7 @@ index 97a01598f3c0328fd6b8684e2879719e9461f7e0..ab8b12b181a58e3d5fba221a9b2d29b3
      this.importKeyBackup({
        rooms: {
 diff --git a/lib/rust-crypto/rust-crypto.js b/lib/rust-crypto/rust-crypto.js
-index 53fc9177870f797c5e0e99758595cb5ccd20135b..645534ec250a42ead771e55a3e03d68933690cf3 100644
+index 53fc9177870f797c5e0e99758595cb5ccd20135b..1dcf26b809577581c58da449834ce8082e2e02b3 100644
 --- a/lib/rust-crypto/rust-crypto.js
 +++ b/lib/rust-crypto/rust-crypto.js
 @@ -229,7 +229,8 @@ export class RustCrypto extends TypedEventEmitter {
@@ -751,7 +751,37 @@ index 53fc9177870f797c5e0e99758595cb5ccd20135b..645534ec250a42ead771e55a3e03d689
          // clone as rust layer will take ownership and it's reused later
          [rustTrackedUser.clone()]);
          await this.outgoingRequestProcessor.makeOutgoingRequest(request);
-@@ -1355,7 +1357,8 @@ export class RustCrypto extends TypedEventEmitter {
+@@ -926,7 +928,8 @@ export class RustCrypto extends TypedEventEmitter {
+       // Transform the verification methods into rust objects
+       const methods = this._supportedVerificationMethods.map(method => verificationMethodIdentifierToMethod(method));
+       // Get the request content to send to the DM room
+-      const verCont = userIdentity.verificationRequestContent(methods);
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const verCont = await userIdentity.verificationRequestContent(methods);
+ 
+       // TODO: due to https://github.com/matrix-org/matrix-rust-sdk/issues/5643, we need to fix up the verification request content to include `msgtype`.
+       const verContObj = JSON.parse(verCont);
+@@ -937,7 +940,8 @@ export class RustCrypto extends TypedEventEmitter {
+       const eventId = await this.sendVerificationRequestContent(roomId, verificationEventContent);
+ 
+       // Get a verification request
+-      const request = userIdentity.requestVerification(new RustSdkCryptoJs.RoomId(roomId), new RustSdkCryptoJs.EventId(eventId), methods);
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const request = await userIdentity.requestVerification(new RustSdkCryptoJs.RoomId(roomId), new RustSdkCryptoJs.EventId(eventId), methods);
+       return this.makeVerificationRequest(request);
+     } finally {
+       userIdentity.free();
+@@ -1016,7 +1020,8 @@ export class RustCrypto extends TypedEventEmitter {
+       throw new Error("Not a known device");
+     }
+     try {
+-      const [request, outgoingRequest] = device.requestVerification(this._supportedVerificationMethods.map(verificationMethodIdentifierToMethod));
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const [request, outgoingRequest] = await device.requestVerification(this._supportedVerificationMethods.map(verificationMethodIdentifierToMethod));
+       await this.outgoingRequestProcessor.makeOutgoingRequest(outgoingRequest);
+       return this.makeVerificationRequest(request);
+     } finally {
+@@ -1355,7 +1360,8 @@ export class RustCrypto extends TypedEventEmitter {
      logger.info(`Uploaded encrypted key blob: ${JSON.stringify(uploadResponse)}`);
  
      // 4. We may not share a room with the user, so get a fresh list of devices for the invited user.
@@ -761,7 +791,7 @@ index 53fc9177870f797c5e0e99758595cb5ccd20135b..645534ec250a42ead771e55a3e03d689
      await this.outgoingRequestProcessor.makeOutgoingRequest(req);
  
      // 5. Establish Olm sessions with all of the recipient's devices.
-@@ -1810,7 +1813,8 @@ export class RustCrypto extends TypedEventEmitter {
+@@ -1810,7 +1816,8 @@ export class RustCrypto extends TypedEventEmitter {
        // will immediately abort verification. So we explicitly fetch it
        // from /keys/query and wait for that request to complete before we
        // call receiveVerificationEvent.
@@ -771,6 +801,137 @@ index 53fc9177870f797c5e0e99758595cb5ccd20135b..645534ec250a42ead771e55a3e03d689
        await this.outgoingRequestProcessor.makeOutgoingRequest(req);
      }
      await this.getOlmMachineOrThrow().receiveVerificationEvent(JSON.stringify({
+diff --git a/lib/rust-crypto/verification.js b/lib/rust-crypto/verification.js
+index bdb3f153ebc554acf115e92840ffa2be56870d9b..c65488cf99f1e24084d95879b47ae8b1c28e320a 100644
+--- a/lib/rust-crypto/verification.js
++++ b/lib/rust-crypto/verification.js
+@@ -22,6 +22,7 @@ import { TypedEventEmitter } from "../models/typed-event-emitter.js";
+ import { TypedReEmitter } from "../ReEmitter.js";
+ import { EventType, MsgType } from "../@types/event.js";
+ import { VerificationMethod } from "../types.js";
++import { logger } from "../logger.js";
+ /**
+  * An incoming, or outgoing, request to verify a user or a device via cross-signing.
+  *
+@@ -253,7 +254,8 @@ export class RustVerificationRequest extends TypedEventEmitter {
+     }
+     this._accepting = true;
+     try {
+-      const req = this.inner.acceptWithMethods(this.supportedVerificationMethods.map(verificationMethodIdentifierToMethod));
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const req = await this.inner.acceptWithMethods(this.supportedVerificationMethods.map(verificationMethodIdentifierToMethod));
+       if (req) {
+         await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+       }
+@@ -281,7 +283,8 @@ export class RustVerificationRequest extends TypedEventEmitter {
+     this.logger.info("Cancelling verification request with params:", params);
+     this._cancelling = true;
+     try {
+-      const req = this.inner.cancel();
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const req = await this.inner.cancel();
+       if (req) {
+         await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+       }
+@@ -348,7 +351,8 @@ export class RustVerificationRequest extends TypedEventEmitter {
+    */
+   async scanQRCode(uint8Array) {
+     const scan = RustSdkCryptoJs.QrCodeScan.fromBytes(uint8Array);
+-    const verifier = await this.inner.scanQrCode(scan);
++    // Trinity patch: the bytes as well, which the native crypto shim cannot read from `scan`; WASM ignores them.
++    const verifier = await this.inner.scanQrCode(scan, uint8Array);
+ 
+     // this should have triggered the onChange callback, and we should now have a verifier
+     if (!this._verifier) {
+@@ -356,7 +360,8 @@ export class RustVerificationRequest extends TypedEventEmitter {
+     }
+ 
+     // we can immediately trigger the reciprocate request
+-    const req = verifier.reciprocate();
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    const req = await verifier.reciprocate();
+     if (req) {
+       await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+     }
+@@ -397,7 +402,8 @@ export class RustVerificationRequest extends TypedEventEmitter {
+     const innerVerifier = await this.inner.generateQrCode();
+     // If we are unable to generate a QRCode, we return undefined
+     if (!innerVerifier) return;
+-    return innerVerifier.toBytes();
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    return await innerVerifier.toBytes();
+   }
+ 
+   /**
+@@ -489,10 +495,13 @@ class BaseRustVerifer extends TypedEventEmitter {
+    */
+   cancel(e) {
+     // TODO: something with `e`
+-    const req = this.inner.cancel();
+-    if (req) {
+-      this.outgoingRequestProcessor.makeOutgoingRequest(req);
+-    }
++    // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++    void (async () => {
++      const req = await this.inner.cancel();
++      if (req) {
++        await this.outgoingRequestProcessor.makeOutgoingRequest(req);
++      }
++    })().catch(error => logger.warn("Error cancelling verification", error));
+   }
+ 
+   /**
+@@ -596,7 +605,8 @@ export class RustQrCodeVerifier extends BaseRustVerifer {
+     return this.callbacks;
+   }
+   async confirmScanning() {
+-    const req = this.inner.confirmScanning();
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    const req = await this.inner.confirmScanning();
+     if (req) {
+       await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+     }
+@@ -628,7 +638,8 @@ export class RustSASVerifier extends BaseRustVerifer {
+    * Send the accept or start event, if it hasn't already been sent
+    */
+   async sendAccept() {
+-    const req = this.inner.accept();
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    const req = await this.inner.accept();
+     if (req) {
+       await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+     }
+@@ -659,16 +670,22 @@ export class RustSASVerifier extends BaseRustVerifer {
+           }
+         },
+         mismatch: () => {
+-          const request = this.inner.cancelWithCode("m.mismatched_sas");
+-          if (request) {
+-            void this.outgoingRequestProcessor.makeOutgoingRequest(request);
+-          }
++          // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++          void (async () => {
++            const request = await this.inner.cancelWithCode("m.mismatched_sas");
++            if (request) {
++              await this.outgoingRequestProcessor.makeOutgoingRequest(request);
++            }
++          })().catch(error => logger.warn("Error cancelling verification", error));
+         },
+         cancel: () => {
+-          const request = this.inner.cancelWithCode("m.user");
+-          if (request) {
+-            this.outgoingRequestProcessor.makeOutgoingRequest(request);
+-          }
++          // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++          void (async () => {
++            const request = await this.inner.cancelWithCode("m.user");
++            if (request) {
++              await this.outgoingRequestProcessor.makeOutgoingRequest(request);
++            }
++          })().catch(error => logger.warn("Error cancelling verification", error));
+         }
+       };
+       this.emit(VerifierEvent.ShowSas, this.callbacks);
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
 index f52b7d4b31298925ff8c51ae0579131da69562c9..b0bd31ed2090671be267084199b26cd936366eca 100644
 --- a/src/http-api/fetch.ts
@@ -1251,7 +1412,7 @@ index 684c083daad4500dacf17678217f2827a5d0e25c..7be0333ee5163cf605525751fd204a5b
          });
      }
 diff --git a/src/rust-crypto/rust-crypto.ts b/src/rust-crypto/rust-crypto.ts
-index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..f6e9f0f36e356f21142d443b102cd8bdd15b441b 100644
+index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..8ab20265917f869de26e8c6d293a4433d1733f10 100644
 --- a/src/rust-crypto/rust-crypto.ts
 +++ b/src/rust-crypto/rust-crypto.ts
 @@ -350,7 +350,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
@@ -1274,7 +1435,37 @@ index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..f6e9f0f36e356f21142d443b102cd8bd
                      // clone as rust layer will take ownership and it's reused later
                      [rustTrackedUser.clone()],
                  );
-@@ -1694,7 +1696,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+@@ -1198,7 +1200,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+                 verificationMethodIdentifierToMethod(method),
+             );
+             // Get the request content to send to the DM room
+-            const verCont: string = userIdentity.verificationRequestContent(methods);
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const verCont: string = await userIdentity.verificationRequestContent(methods);
+ 
+             // TODO: due to https://github.com/matrix-org/matrix-rust-sdk/issues/5643, we need to fix up the verification request content to include `msgtype`.
+             const verContObj = JSON.parse(verCont);
+@@ -1209,7 +1212,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+             const eventId = await this.sendVerificationRequestContent(roomId, verificationEventContent);
+ 
+             // Get a verification request
+-            const request: RustSdkCryptoJs.VerificationRequest = userIdentity.requestVerification(
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const request: RustSdkCryptoJs.VerificationRequest = await userIdentity.requestVerification(
+                 new RustSdkCryptoJs.RoomId(roomId),
+                 new RustSdkCryptoJs.EventId(eventId),
+                 methods,
+@@ -1312,7 +1316,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+         }
+ 
+         try {
+-            const [request, outgoingRequest] = device.requestVerification(
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const [request, outgoingRequest] = await device.requestVerification(
+                 this._supportedVerificationMethods.map(verificationMethodIdentifierToMethod),
+             );
+             await this.outgoingRequestProcessor.makeOutgoingRequest(outgoingRequest);
+@@ -1694,7 +1699,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
          logger.info(`Uploaded encrypted key blob: ${JSON.stringify(uploadResponse)}`);
  
          // 4. We may not share a room with the user, so get a fresh list of devices for the invited user.
@@ -1284,7 +1475,7 @@ index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..f6e9f0f36e356f21142d443b102cd8bd
          await this.outgoingRequestProcessor.makeOutgoingRequest(req);
  
          // 5. Establish Olm sessions with all of the recipient's devices.
-@@ -2225,7 +2228,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+@@ -2225,7 +2231,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
              // will immediately abort verification. So we explicitly fetch it
              // from /keys/query and wait for that request to complete before we
              // call receiveVerificationEvent.
@@ -1294,3 +1485,137 @@ index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..f6e9f0f36e356f21142d443b102cd8bd
              await this.outgoingRequestProcessor.makeOutgoingRequest(req);
          }
  
+diff --git a/src/rust-crypto/verification.ts b/src/rust-crypto/verification.ts
+index 3d05ad6a07d0181666ded1180fbb3022004f13b3..4210d564c992494967f3188833c0740f0893d028 100644
+--- a/src/rust-crypto/verification.ts
++++ b/src/rust-crypto/verification.ts
+@@ -35,7 +35,7 @@ import { TypedReEmitter } from "../ReEmitter.ts";
+ import { type MatrixEvent } from "../models/event.ts";
+ import { EventType, MsgType } from "../@types/event.ts";
+ import { VerificationMethod } from "../types.ts";
+-import type { Logger } from "../logger.ts";
++import { type Logger, logger } from "../logger.ts";
+ 
+ /**
+  * An incoming, or outgoing, request to verify a user or a device via cross-signing.
+@@ -283,7 +283,8 @@ export class RustVerificationRequest
+ 
+         this._accepting = true;
+         try {
+-            const req: undefined | OutgoingRequest = this.inner.acceptWithMethods(
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const req: undefined | OutgoingRequest = await this.inner.acceptWithMethods(
+                 this.supportedVerificationMethods.map(verificationMethodIdentifierToMethod),
+             );
+             if (req) {
+@@ -314,7 +315,8 @@ export class RustVerificationRequest
+         this.logger.info("Cancelling verification request with params:", params);
+         this._cancelling = true;
+         try {
+-            const req: undefined | OutgoingRequest = this.inner.cancel();
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const req: undefined | OutgoingRequest = await this.inner.cancel();
+             if (req) {
+                 await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+             }
+@@ -386,7 +388,10 @@ export class RustVerificationRequest
+      */
+     public async scanQRCode(uint8Array: Uint8ClampedArray): Promise<Verifier> {
+         const scan = RustSdkCryptoJs.QrCodeScan.fromBytes(uint8Array);
+-        const verifier: RustSdkCryptoJs.Qr = await this.inner.scanQrCode(scan);
++        // Trinity patch: the bytes as well, which the native crypto shim cannot read from `scan`; WASM ignores them.
++        const verifier: RustSdkCryptoJs.Qr = await (
++            this.inner.scanQrCode as (scan: RustSdkCryptoJs.QrCodeScan, bytes: Uint8ClampedArray) => Promise<RustSdkCryptoJs.Qr>
++        ).call(this.inner, scan, uint8Array);
+ 
+         // this should have triggered the onChange callback, and we should now have a verifier
+         if (!this._verifier) {
+@@ -394,7 +399,8 @@ export class RustVerificationRequest
+         }
+ 
+         // we can immediately trigger the reciprocate request
+-        const req: undefined | OutgoingRequest = verifier.reciprocate();
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const req: undefined | OutgoingRequest = await verifier.reciprocate();
+         if (req) {
+             await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+         }
+@@ -438,7 +444,8 @@ export class RustVerificationRequest
+         // If we are unable to generate a QRCode, we return undefined
+         if (!innerVerifier) return;
+ 
+-        return innerVerifier.toBytes();
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        return await innerVerifier.toBytes();
+     }
+ 
+     /**
+@@ -543,10 +550,13 @@ abstract class BaseRustVerifer<InnerType extends RustSdkCryptoJs.Qr | RustSdkCry
+      */
+     public cancel(e?: Error): void {
+         // TODO: something with `e`
+-        const req: undefined | OutgoingRequest = this.inner.cancel();
+-        if (req) {
+-            this.outgoingRequestProcessor.makeOutgoingRequest(req);
+-        }
++        // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++        void (async (): Promise<void> => {
++            const req: undefined | OutgoingRequest = await this.inner.cancel();
++            if (req) {
++                await this.outgoingRequestProcessor.makeOutgoingRequest(req);
++            }
++        })().catch((error) => logger.warn("Error cancelling verification", error));
+     }
+ 
+     /**
+@@ -654,7 +664,8 @@ export class RustQrCodeVerifier extends BaseRustVerifer<RustSdkCryptoJs.Qr> impl
+     }
+ 
+     private async confirmScanning(): Promise<void> {
+-        const req: undefined | OutgoingRequest = this.inner.confirmScanning();
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const req: undefined | OutgoingRequest = await this.inner.confirmScanning();
+         if (req) {
+             await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+         }
+@@ -691,7 +702,8 @@ export class RustSASVerifier extends BaseRustVerifer<RustSdkCryptoJs.Sas> implem
+      * Send the accept or start event, if it hasn't already been sent
+      */
+     private async sendAccept(): Promise<void> {
+-        const req: undefined | OutgoingRequest = this.inner.accept();
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const req: undefined | OutgoingRequest = await this.inner.accept();
+         if (req) {
+             await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+         }
+@@ -726,16 +738,22 @@ export class RustSASVerifier extends BaseRustVerifer<RustSdkCryptoJs.Sas> implem
+                     }
+                 },
+                 mismatch: (): void => {
+-                    const request = this.inner.cancelWithCode("m.mismatched_sas");
+-                    if (request) {
+-                        void this.outgoingRequestProcessor.makeOutgoingRequest(request);
+-                    }
++                    // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++                    void (async (): Promise<void> => {
++                        const request = await this.inner.cancelWithCode("m.mismatched_sas");
++                        if (request) {
++                            await this.outgoingRequestProcessor.makeOutgoingRequest(request);
++                        }
++                    })().catch((error) => logger.warn("Error cancelling verification", error));
+                 },
+                 cancel: (): void => {
+-                    const request = this.inner.cancelWithCode("m.user");
+-                    if (request) {
+-                        this.outgoingRequestProcessor.makeOutgoingRequest(request);
+-                    }
++                    // Trinity patch: the native crypto shim answers with a promise, so the call runs detached and its failure is logged.
++                    void (async (): Promise<void> => {
++                        const request = await this.inner.cancelWithCode("m.user");
++                        if (request) {
++                            await this.outgoingRequestProcessor.makeOutgoingRequest(request);
++                        }
++                    })().catch((error) => logger.warn("Error cancelling verification", error));
+                 },
+             };
+             this.emit(VerifierEvent.ShowSas, this.callbacks);
