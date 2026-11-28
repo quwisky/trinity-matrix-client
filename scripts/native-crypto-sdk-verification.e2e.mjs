@@ -190,12 +190,23 @@ const runSas = async ({ request, incoming }) => {
     request: trackVerifier(verifier),
     incoming: trackVerifier(other),
   };
+  const state = () =>
+    `requester ${request.phase} ${JSON.stringify(events.request)}, responder ${incoming.phase} ${JSON.stringify(events.incoming)}`;
   const done = [verifier.verify(), other.verify()];
-  const [mine, theirs] = await Promise.all([sasOf(verifier), sasOf(other)]);
+  const [mine, theirs] = await settled(
+    Promise.all([sasOf(verifier), sasOf(other)]),
+    () => `both sides to show the SAS (${state()})`,
+  );
   expect(mine.sas.emoji).toHaveLength(7);
   expect(mine.sas).toEqual(theirs.sas);
-  await Promise.all([mine.confirm(), theirs.confirm()]);
-  await Promise.all(done);
+  await settled(
+    Promise.all([mine.confirm(), theirs.confirm()]),
+    () => `both confirmations (${state()})`,
+  );
+  await settled(
+    Promise.all(done),
+    () => `both verifiers to finish (${state()})`,
+  );
   await phaseIs(request, Done, 'the requester');
   await phaseIs(incoming, Done, 'the responder');
   return events;
