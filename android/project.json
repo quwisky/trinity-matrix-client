@@ -60,7 +60,7 @@
       }
     },
     "build-release": {
-      "//": "The isolation check fails the build when the bundle holds the debug-only native crypto plugin or library (android/app/src/debug). CI builds no Android release yet, so it runs wherever this target runs.",
+      "//": "The isolation check fails the build unless the bundle carries the native crypto library for every ABI it ships and the TrinityCrypto plugin (or, with TRINITY_NATIVE_CRYPTO=0, no library at all), and fails on any debug-only crypto code. CI runs the same check on its release bundles (ci.yml, android-build).",
       "cache": false,
       "dependsOn": ["sync"],
       "outputs": ["{projectRoot}/app/build/outputs/bundle/release"],

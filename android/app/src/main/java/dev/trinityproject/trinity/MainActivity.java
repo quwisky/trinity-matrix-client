@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;
+import dev.trinityproject.trinity.crypto.TrinityCryptoPlugin;
 
 public class MainActivity extends BridgeActivity {
     private static final int TABLET_SMALLEST_WIDTH_DP = 600;
@@ -13,6 +14,7 @@ public class MainActivity extends BridgeActivity {
         // Local plugins must register before super.onCreate() builds the bridge.
         registerPlugin(AppSettingsPlugin.class);
         registerPlugin(CallSessionPlugin.class);
+        registerPlugin(TrinityCryptoPlugin.class);
         super.onCreate(savedInstanceState);
         applyOrientationPolicy(getResources().getConfiguration());
     }
