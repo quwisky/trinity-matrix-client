@@ -215,6 +215,23 @@ describe('Matrix crypto WASM', () => {
     expect(rule).toMatchObject({ enabled: false });
   });
 
+  it('keeps the facade alias under the same rule as the root copy', () => {
+    // Renovate gives an `npm:` alias the real package's packageName, which the rule above
+    // matches; a file or depName condition there would let the alias move on its own.
+    const { dependencies } = JSON.parse(
+      read('libs/native/crypto-backend/package.json'),
+    );
+    expect(Object.values(dependencies)).toEqual([
+      expect.stringMatching(/^npm:@matrix-org\/matrix-sdk-crypto-wasm@/),
+    ]);
+    const rule = config.packageRules.find((r) =>
+      r.matchPackageNames?.includes('@matrix-org/matrix-sdk-crypto-wasm'),
+    );
+    expect(Object.keys(rule).sort()).toEqual(
+      ['description', 'enabled', 'matchPackageNames'].sort(),
+    );
+  });
+
   it('leaves the native crypto crate, lock file included, to hand-made bumps', () => {
     // Its Cargo.lock mirrors the WASM release's (scripts/native-crypto-pin.mjs checks it), so
     // neither a dependency update nor lock-file maintenance may touch it.

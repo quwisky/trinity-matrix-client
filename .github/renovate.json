@@ -200,7 +200,7 @@
       "enabled": false
     },
     {
-      "description": "matrix-js-sdk pins its crypto WASM exactly, and the build serves the WASM from the root copy, so the root must stay on the SDK's version (scripts/renovate-config.spec.mjs checks there is one copy). A root bump alone splits them (#2134, #2139). Move the root copy by hand in the matrix-js-sdk update that changes the pin; the one-copy check fails there until it does.",
+      "description": "matrix-js-sdk pins its crypto WASM exactly, and the build serves the WASM from the root copy, so the root must stay on the SDK's version (scripts/renovate-config.spec.mjs checks there is one copy). A root bump alone splits them (#2134, #2139). The pnpm override that links libs/native/crypto-backend in its place hides that split, so scripts/native-crypto-pin.mjs fails instead until the root package.json, the facade's npm: alias of the package and the SDK's pin agree. matchPackageNames matches the alias too (its packageName is the real package), so this rule keeps Renovate off both. Move the two by hand in the matrix-js-sdk update that changes the pin.",
       "matchPackageNames": ["@matrix-org/matrix-sdk-crypto-wasm"],
       "enabled": false
     },

@@ -43,8 +43,19 @@ const packageJson = (wasm) =>
   JSON.stringify({
     dependencies: { '@matrix-org/matrix-sdk-crypto-wasm': wasm },
   });
+const facadeJson = (...aliases) =>
+  JSON.stringify({
+    dependencies: Object.fromEntries(
+      aliases.map((version, index) => [
+        `@matrix-org/matrix-sdk-crypto-wasm-real${index || ''}`,
+        `npm:@matrix-org/matrix-sdk-crypto-wasm@${version}`,
+      ]),
+    ),
+  });
 const check = ({
   wasm = '18.9.0',
+  facade = facadeJson('18.9.0'),
+  sdk = '18.9.0',
   recorded = '18.9.0',
   crypto,
   common,
@@ -55,6 +66,8 @@ const check = ({
 } = {}) =>
   checkNativeCryptoPin({
     packageJson: packageJson(wasm),
+    facadePackageJson: facade,
+    jsSdkPackageJson: packageJson(sdk),
     cargoToml: manifest(recorded, crypto, common, sqlite),
     cargoLock: lock(locked, extra),
     wasmLock: snapshot,
@@ -65,6 +78,8 @@ describe('native crypto pin', () => {
     expect(
       checkNativeCryptoPin({
         packageJson: read('package.json'),
+        facadePackageJson: read('libs/native/crypto-backend/package.json'),
+        jsSdkPackageJson: read('node_modules/matrix-js-sdk/package.json'),
         cargoToml: read('native/crypto/Cargo.toml'),
         cargoLock: read('native/crypto/Cargo.lock'),
         wasmLock: read('native/crypto/wasm-lock.json'),
@@ -77,11 +92,38 @@ describe('native crypto pin', () => {
   });
 
   it('fails when the WASM package moves without the crate', () => {
-    expect(check({ wasm: '18.10.0' })).toEqual([
+    expect(
+      check({ wasm: '18.10.0', facade: facadeJson('18.10.0'), sdk: '18.10.0' }),
+    ).toEqual([
       expect.stringContaining(
         'package.json has @matrix-org/matrix-sdk-crypto-wasm 18.10.0',
       ),
     ]);
+  });
+
+  it('fails when the facade re-exports another WASM version', () => {
+    expect(check({ facade: facadeJson('18.9.2') })).toEqual([
+      'libs/native/crypto-backend/package.json re-exports @matrix-org/matrix-sdk-crypto-wasm 18.9.2, but package.json has 18.9.0: move them together',
+    ]);
+  });
+
+  it('fails when the facade has no single npm: alias of the WASM package', () => {
+    expect(check({ facade: facadeJson() })).toEqual([
+      expect.stringContaining('exactly one npm: alias; found 0'),
+    ]);
+    expect(check({ facade: facadeJson('18.9.0', '18.9.0') })).toEqual([
+      expect.stringContaining('exactly one npm: alias; found 2'),
+    ]);
+  });
+
+  it('fails when matrix-js-sdk pins another WASM version than the override gives it', () => {
+    // A matrix-js-sdk bump alone: pnpm still links the facade, so the SDK would run on 18.9.0.
+    expect(check({ sdk: '18.9.2' })).toEqual([
+      expect.stringContaining(
+        'the installed matrix-js-sdk pins @matrix-org/matrix-sdk-crypto-wasm 18.9.2, but package.json has 18.9.0',
+      ),
+    ]);
+    expect(check({ sdk: '^18.9.0' })).toHaveLength(1);
   });
 
   it('fails when the crate moves without the WASM package', () => {
