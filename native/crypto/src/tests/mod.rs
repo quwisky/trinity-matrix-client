@@ -6,8 +6,10 @@ use serde_json::{Value, json};
 use crate::{call, call_batch};
 
 mod backup;
+mod dehydrated;
 mod devices;
 mod events;
+mod secrets;
 mod verification;
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
