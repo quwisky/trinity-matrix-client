@@ -21,7 +21,7 @@ cd ../..
 pnpm nx run scripts:native-crypto-interop
 ```
 
-The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract test, which runs each finished native call and the same WASM call side by side and expects the same answer. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
+The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
 
 ## Surface status {#surface}
 
@@ -29,13 +29,13 @@ The interop target drives the crate's command-line binary and the repository's W
 
 | Area               | Done | Planned | Shim |
 | ------------------ | ---- | ------- | ---- |
-| core               | 15   | 8       | 0    |
-| events             | 2    | 3       | 0    |
+| core               | 17   | 6       | 0    |
+| events             | 4    | 1       | 0    |
 | room-keys          | 4    | 0       | 0    |
 | backup             | 10   | 0       | 0    |
 | store              | 0    | 0       | 3    |
-| devices-identities | 0    | 32      | 4    |
-| cross-signing      | 0    | 4       | 0    |
+| devices-identities | 28   | 4       | 4    |
+| cross-signing      | 4    | 0       | 0    |
 | verification       | 0    | 38      | 0    |
 | secrets            | 0    | 5       | 0    |
 | key-bundles        | 0    | 10      | 0    |
@@ -70,3 +70,5 @@ The debug surface trusts its JavaScript caller. Before any of it ships in a rele
 - Plugin registration moves to `main`, behind a flag.
 - The request queue is bounded.
 - The shim refuses `StoreHandle.open` with a store prefix: WASM then opens a passphrase store, or an unencrypted persistent one when Trinity has no storage key, and the native crate offers only a raw-key store or memory.
+- The shim passes the key from the snapshot its JavaScript object wraps on every device and identity call: `ed25519Key` (`setLocalTrust`, `verifyDevice`, `encryptToDeviceEvent`) and `masterKey`, the public master key (`verifyIdentity`, `withdrawVerification`, `pinCurrentMasterKey`). Without it the call acts on whatever device or identity now has that ID; with it a changed object fails with `StaleObject`, and nothing changes or is encrypted. The verification calls that start from a device or identity (`requestVerification`, `verificationRequestContent`) must take the same key when they land.
+- The shim builds real `OwnUserIdentity` and `OtherUserIdentity` instances from the snapshot's `kind`, because matrix-js-sdk tells them apart with `instanceof`.

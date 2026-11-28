@@ -57,16 +57,21 @@ impl TryFrom<EncryptionSettingsParams> for EncryptionSettings {
             };
         }
         if let Some(strategy) = params.sharing_strategy {
-            settings.sharing_strategy = match strategy.as_str() {
-                "allDevices" => CollectStrategy::AllDevices,
-                "errorOnUnverifiedUserProblem" => CollectStrategy::ErrorOnVerifiedUserProblem,
-                "identityBasedStrategy" => CollectStrategy::IdentityBasedStrategy,
-                "onlyTrustedDevices" => CollectStrategy::OnlyTrustedDevices,
-                _ => return Err(CallError::invalid("unknown sharing strategy")),
-            };
+            settings.sharing_strategy = collect_strategy(&strategy)?;
         }
         Ok(settings)
     }
+}
+
+/// The WASM `CollectStrategy` constructor of this name.
+pub fn collect_strategy(name: &str) -> CallResult<CollectStrategy> {
+    Ok(match name {
+        "allDevices" => CollectStrategy::AllDevices,
+        "errorOnUnverifiedUserProblem" => CollectStrategy::ErrorOnVerifiedUserProblem,
+        "identityBasedStrategy" => CollectStrategy::IdentityBasedStrategy,
+        "onlyTrustedDevices" => CollectStrategy::OnlyTrustedDevices,
+        _ => return Err(CallError::invalid("unknown sharing strategy")),
+    })
 }
 
 /// The WASM class exposes its field in snake case.

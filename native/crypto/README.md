@@ -31,10 +31,22 @@ The same target runs `scripts/native-crypto-contract.test.mjs`: each `done` call
 manifest (below) and its WASM counterpart run the same step and must answer the same, by value
 (by shape only where the answer is random, such as fresh ciphertext). Room keys exported on one
 side import on the other, a backup made on one side restores on the other, and a malformed key
-or a tampered backup signature fails the same way on both. Both suites share
-`scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails unless
-it called each entry's native method. Without cargo on `PATH` the suites are skipped and say
-why; with `CI` set they fail instead.
+or a tampered backup signature fails the same way on both.
+`scripts/native-crypto-trust.test.mjs` does the same for devices, identities and cross-signing:
+a native and a WASM observer see the same cross-signed users through the in-test homeserver
+(which also takes signing-key and signature uploads) and must give the same trust answers:
+another user's unverified device, verification and a later key change (violation, pinning,
+withdrawal), pinning a changed identity, local trust and blacklisting, own devices signed by
+cross-signing, signatures tampered with, cross-signing bootstrap and key import (also with wrong
+keys), tracked users marked dirty and backup info signed by own devices. They also check what
+must stay untrusted: a reset of the own identity until it is verified again, a self-signing key
+its master key did not sign, a forged user-signing signature, a device signed by another user's
+self-signing key, and which devices each `deviceBasedStrategy` shares with. All three suites
+share `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails
+unless the answer of each entry's native method reached a comparison with WASM (`expectSame`,
+or the homeserver's comparison of the requests it saw); a call made only for setup, or whose
+answer is dropped, does not count. Without cargo on `PATH` the suites are skipped and say why;
+with `CI` set they fail instead.
 CI runs the crate checks and this test in the `Native crypto (Rust)` job when the crate, its
 scripts, the WASM version or the CI workflow change.
 
@@ -71,7 +83,36 @@ Methods, parameter names and result shapes follow the
   serialised form: `saveBackupDecryptionKey` takes `decryptionKeyBase64`,
   `importBackedUpRoomKeys` takes `{ roomId: { sessionId: data } }` for WASM's nested `Map`.
 - An invalid backup decryption key fails with code `CryptoError` and a fixed message, where
-  WASM's decoder message names a character of the key and its offset.
+  WASM's decoder message names a character of the key and its offset. So does an invalid
+  private key in `importCrossSigningKeys` (`Error while importing <secret name>: invalid key`).
+- Objects with identity are not handles. `getDevice` and `getUserDevices` return `Device`
+  snapshots: every getter matrix-js-sdk reads (`userId`, `deviceId`, `displayName` when set,
+  `keys` as key ID to base64, `algorithms`, `signatures` as signer to key ID to
+  `{ isValid, signature }` or `{ isValid, invalidSignatureSource }`) and the trust answers
+  (`isVerified`, `isCrossSigningTrusted`, `isCrossSignedByOwner`, `isLocallyTrusted`,
+  `isBlacklisted`, `localTrustState`, `isDeleted`, `isDehydrated`). `getIdentity` returns
+  `kind` (`own` or `other`), `isVerified`, `wasPreviouslyVerified`,
+  `hasVerificationViolation`, `masterKey` and `selfSigningKey`, plus `userSigningKey` (own)
+  or `identityNeedsUserApproval` (other); keys are the JSON strings WASM returns. A snapshot
+  is current when returned; ask again after a change. The objects' methods are calls that
+  take the object's keys and resolve it again: `setLocalTrust`, `verifyDevice`,
+  `encryptToDeviceEvent` (`userId`, `deviceId`) and `verifyIdentity`,
+  `withdrawVerification`, `pinCurrentMasterKey` (`userId`). A device or identity the
+  machine no longer knows fails with `UnknownDevice` or `UnknownIdentity`.
+- Because the keys are only IDs, every call on a device or identity also takes the key the
+  host's object was read with, as a WASM object keeps the keys it was made with:
+  `ed25519Key` for `setLocalTrust`, `verifyDevice` and `encryptToDeviceEvent` (the snapshot's
+  `keys["ed25519:<deviceId>"]`), `masterKey` for `verifyIdentity`, `withdrawVerification` and
+  `pinCurrentMasterKey` (the public key in the snapshot's `masterKey` JSON). When the device or
+  identity now has another key (a device logged in again under its ID, a reset master key),
+  the call fails with `StaleObject`, changes nothing and encrypts nothing. The verification
+  calls that start from a device or identity (`requestVerification`,
+  `verificationRequestContent`, slice C) must take the same key. Both are optional so the WASM-shaped
+  call still works, but the shim must always pass them, and must build real
+  `OwnUserIdentity` / `OtherUserIdentity` instances by `kind`: matrix-js-sdk uses
+  `instanceof`.
+- Signature uploads that a call returns (`verifyDevice`, `verifyIdentity`,
+  `bootstrapCrossSigning`) have no `id`, as in WASM: send them, do not mark them as sent.
 
 ### Events
 
@@ -79,9 +120,11 @@ What WASM reports through `registerRoomKeyUpdatedCallback` and its siblings is q
 device and read with `pollEvents` (no parameters), which answers
 `{ "events": [ … ], "dropped": n }` and empties the queue. Each event is
 `{ "type", … }` with one callback invocation's payload: `roomKeysReceived` and
-`roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields. The
-other callbacks (devices, identities, secrets, verification) become event types of their own as
-their calls land; `surface.json` names each one.
+`roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields;
+`userIdentityUpdated` carries `userId` (one event per new or changed identity, as WASM calls its
+callback per user); `devicesUpdated` carries `userIds`, sorted, once per store change (an empty
+list when only identities changed, as in WASM). The other callbacks (secrets, verification)
+become event types of their own as their calls land; `surface.json` names each one.
 
 - Every call moves the events it caused into the queue before it returns, so a poll right
   after a call sees them. Each event is delivered once; events of one type keep their order
@@ -95,9 +138,9 @@ their calls land; `surface.json` names each one.
   `dropped` means the host's view is stale: for room keys, retry every undecryptable event.
 - After a panic drops the machine, `pollEvents` still returns what it queued, and `init`
   listens to the reloaded machine. `close` discards the queue: poll before closing.
-- Not every loss can be counted: the store drops a withheld batch its broadcast channel
-  skipped without saying so. The channel holds 16 batches and every call drains it, so only a
-  single call that stores more than 16 withheld batches could lose one.
+- Not every loss can be counted: the store drops a withheld batch, or an identity and device
+  change, its broadcast channel skipped without saying so. Those channels hold 16 and 32
+  changes and every call drains them, so only a single call that stores more could lose one.
 
 ### Surface manifest
 
@@ -106,7 +149,9 @@ from its sources by `scripts/native-crypto-surface.mjs` (TypeScript's checker; t
 `.d.ts` and `declare module` augmentations). Members of stateful classes carry `status`
 (`done`: answered by the `native` call; `planned`; `shim`: answered in JavaScript, with a
 `note`), an `area`, and for callbacks the `event` type. `wasmHelpers` are stateless helpers that
-keep running on WASM; `pureJs` are value types the shim implements. `node
+keep running on WASM; `pureJs` are value types the shim implements, and `shimNotes` says what
+the shim must do for one of them or a helper where that is not obvious (such as mapping
+`CollectStrategy.deviceBasedStrategy` onto the crate's strategy names). `node
 scripts/native-crypto-surface.mjs write` regenerates the lists and keeps the hand-written
 fields; `scripts/native-crypto-surface.spec.mjs`, part of `pnpm nx test scripts`, fails when the
 manifest and matrix-js-sdk disagree or a `done` member has no contract case.
@@ -129,6 +174,11 @@ caller's copies as soon as `init` returns.
 The backup decryption key is no better off: the crate wipes its own base64 copy in
 `saveBackupDecryptionKey`, but not the request string or serde's buffers, and the base64 that
 `getBackupKeys` returns stays in the response string, as it does in WASM's `BackupKeys`.
+
+Private cross-signing keys leave the crate only through `exportCrossSigningKeys` (WASM's
+`CrossSigningKeyExport` getters, `self_signing_key` in snake case as there), never in events or
+errors. The upstream export type wipes itself; the keys in the response string and those passed
+to `importCrossSigningKeys` in the request string are not wiped.
 
 ## For the JNI wrapper
 

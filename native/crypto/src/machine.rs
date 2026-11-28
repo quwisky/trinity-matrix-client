@@ -25,6 +25,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
 use crate::backup;
+use crate::devices;
 use crate::error::{CallError, CallResult};
 use crate::events;
 use crate::requests::{self, RequestType};
@@ -91,6 +92,22 @@ const MACHINE_METHODS: &[&str] = &[
     "isBackupEnabled",
     "verifyBackup",
     "sign",
+    "getDevice",
+    "getUserDevices",
+    "getIdentity",
+    "setLocalTrust",
+    "verifyDevice",
+    "encryptToDeviceEvent",
+    "verifyIdentity",
+    "withdrawVerification",
+    "pinCurrentMasterKey",
+    "queryKeysForUsers",
+    "trackedUsers",
+    "markAllTrackedUsersAsDirty",
+    "crossSigningStatus",
+    "bootstrapCrossSigning",
+    "exportCrossSigningKeys",
+    "importCrossSigningKeys",
     #[cfg(test)]
     "debugPanic",
     #[cfg(test)]
@@ -190,6 +207,24 @@ async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
         "isBackupEnabled" => backup::is_backup_enabled(machine).await,
         "verifyBackup" => backup::verify_backup(machine, params(args)?).await,
         "sign" => backup::sign(machine, params(args)?).await,
+        "getDevice" => devices::get_device(machine, params(args)?).await,
+        "getUserDevices" => devices::get_user_devices(machine, params(args)?).await,
+        "getIdentity" => devices::get_identity(machine, params(args)?).await,
+        "setLocalTrust" => devices::set_local_trust(machine, params(args)?).await,
+        "verifyDevice" => devices::verify_device(machine, params(args)?).await,
+        "encryptToDeviceEvent" => devices::encrypt_to_device_event(machine, params(args)?).await,
+        "verifyIdentity" => devices::verify_identity(machine, params(args)?).await,
+        "withdrawVerification" => devices::withdraw_verification(machine, params(args)?).await,
+        "pinCurrentMasterKey" => devices::pin_current_master_key(machine, params(args)?).await,
+        "queryKeysForUsers" => devices::query_keys_for_users(machine, params(args)?),
+        "trackedUsers" => devices::tracked_users(machine).await,
+        "markAllTrackedUsersAsDirty" => devices::mark_all_tracked_users_as_dirty(machine).await,
+        "crossSigningStatus" => devices::get_cross_signing_status(machine).await,
+        "bootstrapCrossSigning" => devices::bootstrap_cross_signing(machine, params(args)?).await,
+        "exportCrossSigningKeys" => devices::export_cross_signing_keys(machine).await,
+        "importCrossSigningKeys" => {
+            devices::import_cross_signing_keys(machine, params(args)?).await
+        }
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]
@@ -457,8 +492,8 @@ async fn receive_sync_changes(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UsersParams {
-    users: Vec<OwnedUserId>,
+pub(crate) struct UsersParams {
+    pub(crate) users: Vec<OwnedUserId>,
 }
 
 async fn update_tracked_users(machine: &OlmMachine, params: UsersParams) -> CallResult {
