@@ -150,10 +150,7 @@ describe('install', () => {
   it('throws for every member it does not implement, methods and getters alike', async () => {
     const { olm } = await machine();
     expect(() =>
-      olm.getDevice(
-        new real.UserId(description.userId),
-        new real.DeviceId('B'),
-      ),
+      olm.getVerificationRequests(new real.UserId(description.userId)),
     ).toThrow(NotOnNativeError);
     expect(() => olm.dehydratedDevices()).toThrow(
       'OlmMachine.dehydratedDevices is not implemented on native crypto',

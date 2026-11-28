@@ -2,6 +2,9 @@
 // JavaScript can construct stay real WASM objects; the others are guarded value objects.
 import {
   CollectStrategy,
+  CrossSigningBootstrapRequests,
+  CrossSigningKeyExport,
+  CrossSigningStatus,
   Curve25519PublicKey,
   DecryptedRoomEvent,
   DecryptedToDeviceEvent,
@@ -21,21 +24,27 @@ import {
   type ProcessedToDeviceEvent,
   RequestType,
   RoomId,
+  RoomKeyCounts,
+  RoomKeyImportResult,
   RoomKeyInfo,
   RoomKeyWithheldInfo,
   RoomMessageRequest,
   RoomPendingKeyBundleDetails,
   RoomSettings,
   ShieldState,
+  Signatures,
   SignatureUploadRequest,
+  SignatureVerification,
   ToDeviceEncryptionInfo,
   ToDeviceRequest,
   ToDeviceUnableToDecryptInfo,
+  UploadSigningKeysRequest,
   UserId,
   UTDToDeviceEvent,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
 import { wasmValue } from './guard';
+import { isObject } from './types';
 
 export interface RequestJson {
   readonly id?: string;
@@ -354,3 +363,110 @@ export function toPendingBundle(
     inviteAcceptedAtMillis: json.inviteAcceptedAtMillis,
   });
 }
+
+export interface CrossSigningStatusJson {
+  readonly hasMaster: boolean;
+  readonly hasSelfSigning: boolean;
+  readonly hasUserSigning: boolean;
+}
+
+export const isCrossSigningStatus = (value: unknown): boolean =>
+  isObject(value) &&
+  ['hasMaster', 'hasSelfSigning', 'hasUserSigning'].every(
+    (flag) => typeof value[flag] === 'boolean',
+  );
+
+export const toCrossSigningStatus = (
+  json: CrossSigningStatusJson,
+): CrossSigningStatus =>
+  wasmValue(CrossSigningStatus, {
+    hasMaster: json.hasMaster,
+    hasSelfSigning: json.hasSelfSigning,
+    hasUserSigning: json.hasUserSigning,
+  });
+
+/** The private cross-signing keys, under WASM's getter names (`self_signing_key` too). */
+export const toCrossSigningKeyExport = (json: {
+  readonly masterKey?: string;
+  readonly self_signing_key?: string;
+  readonly userSigningKey?: string;
+}): CrossSigningKeyExport =>
+  wasmValue(CrossSigningKeyExport, {
+    masterKey: json.masterKey,
+    self_signing_key: json.self_signing_key,
+    userSigningKey: json.userSigningKey,
+  });
+
+export const toBootstrapRequests = (json: {
+  readonly uploadKeysRequest?: RequestJson;
+  readonly uploadSigningKeysRequest: { readonly body: string };
+  readonly uploadSignaturesRequest: RequestJson;
+}): CrossSigningBootstrapRequests =>
+  wasmValue(CrossSigningBootstrapRequests, {
+    uploadKeysRequest: json.uploadKeysRequest
+      ? toRequest(json.uploadKeysRequest)
+      : undefined,
+    uploadSigningKeysRequest: new UploadSigningKeysRequest(
+      json.uploadSigningKeysRequest.body,
+    ),
+    uploadSignaturesRequest: toRequest(json.uploadSignaturesRequest),
+  });
+
+export const toRoomKeyCounts = (json: {
+  readonly total: number;
+  readonly backedUp: number;
+}): RoomKeyCounts =>
+  wasmValue(RoomKeyCounts, { total: json.total, backedUp: json.backedUp });
+
+/** `trusted` is the crate's answer to WASM's `trusted()`. */
+export const toSignatureVerification = (json: {
+  readonly deviceState: number;
+  readonly userState: number;
+  readonly trusted: boolean;
+}): SignatureVerification =>
+  wasmValue(SignatureVerification, {
+    deviceState: json.deviceState,
+    userState: json.userState,
+    trusted: () => json.trusted,
+  });
+
+/** What `sign` returns: only `asJSON()`, the one member matrix-js-sdk reads. */
+export const toSignatures = (json: unknown): Signatures =>
+  wasmValue(Signatures, { asJSON: () => JSON.stringify(json) });
+
+export interface ImportResultJson {
+  readonly importedCount: number;
+  readonly totalCount: number;
+  readonly keys: Readonly<
+    Record<string, Readonly<Record<string, readonly string[]>>>
+  >;
+  /** The arguments of WASM's last progress listener call, or `null` when it made none. */
+  readonly lastProgress: readonly number[] | null;
+}
+
+export const isImportResult = (value: unknown): boolean =>
+  isObject(value) &&
+  typeof value['importedCount'] === 'number' &&
+  typeof value['totalCount'] === 'number' &&
+  isObject(value['keys']) &&
+  (value['lastProgress'] === null ||
+    (Array.isArray(value['lastProgress']) &&
+      value['lastProgress'].every((entry) => typeof entry === 'number')));
+
+export const toImportResult = (json: ImportResultJson): RoomKeyImportResult =>
+  wasmValue(RoomKeyImportResult, {
+    importedCount: json.importedCount,
+    totalCount: json.totalCount,
+    keys: () =>
+      new Map(
+        Object.entries(json.keys).map(([room, senders]) => [
+          room,
+          new Map(
+            Object.entries(senders).map(([sender, sessions]) => [
+              sender,
+              new Set(sessions),
+            ]),
+          ),
+        ]),
+      ),
+  });

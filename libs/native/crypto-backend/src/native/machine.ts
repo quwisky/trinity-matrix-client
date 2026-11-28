@@ -1,11 +1,18 @@
 import {
+  BackupDecryptionKey,
+  type BackupKeys,
+  type CrossSigningBootstrapRequests,
+  type CrossSigningKeyExport,
+  type CrossSigningStatus,
   type DecryptedRoomEvent,
   type DecryptionSettings,
   DeviceId,
+  type Device,
   type DeviceLists,
   type EncryptionInfo,
   type EncryptionSettings,
   type IdentityKeys,
+  type KeysBackupRequest,
   type KeysClaimRequest,
   type KeysQueryRequest,
   OlmMachine,
@@ -17,37 +24,66 @@ import {
   type RoomKeyInfo,
   type RoomKeyWithheldInfo,
   type RoomId,
+  type RoomKeyCounts,
+  type RoomKeyImportResult,
   type RoomPendingKeyBundleDetails,
   type RoomSettings,
+  type Signatures,
+  type SignatureVerification,
   StoreHandle,
   type StoredRoomKeyBundleData,
   type ToDeviceRequest,
+  type UserDevices,
   UserId,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
 import type { CallQueue } from './call-queue';
 import {
+  type CrossSigningStatusJson,
   encryptionSettingsJson,
   type EncryptionInfoJson,
+  type ImportResultJson,
+  isCrossSigningStatus,
+  isImportResult,
   type MegolmErrorDetails,
   type RequestJson,
   roomSettingsJson,
   type RoomSettingsJson,
+  toBootstrapRequests,
+  toCrossSigningKeyExport,
+  toCrossSigningStatus,
   toDecryptedRoomEvent,
   toEncryptionInfo,
   toIdentityKeys,
+  toImportResult,
   toMegolmDecryptionError,
   type PendingBundleJson,
   toPendingBundle,
   toProcessedToDeviceEvent,
   toRequest,
+  toRoomKeyCounts,
   toRoomKeyInfo,
   toRoomKeyWithheldInfo,
   toRoomSettings,
+  toSignatures,
+  toSignatureVerification,
 } from './convert';
 import { NotOnNativeError, standIn } from './guard';
 import {
+  type DeviceJson,
+  type IdentityJson,
+  isDevice,
+  isIdentity,
+  type MachineCall,
+  NativeBackupKeys,
+  NativeDevice,
+  NativeUserDevices,
+  toIdentity,
+} from './trust';
+import {
+  checked,
   describeError,
+  isObject,
   NativeBridgeError,
   NativeCryptoError,
   type NativeCryptoLogger,
@@ -105,7 +141,10 @@ const DROPPED = new Set(['Panic', 'UnknownMachine']);
  * Not replayed: calls whose half-done effect a replay could apply twice or wrongly —
  * `markRequestAsSent` (the sent request belonged to the dropped machine; the reloaded one builds
  * it again), `shareRoomKey`, `encryptRoomEvent`, `encryptStateEvent` and `invalidateGroupSession`
- * (session state; matrix-js-sdk retries the send) — and `close`.
+ * (session state; matrix-js-sdk retries the send), `encryptToDeviceEvent` (the same, for an
+ * Olm session), `bootstrapCrossSigning` (each run makes new keys; matrix-js-sdk's bootstrap
+ * fails and is run again), `pushSecretToVerifiedDevices` (it could queue the secret to every
+ * verified device twice) — and `close`.
  */
 const REPLAYABLE = new Set([
   'receiveSyncChanges',
@@ -130,26 +169,34 @@ const REPLAYABLE = new Set([
   'clearRoomPendingKeyBundle',
   'getReceivedRoomKeyBundleData',
   'roomKeyRequestsEnabled',
+  // Reads of devices, identities, keys and backup state.
+  'getDevice',
+  'getUserDevices',
+  'crossSigningStatus',
+  'exportCrossSigningKeys',
+  'exportRoomKeys',
+  'roomKeyCounts',
+  'getBackupKeys',
+  'verifyBackup',
+  // Deterministic, nothing sent: an ed25519 signature of the same message.
+  'sign',
+  'verifyDevice',
+  'verifyIdentity',
+  // Set state to an absolute value; the trust calls carry the key their object was read with.
+  'setLocalTrust',
+  'withdrawVerification',
+  'pinCurrentMasterKey',
+  'importCrossSigningKeys',
+  'saveBackupDecryptionKey',
+  'enableBackupV1',
+  'disableBackup',
+  // Nothing sent yet: the reloaded machine builds the request again.
+  'backupRoomKeys',
+  // Keys already imported are skipped (the replay reports fewer new ones).
+  'importExportedRoomKeys',
+  'importBackedUpRoomKeys',
 ]);
 
-/** Fails closed: an answer the crate never gives must not read as a legitimate one. */
-function checked<T>(
-  method: string,
-  value: unknown,
-  valid: (value: unknown) => boolean,
-): T {
-  if (!valid(value)) {
-    throw new NativeCryptoError(
-      method,
-      'UnexpectedAnswer',
-      'unexpected answer from the crate',
-    );
-  }
-  return value as T;
-}
-
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === 'object' && value !== null && !Array.isArray(value);
 const isShield = (value: unknown) =>
   isObject(value) && typeof value['color'] === 'number';
 const isEncryptionInfo = (value: unknown) =>
@@ -187,6 +234,9 @@ export class NativeOlmMachine {
   #recovery: Promise<void> | undefined;
   #lost = false;
   #closed = false;
+  /** How the device and identity stand-ins call: through this machine's reload and loss rules. */
+  readonly #objectCall: MachineCall = (method, params) =>
+    this.#call(method, params);
 
   private constructor(
     context: MachineContext,
@@ -725,19 +775,258 @@ export class NativeOlmMachine {
     })) as boolean;
   }
 
-  /** Only "no identity" so far: the identity stand-ins come with the trust calls. */
+  /** A snapshot by kind: matrix-js-sdk tells own and other identities apart with `instanceof`. */
   public async getIdentity(
     userId: UserId,
   ): Promise<OwnUserIdentity | OtherUserIdentity | undefined> {
-    const identity = checked(
+    const identity = checked<IdentityJson | null>(
       'getIdentity',
       await this.#call('getIdentity', { userId: userId.toString() }),
+      (value) => value === null || isIdentity(value),
+    );
+    return identity
+      ? toIdentity(identity, userId.toString(), this.#objectCall)
+      : undefined;
+  }
+
+  public async getDevice(
+    userId: UserId,
+    deviceId: DeviceId,
+    timeoutSecs?: number | null,
+  ): Promise<Device | undefined> {
+    const device = checked<DeviceJson | null>(
+      'getDevice',
+      await this.#call('getDevice', {
+        userId: userId.toString(),
+        deviceId: deviceId.toString(),
+        ...(timeoutSecs == null ? {} : { timeoutSecs }),
+      }),
+      (value) => value === null || isDevice(value),
+    );
+    return device
+      ? (new NativeDevice(device, this.#objectCall) as unknown as Device)
+      : undefined;
+  }
+
+  public async getUserDevices(
+    userId: UserId,
+    timeoutSecs?: number | null,
+  ): Promise<UserDevices> {
+    const devices = checked<DeviceJson[]>(
+      'getUserDevices',
+      await this.#call('getUserDevices', {
+        userId: userId.toString(),
+        ...(timeoutSecs == null ? {} : { timeoutSecs }),
+      }),
+      (value) => Array.isArray(value) && value.every(isDevice),
+    );
+    return new NativeUserDevices(
+      devices.map((device) => new NativeDevice(device, this.#objectCall)),
+    ) as unknown as UserDevices;
+  }
+
+  public async crossSigningStatus(): Promise<CrossSigningStatus> {
+    return toCrossSigningStatus(
+      checked<CrossSigningStatusJson>(
+        'crossSigningStatus',
+        await this.#call('crossSigningStatus'),
+        isCrossSigningStatus,
+      ),
+    );
+  }
+
+  public async bootstrapCrossSigning(
+    reset: boolean,
+  ): Promise<CrossSigningBootstrapRequests> {
+    return toBootstrapRequests(
+      checked<Parameters<typeof toBootstrapRequests>[0]>(
+        'bootstrapCrossSigning',
+        await this.#call('bootstrapCrossSigning', { reset }),
+        (value) =>
+          isObject(value) &&
+          isObject(value['uploadSigningKeysRequest']) &&
+          isObject(value['uploadSignaturesRequest']),
+      ),
+    );
+  }
+
+  /** The private keys, as WASM returns them; the shim keeps no copy. */
+  public async exportCrossSigningKeys(): Promise<
+    CrossSigningKeyExport | undefined
+  > {
+    const keys = checked<Parameters<typeof toCrossSigningKeyExport>[0] | null>(
+      'exportCrossSigningKeys',
+      await this.#call('exportCrossSigningKeys'),
+      (value) => value === null || isObject(value),
+    );
+    return keys ? toCrossSigningKeyExport(keys) : undefined;
+  }
+
+  public async importCrossSigningKeys(
+    masterKey?: string | null,
+    selfSigningKey?: string | null,
+    userSigningKey?: string | null,
+  ): Promise<CrossSigningStatus> {
+    return toCrossSigningStatus(
+      checked<CrossSigningStatusJson>(
+        'importCrossSigningKeys',
+        await this.#call('importCrossSigningKeys', {
+          masterKey,
+          selfSigningKey,
+          userSigningKey,
+        }),
+        isCrossSigningStatus,
+      ),
+    );
+  }
+
+  /**
+   * Every room key: the predicate cannot cross to the crate, and matrix-js-sdk's only one
+   * (`() => true`) keeps every key.
+   */
+  public async exportRoomKeys(_predicate: unknown): Promise<string> {
+    return checked<string>(
+      'exportRoomKeys',
+      await this.#call('exportRoomKeys'),
+      (value) => typeof value === 'string',
+    );
+  }
+
+  /** The listener is called once, when the import is done, with WASM's last arguments. */
+  public async importExportedRoomKeys(
+    exportedRoomKeys: string,
+    progressListener: (progress: number, total: number) => void,
+  ): Promise<RoomKeyImportResult> {
+    return this.#imported(
+      'importExportedRoomKeys',
+      await this.#call('importExportedRoomKeys', { exportedRoomKeys }),
+      progressListener,
+    );
+  }
+
+  /** As `importExportedRoomKeys`; the listener's third argument counts the failures. */
+  public async importBackedUpRoomKeys(
+    backedUpRoomKeys: Map<RoomId, Map<string, unknown>>,
+    progressListener:
+      ((progress: number, total: number, failures: number) => void) | undefined,
+    backupVersion: string,
+  ): Promise<RoomKeyImportResult> {
+    // matrix-js-sdk keys the map by a new RoomId per session, so one room can come many times.
+    const rooms: Record<string, Record<string, unknown>> = {};
+    for (const [roomId, sessions] of backedUpRoomKeys) {
+      Object.assign(
+        (rooms[roomId.toString()] ??= {}),
+        Object.fromEntries(sessions),
+      );
+    }
+    return this.#imported(
+      'importBackedUpRoomKeys',
+      await this.#call('importBackedUpRoomKeys', {
+        backedUpRoomKeys: rooms,
+        backupVersion,
+      }),
+      progressListener,
+    );
+  }
+
+  #imported(
+    method: string,
+    answer: unknown,
+    listener: ((...progress: number[]) => void) | undefined,
+  ): RoomKeyImportResult {
+    const result = checked<ImportResultJson>(method, answer, isImportResult);
+    if (result.lastProgress) listener?.(...result.lastProgress);
+    return toImportResult(result);
+  }
+
+  public async roomKeyCounts(): Promise<RoomKeyCounts> {
+    return toRoomKeyCounts(
+      checked<Parameters<typeof toRoomKeyCounts>[0]>(
+        'roomKeyCounts',
+        await this.#call('roomKeyCounts'),
+        (value) =>
+          isObject(value) &&
+          typeof value['total'] === 'number' &&
+          typeof value['backedUp'] === 'number',
+      ),
+    );
+  }
+
+  public async backupRoomKeys(): Promise<KeysBackupRequest | undefined> {
+    const request = checked<RequestJson | null>(
+      'backupRoomKeys',
+      await this.#call('backupRoomKeys'),
       (value) =>
         value === null ||
-        (isObject(value) && ['own', 'other'].includes(value['kind'] as string)),
+        (isObject(value) && value['type'] === RequestType.KeysBackup),
     );
-    if (identity === null) return undefined;
-    throw new NotOnNativeError('OlmMachine.getIdentity (a cross-signed user)');
+    return request ? (toRequest(request) as KeysBackupRequest) : undefined;
+  }
+
+  /** The decryption key as the real WASM helper, as `BackupKeys.decryptionKey` returns it. */
+  public async getBackupKeys(): Promise<BackupKeys> {
+    const keys = checked<{
+      decryptionKeyBase64?: string;
+      backupVersion?: string;
+    }>(
+      'getBackupKeys',
+      await this.#call('getBackupKeys'),
+      (value) =>
+        isObject(value) &&
+        ['decryptionKeyBase64', 'backupVersion'].every(
+          (field) =>
+            value[field] === undefined || typeof value[field] === 'string',
+        ),
+    );
+    return new NativeBackupKeys(
+      keys.decryptionKeyBase64 === undefined
+        ? undefined
+        : BackupDecryptionKey.fromBase64(keys.decryptionKeyBase64),
+      keys.backupVersion,
+    ) as unknown as BackupKeys;
+  }
+
+  public async saveBackupDecryptionKey(
+    decryptionKey: BackupDecryptionKey,
+    version: string,
+  ): Promise<void> {
+    await this.#call('saveBackupDecryptionKey', {
+      decryptionKeyBase64: decryptionKey.toBase64(),
+      version,
+    });
+  }
+
+  public async enableBackupV1(
+    publicKeyBase64: string,
+    version: string,
+  ): Promise<void> {
+    await this.#call('enableBackupV1', { publicKeyBase64, version });
+  }
+
+  public async disableBackup(): Promise<void> {
+    await this.#call('disableBackup');
+  }
+
+  public async verifyBackup(
+    backupInfo: unknown,
+  ): Promise<SignatureVerification> {
+    return toSignatureVerification(
+      checked<Parameters<typeof toSignatureVerification>[0]>(
+        'verifyBackup',
+        await this.#call('verifyBackup', { backupInfo }),
+        (value) =>
+          isObject(value) &&
+          typeof value['deviceState'] === 'number' &&
+          typeof value['userState'] === 'number' &&
+          typeof value['trusted'] === 'boolean',
+      ),
+    );
+  }
+
+  public async sign(message: string): Promise<Signatures> {
+    return toSignatures(
+      checked('sign', await this.#call('sign', { message }), isObject),
+    );
   }
 
   public async isBackupEnabled(): Promise<boolean> {
@@ -756,6 +1045,11 @@ export class NativeOlmMachine {
 
   public async deleteSecretsFromInbox(secretName: string): Promise<void> {
     await this.#call('deleteSecretsFromInbox', { secretName });
+  }
+
+  /** Queues the pushes in `outgoingRequests` (matrix-js-sdk's `resetKeyBackup` sends the backup key). */
+  public async pushSecretToVerifiedDevices(secretName: string): Promise<void> {
+    await this.#call('pushSecretToVerifiedDevices', { secretName });
   }
 
   public async getAllRoomsPendingKeyBundles(): Promise<

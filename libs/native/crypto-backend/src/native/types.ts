@@ -100,3 +100,22 @@ export class NativeMachineLostError extends Error {
 /** A message for a log line: never the error object, whose `cause` may hold a request. */
 export const describeError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** Fails closed: an answer the crate never gives must not read as a legitimate one. */
+export function checked<T>(
+  method: string,
+  value: unknown,
+  valid: (value: unknown) => boolean,
+): T {
+  if (!valid(value)) {
+    throw new NativeCryptoError(
+      method,
+      'UnexpectedAnswer',
+      'unexpected answer from the crate',
+    );
+  }
+  return value as T;
+}
+
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
