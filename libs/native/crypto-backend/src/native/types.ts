@@ -29,6 +29,12 @@ export interface NativeCryptoOptions {
    * stop the client.
    */
   readonly onMachineLost?: (reason: string) => void;
+  /**
+   * Puts the bridge's own error text (which may quote requests and answers) back into the
+   * errors of calls that carry no secret. For local diagnosis only; never enable it in a release
+   * build.
+   */
+  readonly debugBridgeErrors?: boolean;
   /** The size cap of one batch, in characters of JSON. */
   readonly maxBatchLength?: number;
   /** How long a batch may take before its machines are lost, in milliseconds (60 s). */
@@ -81,9 +87,16 @@ export class NativeCryptoError extends Error {
   }
 }
 
+/** Why a bridge-level failure happened; its text never carries the bridge's own words. */
+export type NativeBridgeFailure = 'failed' | 'timedOut' | 'malformed';
+
 /** The bridge failed, timed out or answered something that is not an answer. */
 export class NativeBridgeError extends Error {
-  public constructor(message: string, options?: ErrorOptions) {
+  public constructor(
+    message: string,
+    public readonly kind: NativeBridgeFailure = 'failed',
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = 'NativeBridgeError';
   }

@@ -71,13 +71,9 @@ export interface RequestJson {
   readonly version?: string;
 }
 
-const required = (
-  value: string | undefined,
-  field: string,
-  type: number,
-): string => {
+const required = (value: string | undefined, field: string): string => {
   if (value === undefined)
-    throw new Error(`native crypto request of type ${type} has no ${field}`);
+    throw new Error(`native crypto request has no ${field}`);
   return value;
 };
 
@@ -85,7 +81,7 @@ const required = (
 export function toRequest(json: RequestJson): OutgoingRequest {
   const id = json.id ?? '';
   const field = (value: string | undefined, name: string) =>
-    required(value, name, json.type);
+    required(value, name);
   switch (json.type) {
     case RequestType.KeysUpload:
       return new KeysUploadRequest(id, json.body);
@@ -117,9 +113,7 @@ export function toRequest(json: RequestJson): OutgoingRequest {
         field(json.version, 'version'),
       );
     default:
-      throw new Error(
-        `native crypto returned a request of unknown type ${json.type}`,
-      );
+      throw new Error('native crypto returned a request of unknown type');
   }
 }
 

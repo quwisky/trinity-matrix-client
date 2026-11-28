@@ -476,7 +476,7 @@ describe('backup and room keys on the native shim', () => {
     expect(keys.backupVersion).toBeUndefined();
   });
 
-  it('saves the key as base64, and a refused key fails as WASM fails: an Error', async () => {
+  it('saves the key as base64, and a refused key fails as WASM fails: an Error, code only', async () => {
     const { olm, crate } = await machine({
       saveBackupDecryptionKey: (request: NativeRequest) =>
         request.params?.['version'] === 'bad'
@@ -499,7 +499,8 @@ describe('backup and room keys on the native shim', () => {
     );
     expect(error).toBeInstanceOf(Error);
     expect(error).toMatchObject({ code: 'CryptoError' });
-    expect((error as Error).message).toContain('invalid backup decryption key');
+    // A call that carries the key gets its code only: no crate text at all.
+    expect((error as Error).message).toContain('withheld');
     expect((error as Error).message).not.toContain(backupKey.toBase64());
   });
 
@@ -862,6 +863,70 @@ describe('a stand-in after its own change', () => {
     },
   );
 
+  it.each([
+    [
+      'OwnUserIdentity.verify',
+      'verifyIdentity',
+      { isVerified: true },
+      (mine: real.OwnUserIdentity) => mine.verify(),
+      (mine: real.OwnUserIdentity) => mine.isVerified(),
+      true,
+    ],
+    [
+      'OwnUserIdentity.withdrawVerification',
+      'withdrawVerification',
+      { wasPreviouslyVerified: false },
+      (mine: real.OwnUserIdentity) => mine.withdrawVerification(),
+      (mine: real.OwnUserIdentity) => mine.wasPreviouslyVerified(),
+      false,
+    ],
+  ] as const)(
+    'reads %s again when it fails after the change upstream made first',
+    async (_name, method, after, act, read, expected) => {
+      const before = { ...own, isVerified: false };
+      let failed = false;
+      const { olm } = await machine({
+        getIdentity: () => ({
+          result: failed ? { ...before, ...after } : before,
+        }),
+        [method]: () => {
+          failed = true;
+          return { error: { code: 'CryptoError', message: 'signing failed' } };
+        },
+      });
+      const mine = (await olm.getIdentity(
+        new real.UserId(description.userId),
+      )) as real.OwnUserIdentity;
+      await expect(act(mine)).rejects.toMatchObject({ code: 'CryptoError' });
+      expect(read(mine)).toBe(expected);
+    },
+  );
+
+  it('reads the device again when setLocalTrust fails after the change', async () => {
+    let failed = false;
+    const { olm } = await machine({
+      getDevice: () => ({
+        result: failed
+          ? device({
+              isBlacklisted: true,
+              localTrustState: real.LocalTrust.BlackListed,
+            })
+          : device(),
+      }),
+      setLocalTrust: () => {
+        failed = true;
+        return { error: { code: 'StoreError', message: 'save failed' } };
+      },
+    });
+    const found = (await olm.getDevice(bob(), bobDevice()))!;
+    await expect(
+      found.setLocalTrust(real.LocalTrust.BlackListed),
+    ).rejects.toMatchObject({
+      code: 'StoreError',
+    });
+    expect(found.isBlacklisted()).toBe(true);
+  });
+
   it('keeps its answers after OtherUserIdentity.verify, which only signs', async () => {
     const { olm, crate } = await machine({
       getIdentity: other,
@@ -939,6 +1004,33 @@ describe('secrets in stand-ins', () => {
 });
 
 describe('shapes that fail closed', () => {
+  it('getSecretsFromInbox refuses an answer that is not a list of strings', async () => {
+    for (const answer of ['abc', [1], null]) {
+      const { olm } = await machine({ getSecretsFromInbox: answer });
+      await expect(
+        olm.getSecretsFromInbox('m.megolm_backup.v1'),
+      ).rejects.toMatchObject({
+        code: 'UnexpectedAnswer',
+      });
+    }
+    const { olm } = await machine({ getSecretsFromInbox: ['a', 'b'] });
+    expect(await olm.getSecretsFromInbox('m.megolm_backup.v1')).toEqual(
+      new Set(['a', 'b']),
+    );
+  });
+
+  it.each([-1, 4, 1.5])(
+    'getDevice refuses a local trust state of %s',
+    async (state) => {
+      const { olm } = await machine({
+        getDevice: device({ localTrustState: state }),
+      });
+      await expect(olm.getDevice(bob(), bobDevice())).rejects.toMatchObject({
+        code: 'UnexpectedAnswer',
+      });
+    },
+  );
+
   const signatures = { type: real.RequestType.SignatureUpload, body: '{}' };
   it.each([
     [
@@ -1073,6 +1165,22 @@ describe('the expected key on every device and identity call (from the manifest)
     expect(new Set(guarded.map(([owner]) => owner))).toEqual(
       new Set(['Device', 'OwnUserIdentity', 'OtherUserIdentity']),
     );
+  });
+
+  it('reads every call of a device or identity as guarded, so a reworded note cannot skip one', () => {
+    const calls = Object.entries(manifest.stateful)
+      .filter(([owner]) =>
+        ['Device', 'OwnUserIdentity', 'OtherUserIdentity'].includes(owner),
+      )
+      .flatMap(([owner, members]) =>
+        Object.entries(members)
+          .filter(([, entry]) => (entry.note ?? '').startsWith('call:'))
+          .map(([member]) => `${owner}.${member}`),
+      );
+    expect(calls.sort()).toEqual(
+      guarded.map(([owner, member]) => `${owner}.${member}`).sort(),
+    );
+    expect(guarded).toHaveLength(11);
   });
 
   it.each(guarded)('%s.%s passes %s', async (owner, member, key, entry) => {

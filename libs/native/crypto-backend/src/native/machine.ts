@@ -777,9 +777,10 @@ export class NativeOlmMachine {
       processed = (
         answer as Parameters<typeof toProcessedToDeviceEvent>[0][]
       ).map(toProcessedToDeviceEvent);
-    } catch (error) {
-      // A rejection here would let matrix-js-sdk move past these events too.
-      this.#lose(`${method} answered ${describeError(error)}`);
+    } catch {
+      // A rejection here would let matrix-js-sdk move past these events too. Never the
+      // conversion's text: it may quote the answer.
+      this.#lose(`${method} answered an unexpected shape`);
       return forever();
     }
     this.#verifications.drop(collectable);
@@ -1192,7 +1193,7 @@ export class NativeOlmMachine {
     return new NativeBackupKeys(
       keys.decryptionKeyBase64 === undefined
         ? undefined
-        : BackupDecryptionKey.fromBase64(keys.decryptionKeyBase64),
+        : backupKeyFrom(keys.decryptionKeyBase64),
       keys.backupVersion,
     ) as unknown as BackupKeys;
   }
@@ -1250,7 +1251,13 @@ export class NativeOlmMachine {
 
   public async getSecretsFromInbox(secretName: string): Promise<Set<string>> {
     return new Set(
-      (await this.#call('getSecretsFromInbox', { secretName })) as string[],
+      checked<string[]>(
+        'getSecretsFromInbox',
+        await this.#call('getSecretsFromInbox', { secretName }),
+        (value) =>
+          Array.isArray(value) &&
+          value.every((secret) => typeof secret === 'string'),
+      ),
     );
   }
 
@@ -1472,6 +1479,19 @@ standIn(NativeOlmMachine, OlmMachine);
 
 const sessionKey = (roomId: string, sessionId: string) =>
   JSON.stringify([roomId, sessionId]);
+
+/** WASM's decoder error names a character of the key and its offset: a fixed one instead. */
+function backupKeyFrom(base64: string): BackupDecryptionKey {
+  try {
+    return BackupDecryptionKey.fromBase64(base64);
+  } catch {
+    throw new NativeCryptoError(
+      'getBackupKeys',
+      'UnexpectedAnswer',
+      'invalid backup decryption key',
+    );
+  }
+}
 
 const decryptionSettingsJson = (settings: DecryptionSettings) => ({
   sender_device_trust_requirement: settings.sender_device_trust_requirement,
