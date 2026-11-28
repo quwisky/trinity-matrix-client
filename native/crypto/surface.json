@@ -21,23 +21,41 @@
         "area": "dehydrated-devices",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
-      "keysForUpload": { "status": "planned", "area": "dehydrated-devices" }
+      "keysForUpload": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "createDehydratedDevice",
+        "note": "{ initialDeviceDisplayName, dehydratedDeviceKey (base64) } → PutDehydratedDeviceRequest { body }; fails without the self-signing key, as WASM"
+      }
     },
     "DehydratedDevices": {
-      "create": { "status": "planned", "area": "dehydrated-devices" },
+      "create": {
+        "status": "shim",
+        "area": "dehydrated-devices",
+        "note": "returns a JS object holding nothing: upstream create() makes an account in a fresh memory store and touches nothing else, so it is deferred to keysForUpload, whose native createDehydratedDevice creates the device and builds its request in one call. The shim refuses a second keysForUpload on the same object (js-sdk calls it once)"
+      },
       "free": {
         "status": "shim",
         "area": "dehydrated-devices",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
       "getDehydratedDeviceKey": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "getDehydratedDeviceKey",
+        "note": "the cached key as toBase64(), or null; the shim builds the DehydratedDeviceKey helper from it"
       },
-      "rehydrate": { "status": "planned", "area": "dehydrated-devices" },
+      "rehydrate": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "rehydrateDevice",
+        "note": "{ dehydratedDeviceKey, deviceId, deviceData (JSON string) } → null; the crate holds the rehydrated device under its device ID, one at a time (a new rehydrate replaces it), until dropRehydratedDevice, close, init or a panic"
+      },
       "saveDehydratedDeviceKey": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "saveDehydratedDeviceKey",
+        "note": "{ dehydratedDeviceKey (base64) } → null; the key is wiped after use"
       }
     },
     "Device": {
@@ -139,19 +157,19 @@
     },
     "Migration": {
       "migrateBaseData": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim throws \"legacy libolm migration is not supported on native\""
       },
       "migrateMegolmSessions": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim throws \"legacy libolm migration is not supported on native\""
       },
       "migrateOlmSessions": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim throws \"legacy libolm migration is not supported on native\""
       }
     },
     "OlmMachine": {
@@ -165,10 +183,17 @@
         "area": "cross-signing",
         "native": "bootstrapCrossSigning"
       },
-      "buildRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
+      "buildRoomKeyBundle": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "buildRoomKeyBundle",
+        "note": "{ roomId } → { encryptedData (base64), mediaEncryptionInfo } or null; the shim builds the EncryptedAttachment from them"
+      },
       "clearRoomPendingKeyBundle": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "clearRoomPendingKeyBundle",
+        "note": "{ roomId } → null"
       },
       "close": { "status": "done", "area": "core", "native": "close" },
       "crossSigningStatus": {
@@ -182,10 +207,16 @@
         "native": "decryptRoomEvent"
       },
       "dehydratedDevices": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "shim",
+        "area": "dehydrated-devices",
+        "note": "returns a JS object whose methods are native calls on the machine; upstream dehydrated_devices() only wraps the machine"
       },
-      "deleteSecretsFromInbox": { "status": "planned", "area": "secrets" },
+      "deleteSecretsFromInbox": {
+        "status": "done",
+        "area": "secrets",
+        "native": "deleteSecretsFromInbox",
+        "note": "{ secretName } → null"
+      },
       "deviceCreationTimeMs": {
         "status": "done",
         "area": "core",
@@ -213,7 +244,12 @@
         "area": "core",
         "native": "encryptRoomEvent"
       },
-      "encryptStateEvent": { "status": "planned", "area": "core" },
+      "encryptStateEvent": {
+        "status": "done",
+        "area": "core",
+        "native": "encryptStateEvent",
+        "note": "{ roomId, eventType, stateKey, content } → the encrypted content as a JSON string. Without a shared room key upstream panics, as in WASM: the crate reports Panic and drops the machine, so the shim must share the key first (js-sdk does)"
+      },
       "exportCrossSigningKeys": {
         "status": "done",
         "area": "cross-signing",
@@ -226,10 +262,17 @@
         "native": "exportRoomKeys",
         "note": "no predicate crosses the surface: every key is exported; matrix-js-sdk passes () => true"
       },
-      "exportSecretsBundle": { "status": "planned", "area": "secrets" },
+      "exportSecretsBundle": {
+        "status": "done",
+        "area": "secrets",
+        "native": "exportSecretsBundle",
+        "note": "the JSON SecretsBundle.to_json() gives (private cross-signing seeds and the backup key: it returns secrets, as WASM); the shim wraps it in an object whose to_json() returns it and whose free() drops it"
+      },
       "getAllRoomsPendingKeyBundles": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getAllRoomsPendingKeyBundles",
+        "note": "sorted by room ID (WASM: store order)"
       },
       "getBackupKeys": {
         "status": "done",
@@ -254,20 +297,34 @@
         "native": "getMissingSessions"
       },
       "getPendingKeyBundleDetailsForRoom": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getPendingKeyBundleDetailsForRoom",
+        "note": "{ roomId } → { roomId, inviterId, inviteAcceptedAtMillis } or null"
       },
       "getReceivedRoomKeyBundleData": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getReceivedRoomKeyBundleData",
+        "note": "{ roomId, inviter } → { senderUser, roomId, url, encryptionInfo } (StoredRoomKeyBundleData getters) or null"
       },
       "getRoomEventEncryptionInfo": {
         "status": "done",
         "area": "core",
         "native": "getRoomEventEncryptionInfo"
       },
-      "getRoomSettings": { "status": "planned", "area": "core" },
-      "getSecretsFromInbox": { "status": "planned", "area": "secrets" },
+      "getRoomSettings": {
+        "status": "done",
+        "area": "core",
+        "native": "getRoomSettings",
+        "note": "{ roomId } → RoomSettings fields or null; unset optional fields are left out"
+      },
+      "getSecretsFromInbox": {
+        "status": "done",
+        "area": "secrets",
+        "native": "getSecretsFromInbox",
+        "note": "{ secretName } → the values as a sorted array (WASM: a Set). One of the two calls that return secret values, as WASM"
+      },
       "getUserDevices": {
         "status": "done",
         "area": "devices-identities",
@@ -287,8 +344,10 @@
         "note": "call: takes userId; request snapshots sorted by flowId"
       },
       "hasDownloadedAllRoomKeys": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "hasDownloadedAllRoomKeys",
+        "note": "{ roomId } → boolean"
       },
       "identityKeys": {
         "status": "done",
@@ -313,9 +372,19 @@
         "native": "importExportedRoomKeys",
         "note": "no progress listener crosses the surface; the shim reports progress from the result"
       },
-      "importSecretsBundle": { "status": "planned", "area": "secrets" },
+      "importSecretsBundle": {
+        "status": "done",
+        "area": "secrets",
+        "native": "importSecretsBundle",
+        "note": "{ bundle: the to_json() form } → null; a bundle that does not parse is InvalidRequest with a fixed message (serde's would quote the value)"
+      },
       "initFromStore": { "status": "done", "area": "core", "native": "init" },
-      "invalidateGroupSession": { "status": "planned", "area": "core" },
+      "invalidateGroupSession": {
+        "status": "done",
+        "area": "core",
+        "native": "invalidateGroupSession",
+        "note": "{ roomId } → whether a session was discarded"
+      },
       "isBackupEnabled": {
         "status": "done",
         "area": "backup",
@@ -336,19 +405,34 @@
         "area": "core",
         "native": "outgoingRequests"
       },
-      "pushSecretToVerifiedDevices": { "status": "planned", "area": "secrets" },
+      "pushSecretToVerifiedDevices": {
+        "status": "done",
+        "area": "secrets",
+        "native": "pushSecretToVerifiedDevices",
+        "note": "{ secretName } → null; the pushes are queued in outgoingRequests, a missing secret fails as in WASM"
+      },
       "queryKeysForUsers": {
         "status": "done",
         "area": "devices-identities",
         "native": "queryKeysForUsers"
       },
-      "receiveRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
+      "receiveRoomKeyBundle": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "receiveRoomKeyBundle",
+        "note": "{ roomId, inviter, url, encryptedBundle (base64) }: the stored bundle data is read again by room and inviter (WASM gets an object JS cannot forge); UnknownBundle when none, StaleObject when its url is no longer the one downloaded. Sender trust and wrong-room keys decided upstream, as WASM"
+      },
       "receiveSyncChanges": {
         "status": "done",
         "area": "core",
         "native": "receiveSyncChanges"
       },
-      "receiveSyncChangesMsc4186": { "status": "planned", "area": "core" },
+      "receiveSyncChangesMsc4186": {
+        "status": "done",
+        "area": "core",
+        "native": "receiveSyncChangesMsc4186",
+        "note": "receiveSyncChanges params; a missing one-time key count means unchanged"
+      },
       "receiveVerificationEvent": {
         "status": "done",
         "area": "verification",
@@ -362,10 +446,11 @@
         "native": "pollEvents"
       },
       "registerReceiveSecretCallback": {
-        "status": "planned",
+        "status": "done",
         "area": "events",
         "event": "secretReceived",
-        "note": "the event carries the secret name only; the value is read with getSecretsFromInbox"
+        "native": "pollEvents",
+        "note": "{ type: \"secretReceived\", name }: the name only. WASM also passes the value; js-sdk ignores it and reads the inbox, so the shim calls the callback with the name and an empty value (or reads getSecretsFromInbox if a caller needs it). No secret enters the event queue"
       },
       "registerRoomKeysWithheldCallback": {
         "status": "done",
@@ -390,7 +475,12 @@
         "area": "room-keys",
         "native": "roomKeyCounts"
       },
-      "roomKeyRequestsEnabled": { "status": "planned", "area": "core" },
+      "roomKeyRequestsEnabled": {
+        "status": "done",
+        "area": "core",
+        "native": "roomKeyRequestsEnabled",
+        "note": "getter and setter: { enabled? } sets it when given and answers the current value. Memory only, as upstream: the shim sets it again after every init (js-sdk sets false once)"
+      },
       "saveBackupDecryptionKey": {
         "status": "done",
         "area": "backup",
@@ -398,16 +488,28 @@
         "note": "takes the key as decryptionKeyBase64"
       },
       "setHasDownloadedAllRoomKeys": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "setHasDownloadedAllRoomKeys",
+        "note": "{ roomId } → null"
       },
-      "setRoomSettings": { "status": "planned", "area": "core" },
+      "setRoomSettings": {
+        "status": "done",
+        "area": "core",
+        "native": "setRoomSettings",
+        "note": "{ roomId, roomSettings: RoomSettings fields } → null; a change to stored settings fails EncryptionDowngrade as in WASM. An unknown algorithm (2) is InvalidRequest, where WASM panics"
+      },
       "shareRoomKey": {
         "status": "done",
         "area": "core",
         "native": "shareRoomKey"
       },
-      "shareRoomKeyBundleData": { "status": "planned", "area": "key-bundles" },
+      "shareRoomKeyBundleData": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "shareRoomKeyBundleData",
+        "note": "{ userId, roomId, url, mediaEncryptionInfo, sharingStrategy (constructor name, js-sdk passes identityBasedStrategy) } → ToDeviceRequest[]"
+      },
       "sign": {
         "status": "done",
         "area": "backup",
@@ -415,8 +517,10 @@
         "note": "returns the object Signatures.asJSON() serialises"
       },
       "storeRoomPendingKeyBundle": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "storeRoomPendingKeyBundle",
+        "note": "{ roomId, inviter } → null"
       },
       "trackedUsers": {
         "status": "done",
@@ -629,11 +733,17 @@
     },
     "RehydratedDevice": {
       "free": {
-        "status": "shim",
+        "status": "done",
         "area": "dehydrated-devices",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "native": "dropRehydratedDevice",
+        "note": "{ deviceId } → null: drops the held device (the shim must call it, as js-sdk does in finally)"
       },
-      "receiveEvents": { "status": "planned", "area": "dehydrated-devices" }
+      "receiveEvents": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "receiveRehydratedEvents",
+        "note": "{ deviceId, toDeviceEvents, decryptionSettings? } → RoomKeyInfo[]; UnknownRehydration when that device is not held"
+      }
     },
     "Sas": {
       "accept": {

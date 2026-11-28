@@ -25,12 +25,15 @@ use tokio::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
 use crate::backup;
+use crate::bundles;
+use crate::dehydrated::{self, Rehydration};
 use crate::devices;
 use crate::error::{CallError, CallResult};
 use crate::events;
 use crate::requests::{self, RequestType};
 use crate::responses;
-use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
+use crate::secrets;
+use crate::settings::{self, DecryptionSettingsParams, EncryptionSettingsParams};
 use crate::verification;
 
 pub(crate) type MachineKey = (OwnedUserId, OwnedDeviceId);
@@ -45,6 +48,8 @@ struct StoreIdentity {
 struct OpenMachine {
     machine: OlmMachine,
     store: StoreIdentity,
+    /// Goes with the machine; `init` drops it too.
+    rehydration: Rehydration,
 }
 
 /// A device's slot. The machine mutex is held for a whole call, so calls for one device
@@ -128,6 +133,35 @@ const MACHINE_METHODS: &[&str] = &[
     "confirmQrScanning",
     "reciprocateQr",
     "qrCodeBytes",
+    "receiveSyncChangesMsc4186",
+    "encryptStateEvent",
+    "invalidateGroupSession",
+    "getRoomSettings",
+    "setRoomSettings",
+    "roomKeyRequestsEnabled",
+    "getSecretsFromInbox",
+    "deleteSecretsFromInbox",
+    "pushSecretToVerifiedDevices",
+    "exportSecretsBundle",
+    "importSecretsBundle",
+    "buildRoomKeyBundle",
+    "shareRoomKeyBundleData",
+    "getReceivedRoomKeyBundleData",
+    "receiveRoomKeyBundle",
+    "getPendingKeyBundleDetailsForRoom",
+    "getAllRoomsPendingKeyBundles",
+    "storeRoomPendingKeyBundle",
+    "clearRoomPendingKeyBundle",
+    "hasDownloadedAllRoomKeys",
+    "setHasDownloadedAllRoomKeys",
+    "createDehydratedDevice",
+    "getDehydratedDeviceKey",
+    "saveDehydratedDeviceKey",
+    "rehydrateDevice",
+    "receiveRehydratedEvents",
+    "dropRehydratedDevice",
+    #[cfg(test)]
+    "debugRehydration",
     #[cfg(test)]
     "debugPanic",
     #[cfg(test)]
@@ -197,10 +231,17 @@ pub async fn dispatch(request: Request) -> CallResult {
     if method == "debugWatches" {
         return Ok(json!(events(&slot).watches.len()));
     }
-    let guard = DropOnPanic(lock_slot(&key, &slot).await, &slot);
-    let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
+    let mut guard = DropOnPanic(lock_slot(&key, &slot).await, &slot);
+    let open = guard.0.as_mut().ok_or_else(unknown_machine)?;
     let mut found = verification::Found::default();
-    let result = run(machine, method, request.params, &mut found).await;
+    let result = run(
+        &open.machine,
+        &mut open.rehydration,
+        method,
+        request.params,
+        &mut found,
+    )
+    .await;
     // Coop budgeting could make a ready event look pending; the drain must see everything.
     tokio::task::unconstrained(async {
         let mut queue = events(&slot);
@@ -213,6 +254,7 @@ pub async fn dispatch(request: Request) -> CallResult {
 
 async fn run(
     machine: &OlmMachine,
+    rehydration: &mut Rehydration,
     method: &str,
     args: Value,
     found: &mut verification::Found,
@@ -299,6 +341,63 @@ async fn run(
         "confirmQrScanning" => verification::confirm_qr_scanning(machine, params(args)?),
         "reciprocateQr" => verification::reciprocate_qr(machine, params(args)?),
         "qrCodeBytes" => verification::qr_code_bytes(machine, params(args)?),
+        "receiveSyncChangesMsc4186" => {
+            receive_sync_changes_impl(machine, params(args)?, true).await
+        }
+        "encryptStateEvent" => encrypt_state_event(machine, params(args)?).await,
+        "invalidateGroupSession" => invalidate_group_session(machine, params(args)?).await,
+        "getRoomSettings" => settings::get_room_settings(machine, params(args)?).await,
+        "setRoomSettings" => settings::set_room_settings(machine, params(args)?).await,
+        "roomKeyRequestsEnabled" => Ok(room_key_requests_enabled(machine, params(args)?)),
+        "getSecretsFromInbox" => secrets::get_secrets_from_inbox(machine, params(args)?).await,
+        "deleteSecretsFromInbox" => {
+            secrets::delete_secrets_from_inbox(machine, params(args)?).await
+        }
+        "pushSecretToVerifiedDevices" => {
+            secrets::push_secret_to_verified_devices(machine, params(args)?).await
+        }
+        "exportSecretsBundle" => secrets::export_secrets_bundle(machine).await,
+        "importSecretsBundle" => secrets::import_secrets_bundle(machine, params(args)?).await,
+        "buildRoomKeyBundle" => bundles::build_room_key_bundle(machine, params(args)?).await,
+        "shareRoomKeyBundleData" => {
+            bundles::share_room_key_bundle_data(machine, params(args)?).await
+        }
+        "getReceivedRoomKeyBundleData" => {
+            bundles::get_received_room_key_bundle_data(machine, params(args)?).await
+        }
+        "receiveRoomKeyBundle" => bundles::receive_room_key_bundle(machine, params(args)?).await,
+        "getPendingKeyBundleDetailsForRoom" => {
+            bundles::get_pending_key_bundle_details_for_room(machine, params(args)?).await
+        }
+        "getAllRoomsPendingKeyBundles" => bundles::get_all_rooms_pending_key_bundles(machine).await,
+        "storeRoomPendingKeyBundle" => {
+            bundles::store_room_pending_key_bundle(machine, params(args)?).await
+        }
+        "clearRoomPendingKeyBundle" => {
+            bundles::clear_room_pending_key_bundle(machine, params(args)?).await
+        }
+        "hasDownloadedAllRoomKeys" => {
+            bundles::has_downloaded_all_room_keys(machine, params(args)?).await
+        }
+        "setHasDownloadedAllRoomKeys" => {
+            bundles::set_has_downloaded_all_room_keys(machine, params(args)?).await
+        }
+        "createDehydratedDevice" => {
+            dehydrated::create_dehydrated_device(machine, params(args)?).await
+        }
+        "getDehydratedDeviceKey" => dehydrated::get_dehydrated_device_key(machine).await,
+        "saveDehydratedDeviceKey" => {
+            dehydrated::save_dehydrated_device_key(machine, params(args)?).await
+        }
+        "rehydrateDevice" => {
+            dehydrated::rehydrate_device(machine, rehydration, params(args)?).await
+        }
+        "receiveRehydratedEvents" => {
+            dehydrated::receive_rehydrated_events(rehydration, params(args)?).await
+        }
+        "dropRehydratedDevice" => dehydrated::drop_rehydrated_device(rehydration, params(args)?),
+        #[cfg(test)]
+        "debugRehydration" => Ok(json!(rehydration.as_ref().map(|(id, _)| id))),
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]
@@ -404,13 +503,14 @@ async fn init(key: MachineKey, mut raw: Value) -> CallResult {
     loop {
         let slot = slot(&key).await;
         let mut guard = lock_slot(&key, &slot).await;
-        if let Some(open) = guard.as_ref() {
+        if let Some(open) = guard.as_mut() {
             if open.store != identity {
                 return Err(CallError::new(
                     "AlreadyOpen",
                     "this device is open on another store; close it first",
                 ));
             }
+            open.rehydration = None;
             return Ok(describe(&open.machine));
         }
         // A close or a failed init removed this slot while we waited for it.
@@ -430,6 +530,7 @@ async fn init(key: MachineKey, mut raw: Value) -> CallResult {
                 *guard = Some(OpenMachine {
                     machine,
                     store: identity,
+                    rehydration: None,
                 });
                 Ok(description)
             }
@@ -539,6 +640,15 @@ async fn receive_sync_changes(
     machine: &OlmMachine,
     params: ReceiveSyncChangesParams,
 ) -> CallResult {
+    receive_sync_changes_impl(machine, params, false).await
+}
+
+/// `use_msc4186`: a missing one-time key count means unchanged (simplified sliding sync).
+async fn receive_sync_changes_impl(
+    machine: &OlmMachine,
+    params: ReceiveSyncChangesParams,
+    use_msc4186: bool,
+) -> CallResult {
     let decryption_settings = match params.decryption_settings {
         Some(settings) => DecryptionSettings::try_from(settings)?,
         None => DecryptionSettings {
@@ -553,9 +663,15 @@ async fn receive_sync_changes(
         next_batch_token: None,
     };
     // Room key updates are dropped as in WASM; callers learn about them through callbacks.
-    let (events, _) = machine
-        .receive_sync_changes(changes, &decryption_settings)
-        .await?;
+    let (events, _) = if use_msc4186 {
+        machine
+            .receive_sync_changes_msc4186(changes, &decryption_settings)
+            .await?
+    } else {
+        machine
+            .receive_sync_changes(changes, &decryption_settings)
+            .await?
+    };
     Ok(Value::Array(
         events
             .into_iter()
@@ -659,4 +775,52 @@ async fn get_room_event_encryption_info(machine: &OlmMachine, params: EventParam
         .get_room_event_encryption_info(&event, &params.room_id)
         .await?;
     responses::room_encryption_info_value(info)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EncryptStateEventParams {
+    room_id: OwnedRoomId,
+    event_type: String,
+    state_key: String,
+    content: String,
+}
+
+/// The encrypted content as a JSON string, as WASM's `encryptStateEvent`.
+async fn encrypt_state_event(machine: &OlmMachine, params: EncryptStateEventParams) -> CallResult {
+    let content = serde_json::from_str(&params.content)?;
+    let encrypted = machine
+        .encrypt_state_event_raw(
+            &params.room_id,
+            &params.event_type,
+            &params.state_key,
+            &content,
+        )
+        .await?;
+    Ok(Value::String(encrypted.json().get().to_owned()))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RoomIdParams {
+    pub(crate) room_id: OwnedRoomId,
+}
+
+async fn invalidate_group_session(machine: &OlmMachine, params: RoomIdParams) -> CallResult {
+    Ok(json!(machine.discard_room_key(&params.room_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RoomKeyRequestsParams {
+    enabled: Option<bool>,
+}
+
+/// WASM's `roomKeyRequestsEnabled` getter, and its setter when `enabled` is given. Held in
+/// memory only, as upstream: after an `init` it is the default again.
+fn room_key_requests_enabled(machine: &OlmMachine, params: RoomKeyRequestsParams) -> Value {
+    if let Some(enabled) = params.enabled {
+        machine.set_room_key_requests_enabled(enabled);
+    }
+    json!(machine.are_room_key_requests_enabled())
 }

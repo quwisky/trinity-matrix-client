@@ -16,7 +16,7 @@ use std::task::{Context, Poll, Waker};
 use futures_util::stream::{BoxStream, StreamExt};
 use matrix_sdk_crypto::OlmMachine;
 use matrix_sdk_crypto::store::types::{
-    DeviceChanges, IdentityChanges, RoomKeyInfo, RoomKeyWithheldInfo,
+    DeviceChanges, IdentityChanges, RoomKeyInfo, RoomKeyWithheldInfo, SecretsInboxItem,
 };
 use matrix_sdk_crypto::types::EventEncryptionAlgorithm;
 use serde_json::{Value, json};
@@ -30,6 +30,7 @@ struct Streams {
     room_keys_received: BoxStream<'static, Result<Vec<RoomKeyInfo>, Lagged>>,
     room_keys_withheld: BoxStream<'static, Vec<RoomKeyWithheldInfo>>,
     identities: BoxStream<'static, (IdentityChanges, DeviceChanges)>,
+    secrets: BoxStream<'static, SecretsInboxItem>,
 }
 
 /// The broadcast channel skipped this many batches.
@@ -55,7 +56,7 @@ pub(crate) fn algorithm(algorithm: EventEncryptionAlgorithm) -> u8 {
 }
 
 /// WASM `RoomKeyInfo`.
-fn room_key_info(info: RoomKeyInfo) -> Value {
+pub(crate) fn room_key_info(info: RoomKeyInfo) -> Value {
     json!({
         "algorithm": algorithm(info.algorithm),
         "roomId": info.room_id,
@@ -104,6 +105,7 @@ impl Queue {
                 .boxed(),
             room_keys_withheld: store.room_keys_withheld_received_stream().boxed(),
             identities: store.identities_stream_raw().boxed(),
+            secrets: store.secrets_stream().boxed(),
         });
     }
 
@@ -149,6 +151,11 @@ impl Queue {
                 .map(|device| device.user_id().to_string())
                 .collect();
             self.push(json!({ "type": "devicesUpdated", "userIds": users }));
+        }
+        // WASM's callback also gets the value; the host reads it with getSecretsFromInbox, so
+        // no secret enters the queue. The item, and with it the value, is wiped on drop.
+        while let Some(secret) = ready(&mut streams.secrets) {
+            self.push(json!({ "type": "secretReceived", "name": secret.secret_name.as_str() }));
         }
         self.streams = Some(streams);
         for event in self.watches.drain(|changes| ready(changes).is_some()) {
