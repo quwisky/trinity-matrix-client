@@ -18,7 +18,7 @@ name = "trinity_crypto"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-# The JNI entry points for the Android debug plugin.
+# The JNI entry point for the Android plugin.
 jni = ["dep:jni", "dep:simd_cesu8"]
 
 [[bin]]

@@ -15,6 +15,8 @@ mod dehydrated;
 mod devices;
 mod error;
 mod events;
+#[cfg(any(feature = "jni", test))]
+mod host;
 #[cfg(feature = "jni")]
 mod jni;
 mod machine;
