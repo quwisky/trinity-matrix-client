@@ -1,8 +1,22 @@
 // Devices, user identities and backup keys on the native crate. The crate answers each with a
 // snapshot of every getter matrix-js-sdk reads (native/crypto/README.md); the stand-ins below
-// answer those reads synchronously from it, as WASM's objects do from the store data they were
-// read with, and forward every method as a call that carries the key the snapshot was read with,
-// so the crate refuses (`StaleObject`) to act on a device or identity that changed since.
+// answer those reads synchronously from it and forward every method as a call that carries the
+// key the snapshot was read with, so the crate refuses (`StaleObject`) to act on a device or
+// identity that changed since.
+//
+// What is live, as in matrix-sdk-crypto 0.19.1 under WASM: an object's own change is. WASM's
+// `Device.setLocalTrust`, `OwnUserIdentity.verify` and `withdrawVerification`, and
+// `OtherUserIdentity.pinCurrentMasterKey` and `withdrawVerification` update the trust state the
+// same object holds (shared `Arc`s), so a read after them answers the new state; each of these
+// stand-ins reads its object again before its promise resolves, and a stand-in whose device or
+// identity is gone or has another key by then is spent: its reads throw. `Device.verify` and
+// `OtherUserIdentity.verify` only sign (trust follows from the next key query), so WASM's object
+// keeps its answers and so does the stand-in. A change made elsewhere (a key query after a sync,
+// another object of the same device) does not reach either: WASM builds each object from the
+// store's data when it is read, and the persistent stores give a new copy each time (only an
+// in-memory store would share a device's local trust between its objects). So a holder must read
+// a device or identity again after `devicesUpdated` or `userIdentityUpdated`, on both backends;
+// matrix-js-sdk reads them again for each trust question.
 import {
   BackupDecryptionKey,
   BackupKeys,
@@ -16,6 +30,7 @@ import {
   MaybeSignature,
   OtherUserIdentity,
   OwnUserIdentity,
+  RequestType,
   Signature,
   Signatures,
   type SignatureUploadRequest,
@@ -70,6 +85,13 @@ const isStringRecord = (value: unknown) =>
   isObject(value) &&
   Object.values(value).every((entry) => typeof entry === 'string');
 
+const isSignature = (value: unknown) =>
+  isObject(value) &&
+  (value['isValid'] === true
+    ? typeof value['signature'] === 'string'
+    : value['isValid'] === false &&
+      typeof value['invalidSignatureSource'] === 'string');
+
 export const isDevice = (value: unknown): boolean =>
   isObject(value) &&
   typeof value['userId'] === 'string' &&
@@ -78,9 +100,28 @@ export const isDevice = (value: unknown): boolean =>
     typeof value['displayName'] === 'string') &&
   isStringRecord(value['keys']) &&
   Array.isArray(value['algorithms']) &&
+  value['algorithms'].every((algorithm) => typeof algorithm === 'number') &&
   isObject(value['signatures']) &&
+  Object.values(value['signatures']).every(
+    (bySigner) =>
+      isObject(bySigner) && Object.values(bySigner).every(isSignature),
+  ) &&
   typeof value['localTrustState'] === 'number' &&
   DEVICE_FLAGS.every((flag) => typeof value[flag] === 'boolean');
+
+/** A `SignatureUploadRequest` as `verifyDevice` and `verifyIdentity` answer it (no `id`). */
+const isSignatureUpload = (value: unknown) =>
+  isObject(value) &&
+  value['type'] === RequestType.SignatureUpload &&
+  typeof value['body'] === 'string';
+
+/** A read of a stand-in whose object changed under it after its own call: no stale answer. */
+const spent = (member: string, what: string): NativeCryptoError =>
+  new NativeCryptoError(
+    member,
+    'StaleObject',
+    `the ${what} changed or is gone since its last call; read it again`,
+  );
 
 const maybeSignature = (json: MaybeSignatureJson): MaybeSignature =>
   wasmValue(MaybeSignature, {
@@ -100,7 +141,8 @@ const maybeSignature = (json: MaybeSignatureJson): MaybeSignature =>
  * key getters matrix-js-sdk does not read.
  */
 export class NativeDevice {
-  readonly #json: DeviceJson;
+  /** `undefined` once spent (see the header). */
+  #json: DeviceJson | undefined;
   readonly #call: MachineCall;
 
   public constructor(json: DeviceJson, call: MachineCall) {
@@ -108,9 +150,14 @@ export class NativeDevice {
     this.#call = call;
   }
 
+  #read(member: string): DeviceJson {
+    if (!this.#json) throw spent(`Device.${member}`, 'device');
+    return this.#json;
+  }
+
   /** The device the call acts on, as this snapshot read it; refused without its ed25519 key. */
   #target(method: string): Record<string, string> {
-    const { userId, deviceId, keys } = this.#json;
+    const { userId, deviceId, keys } = this.#read(method);
     const ed25519Key = keys[`ed25519:${deviceId}`];
     if (ed25519Key === undefined) {
       throw new NativeCryptoError(
@@ -122,21 +169,36 @@ export class NativeDevice {
     return { userId, deviceId, ed25519Key };
   }
 
+  /** Reads the device again after its own change; spent unless it is still the same device. */
+  async #refresh(target: Record<string, string>): Promise<void> {
+    const { userId, deviceId, ed25519Key } = target;
+    try {
+      const next = await this.#call('getDevice', { userId, deviceId });
+      this.#json =
+        isDevice(next) &&
+        (next as DeviceJson).keys[`ed25519:${deviceId}`] === ed25519Key
+          ? (next as DeviceJson)
+          : undefined;
+    } catch {
+      this.#json = undefined;
+    }
+  }
+
   public get userId(): UserId {
-    return new UserId(this.#json.userId);
+    return new UserId(this.#read('userId').userId);
   }
 
   public get deviceId(): DeviceId {
-    return new DeviceId(this.#json.deviceId);
+    return new DeviceId(this.#read('deviceId').deviceId);
   }
 
   public get displayName(): string | undefined {
-    return this.#json.displayName;
+    return this.#read('displayName').displayName;
   }
 
   public get keys(): Map<DeviceKeyId, DeviceKey> {
     return new Map(
-      Object.entries(this.#json.keys).map(([id, key]) => [
+      Object.entries(this.#read('keys').keys).map(([id, key]) => [
         new DeviceKeyId(id),
         wasmValue(DeviceKey, { toBase64: () => key }),
       ]),
@@ -144,12 +206,12 @@ export class NativeDevice {
   }
 
   public get algorithms(): EncryptionAlgorithm[] {
-    return [...this.#json.algorithms];
+    return [...this.#read('algorithms').algorithms];
   }
 
   /** Only `get(signer)` is answered, the one member matrix-js-sdk reads. */
   public get signatures(): Signatures {
-    const signatures = this.#json.signatures;
+    const signatures = this.#read('signatures').signatures;
     return wasmValue(Signatures, {
       get: (signer: UserId) => {
         const bySigner = signatures[signer.toString()];
@@ -166,42 +228,42 @@ export class NativeDevice {
   }
 
   public get localTrustState(): LocalTrust {
-    return this.#json.localTrustState;
+    return this.#read('localTrustState').localTrustState;
   }
 
   public get isDehydrated(): boolean {
-    return this.#json.isDehydrated;
+    return this.#read('isDehydrated').isDehydrated;
   }
 
   public isVerified(): boolean {
-    return this.#json.isVerified;
+    return this.#read('isVerified').isVerified;
   }
 
   public isCrossSigningTrusted(): boolean {
-    return this.#json.isCrossSigningTrusted;
+    return this.#read('isCrossSigningTrusted').isCrossSigningTrusted;
   }
 
   public isCrossSignedByOwner(): boolean {
-    return this.#json.isCrossSignedByOwner;
+    return this.#read('isCrossSignedByOwner').isCrossSignedByOwner;
   }
 
   public isLocallyTrusted(): boolean {
-    return this.#json.isLocallyTrusted;
+    return this.#read('isLocallyTrusted').isLocallyTrusted;
   }
 
   public isBlacklisted(): boolean {
-    return this.#json.isBlacklisted;
+    return this.#read('isBlacklisted').isBlacklisted;
   }
 
   public isDeleted(): boolean {
-    return this.#json.isDeleted;
+    return this.#read('isDeleted').isDeleted;
   }
 
+  /** Resolves once this object answers the new trust, as WASM's does. */
   public async setLocalTrust(localState: LocalTrust): Promise<null> {
-    await this.#call('setLocalTrust', {
-      ...this.#target('setLocalTrust'),
-      localState,
-    });
+    const target = this.#target('setLocalTrust');
+    await this.#call('setLocalTrust', { ...target, localState });
+    await this.#refresh(target);
     return null;
   }
 
@@ -210,11 +272,12 @@ export class NativeDevice {
       checked<RequestJson>(
         'verifyDevice',
         await this.#call('verifyDevice', this.#target('verifyDevice')),
-        isObject,
+        isSignatureUpload,
       ),
     ) as SignatureUploadRequest;
   }
 
+  /** A replaced device rejects (`StaleObject`): matrix-js-sdk's batch then fails, as for any one failed device. */
   public async encryptToDeviceEvent(
     eventType: string,
     content: unknown,
@@ -282,58 +345,97 @@ export const isIdentity = (value: unknown): boolean =>
     : value['kind'] === 'other' &&
       typeof value['identityNeedsUserApproval'] === 'boolean');
 
-/**
- * The identity a call acts on, as the snapshot read it: its user and the public master key
- * (the one key of the `masterKey` JSON); refused when the snapshot holds none.
- */
-function identityTarget(
-  method: string,
-  userId: string,
-  masterKeyJson: string,
-): Record<string, string> {
-  let masterKey: unknown;
+type OwnJson = IdentityJson & { readonly userSigningKey: string };
+type OtherJson = IdentityJson & { readonly identityNeedsUserApproval: boolean };
+
+/** The snapshot an identity stand-in answers from, and its calls. */
+class IdentitySnapshot<T extends IdentityJson> {
+  /** `undefined` once spent (see the header). */
+  #json: T | undefined;
+  readonly #userId: string;
+  readonly #call: MachineCall;
+  readonly #owner: string;
+
+  public constructor(
+    json: T,
+    userId: string,
+    call: MachineCall,
+    owner: string,
+  ) {
+    this.#json = json;
+    this.#userId = userId;
+    this.#call = call;
+    this.#owner = owner;
+  }
+
+  public read(member: string): T {
+    if (!this.#json) throw spent(`${this.#owner}.${member}`, 'identity');
+    return this.#json;
+  }
+
+  /**
+   * The identity a call acts on, as the snapshot read it: its user and the public master key
+   * (the one key of the `masterKey` JSON); refused when the snapshot holds none.
+   */
+  public target(method: string): Record<string, string> {
+    const masterKey = publicMasterKey(this.read(method).masterKey);
+    if (masterKey === undefined) {
+      throw new NativeCryptoError(
+        method,
+        'UnexpectedAnswer',
+        'the identity has no master key',
+      );
+    }
+    return { userId: this.#userId, masterKey };
+  }
+
+  /** A call that changes the object's own state: read again, as WASM's object shows it. */
+  public async change(method: string): Promise<void> {
+    const target = this.target(method);
+    await this.#call(method, target);
+    await this.#refresh(target);
+  }
+
+  /** Signs; for the own identity also marks it verified on the object (`refresh`). */
+  public async verify(refresh: boolean): Promise<SignatureUploadRequest> {
+    const target = this.target('verifyIdentity');
+    const request = toRequest(
+      checked<RequestJson>(
+        'verifyIdentity',
+        await this.#call('verifyIdentity', target),
+        isSignatureUpload,
+      ),
+    ) as SignatureUploadRequest;
+    if (refresh) await this.#refresh(target);
+    return request;
+  }
+
+  /** Spent unless the user still has an identity of this kind under the same master key. */
+  async #refresh(target: Record<string, string>): Promise<void> {
+    const kind = this.#json?.kind;
+    try {
+      const next = await this.#call('getIdentity', { userId: this.#userId });
+      this.#json =
+        isIdentity(next) &&
+        (next as IdentityJson).kind === kind &&
+        publicMasterKey((next as IdentityJson).masterKey) ===
+          target['masterKey']
+          ? (next as T)
+          : undefined;
+    } catch {
+      this.#json = undefined;
+    }
+  }
+}
+
+function publicMasterKey(masterKeyJson: string): string | undefined {
   try {
     const keys = (JSON.parse(masterKeyJson) as { keys?: unknown }).keys;
-    masterKey = isObject(keys) ? Object.values(keys)[0] : undefined;
+    const key = isObject(keys) ? Object.values(keys)[0] : undefined;
+    return typeof key === 'string' ? key : undefined;
   } catch {
-    masterKey = undefined;
+    return undefined;
   }
-  if (typeof masterKey !== 'string') {
-    throw new NativeCryptoError(
-      method,
-      'UnexpectedAnswer',
-      'the identity has no master key',
-    );
-  }
-  return { userId, masterKey };
-}
-
-async function verifyIdentity(
-  call: MachineCall,
-  userId: string,
-  masterKey: string,
-): Promise<SignatureUploadRequest> {
-  return toRequest(
-    checked<RequestJson>(
-      'verifyIdentity',
-      await call(
-        'verifyIdentity',
-        identityTarget('verifyIdentity', userId, masterKey),
-      ),
-      isObject,
-    ),
-  ) as SignatureUploadRequest;
-}
-
-async function withdrawVerification(
-  call: MachineCall,
-  userId: string,
-  masterKey: string,
-): Promise<void> {
-  await call(
-    'withdrawVerification',
-    identityTarget('withdrawVerification', userId, masterKey),
-  );
 }
 
 /**
@@ -341,50 +443,49 @@ async function withdrawVerification(
  * `requestVerification` (slice 4) and `trustsOurOwnDevice`.
  */
 export class NativeOwnUserIdentity {
-  readonly #json: IdentityJson & { readonly userSigningKey: string };
-  readonly #userId: string;
-  readonly #call: MachineCall;
+  readonly #snapshot: IdentitySnapshot<OwnJson>;
 
-  public constructor(
-    json: IdentityJson & { readonly userSigningKey: string },
-    userId: string,
-    call: MachineCall,
-  ) {
-    this.#json = json;
-    this.#userId = userId;
-    this.#call = call;
+  public constructor(json: OwnJson, userId: string, call: MachineCall) {
+    this.#snapshot = new IdentitySnapshot(
+      json,
+      userId,
+      call,
+      'OwnUserIdentity',
+    );
   }
 
   public get masterKey(): string {
-    return this.#json.masterKey;
+    return this.#snapshot.read('masterKey').masterKey;
   }
 
   public get selfSigningKey(): string {
-    return this.#json.selfSigningKey;
+    return this.#snapshot.read('selfSigningKey').selfSigningKey;
   }
 
   public get userSigningKey(): string {
-    return this.#json.userSigningKey;
+    return this.#snapshot.read('userSigningKey').userSigningKey;
   }
 
   public isVerified(): boolean {
-    return this.#json.isVerified;
+    return this.#snapshot.read('isVerified').isVerified;
   }
 
   public wasPreviouslyVerified(): boolean {
-    return this.#json.wasPreviouslyVerified;
+    return this.#snapshot.read('wasPreviouslyVerified').wasPreviouslyVerified;
   }
 
   public hasVerificationViolation(): boolean {
-    return this.#json.hasVerificationViolation;
+    return this.#snapshot.read('hasVerificationViolation')
+      .hasVerificationViolation;
   }
 
+  /** WASM marks the own identity verified on the object itself, then signs. */
   public verify(): Promise<SignatureUploadRequest> {
-    return verifyIdentity(this.#call, this.#userId, this.#json.masterKey);
+    return this.#snapshot.verify(true);
   }
 
   public withdrawVerification(): Promise<void> {
-    return withdrawVerification(this.#call, this.#userId, this.#json.masterKey);
+    return this.#snapshot.change('withdrawVerification');
   }
 
   public free(): void {
@@ -398,59 +499,54 @@ standIn(NativeOwnUserIdentity, OwnUserIdentity);
  * Not here: `requestVerification` and `verificationRequestContent` (slice 4).
  */
 export class NativeOtherUserIdentity {
-  readonly #json: IdentityJson & {
-    readonly identityNeedsUserApproval: boolean;
-  };
-  readonly #userId: string;
-  readonly #call: MachineCall;
+  readonly #snapshot: IdentitySnapshot<OtherJson>;
 
-  public constructor(
-    json: IdentityJson & { readonly identityNeedsUserApproval: boolean },
-    userId: string,
-    call: MachineCall,
-  ) {
-    this.#json = json;
-    this.#userId = userId;
-    this.#call = call;
+  public constructor(json: OtherJson, userId: string, call: MachineCall) {
+    this.#snapshot = new IdentitySnapshot(
+      json,
+      userId,
+      call,
+      'OtherUserIdentity',
+    );
   }
 
   public get masterKey(): string {
-    return this.#json.masterKey;
+    return this.#snapshot.read('masterKey').masterKey;
   }
 
   public get selfSigningKey(): string {
-    return this.#json.selfSigningKey;
+    return this.#snapshot.read('selfSigningKey').selfSigningKey;
   }
 
   public isVerified(): boolean {
-    return this.#json.isVerified;
+    return this.#snapshot.read('isVerified').isVerified;
   }
 
   public wasPreviouslyVerified(): boolean {
-    return this.#json.wasPreviouslyVerified;
+    return this.#snapshot.read('wasPreviouslyVerified').wasPreviouslyVerified;
   }
 
   public hasVerificationViolation(): boolean {
-    return this.#json.hasVerificationViolation;
+    return this.#snapshot.read('hasVerificationViolation')
+      .hasVerificationViolation;
   }
 
   public identityNeedsUserApproval(): boolean {
-    return this.#json.identityNeedsUserApproval;
+    return this.#snapshot.read('identityNeedsUserApproval')
+      .identityNeedsUserApproval;
   }
 
+  /** Only signs: WASM's object keeps its answers until the identity is read again. */
   public verify(): Promise<SignatureUploadRequest> {
-    return verifyIdentity(this.#call, this.#userId, this.#json.masterKey);
+    return this.#snapshot.verify(false);
   }
 
   public withdrawVerification(): Promise<void> {
-    return withdrawVerification(this.#call, this.#userId, this.#json.masterKey);
+    return this.#snapshot.change('withdrawVerification');
   }
 
-  public async pinCurrentMasterKey(): Promise<void> {
-    await this.#call(
-      'pinCurrentMasterKey',
-      identityTarget('pinCurrentMasterKey', this.#userId, this.#json.masterKey),
-    );
+  public pinCurrentMasterKey(): Promise<void> {
+    return this.#snapshot.change('pinCurrentMasterKey');
   }
 
   public free(): void {
@@ -465,13 +561,9 @@ export function toIdentity(
   call: MachineCall,
 ): OwnUserIdentity | OtherUserIdentity {
   return (json.kind === 'own'
-    ? new NativeOwnUserIdentity(
-        json as IdentityJson & { userSigningKey: string },
-        userId,
-        call,
-      )
+    ? new NativeOwnUserIdentity(json as OwnJson, userId, call)
     : new NativeOtherUserIdentity(
-        json as IdentityJson & { identityNeedsUserApproval: boolean },
+        json as OtherJson,
         userId,
         call,
       )) as unknown as OwnUserIdentity | OtherUserIdentity;

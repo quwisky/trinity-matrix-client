@@ -39,10 +39,13 @@ import {
 
 import type { CallQueue } from './call-queue';
 import {
+  type CrossSigningKeyExportJson,
   type CrossSigningStatusJson,
   encryptionSettingsJson,
   type EncryptionInfoJson,
   type ImportResultJson,
+  isBootstrapRequests,
+  isCrossSigningKeyExport,
   isCrossSigningStatus,
   isImportResult,
   type MegolmErrorDetails,
@@ -143,8 +146,7 @@ const DROPPED = new Set(['Panic', 'UnknownMachine']);
  * it again), `shareRoomKey`, `encryptRoomEvent`, `encryptStateEvent` and `invalidateGroupSession`
  * (session state; matrix-js-sdk retries the send), `encryptToDeviceEvent` (the same, for an
  * Olm session), `bootstrapCrossSigning` (each run makes new keys; matrix-js-sdk's bootstrap
- * fails and is run again), `pushSecretToVerifiedDevices` (it could queue the secret to every
- * verified device twice) — and `close`.
+ * fails and is run again) — and `close`.
  */
 const REPLAYABLE = new Set([
   'receiveSyncChanges',
@@ -192,6 +194,9 @@ const REPLAYABLE = new Set([
   'disableBackup',
   // Nothing sent yet: the reloaded machine builds the request again.
   'backupRoomKeys',
+  // Queues the pushes in memory only (upstream's gossip queue), which the drop discarded, so the
+  // replay queues each push once.
+  'pushSecretToVerifiedDevices',
   // Keys already imported are skipped (the replay reports fewer new ones).
   'importExportedRoomKeys',
   'importBackedUpRoomKeys',
@@ -880,10 +885,7 @@ export class NativeOlmMachine {
       checked<Parameters<typeof toBootstrapRequests>[0]>(
         'bootstrapCrossSigning',
         await this.#call('bootstrapCrossSigning', { reset }),
-        (value) =>
-          isObject(value) &&
-          isObject(value['uploadSigningKeysRequest']) &&
-          isObject(value['uploadSignaturesRequest']),
+        isBootstrapRequests,
       ),
     );
   }
@@ -892,10 +894,10 @@ export class NativeOlmMachine {
   public async exportCrossSigningKeys(): Promise<
     CrossSigningKeyExport | undefined
   > {
-    const keys = checked<Parameters<typeof toCrossSigningKeyExport>[0] | null>(
+    const keys = checked<CrossSigningKeyExportJson | null>(
       'exportCrossSigningKeys',
       await this.#call('exportCrossSigningKeys'),
-      (value) => value === null || isObject(value),
+      (value) => value === null || isCrossSigningKeyExport(value),
     );
     return keys ? toCrossSigningKeyExport(keys) : undefined;
   }
@@ -930,7 +932,10 @@ export class NativeOlmMachine {
     );
   }
 
-  /** The listener is called once, when the import is done, with WASM's last arguments. */
+  /**
+   * The listener is called once, when the import is done, with WASM's last arguments: numbers,
+   * as WASM passes them (its declarations say `bigint`).
+   */
   public async importExportedRoomKeys(
     exportedRoomKeys: string,
     progressListener: (progress: number, total: number) => void,

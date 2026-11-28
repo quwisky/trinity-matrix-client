@@ -385,17 +385,46 @@ export const toCrossSigningStatus = (
     hasUserSigning: json.hasUserSigning,
   });
 
-/** The private cross-signing keys, under WASM's getter names (`self_signing_key` too). */
-export const toCrossSigningKeyExport = (json: {
+export interface CrossSigningKeyExportJson {
   readonly masterKey?: string;
   readonly self_signing_key?: string;
   readonly userSigningKey?: string;
-}): CrossSigningKeyExport =>
-  wasmValue(CrossSigningKeyExport, {
-    masterKey: json.masterKey,
-    self_signing_key: json.self_signing_key,
-    userSigningKey: json.userSigningKey,
-  });
+}
+
+const EXPORTED_KEYS = ['masterKey', 'self_signing_key', 'userSigningKey'];
+
+export const isCrossSigningKeyExport = (value: unknown): boolean =>
+  isObject(value) &&
+  Object.entries(value).every(
+    ([name, key]) => EXPORTED_KEYS.includes(name) && typeof key === 'string',
+  );
+
+/** The private cross-signing keys, under WASM's getter names (`self_signing_key` too), hidden. */
+export const toCrossSigningKeyExport = (
+  json: CrossSigningKeyExportJson,
+): CrossSigningKeyExport =>
+  wasmValue(
+    CrossSigningKeyExport,
+    {},
+    {
+      masterKey: json.masterKey,
+      self_signing_key: json.self_signing_key,
+      userSigningKey: json.userSigningKey,
+    },
+  );
+
+export const isBootstrapRequests = (value: unknown): boolean =>
+  isObject(value) &&
+  (value['uploadKeysRequest'] === undefined ||
+    (isObject(value['uploadKeysRequest']) &&
+      value['uploadKeysRequest']['type'] === RequestType.KeysUpload &&
+      typeof value['uploadKeysRequest']['id'] === 'string' &&
+      typeof value['uploadKeysRequest']['body'] === 'string')) &&
+  isObject(value['uploadSigningKeysRequest']) &&
+  typeof value['uploadSigningKeysRequest']['body'] === 'string' &&
+  isObject(value['uploadSignaturesRequest']) &&
+  value['uploadSignaturesRequest']['type'] === RequestType.SignatureUpload &&
+  typeof value['uploadSignaturesRequest']['body'] === 'string';
 
 export const toBootstrapRequests = (json: {
   readonly uploadKeysRequest?: RequestJson;
