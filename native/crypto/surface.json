@@ -21,43 +21,50 @@
       "free": {
         "status": "shim",
         "area": "dehydrated-devices",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       },
       "keysForUpload": {
         "status": "done",
         "area": "dehydrated-devices",
         "native": "createDehydratedDevice",
-        "note": "{ initialDeviceDisplayName, dehydratedDeviceKey (base64) } \u2192 PutDehydratedDeviceRequest { body }; fails without the self-signing key, as WASM"
+        "note": "{ initialDeviceDisplayName, dehydratedDeviceKey (base64) } \u2192 PutDehydratedDeviceRequest { body }; fails without the self-signing key, as WASM",
+        "shimImpl": true
       }
     },
     "DehydratedDevices": {
       "create": {
         "status": "shim",
         "area": "dehydrated-devices",
-        "note": "returns a JS object holding nothing: upstream create() makes an account in a fresh memory store and touches nothing else, so it is deferred to keysForUpload, whose native createDehydratedDevice creates the device and builds its request in one call. The shim must refuse a second keysForUpload on the same object (js-sdk calls it once)"
+        "note": "returns a JS object holding nothing: upstream create() makes an account in a fresh memory store and touches nothing else, so it is deferred to keysForUpload, whose native createDehydratedDevice creates the device and builds its request in one call. The shim must refuse a second keysForUpload on the same object (js-sdk calls it once)",
+        "shimImpl": true
       },
       "free": {
         "status": "shim",
         "area": "dehydrated-devices",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       },
       "getDehydratedDeviceKey": {
         "status": "done",
         "area": "dehydrated-devices",
         "native": "getDehydratedDeviceKey",
-        "note": "the cached key as toBase64(), or null; the shim builds the DehydratedDeviceKey helper from it"
+        "note": "the cached key as toBase64(), or null; the shim builds the DehydratedDeviceKey helper from it",
+        "shimImpl": true
       },
       "rehydrate": {
         "status": "done",
         "area": "dehydrated-devices",
         "native": "rehydrateDevice",
-        "note": "{ dehydratedDeviceKey, deviceId, deviceData (JSON string) } \u2192 null; the crate holds the rehydrated device under its device ID, one at a time (a new rehydrate replaces it), until dropRehydratedDevice, close, init or a panic"
+        "note": "{ dehydratedDeviceKey, deviceId, deviceData (JSON string) } \u2192 null; the crate holds the rehydrated device under its device ID, one at a time (a new rehydrate replaces it), until dropRehydratedDevice, close, init or a panic",
+        "shimImpl": true
       },
       "saveDehydratedDeviceKey": {
         "status": "done",
         "area": "dehydrated-devices",
         "native": "saveDehydratedDeviceKey",
-        "note": "{ dehydratedDeviceKey (base64) } \u2192 null; the key is wiped after use"
+        "note": "{ dehydratedDeviceKey (base64) } \u2192 null; the key is wiped after use",
+        "shimImpl": true
       }
     },
     "Device": {
@@ -148,7 +155,8 @@
         "status": "done",
         "area": "devices-identities",
         "note": "call: takes userId, deviceId, methods and ed25519Key (StaleObject when the device has another key now); [request snapshot, to-device request]; the shim must pass ed25519Key from the snapshot its object wraps",
-        "native": "requestDeviceVerification"
+        "native": "requestDeviceVerification",
+        "shimImpl": true
       },
       "setLocalTrust": {
         "status": "done",
@@ -209,7 +217,8 @@
         "status": "done",
         "area": "key-bundles",
         "native": "buildRoomKeyBundle",
-        "note": "{ roomId } \u2192 { encryptedData (base64), mediaEncryptionInfo } or null; the shim builds the EncryptedAttachment from them"
+        "note": "{ roomId } \u2192 { encryptedData (base64), mediaEncryptionInfo } or null; the shim builds the EncryptedAttachment from them",
+        "shimImpl": true
       },
       "clearRoomPendingKeyBundle": {
         "status": "done",
@@ -239,7 +248,8 @@
       "dehydratedDevices": {
         "status": "shim",
         "area": "dehydrated-devices",
-        "note": "returns a JS object whose methods are native calls on the machine; upstream dehydrated_devices() only wraps the machine"
+        "note": "returns a JS object whose methods are native calls on the machine; upstream dehydrated_devices() only wraps the machine",
+        "shimImpl": true
       },
       "deleteSecretsFromInbox": {
         "status": "done",
@@ -305,7 +315,8 @@
         "status": "done",
         "area": "secrets",
         "native": "exportSecretsBundle",
-        "note": "the JSON SecretsBundle.to_json() gives (private cross-signing seeds and the backup key: it returns secrets, as WASM); the shim must wrap it in an object whose to_json() returns it and whose free() drops it"
+        "note": "the JSON SecretsBundle.to_json() gives (private cross-signing seeds and the backup key: it returns secrets, as WASM); the shim must wrap it in an object whose to_json() returns it and whose free() drops it",
+        "shimImpl": true
       },
       "getAllRoomsPendingKeyBundles": {
         "status": "done",
@@ -351,7 +362,8 @@
         "status": "done",
         "area": "key-bundles",
         "native": "getReceivedRoomKeyBundleData",
-        "note": "{ roomId, inviter } \u2192 { senderUser, roomId, url, encryptionInfo } (StoredRoomKeyBundleData getters) or null"
+        "note": "{ roomId, inviter } \u2192 { senderUser, roomId, url, encryptionInfo } (StoredRoomKeyBundleData getters) or null",
+        "shimImpl": true
       },
       "getRoomEventEncryptionInfo": {
         "status": "done",
@@ -384,19 +396,22 @@
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "call: takes userId (the other user) and flowId; the request snapshot or null; the crate watches the request from here on"
+        "note": "call: takes userId (the other user) and flowId; the request snapshot or null; the crate watches the request from here on",
+        "shimImpl": true
       },
       "getVerificationRequests": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequests",
-        "note": "call: takes userId; request snapshots sorted by flowId"
+        "note": "call: takes userId; request snapshots sorted by flowId",
+        "shimImpl": true
       },
       "hasDownloadedAllRoomKeys": {
         "status": "done",
         "area": "key-bundles",
         "native": "hasDownloadedAllRoomKeys",
-        "note": "{ roomId } \u2192 boolean"
+        "note": "{ roomId } \u2192 boolean",
+        "shimImpl": true
       },
       "identityKeys": {
         "status": "done",
@@ -429,7 +444,8 @@
         "status": "done",
         "area": "secrets",
         "native": "importSecretsBundle",
-        "note": "{ bundle: the to_json() form } \u2192 null; a bundle that does not parse, or has a seed that is not an Ed25519 key, is InvalidRequest \"invalid secrets bundle\" and imports nothing (unlike WASM, which keeps the keys it imported before failing on a later one); the shim must turn the SecretsBundle object js-sdk built with from_json back into JSON with to_json()"
+        "note": "{ bundle: the to_json() form } \u2192 null; a bundle that does not parse, or has a seed that is not an Ed25519 key, is InvalidRequest \"invalid secrets bundle\" and imports nothing (unlike WASM, which keeps the keys it imported before failing on a later one); the shim must turn the SecretsBundle object js-sdk built with from_json back into JSON with to_json()",
+        "shimImpl": true
       },
       "initFromStore": {
         "status": "done",
@@ -485,7 +501,8 @@
         "status": "done",
         "area": "key-bundles",
         "native": "receiveRoomKeyBundle",
-        "note": "{ roomId, inviter, url, encryptedBundle (base64) }: the stored bundle data is read again by room and inviter (WASM gets an object JS cannot forge); UnknownBundle when none, StaleObject when its url is no longer the one downloaded. Sender trust and wrong-room keys decided upstream, as WASM; the shim must pass roomId, senderUser (as inviter) and url from the bundle data object it was handed, and the downloaded bytes as base64"
+        "note": "{ roomId, inviter, url, encryptedBundle (base64) }: the stored bundle data is read again by room and inviter (WASM gets an object JS cannot forge); UnknownBundle when none, StaleObject when its url is no longer the one downloaded. Sender trust and wrong-room keys decided upstream, as WASM; the shim must pass roomId, senderUser (as inviter) and url from the bundle data object it was handed, and the downloaded bytes as base64",
+        "shimImpl": true
       },
       "receiveSyncChanges": {
         "status": "done",
@@ -505,7 +522,8 @@
         "status": "done",
         "area": "verification",
         "native": "receiveVerificationEvent",
-        "note": "call: takes event (JSON string) and roomId"
+        "note": "call: takes event (JSON string) and roomId",
+        "shimImpl": true
       },
       "registerDevicesUpdatedCallback": {
         "status": "done",
@@ -568,7 +586,8 @@
         "status": "done",
         "area": "key-bundles",
         "native": "setHasDownloadedAllRoomKeys",
-        "note": "{ roomId } \u2192 null"
+        "note": "{ roomId } \u2192 null",
+        "shimImpl": true
       },
       "setRoomSettings": {
         "status": "done",
@@ -587,7 +606,8 @@
         "status": "done",
         "area": "key-bundles",
         "native": "shareRoomKeyBundleData",
-        "note": "{ userId, roomId, url, mediaEncryptionInfo, sharingStrategy (constructor name, js-sdk passes identityBasedStrategy) } \u2192 ToDeviceRequest[]; unreadable mediaEncryptionInfo fails with WASM's message without serde's part (it could quote the file key)"
+        "note": "{ userId, roomId, url, mediaEncryptionInfo, sharingStrategy (constructor name, js-sdk passes identityBasedStrategy) } \u2192 ToDeviceRequest[]; unreadable mediaEncryptionInfo fails with WASM's message without serde's part (it could quote the file key)",
+        "shimImpl": true
       },
       "sign": {
         "status": "done",
@@ -670,7 +690,8 @@
         "status": "done",
         "area": "devices-identities",
         "note": "call: takes userId, roomId, requestEventId, methods and masterKey (StaleObject when the identity has another master key now); the request snapshot; the shim must pass masterKey from the snapshot its object wraps",
-        "native": "requestIdentityVerification"
+        "native": "requestIdentityVerification",
+        "shimImpl": true
       },
       "selfSigningKey": {
         "status": "done",
@@ -683,7 +704,8 @@
         "status": "done",
         "area": "devices-identities",
         "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); the content as a JSON string; the shim must pass masterKey from the snapshot its object wraps",
-        "native": "verificationRequestContent"
+        "native": "verificationRequestContent",
+        "shimImpl": true
       },
       "wasPreviouslyVerified": {
         "status": "done",
@@ -725,7 +747,8 @@
         "status": "done",
         "area": "devices-identities",
         "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); [request snapshot, to-device request]; the shim must pass masterKey from the snapshot its object wraps",
-        "native": "requestIdentityVerification"
+        "native": "requestIdentityVerification",
+        "shimImpl": true
       },
       "selfSigningKey": {
         "status": "done",
@@ -768,68 +791,79 @@
         "status": "done",
         "area": "verification",
         "native": "cancelQr",
-        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled",
+        "shimImpl": true
       },
       "cancelInfo": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "confirmScanning": {
         "status": "done",
         "area": "verification",
         "native": "confirmQrScanning",
-        "note": "call: takes userId and flowId; the outgoing request or null"
+        "note": "call: takes userId and flowId; the outgoing request or null",
+        "shimImpl": true
       },
       "hasBeenScanned": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "isCancelled": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "isDone": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "otherUserId": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "reciprocate": {
         "status": "done",
         "area": "verification",
         "native": "reciprocateQr",
-        "note": "call: takes userId and flowId; the outgoing request or null"
+        "note": "call: takes userId and flowId; the outgoing request or null",
+        "shimImpl": true
       },
       "registerChangesCallback": {
         "status": "done",
         "area": "verification",
         "native": "pollEvents",
         "note": "event verificationChanged with the full Qr snapshot",
-        "event": "verificationChanged"
+        "event": "verificationChanged",
+        "shimImpl": true
       },
       "state": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "toBytes": {
         "status": "done",
         "area": "verification",
         "native": "qrCodeBytes",
-        "note": "call: takes userId and flowId; base64 (they hold the flow's shared secret, as in WASM, so they are in no snapshot or event); the shim converts to Uint8ClampedArray"
+        "note": "call: takes userId and flowId; base64 (they hold the flow's shared secret, as in WASM, so they are in no snapshot or event); the shim converts to Uint8ClampedArray",
+        "shimImpl": true
       }
     },
     "RehydratedDevice": {
@@ -837,13 +871,15 @@
         "status": "done",
         "area": "dehydrated-devices",
         "native": "dropRehydratedDevice",
-        "note": "{ deviceId } \u2192 null: drops the held device (the shim must call it, as js-sdk does in finally)"
+        "note": "{ deviceId } \u2192 null: drops the held device (the shim must call it, as js-sdk does in finally)",
+        "shimImpl": true
       },
       "receiveEvents": {
         "status": "done",
         "area": "dehydrated-devices",
         "native": "receiveRehydratedEvents",
-        "note": "{ deviceId, toDeviceEvents, decryptionSettings? } \u2192 RoomKeyInfo[]; UnknownRehydration when that device is not held"
+        "note": "{ deviceId, toDeviceEvents, decryptionSettings? } \u2192 RoomKeyInfo[]; UnknownRehydration when that device is not held",
+        "shimImpl": true
       }
     },
     "Sas": {
@@ -851,68 +887,79 @@
         "status": "done",
         "area": "verification",
         "native": "acceptSas",
-        "note": "call: takes userId and flowId; the outgoing request or null"
+        "note": "call: takes userId and flowId; the outgoing request or null",
+        "shimImpl": true
       },
       "cancel": {
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled",
+        "shimImpl": true
       },
       "cancelInfo": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "cancelWithCode": {
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled",
+        "shimImpl": true
       },
       "confirm": {
         "status": "done",
         "area": "verification",
         "native": "confirmSas",
-        "note": "call: takes userId, flowId and decimals, required: the shim must pass the decimals it displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last"
+        "note": "call: takes userId, flowId and decimals, required: the shim must pass the decimals it displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last",
+        "shimImpl": true
       },
       "decimals": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "emoji": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "isCancelled": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "isDone": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "otherUserId": {
         "status": "done",
         "area": "verification",
         "native": "getVerification",
-        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)",
+        "shimImpl": true
       },
       "registerChangesCallback": {
         "status": "done",
         "area": "verification",
         "event": "verificationChanged",
         "native": "pollEvents",
-        "note": "event verificationChanged with the full Sas snapshot"
+        "note": "event verificationChanged with the full Sas snapshot",
+        "shimImpl": true
       }
     },
     "StoreHandle": {
@@ -955,116 +1002,135 @@
         "status": "done",
         "area": "verification",
         "native": "acceptVerificationRequest",
-        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled",
+        "shimImpl": true
       },
       "cancel": {
         "status": "done",
         "area": "verification",
         "native": "cancelVerificationRequest",
-        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled",
+        "shimImpl": true
       },
       "cancelInfo": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "flowId": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "generateQrCode": {
         "status": "done",
         "area": "verification",
         "native": "generateQrCode",
-        "note": "call: takes userId and flowId; the Qr snapshot or null"
+        "note": "call: takes userId and flowId; the Qr snapshot or null",
+        "shimImpl": true
       },
       "getVerification": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field verification: the Sas or Qr snapshot while the phase is Transitioned; the shim must build a Sas or Qr by its kind (js-sdk uses instanceof)"
+        "note": "snapshot field verification: the Sas or Qr snapshot while the phase is Transitioned; the shim must build a Sas or Qr by its kind (js-sdk uses instanceof)",
+        "shimImpl": true
       },
       "isCancelled": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "isPassive": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "isSelfVerification": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "otherDeviceId": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "otherUserId": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "phase": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "registerChangesCallback": {
         "status": "done",
         "area": "verification",
         "event": "verificationRequestChanged",
         "native": "pollEvents",
-        "note": "event verificationRequestChanged with the full request snapshot; one per call that changed the request"
+        "note": "event verificationRequestChanged with the full request snapshot; one per call that changed the request",
+        "shimImpl": true
       },
       "roomId": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "scanQrCode": {
         "status": "done",
         "area": "verification",
         "native": "scanQrCode",
-        "note": "call: takes userId, flowId and data (the scanned bytes, base64; the shim does not need QrCodeScan.fromBytes); the Qr snapshot or null"
+        "note": "call: takes userId, flowId and data (the scanned bytes, base64; the shim does not need QrCodeScan.fromBytes); the Qr snapshot or null",
+        "shimImpl": true
       },
       "startSas": {
         "status": "done",
         "area": "verification",
         "native": "startSas",
-        "note": "call: takes userId and flowId; [Sas snapshot, outgoing request] or null"
+        "note": "call: takes userId and flowId; [Sas snapshot, outgoing request] or null",
+        "shimImpl": true
       },
       "theirSupportedMethods": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       },
       "timeRemainingMillis": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field expiresAtMs (ms since the epoch): the shim must answer max(0, expiresAtMs - Date.now())"
+        "note": "snapshot field expiresAtMs (ms since the epoch): the shim must answer max(0, expiresAtMs - Date.now())",
+        "shimImpl": true
       },
       "weStarted": {
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)",
+        "shimImpl": true
       }
     }
   },
