@@ -54,6 +54,12 @@ fn a_rehydrated_device_is_held_until_dropped_and_goes_on_close_init_and_panic() 
         json!({ "result": null })
     );
     assert_eq!(held(&user), json!(id));
+    // A failed second rehydration keeps the first.
+    let again = rehydrate(&user, &id, &data, &DehydratedDeviceKey::new().to_base64());
+    assert_eq!(again["error"]["code"], "CryptoError", "{again}");
+    let unreadable = rehydrate(&user, "OTHER", &json!("not device data"), &key);
+    assert!(unreadable.get("error").is_some(), "{unreadable}");
+    assert_eq!(held(&user), json!(id));
     let none = ok(
         &user,
         "REHYDRATOR",

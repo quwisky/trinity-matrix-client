@@ -75,6 +75,15 @@ const claimSessions = async (server, device, users) => {
   if (claim) await server.send(device, claim);
 };
 
+/** A sync's answer with `content.secret` taken out of each decrypted secret event. */
+const withoutSecret = (answer) =>
+  answer.map((event) => {
+    if (!event.rawEvent) return event;
+    const raw = JSON.parse(event.rawEvent);
+    if (raw.content) delete raw.content.secret;
+    return { ...event, rawEvent: raw };
+  });
+
 /** The types of the events a sync returned, in order. */
 const syncedTypes = (answer) =>
   (answer.result ?? answer).map(({ type, rawEvent }) => [
@@ -98,13 +107,15 @@ describe.skipIf(!hasCargo)(
      * Two own-device pairs: a WASM sender with a native receiver and a native sender with a
      * WASM receiver, all knowing their own user's devices and the sender holding the backup
      * key. `trusted` is whether each receiver trusts its sender (each sender trusts its
-     * receiver). Returned in native-first order for `both`.
+     * receiver). A third own device of the other kind, which the sender does not trust, has an
+     * Olm session too. Returned in native-first order for `both`.
      */
     const ownPairs = async (server, backupKey, trusted) => {
       const pair = async (senderKind, receiverKind) => {
         const sender = await device(senderKind);
         const receiver = await sibling(receiverKind, sender);
-        await meet(server, [sender, receiver], [sender.userId]);
+        const bystander = await sibling(senderKind, sender);
+        await meet(server, [sender, receiver, bystander], [sender.userId]);
         result(await sender.saveBackupDecryptionKey(backupKey, '1'));
         result(
           await sender.setLocalTrust(
@@ -123,26 +134,54 @@ describe.skipIf(!hasCargo)(
           );
         }
         await claimSessions(server, sender, [sender.userId]);
-        return { sender, receiver };
+        return { sender, receiver, bystander };
       };
       const toNative = await pair('wasm', 'native');
       const toWasm = await pair('native', 'wasm');
       return {
         senders: [toWasm.sender, toNative.sender],
         receivers: [toNative.receiver, toWasm.receiver],
+        bystanders: [toWasm.bystander, toNative.bystander],
       };
     };
 
     /** Each sender pushes the backup key; each receiver syncs. */
-    const push = async (server, { senders, receivers }) => {
+    const push = async (server, { senders, receivers, bystanders }) => {
       const pushed = await both(senders, (it) =>
         it.pushSecretToVerifiedDevices(BACKUP_SECRET),
       );
       expectSame(pushed, 'pushSecretToVerifiedDevices');
       expect(pushed[0]).toEqual({ result: null });
+      // Only the verified own device is sent the secret, not the untrusted third one.
+      const outgoing = await each(senders, (it) => it.outgoingRequests());
+      const recipients = (requests, index) => {
+        const label = {
+          [receivers[1 - index].deviceId]: 'receiver',
+          [bystanders[index].deviceId]: 'bystander',
+        };
+        return requests
+          .filter(({ type }) => type === RequestType.ToDevice)
+          .flatMap(({ body }) =>
+            Object.values(JSON.parse(body).messages).flatMap((devices) =>
+              Object.keys(devices).map((id) => label[id] ?? id),
+            ),
+          );
+      };
+      expectSame(outgoing, 'push recipients', recipients);
+      expect(recipients(outgoing[0], 0)).toEqual(['receiver']);
       for (const sender of senders) await server.flush(sender);
+      const untrusted = await both(bystanders, (it) => server.sync(it));
+      expectSame(untrusted, 'the untrusted own device gets nothing');
+      expect(untrusted[0]).toEqual([]);
       const synced = await both(receivers, (it) => server.sync(it));
-      expectSame(synced, 'sync the push', syncedTypes);
+      // Each receiver got its own sender's push, signatures fresh; the crate leaves out the value.
+      expectSame(synced, 'sync the push', (answer, index) =>
+        JSON.parse(
+          JSON.stringify(
+            named(withoutSecret(answer), senders[1 - index], 'sender'),
+          ).replace(/[A-Za-z0-9+/]{86}/g, '<signature>'),
+        ),
+      );
       return synced;
     };
 
@@ -166,10 +205,13 @@ describe.skipIf(!hasCargo)(
           ],
         ]);
         const { receivers } = pairs;
-        // The decrypted push that the sync returns holds the secret on both sides, as WASM's.
+        // Unlike WASM's, the crate's decrypted push has no `content.secret`; the rest is equal.
         expect(
           synced.map((answer) => JSON.stringify(answer).includes(backupKey)),
-        ).toEqual([true, true]);
+        ).toEqual([false, true]);
+        expect(JSON.parse(synced[0][0].rawEvent).content).toEqual({
+          name: BACKUP_SECRET,
+        });
 
         // The event names the secret only; WASM's callback also gets the value.
         const polled = await both(receivers, (it) => it.pollEvents());
