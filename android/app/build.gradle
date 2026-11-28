@@ -50,6 +50,66 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
+// Native end-to-end encryption (native/crypto): the crate's libtrinity_crypto.so for every ABI
+// the app ships, built here with cargo-ndk (native/crypto/build-android.sh) or copied from a
+// prebuilt set. On unless -PtrinityNativeCrypto=false or TRINITY_NATIVE_CRYPTO=0, which build an
+// app without it that runs crypto on WASM. See platforms/android.md.
+def nativeCryptoSetting = (project.findProperty('trinityNativeCrypto') ?: System.getenv('TRINITY_NATIVE_CRYPTO') ?: 'true').toString()
+def nativeCrypto = !(nativeCryptoSetting in ['false', '0'])
+// Fewer ABIs (for example x86_64 for the emulator) build faster; release artefacts need all four.
+def nativeCryptoAbis = (project.findProperty('trinityNativeCryptoAbis') ?: System.getenv('TRINITY_NATIVE_CRYPTO_ABIS') ?: 'arm64-v8a,armeabi-v7a,x86,x86_64')
+    .toString().split(',').collect { it.trim() }.findAll { it }
+// A directory of <abi>/libtrinity_crypto.so built elsewhere (CI builds them once per crate change).
+def nativeCryptoPrebuilt = project.findProperty('trinityNativeCryptoPrebuilt') ?: System.getenv('TRINITY_NATIVE_CRYPTO_PREBUILT')
+
+abstract class BuildNativeCrypto extends DefaultTask {
+    @InputFiles @PathSensitive(PathSensitivity.RELATIVE) abstract ConfigurableFileCollection getSources()
+    @Input abstract ListProperty<String> getAbis()
+    @Input @Optional abstract Property<String> getPrebuilt()
+    @Internal abstract DirectoryProperty getCrateDir()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+    @Inject abstract ExecOperations getExecOperations()
+    @Inject abstract FileSystemOperations getFiles()
+
+    @TaskAction
+    void build() {
+        def out = outputDir.get().asFile
+        files.delete { delete out }
+        out.mkdirs()
+        if (prebuilt.present) {
+            files.copy { from(prebuilt.get()) { include abis.get().collect { "${it}/libtrinity_crypto.so" } }; into out }
+        } else {
+            execOperations.exec {
+                commandLine(['sh', new File(crateDir.get().asFile, 'build-android.sh').path, out.path] + abis.get())
+            }
+        }
+        def missing = abis.get().findAll { !new File(out, "${it}/libtrinity_crypto.so").isFile() }
+        if (missing) {
+            throw new GradleException("native crypto: no libtrinity_crypto.so for ${missing.join(', ')}" + (prebuilt.present ? " in ${prebuilt.get()}" : ''))
+        }
+    }
+}
+
+if (nativeCrypto) {
+    def crateDir = rootProject.layout.projectDirectory.dir('../native/crypto')
+    def buildNativeCrypto = tasks.register('buildNativeCrypto', BuildNativeCrypto) {
+        abis.set(nativeCryptoAbis)
+        if (nativeCryptoPrebuilt) {
+            prebuilt.set(file(nativeCryptoPrebuilt).path)
+            sources.from(fileTree(file(nativeCryptoPrebuilt)) { include '**/libtrinity_crypto.so' })
+        } else {
+            sources.from(crateDir.file('Cargo.toml'), crateDir.file('Cargo.lock'), crateDir.file('build-android.sh'), crateDir.dir('src'))
+        }
+        it.crateDir.set(crateDir)
+        outputDir.set(layout.buildDirectory.dir('generated/trinityCrypto/jniLibs'))
+    }
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            variant.sources.jniLibs?.addGeneratedSourceDirectory(buildNativeCrypto) { it.outputDir }
+        }
+    }
+}
+
 try {
     def servicesJSON = file('google-services.json')
     if (servicesJSON.text) {
