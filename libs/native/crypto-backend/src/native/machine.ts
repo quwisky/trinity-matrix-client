@@ -91,6 +91,7 @@ import {
   NativeCryptoError,
   type NativeCryptoLogger,
   type NativeEvents,
+  NativeMachineClosedError,
   NativeMachineLostError,
 } from './types';
 
@@ -322,6 +323,7 @@ export class NativeOlmMachine {
     params?: Record<string, unknown>,
   ): Promise<unknown> {
     if (this.#lost) throw new NativeMachineLostError(method);
+    if (this.#closed) throw new NativeMachineClosedError(method);
     const send = () => this.#send(method, params);
     try {
       // A reload in flight goes first, then the replays it holds, then this call.
