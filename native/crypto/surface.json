@@ -6,13 +6,15 @@
         "status": "done",
         "area": "backup",
         "native": "getBackupKeys",
-        "note": "a field of the getBackupKeys result"
+        "note": "a field of the getBackupKeys result",
+        "shimImpl": true
       },
       "decryptionKey": {
         "status": "done",
         "area": "backup",
         "native": "getBackupKeys",
-        "note": "getBackupKeys returns decryptionKeyBase64; the shim must wrap it with the WASM helper BackupDecryptionKey.fromBase64"
+        "note": "getBackupKeys returns decryptionKeyBase64; the shim must wrap it with the WASM helper BackupDecryptionKey.fromBase64",
+        "shimImpl": true
       }
     },
     "DehydratedDevice": {
@@ -63,72 +65,84 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "deviceId": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "displayName": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "encryptToDeviceEvent": {
         "status": "done",
         "area": "devices-identities",
         "native": "encryptToDeviceEvent",
-        "note": "call: takes userId, deviceId and ed25519Key (StaleObject when the device has another key now); content is JSON, not a string; the shim must pass ed25519Key from the snapshot its object wraps"
+        "note": "call: takes userId, deviceId and ed25519Key (StaleObject when the device has another key now); content is JSON, not a string; the shim must pass ed25519Key from the snapshot its object wraps",
+        "shimImpl": true
       },
       "free": {
         "status": "shim",
         "area": "devices-identities",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       },
       "isBlacklisted": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "isCrossSignedByOwner": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "isCrossSigningTrusted": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "isDehydrated": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "isLocallyTrusted": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "isVerified": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "keys": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "requestVerification": {
         "status": "done",
@@ -140,19 +154,22 @@
         "status": "done",
         "area": "devices-identities",
         "native": "setLocalTrust",
-        "note": "call: takes userId and deviceId, resolves the device again; the shim must pass ed25519Key from the snapshot its object wraps"
+        "note": "call: takes userId and deviceId, resolves the device again; the shim must pass ed25519Key from the snapshot its object wraps",
+        "shimImpl": true
       },
       "signatures": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "snapshot field: read from the getDevice snapshot"
+        "note": "snapshot field: read from the getDevice snapshot",
+        "shimImpl": true
       },
       "verify": {
         "status": "done",
         "area": "devices-identities",
         "native": "verifyDevice",
-        "note": "call: takes userId and deviceId; the SignatureUploadRequest has no id, as in WASM; the shim must pass ed25519Key from the snapshot its object wraps"
+        "note": "call: takes userId and deviceId; the SignatureUploadRequest has no id, as in WASM; the shim must pass ed25519Key from the snapshot its object wraps",
+        "shimImpl": true
       }
     },
     "Migration": {
@@ -179,12 +196,14 @@
       "backupRoomKeys": {
         "status": "done",
         "area": "backup",
-        "native": "backupRoomKeys"
+        "native": "backupRoomKeys",
+        "shimImpl": true
       },
       "bootstrapCrossSigning": {
         "status": "done",
         "area": "cross-signing",
-        "native": "bootstrapCrossSigning"
+        "native": "bootstrapCrossSigning",
+        "shimImpl": true
       },
       "buildRoomKeyBundle": {
         "status": "done",
@@ -208,7 +227,8 @@
       "crossSigningStatus": {
         "status": "done",
         "area": "cross-signing",
-        "native": "crossSigningStatus"
+        "native": "crossSigningStatus",
+        "shimImpl": true
       },
       "decryptRoomEvent": {
         "status": "done",
@@ -245,12 +265,14 @@
       "disableBackup": {
         "status": "done",
         "area": "backup",
-        "native": "disableBackup"
+        "native": "disableBackup",
+        "shimImpl": true
       },
       "enableBackupV1": {
         "status": "done",
         "area": "backup",
-        "native": "enableBackupV1"
+        "native": "enableBackupV1",
+        "shimImpl": true
       },
       "encryptRoomEvent": {
         "status": "done",
@@ -269,13 +291,15 @@
         "status": "done",
         "area": "cross-signing",
         "native": "exportCrossSigningKeys",
-        "note": "the only call that returns private cross-signing keys, as in WASM"
+        "note": "the only call that returns private cross-signing keys, as in WASM",
+        "shimImpl": true
       },
       "exportRoomKeys": {
         "status": "done",
         "area": "room-keys",
         "native": "exportRoomKeys",
-        "note": "no predicate crosses the surface: every key is exported; matrix-js-sdk passes () => true"
+        "note": "no predicate crosses the surface: every key is exported; matrix-js-sdk passes () => true",
+        "shimImpl": true
       },
       "exportSecretsBundle": {
         "status": "done",
@@ -293,19 +317,22 @@
       "getBackupKeys": {
         "status": "done",
         "area": "backup",
-        "native": "getBackupKeys"
+        "native": "getBackupKeys",
+        "shimImpl": true
       },
       "getDevice": {
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "a Device snapshot or null; the shim must ask again for each trust question: a snapshot is current only when returned"
+        "note": "a Device snapshot or null; the shim must ask again for each trust question: a snapshot is current only when returned",
+        "shimImpl": true
       },
       "getIdentity": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "an identity snapshot with kind own|other, or null; waits up to 1 s for a key query in flight, as WASM; the shim must build OwnUserIdentity or OtherUserIdentity by kind (js-sdk uses instanceof) and ask again for each trust question"
+        "note": "an identity snapshot with kind own|other, or null; waits up to 1 s for a key query in flight, as WASM; the shim must build OwnUserIdentity or OtherUserIdentity by kind (js-sdk uses instanceof) and ask again for each trust question",
+        "shimImpl": true
       },
       "getMissingSessions": {
         "status": "done",
@@ -350,7 +377,8 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getUserDevices",
-        "note": "the Device snapshots in no order; the shim builds UserDevices"
+        "note": "the Device snapshots in no order; the shim builds UserDevices",
+        "shimImpl": true
       },
       "getVerificationRequest": {
         "status": "done",
@@ -380,19 +408,22 @@
         "status": "done",
         "area": "room-keys",
         "native": "importBackedUpRoomKeys",
-        "note": "takes { roomId: { sessionId: data } }; no progress listener crosses the surface; the shim must replay the listener from lastProgress"
+        "note": "takes { roomId: { sessionId: data } }; no progress listener crosses the surface; the shim must replay the listener from lastProgress",
+        "shimImpl": true
       },
       "importCrossSigningKeys": {
         "status": "done",
         "area": "cross-signing",
         "native": "importCrossSigningKeys",
-        "note": "takes masterKey, selfSigningKey, userSigningKey"
+        "note": "takes masterKey, selfSigningKey, userSigningKey",
+        "shimImpl": true
       },
       "importExportedRoomKeys": {
         "status": "done",
         "area": "room-keys",
         "native": "importExportedRoomKeys",
-        "note": "no progress listener crosses the surface; the shim must replay the listener from lastProgress"
+        "note": "no progress listener crosses the surface; the shim must replay the listener from lastProgress",
+        "shimImpl": true
       },
       "importSecretsBundle": {
         "status": "done",
@@ -441,7 +472,8 @@
         "status": "done",
         "area": "secrets",
         "native": "pushSecretToVerifiedDevices",
-        "note": "{ secretName } \u2192 null; the pushes are queued in outgoingRequests, a missing secret fails as in WASM"
+        "note": "{ secretName } \u2192 null; the pushes are queued in outgoingRequests, a missing secret fails as in WASM",
+        "shimImpl": true
       },
       "queryKeysForUsers": {
         "status": "done",
@@ -515,7 +547,8 @@
       "roomKeyCounts": {
         "status": "done",
         "area": "room-keys",
-        "native": "roomKeyCounts"
+        "native": "roomKeyCounts",
+        "shimImpl": true
       },
       "roomKeyRequestsEnabled": {
         "status": "done",
@@ -528,7 +561,8 @@
         "status": "done",
         "area": "backup",
         "native": "saveBackupDecryptionKey",
-        "note": "takes the key as decryptionKeyBase64"
+        "note": "takes the key as decryptionKeyBase64",
+        "shimImpl": true
       },
       "setHasDownloadedAllRoomKeys": {
         "status": "done",
@@ -559,7 +593,8 @@
         "status": "done",
         "area": "backup",
         "native": "sign",
-        "note": "returns the object Signatures.asJSON() serialises"
+        "note": "returns the object Signatures.asJSON() serialises",
+        "shimImpl": true
       },
       "storeRoomPendingKeyBundle": {
         "status": "done",
@@ -592,38 +627,44 @@
         "status": "done",
         "area": "backup",
         "native": "verifyBackup",
-        "note": "returns { deviceState, userState, trusted }. Deferred to slice B (cross-signing fixture): contract cases for info signed by a known but unverified own device (trusted: false) and for a non-missing userState"
+        "note": "returns { deviceState, userState, trusted }. Deferred to slice B (cross-signing fixture): contract cases for info signed by a known but unverified own device (trusted: false) and for a non-missing userState",
+        "shimImpl": true
       }
     },
     "OtherUserIdentity": {
       "free": {
         "status": "shim",
         "area": "devices-identities",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       },
       "identityNeedsUserApproval": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: only on kind \"other\""
+        "note": "snapshot field: only on kind \"other\"",
+        "shimImpl": true
       },
       "isVerified": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)"
+        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)",
+        "shimImpl": true
       },
       "masterKey": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "pinCurrentMasterKey": {
         "status": "done",
         "area": "devices-identities",
         "native": "pinCurrentMasterKey",
-        "note": "call: takes userId; refused for the own identity, which has no such method in WASM; the shim must pass masterKey from the snapshot its object wraps"
+        "note": "call: takes userId; refused for the own identity, which has no such method in WASM; the shim must pass masterKey from the snapshot its object wraps",
+        "shimImpl": true
       },
       "requestVerification": {
         "status": "done",
@@ -635,7 +676,8 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "verificationRequestContent": {
         "status": "done",
@@ -647,32 +689,37 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "withdrawVerification": {
         "status": "done",
         "area": "devices-identities",
         "native": "withdrawVerification",
-        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps",
+        "shimImpl": true
       }
     },
     "OwnUserIdentity": {
       "free": {
         "status": "shim",
         "area": "devices-identities",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       },
       "isVerified": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)"
+        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)",
+        "shimImpl": true
       },
       "masterKey": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "requestVerification": {
         "status": "done",
@@ -684,31 +731,36 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "userSigningKey": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: only on kind \"own\", as matrix-js-sdk tests with `in`"
+        "note": "snapshot field: only on kind \"own\", as matrix-js-sdk tests with `in`",
+        "shimImpl": true
       },
       "verify": {
         "status": "done",
         "area": "devices-identities",
         "native": "verifyIdentity",
-        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps",
+        "shimImpl": true
       },
       "wasPreviouslyVerified": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "snapshot field: read from the getIdentity snapshot"
+        "note": "snapshot field: read from the getIdentity snapshot",
+        "shimImpl": true
       },
       "withdrawVerification": {
         "status": "done",
         "area": "devices-identities",
         "native": "withdrawVerification",
-        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps",
+        "shimImpl": true
       }
     },
     "Qr": {
@@ -888,12 +940,14 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getUserDevices",
-        "note": "snapshot field: getUserDevices returns the device snapshots"
+        "note": "snapshot field: getUserDevices returns the device snapshots",
+        "shimImpl": true
       },
       "free": {
         "status": "shim",
         "area": "devices-identities",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "note": "releases a JS handle; native objects are addressed by key, nothing to free",
+        "shimImpl": true
       }
     },
     "VerificationRequest": {
