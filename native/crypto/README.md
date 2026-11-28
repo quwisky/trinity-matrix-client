@@ -288,6 +288,10 @@ events are described under "Verification" above.
   `dropped` means the host's view is stale: for room keys, retry every undecryptable event.
 - After a panic drops the machine, `pollEvents` still returns what it queued, and `init`
   listens to the reloaded machine. `close` discards the queue: poll before closing.
+- The JavaScript shim reloads a dropped machine with `init` and replays only calls that are
+  safe to replay; when it cannot, or the bridge fails, the machine is lost and the shim calls
+  the host's `onMachineLost` and holds the sync input, so the host must stop the client (see the
+  developer page, "The JavaScript shim").
 - Not every loss can be counted: the store drops a withheld batch, or an identity and device
   change, its broadcast channel skipped without saying so. Those channels hold 16 and 32
   changes and every call drains them, so only a single call that stores more could lose one.
