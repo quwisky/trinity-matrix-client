@@ -5,6 +5,8 @@
   "sourceRoot": "libs/util/matrix/src",
   "prefix": "trn",
   "tags": ["type:util", "scope:shared", "role:kernel", "capability:shared"],
+  "//": "@matrix-org/matrix-sdk-crypto-wasm resolves to the facade through a pnpm override, which Nx cannot see; scripts/crypto-backend-dependents.spec.mjs checks every loader of the package reaches it.",
+  "implicitDependencies": ["native-crypto-backend"],
   "targets": {
     "test": {},
     "typecheck": {}

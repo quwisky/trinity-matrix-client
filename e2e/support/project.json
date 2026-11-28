@@ -4,6 +4,8 @@
   "sourceRoot": "e2e/support",
   "projectType": "library",
   "tags": ["type:e2e", "scope:shared"],
+  "//": "@matrix-org/matrix-sdk-crypto-wasm resolves to the facade through a pnpm override, which Nx cannot see; scripts/crypto-backend-dependents.spec.mjs checks every loader of the package reaches it.",
+  "implicitDependencies": ["native-crypto-backend"],
   "targets": {
     "lint": {
       "executor": "nx:run-commands",
