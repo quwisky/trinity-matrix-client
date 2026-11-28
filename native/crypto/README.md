@@ -207,8 +207,8 @@ cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is T
   `Sas` or `Qr` it now holds is watched afresh (matrix-js-sdk switches its verifier then), and
   when that one is over already, nothing is. A watch ends when its object is done or cancelled,
   or its request is (a replaced QR code that nobody scanned would never end); a passive request
-  ends when it is done, or once its deadline passes (upstream never cancels a passive request,
-  so no change would end it); an answer that hands out an object that is already over drops its
+  ends when it is done, or once its deadline passes (upstream never cancels a passive request, so
+  past its deadline only a late `done` from the other device could still end it); an answer that hands out an object that is already over drops its
   watch. A request past its deadline that is not passive keeps its watch until the next sync
   cancels it with `m.timeout`, so that event still reaches the host. A panic drops the watches at once (they hold the dead machine's
   objects, store and account), and `init` drops them too: verifications live in the machine's
@@ -221,6 +221,9 @@ cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is T
   `outgoingRequests`), `exportSecretsBundle` (the JSON of WASM's `SecretsBundle.to_json()`,
   without `backup` when there is none) and `importSecretsBundle` (`bundle`: that JSON). A bundle
   that does not parse fails with a fixed message, as serde's would quote the value it read.
+  Unlike WASM, every cross-signing seed is checked before anything is imported: upstream keeps
+  the keys it took before failing on a malformed later one, which would leave a master key that
+  matches no public identity, so a bundle with one bad seed imports nothing.
 - Room key bundles ([MSC4268](https://github.com/matrix-org/matrix-spec-proposals/pull/4268)):
   `buildRoomKeyBundle` (`{ encryptedData, mediaEncryptionInfo }`, the data base64, or `null`),
   `shareRoomKeyBundleData` (`userId`, `roomId`, `url`, `mediaEncryptionInfo`,
@@ -335,9 +338,15 @@ in WASM; the upstream inbox items wipe themselves, the response string does not.
 dehydration key is wiped once decoded (`createDehydratedDevice`, `rehydrateDevice`,
 `saveDehydratedDeviceKey`), but not in the request string; `getDehydratedDeviceKey` returns it
 in the response string, as WASM's getter does. A room key bundle is wiped once encrypted or
-decrypted; the encrypted file and the device data of a dehydrated device are ciphertext. A
-decrypted secret push that `receiveSyncChanges` returns holds the secret in its event, as
-WASM's does (the contract test checks both).
+decrypted, and its parse errors and those of `mediaEncryptionInfo` have fixed messages (serde's
+could quote a key); the encrypted file and the device data of a dehydrated device are
+ciphertext.
+
+Unlike WASM, `receiveSyncChanges` and `receiveSyncChangesMsc4186` return a decrypted
+`m.secret.send` or `io.element.msc4385.secret.push` without `content.secret` (its name, request
+ID and everything else stay): matrix-js-sdk reads only the event type there and takes secrets
+from the inbox, but it hands the event to the app as a `ReceivedToDeviceMessage`. The removed
+value is wiped; the decrypted event upstream returns is not.
 
 ## For the JNI wrapper
 
