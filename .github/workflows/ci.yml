@@ -45,7 +45,7 @@ jobs:
         run: node scripts/ci-classify.mjs
       # Whether a pull request touches what the `mas-e2e` and `tuwunel-oauth-e2e` journeys
       # check: sign-in code (QR sign-in's lib is under libs/data-access/auth), the Settings
-      # link-device panel and the Devices list and trust state it reads, the matrix-js-sdk or crypto-wasm version, the SDK patch, and the MAS
+      # link-device panel and the Devices list and trust state it reads, the matrix-js-sdk or crypto-wasm version or its facade, the SDK patch, and the MAS
       # and Tuwunel OAuth harnesses with those journeys. It is a step here, not an `on.pull_request.paths` filter, so a pull request
       # that skips the journeys still reports the required check. Pushes skip them: the Synapse
       # nightly runs the same journeys against main. The diffs are read into variables first,
@@ -58,7 +58,7 @@ jobs:
           run=false
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
             : "${BASE:?pull request has no base sha}"
-            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/support/mas-account\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/|libs/data-access/trust/|libs/feature/settings/src/lib/devices/devices-section\.component)'
+            paths='^(libs/data-access/(auth|matrix-client|accounts)/|libs/native/crypto-backend/|libs/feature/auth/|libs/platform-native/src/lib/(session|secure)-storage\.service\.ts$|libs/util/matrix/src/lib/session\.model\.ts$|libs/application/runtime/src/lib/composition/application-capability\.providers\.ts$|patches/matrix-js-sdk|e2e/support/homeserver/mas/|e2e/support/homeserver/(Caddyfile|start\.mjs|stop\.mjs|constants\.mjs|kind\.mts|paths\.mjs)$|e2e/browser/journeys/accounts/mas-[^/]*\.spec\.mts$|e2e/browser/support/mas\.mts$|e2e/support/mas-account\.mts$|e2e/browser/journeys/accounts/qr-sign-in\.spec\.mts$|e2e/browser/support/qr-existing-device\.mts$|e2e/support/qr-camera\.mts$|e2e/support/homeserver/tuwunel-oauth/|libs/feature/settings/src/lib/devices/link-device/|libs/data-access/trust/|libs/feature/settings/src/lib/devices/devices-section\.component)'
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             # A version bump rewrites the matrix-js-sdk or crypto-wasm entries in these manifests.
             manifests=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json pnpm-lock.yaml pnpm-workspace.yaml)
@@ -152,7 +152,8 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
       # Whether a pull request or push touches the native crypto crate, its scripts and their
-      # Nx target, the WASM version it is pinned against, the setup action, or this workflow.
+      # Nx target, the WASM version it is pinned against or the facade that re-exports it, the
+      # setup action, or this workflow.
       # Pull requests diff against their base, pushes against the commit before them; a
       # missing or unknown base runs the job.
       - id: native-crypto
@@ -163,7 +164,7 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifest=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json)
-            if ! grep -qE '^(native/crypto/|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
+            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
               run=false
             fi
           fi
