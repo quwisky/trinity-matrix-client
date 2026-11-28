@@ -84,7 +84,9 @@ const codeOnly = (method: string) =>
   QUIET_METHODS.has(method) || SECRET_ANSWER_METHODS.has(method);
 /** A code as the crate writes them; anything else from the bridge is not repeated. */
 const safeCode = (code: unknown, fallback: string) =>
-  typeof code === 'string' && /^[A-Za-z]{1,64}$/.test(code) ? code : fallback;
+  typeof code === 'string' && /^[A-Z][A-Za-z]{0,39}$/.test(code)
+    ? code
+    : fallback;
 
 /** A batch still waiting after this long is logged, once, whatever its limit. */
 export const DEFAULT_WARN_AFTER_MS = 60_000;
