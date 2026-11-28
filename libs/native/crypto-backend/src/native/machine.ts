@@ -313,6 +313,9 @@ const isToDeviceEvent = (value: unknown) =>
       ? isObject(value['utdInfo'])
       : value['type'] === 2 || value['type'] === 3);
 
+/** Polls failing in a row before the machine counts as lost: its events can no longer arrive. */
+const POLL_FAILURE_LIMIT = 3;
+
 /** A sync input on a lost machine: never settles, so matrix-js-sdk never moves past it. */
 const forever = <T>(): Promise<T> => new Promise<T>(() => undefined);
 
@@ -338,6 +341,10 @@ export class NativeOlmMachine {
   readonly #objectCall: MachineCall = (method, params) =>
     this.#call(method, params);
   readonly #verifications: Verifications;
+  /** Polls that failed since the last one that answered. */
+  #pollFailures = 0;
+  /** A refresh of the verifications in flight: its own batches' failed polls start no other. */
+  #refreshing = false;
   /** Megolm sessions that failed to decrypt, by room and session, for a retry after lost events. */
   readonly #undecryptable = new Map<string, RoomKeyJson>();
 
@@ -354,11 +361,16 @@ export class NativeOlmMachine {
     this.#verifications = new Verifications(this.#objectCall, context.logger);
     context.queue.listen(
       description,
-      (events) => this.#deliver(events),
+      (events) => {
+        this.#pollFailures = 0;
+        this.#deliver(events);
+      },
       (reason, malformed) => {
         this.#context.logger?.warn(reason);
         this.#context.onEventsDropped?.(undefined);
         if (malformed) this.#lose(reason);
+        else if (++this.#pollFailures >= POLL_FAILURE_LIMIT)
+          this.#lose(`pollEvents failed ${POLL_FAILURE_LIMIT} times in a row`);
         else this.#resync();
       },
     );
@@ -668,7 +680,11 @@ export class NativeOlmMachine {
     this.#undecryptable.clear();
     if (sessions.length > 0)
       this.#invoke('roomKeysReceived', sessions.map(toRoomKeyInfo));
-    void this.#verifications.refresh();
+    if (this.#refreshing) return;
+    this.#refreshing = true;
+    void this.#verifications.refresh().finally(() => {
+      this.#refreshing = false;
+    });
   }
 
   /** Remembers a session whose event did not decrypt, for `#resync`. */

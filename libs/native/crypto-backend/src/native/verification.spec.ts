@@ -82,7 +82,13 @@ type Answer = unknown | ((request: NativeRequest) => NativeResponse);
 function fakeCrate(answers: Record<string, Answer>) {
   const requests: NativeRequest[] = [];
   const events: Record<string, unknown>[] = [];
-  const crate = { requests, events, dropped: 0, panicOn: new Set<string>() };
+  const crate = {
+    requests,
+    events,
+    dropped: 0,
+    panicOn: new Set<string>(),
+    pollFails: false,
+  };
   let open = false;
   const answer = (request: NativeRequest): NativeResponse => {
     requests.push(request);
@@ -92,6 +98,8 @@ function fakeCrate(answers: Record<string, Answer>) {
     }
     if (request.method === 'roomKeyRequestsEnabled') return { result: true };
     if (request.method === 'pollEvents') {
+      if (crate.pollFails)
+        return { error: { code: 'Refused', message: 'no events' } };
       const dropped = crate.dropped;
       crate.dropped = 0;
       return { result: { events: events.splice(0), dropped } };
@@ -765,6 +773,43 @@ describe('reading flows again after lost events', () => {
       code: 'InvalidRequest',
     });
     expect(sent(crate, 'confirmSas')).toEqual([]);
+  });
+});
+
+describe('failing polls', () => {
+  it('reads the flows again one refresh at a time, and loses the machine after three failed polls', async () => {
+    const lost = vi.fn();
+    const answers: Record<string, Answer> = { trackedUsers: [] };
+    const { olm, crate } = await incoming(answers, { onMachineLost: lost });
+    let reads = 0;
+    answers['getVerificationRequest'] = () => {
+      reads++;
+      return { result: request() };
+    };
+    crate.pollFails = true;
+    for (let call = 0; call < 3; call++)
+      await olm.trackedUsers().catch(() => undefined);
+    await vi.waitFor(() =>
+      expect(lost).toHaveBeenCalledWith('pollEvents failed 3 times in a row'),
+    );
+    // The first failure starts a refresh; failures in its own batches start none.
+    expect(reads).toBeLessThanOrEqual(2);
+  });
+
+  it('counts only failures in a row', async () => {
+    const lost = vi.fn();
+    const { olm, crate } = await machine(
+      { trackedUsers: [] },
+      { onMachineLost: lost },
+    );
+    for (let round = 0; round < 3; round++) {
+      crate.pollFails = true;
+      await olm.trackedUsers();
+      await olm.trackedUsers();
+      crate.pollFails = false;
+      await olm.trackedUsers();
+    }
+    expect(lost).not.toHaveBeenCalled();
   });
 });
 
