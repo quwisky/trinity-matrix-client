@@ -24,7 +24,7 @@ if (!hasCargo) {
 }
 
 /** Builds the CLI (incrementally) and returns its path, or fails with cargo's output. */
-const buildCli = () => {
+export const buildCli = () => {
   const manifest = resolve(root, 'native/crypto/Cargo.toml');
   const args = ['build', '--locked', '--bin', 'trinity-crypto-cli'];
   const result = spawnSync(
@@ -224,7 +224,7 @@ const byType = (response) => {
 /** Drops `undefined` fields, as the native JSON leaves them out. */
 export const defined = (value) => JSON.parse(JSON.stringify(value));
 
-const nativeDevice = async (cli, userId, deviceId) => {
+const nativeDevice = async (cli, userId, deviceId, init = {}) => {
   const respond = (method, params = {}) =>
     cli.call({ method, userId, deviceId, params });
   const call = async (method, params) => {
@@ -233,7 +233,7 @@ const nativeDevice = async (cli, userId, deviceId) => {
       throw new Error(`${method}: ${JSON.stringify(response.error)}`);
     return response.result;
   };
-  const description = await call('init');
+  const description = await call('init', init);
   let closed = false;
   return {
     kind: 'native',
@@ -1369,13 +1369,16 @@ export const useDevices = () => {
     for (const created of devices) await created.close();
     cli?.stop();
   });
-  /** `ids` names a device of an existing user, such as a second device. */
+  /**
+   * `ids` names a device of an existing user, such as a second device; `ids.init` holds the
+   * native `init` parameters (a SQLite `storePath` and `storeKey`).
+   */
   return async (kind, ids = {}) => {
     const userId = ids.userId ?? `@${kind}${counter++}:localhost`;
     const deviceId = ids.deviceId ?? `${kind.toUpperCase()}${counter}`;
     const created =
       kind === 'native'
-        ? await nativeDevice(cli, userId, deviceId)
+        ? await nativeDevice(cli, userId, deviceId, ids.init)
         : await wasmDevice(userId, deviceId);
     devices.push(created);
     return created;

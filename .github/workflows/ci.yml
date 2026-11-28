@@ -152,8 +152,10 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
       # Whether a pull request or push touches the native crypto crate, its scripts and their
-      # Nx target, the WASM version it is pinned against or the facade that re-exports it, the
-      # setup action, or this workflow.
+      # Nx target (the SDK test bed among them), the WASM version it is pinned against, the
+      # facade that re-exports it and holds the shim, the matrix-js-sdk patch the shim relies
+      # on, the E2E support code whose homeserver lifecycle the test bed uses and the membership
+      # repair its clients run, the setup action, or this workflow.
       # Pull requests diff against their base, pushes against the commit before them; a
       # missing or unknown base runs the job.
       - id: native-crypto
@@ -164,7 +166,7 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifest=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json)
-            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
+            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|patches/matrix-js-sdk|e2e/support/|e2e/mobile/support/matrix\.mts$|libs/data-access/matrix-client/src/lib/stale-membership-repair\.ts$|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
               run=false
             fi
           fi
@@ -256,16 +258,18 @@ jobs:
             pnpm nx affected -t test --base="$BASE" --head=HEAD
           fi
 
-  # The native crypto crate: format, lints, its tests, the pin against the WASM package and
-  # the interop and contract tests that drive it against that package. Only when the
-  # classifier's `native-crypto` step says its inputs changed; no Android cross-build yet. It
-  # reports through `e2e-result`, the required check that accepts path-filtered jobs as skipped.
+  # The native crypto crate: format, lints, its tests, the pin against the WASM package, the
+  # interop and contract tests that drive it against that package, and the SDK test bed:
+  # matrix-js-sdk's own crypto on the JavaScript shim with the crate's CLI as the bridge,
+  # against the disposable homeserver it starts in Docker. Only when the classifier's
+  # `native-crypto` step says its inputs changed; no Android cross-build yet. It reports
+  # through `e2e-result`, the required check that accepts path-filtered jobs as skipped.
   native-crypto:
     needs: classify
     if: ${{ !cancelled() && needs.classify.outputs.native-crypto == 'true' }}
     name: Native crypto (Rust)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     env:
       RUSTUP_TOOLCHAIN: 1.99.1
     steps:
@@ -280,6 +284,7 @@ jobs:
       - run: cargo test --locked --all-features
         working-directory: native/crypto
       - run: pnpm nx run scripts:native-crypto-interop
+      - run: pnpm nx run scripts:native-crypto-sdk
 
   # The production AOT build remains independent of unit/type checks.
   renderer:

@@ -1502,7 +1502,7 @@ describe('TestFlight upload workflow', () => {
 describe('native crypto job', () => {
   const job = workflow.jobs['native-crypto'];
 
-  it('runs the crate checks and the interop test only when the classifier asks', () => {
+  it('runs the crate checks, the interop test and the SDK test bed only when the classifier asks', () => {
     expect(workflow.jobs.classify.outputs['native-crypto']).toBe(
       '${{ steps.native-crypto.outputs.run }}',
     );
@@ -1516,6 +1516,7 @@ describe('native crypto job', () => {
       'cargo clippy --locked --all-targets --all-features -- -D warnings',
       'cargo test --locked --all-features',
       'pnpm nx run scripts:native-crypto-interop',
+      'pnpm nx run scripts:native-crypto-sdk',
     ]);
     for (const { uses } of job.steps.filter((step) => step.uses)) {
       expect(uses).toMatch(/^(\.\/|[\w./-]+@[0-9a-f]{40}$)/);
@@ -1579,6 +1580,11 @@ describe('native crypto job', () => {
       'native/crypto/src/lib.rs',
       'libs/native/crypto-backend/package.json',
       'scripts/native-crypto-pin.mjs',
+      'scripts/native-crypto-sdk.e2e.mjs',
+      'patches/matrix-js-sdk@45.0.0.patch',
+      'e2e/support/homeserver/lease.mts',
+      'e2e/mobile/support/matrix.mts',
+      'libs/data-access/matrix-client/src/lib/stale-membership-repair.ts',
       'scripts/project.json',
       '.github/actions/setup/action.yml',
       '.github/workflows/ci.yml',
