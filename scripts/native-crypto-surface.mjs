@@ -82,6 +82,7 @@ export const PURE_JS = new Set([
   'HistoryVisibility',
   'IdentityKeys',
   'initAsync',
+  'InvalidToDeviceEvent',
   'KeysBackupRequest',
   'KeysClaimRequest',
   'KeysQueryRequest',
@@ -92,6 +93,7 @@ export const PURE_JS = new Set([
   'OutgoingRequest',
   'PickledInboundGroupSession',
   'PickledSession',
+  'PlainTextToDeviceEvent',
   'ProcessedToDeviceEventType',
   'PutDehydratedDeviceRequest',
   'QrCodeIntent',
@@ -115,6 +117,7 @@ export const PURE_JS = new Set([
   'ToDeviceRequest',
   'TrustRequirement',
   'UploadSigningKeysRequest',
+  'UTDToDeviceEvent',
   'UserId',
   'VerificationMethod',
   'VerificationRequestPhase',
@@ -210,6 +213,16 @@ export const usedSymbols = (
           ? node
           : undefined;
       if (target) record(checker.getSymbolAtLocation(target));
+      // On a value of a union type (such as a generic constrained to `Qr | Sas`), the checker
+      // names one member's declaration; the access reaches every member of the union.
+      if (ts.isPropertyAccessExpression(node)) {
+        const type = checker.getNonNullableType(
+          checker.getTypeAtLocation(node.expression),
+        );
+        for (const member of type.isUnion() ? type.types : []) {
+          record(member.getProperty(node.name.text));
+        }
+      }
       // `const { a, b: c } = value` and destructured parameters name members without an access.
       if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
         const key = node.propertyName ?? node.name;

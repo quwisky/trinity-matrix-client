@@ -181,7 +181,11 @@ pub async fn get_identity(machine: &OlmMachine, params: IdentityParams) -> CallR
 
 /// Refuses a call on an object whose key is no longer `expected`: the host's object wraps an
 /// older one (a device that logged in again under its ID, an identity whose master key changed).
-fn check_key(what: &str, expected: Option<&str>, current: Option<String>) -> CallResult<()> {
+pub(crate) fn check_key(
+    what: &str,
+    expected: Option<&str>,
+    current: Option<String>,
+) -> CallResult<()> {
     match expected {
         Some(expected) if current.as_deref() != Some(expected) => Err(CallError::new(
             "StaleObject",
@@ -193,7 +197,7 @@ fn check_key(what: &str, expected: Option<&str>, current: Option<String>) -> Cal
 
 /// The device a `Device` method acts on, resolved again from the machine and, given the
 /// ed25519 key from the host's snapshot, refused when that is no longer its key.
-async fn resolve_device(
+pub(crate) async fn resolve_device(
     machine: &OlmMachine,
     user: &OwnedUserId,
     id: &OwnedDeviceId,

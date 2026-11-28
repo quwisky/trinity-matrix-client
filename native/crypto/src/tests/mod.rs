@@ -8,6 +8,7 @@ use crate::{call, call_batch};
 mod backup;
 mod devices;
 mod events;
+mod verification;
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -488,6 +489,9 @@ pub(crate) mod hooks {
     pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
     pub(crate) static HOLD: Mutex<Option<(Sender<()>, Receiver<()>)>> = Mutex::new(None);
     pub(crate) static QUEUED: Mutex<Option<(MachineKey, Sender<()>)>> = Mutex::new(None);
+    /// Flow IDs whose requests count as passive and past their deadline.
+    pub(crate) static EXPIRED: Mutex<std::collections::BTreeSet<String>> =
+        Mutex::new(std::collections::BTreeSet::new());
 
     pub(crate) fn hold() {
         let (held, release) = HOLD.lock().unwrap().take().expect("a test set up the hold");

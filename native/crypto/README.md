@@ -41,7 +41,25 @@ cross-signing, signatures tampered with, cross-signing bootstrap and key import 
 keys), tracked users marked dirty and backup info signed by own devices. They also check what
 must stay untrusted: a reset of the own identity until it is verified again, a self-signing key
 its master key did not sign, a forged user-signing signature, a device signed by another user's
-self-signing key, and which devices each `deviceBasedStrategy` shares with. All three suites
+self-signing key, and which devices each `deviceBasedStrategy` shares with.
+`scripts/native-crypto-verification.test.mjs` runs each verification flow in every pairing
+(WASM with WASM as the reference, native requester with WASM responder, WASM requester with
+native responder, native with native) and compares every answer, change event and sent
+request of each role with the reference's, step by step: random values (flow and transaction
+IDs, keys, MACs) by where they recur, emoji and decimals by shape and by both ends of the flow
+showing the same ones. Flows: SAS between two devices of one user (to-device) and between two
+users (in a DM), both through to both sides verified; QR codes in mode 0 (another user), 1
+(shown by the trusted device) and 2 (shown by the new device); cancels by the requester before
+accepting, by the responder, with `m.mismatched_sas`, with `m.user` during SAS, `m.accepted`
+on a third own device, `m.unknown_method` for an unknown key agreement (and an unknown start
+method ignored), `m.timeout` after a minute without events (this case waits 61 seconds); a
+second request for the same user (both are cancelled, on both sides); unknown flows; and a
+cancelled flow that is confirmed again before and after a sync collects it. Replacements: two
+SAS started at once (the lower device's survives and the flow completes), a late start from
+the lower device replacing a SAS whose emoji were shown (its decimals are refused), and a shown
+QR code replaced by a SAS (the flow completes by SAS); a scanned QR code cancelled; a request
+offering an unknown method; a SAS start offering only decimals (no emoji); a passive own
+device; a SAS read as timed out before the sync that cancels it. All four suites
 share `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails
 unless the answer of each entry's native method reached a comparison with WASM (`expectSame`,
 or the homeserver's comparison of the requests it saw); a call made only for setup, or whose
@@ -106,13 +124,85 @@ Methods, parameter names and result shapes follow the
   `pinCurrentMasterKey` (the public key in the snapshot's `masterKey` JSON). When the device or
   identity now has another key (a device logged in again under its ID, a reset master key),
   the call fails with `StaleObject`, changes nothing and encrypts nothing. The verification
-  calls that start from a device or identity (`requestVerification`,
-  `verificationRequestContent`, slice C) must take the same key. Both are optional so the WASM-shaped
+  calls that start from a device or identity take the same key: `requestDeviceVerification`
+  (`ed25519Key`), `requestIdentityVerification` and `verificationRequestContent`
+  (`masterKey`). Both are optional so the WASM-shaped
   call still works, but the shim must always pass them, and must build real
   `OwnUserIdentity` / `OtherUserIdentity` instances by `kind`: matrix-js-sdk uses
   `instanceof`.
 - Signature uploads that a call returns (`verifyDevice`, `verifyIdentity`,
-  `bootstrapCrossSigning`) have no `id`, as in WASM: send them, do not mark them as sent.
+  `bootstrapCrossSigning`, `confirmSas`) have no `id`, as in WASM: send them, do not mark them
+  as sent.
+
+### Verification
+
+`VerificationRequest`, `Sas` and `Qr` are snapshots too, addressed by the other user's ID and
+the flow ID (`userId`, `flowId`); each call resolves the object from the machine again.
+
+- Reading: `getVerificationRequest` and `getVerificationRequests` (sorted by flow ID) return
+  request snapshots: `kind: "request"`, `ownUserId`, `otherUserId`, `otherDeviceId`, `roomId`,
+  `flowId`, `phase` (WASM `VerificationRequestPhase`; a passive request reads Cancelled
+  without `cancelInfo`, as in WASM), `isPassive`, `isReady`, `isDone`, `isCancelled`,
+  `isSelfVerification`, `weStarted`, `timedOut`, `theirSupportedMethods` and
+  `ourSupportedMethods` (WASM `VerificationMethod`), `cancelInfo` (`{ cancelCode, reason,
+cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is Transitioned,
+  `verification`: what `getVerification` returns. `getVerification` returns a `Sas`
+  (`kind: "sas"`, the WASM getters, with `emoji`, `emojiIndex` and `decimals` once they can be
+  shown) or `Qr` (`kind: "qr"`, `state` as WASM `QrState`, `hasBeenScanned`,
+  `hasBeenConfirmed`, `reciprocated` and the rest) snapshot. A method WASM's getters do not
+  know is left out of `theirSupportedMethods`, where WASM's getter throws; the other methods
+  work as offered.
+- Time: `expiresAtMs` is milliseconds since the epoch, the wall clock now plus upstream's
+  remaining time (upstream counts on a monotonic clock), so the shim answers
+  `timeRemainingMillis` as `max(0, expiresAtMs - Date.now())`; a wall-clock jump moves it.
+  `timedOut` (request and SAS) is as of the snapshot: the shim must treat it so, and read it
+  again on the next event or once the deadline passes. Nothing times out until a sync, as in
+  WASM.
+- Starting: `requestDeviceVerification` (`userId`, `deviceId`, `methods`, `ed25519Key`) and,
+  for the own identity, `requestIdentityVerification` (`userId`, `methods`, `masterKey`) return
+  `[request, toDeviceRequest]` as WASM's tuple; for another user `requestIdentityVerification`
+  also takes `roomId` and `requestEventId` (the DM event sent with the content of
+  `verificationRequestContent`) and returns the request. `receiveVerificationEvent` takes an
+  in-room event (`event` as a JSON string, `roomId`).
+- Acting: `acceptVerificationRequest` (`methods`, or WASM's `accept()` when absent),
+  `cancelVerificationRequest`, `startSas` (`[sas, request]`; WASM's fixed "Failed to build the
+  outgoing verification request" when the request does not serialise), `generateQrCode`,
+  `scanQrCode` (`data`: the scanned bytes, base64), `acceptSas`, `confirmSas` (a list, with a
+  signature upload without an `id` last), `cancelSas` and `cancelQr` (`code`, or `m.user` when
+  absent), `confirmQrScanning`, `reciprocateQr`. Each returns what WASM returns: the outgoing
+  request wire-ready (a to-device or a room message request, as the flow is), or `null`.
+- `qrCodeBytes` returns the QR code's bytes, base64. They hold the flow's shared secret, so they
+  are in no snapshot and no event; nothing else leaves (WASM shows only emoji, decimals and
+  these bytes).
+- A flow the machine does not know (never seen, or collected by a sync after it was done or
+  cancelled), or a call for the other kind (a QR call on a flow that is now SAS), fails with
+  `UnknownVerification` and changes nothing. WASM's held object would still answer after a
+  collection (no request from `cancel` or `accept`): the shim maps `UnknownVerification` on
+  those to "no request" for a flow it saw done or cancelled. A cancelled flow that is still
+  known answers as in WASM (no request, nothing verified).
+- `confirmSas` requires `decimals`, the ones the shim displayed (`InvalidRequest` without
+  them). matrix-sdk-crypto replaces the SAS under a flow ID when a start from a lower-sorting
+  device arrives after its own, even once emoji were shown, and replaces a shown QR code nobody
+  scanned with an incoming SAS; WASM's object keeps acting on the SAS it holds. So when the SAS
+  on the flow shows other decimals, or none yet (a fresh replacement), `confirmSas` fails with
+  `StaleObject` before anything is confirmed. A SAS that is over, or that we confirmed
+  already (a double click), confirms nothing upstream and answers `[]`, as in WASM.
+- Changes become events: `verificationRequestChanged` (`request`: the full request snapshot,
+  with its `verification`) and `verificationChanged` (`verification`: the full `Sas` or `Qr`
+  snapshot), one per call that changed the object, as WASM calls `registerChangesCallback`'s
+  callback once per change it sees. The crate watches each object (its upstream change stream)
+  from the answers that hand it to the host, one watch per object key (other user, flow ID,
+  request or verification): each answer subscribes afresh after the queue was drained, so a
+  replaced object's watch is replaced and no change is skipped. When a request changes, the
+  `Sas` or `Qr` it now holds is watched afresh (matrix-js-sdk switches its verifier then), and
+  when that one is over already, nothing is. A watch ends when its object is done or cancelled,
+  or its request is (a replaced QR code that nobody scanned would never end); a passive request
+  ends when it is done, or once its deadline passes (upstream never cancels a passive request,
+  so no change would end it); an answer that hands out an object that is already over drops its
+  watch. A request past its deadline that is not passive keeps its watch until the next sync
+  cancels it with `m.timeout`, so that event still reaches the host. A panic drops the watches at once (they hold the dead machine's
+  objects, store and account), and `init` drops them too: verifications live in the machine's
+  memory only, so a reloaded machine has none.
 
 ### Events
 
@@ -123,8 +213,9 @@ device and read with `pollEvents` (no parameters), which answers
 `roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields;
 `userIdentityUpdated` carries `userId` (one event per new or changed identity, as WASM calls its
 callback per user); `devicesUpdated` carries `userIds`, sorted, once per store change (an empty
-list when only identities changed, as in WASM). The other callbacks (secrets, verification)
-become event types of their own as their calls land; `surface.json` names each one.
+list when only identities changed, as in WASM). Verification events are described under
+"Verification" above. The secrets callback becomes an event type of its own when its calls
+land; `surface.json` names it.
 
 - Every call moves the events it caused into the queue before it returns, so a poll right
   after a call sees them. Each event is delivered once; events of one type keep their order
@@ -146,7 +237,9 @@ become event types of their own as their calls land; `surface.json` names each o
 
 `surface.json` lists every WASM class and member the installed matrix-js-sdk uses, generated
 from its sources by `scripts/native-crypto-surface.mjs` (TypeScript's checker; the WASM
-`.d.ts` and `declare module` augmentations). Members of stateful classes carry `status`
+`.d.ts` and `declare module` augmentations; a member reached on a value of a union type, such
+as matrix-js-sdk's verifier generic over `Qr | Sas`, counts for every class of the union).
+Members of stateful classes carry `status`
 (`done`: answered by the `native` call; `planned`; `shim`: answered in JavaScript, with a
 `note`), an `area`, and for callbacks the `event` type. `wasmHelpers` are stateless helpers that
 keep running on WASM; `pureJs` are value types the shim implements, and `shimNotes` says what

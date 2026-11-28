@@ -21,7 +21,7 @@ cd ../..
 pnpm nx run scripts:native-crypto-interop
 ```
 
-The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
+The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities, and every step, change event and sent request of each verification flow (SAS, QR codes, cancels) in all four pairings of native and WASM devices. The timeout case waits 61 seconds. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
 
 ## Surface status {#surface}
 
@@ -34,9 +34,9 @@ The interop target drives the crate's command-line binary and the repository's W
 | room-keys          | 4    | 0       | 0    |
 | backup             | 10   | 0       | 0    |
 | store              | 0    | 0       | 3    |
-| devices-identities | 28   | 4       | 4    |
+| devices-identities | 37   | 0       | 4    |
 | cross-signing      | 4    | 0       | 0    |
-| verification       | 0    | 38      | 0    |
+| verification       | 44   | 0       | 0    |
 | secrets            | 0    | 5       | 0    |
 | key-bundles        | 0    | 10      | 0    |
 | dehydrated-devices | 0    | 7       | 3    |
@@ -70,5 +70,8 @@ The debug surface trusts its JavaScript caller. Before any of it ships in a rele
 - Plugin registration moves to `main`, behind a flag.
 - The request queue is bounded.
 - The shim refuses `StoreHandle.open` with a store prefix: WASM then opens a passphrase store, or an unencrypted persistent one when Trinity has no storage key, and the native crate offers only a raw-key store or memory.
-- The shim passes the key from the snapshot its JavaScript object wraps on every device and identity call: `ed25519Key` (`setLocalTrust`, `verifyDevice`, `encryptToDeviceEvent`) and `masterKey`, the public master key (`verifyIdentity`, `withdrawVerification`, `pinCurrentMasterKey`). Without it the call acts on whatever device or identity now has that ID; with it a changed object fails with `StaleObject`, and nothing changes or is encrypted. The verification calls that start from a device or identity (`requestVerification`, `verificationRequestContent`) must take the same key when they land.
+- The shim passes the key from the snapshot its JavaScript object wraps on every device and identity call: `ed25519Key` (`setLocalTrust`, `verifyDevice`, `encryptToDeviceEvent`) and `masterKey`, the public master key (`verifyIdentity`, `withdrawVerification`, `pinCurrentMasterKey`). The verification calls that start from a device or identity take the same keys: `ed25519Key` (`requestDeviceVerification`) and `masterKey` (`requestIdentityVerification`, `verificationRequestContent`). Without it the call acts on whatever device or identity now has that ID; with it a changed object fails with `StaleObject`, and nothing changes, is encrypted or is requested.
+- The shim passes the `decimals` it displayed to `confirmSas` (the crate requires them), so a SAS that matrix-sdk-crypto replaced under the same flow ID (a later start from a lower-sorting device, or a SAS replacing a shown QR code) fails with `StaleObject` instead of being confirmed.
+- The shim maps `UnknownVerification` from `cancelVerificationRequest`, `acceptVerificationRequest`, `cancelSas` and `cancelQr` on a flow it saw done or cancelled to WASM's "no request" answer: after a sync collects a flow, WASM's held object still answers, the crate no longer finds it.
+- The shim answers `timeRemainingMillis` as `max(0, expiresAtMs - Date.now())` and treats `timedOut` as true at the snapshot's time only, reading it again on the next event or at the deadline. It keeps its verification mirrors from the `verificationRequestChanged` and `verificationChanged` events, reads `qrCodeBytes` only when matrix-js-sdk asks for the bytes, and builds real `Sas` and `Qr` instances from the snapshot's `kind`, because matrix-js-sdk uses `instanceof`.
 - The shim builds real `OwnUserIdentity` and `OtherUserIdentity` instances from the snapshot's `kind`, because matrix-js-sdk tells them apart with `instanceof`.

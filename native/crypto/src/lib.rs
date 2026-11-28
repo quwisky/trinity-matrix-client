@@ -21,6 +21,7 @@ mod responses;
 mod settings;
 #[cfg(test)]
 mod tests;
+mod verification;
 
 use error::{CallError, CallResult};
 

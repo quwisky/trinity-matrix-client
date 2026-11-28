@@ -7,6 +7,7 @@
  * fails instead, so the job cannot pass without running them.
  */
 import { spawn, spawnSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -168,8 +169,8 @@ const surface = JSON.parse(
  * `expectSameRequests` for the requests the homeserver saw), so neither setup calls nor calls
  * whose answer is dropped count.
  */
-export const covered = (entries, title, run) =>
-  it(`${title} [${entries.join(', ')}]`, async () => {
+export const covered = (entries, title, run, timeout) =>
+  it(`${title} [${entries.join(', ')}]`, { timeout }, async () => {
     comparedCalls.clear();
     await run();
     for (const entry of entries) {
@@ -324,6 +325,49 @@ const nativeDevice = async (cli, userId, deviceId) => {
     crossSigningStatus: () => respond('crossSigningStatus'),
     exportCrossSigningKeys: () => respond('exportCrossSigningKeys'),
     importCrossSigningKeys: (keys) => respond('importCrossSigningKeys', keys),
+    // Verification: the other user and the flow ID address each object.
+    getVerificationRequest: (user, flowId) =>
+      respond('getVerificationRequest', { userId: user, flowId }),
+    getVerificationRequests: (user) =>
+      respond('getVerificationRequests', { userId: user }),
+    getVerification: (user, flowId) =>
+      respond('getVerification', { userId: user, flowId }),
+    receiveVerificationEvent: (event, roomId) =>
+      respond('receiveVerificationEvent', { event, roomId }),
+    requestDeviceVerification: (user, id, methods, ed25519Key) =>
+      respond(
+        'requestDeviceVerification',
+        defined({ userId: user, deviceId: id, methods, ed25519Key }),
+      ),
+    requestIdentityVerification: (params) =>
+      respond('requestIdentityVerification', defined(params)),
+    verificationRequestContent: (user, methods) =>
+      respond('verificationRequestContent', defined({ userId: user, methods })),
+    acceptVerificationRequest: (user, flowId, methods) =>
+      respond(
+        'acceptVerificationRequest',
+        defined({ userId: user, flowId, methods }),
+      ),
+    cancelVerificationRequest: (user, flowId) =>
+      respond('cancelVerificationRequest', { userId: user, flowId }),
+    startSas: (user, flowId) => respond('startSas', { userId: user, flowId }),
+    generateQrCode: (user, flowId) =>
+      respond('generateQrCode', { userId: user, flowId }),
+    scanQrCode: (user, flowId, data) =>
+      respond('scanQrCode', { userId: user, flowId, data }),
+    acceptSas: (user, flowId) => respond('acceptSas', { userId: user, flowId }),
+    confirmSas: (user, flowId, decimals) =>
+      respond('confirmSas', defined({ userId: user, flowId, decimals })),
+    cancelSas: (user, flowId, code) =>
+      respond('cancelSas', defined({ userId: user, flowId, code })),
+    cancelQr: (user, flowId, code) =>
+      respond('cancelQr', defined({ userId: user, flowId, code })),
+    confirmQrScanning: (user, flowId) =>
+      respond('confirmQrScanning', { userId: user, flowId }),
+    reciprocateQr: (user, flowId) =>
+      respond('reciprocateQr', { userId: user, flowId }),
+    qrCodeBytes: (user, flowId) =>
+      respond('qrCodeBytes', { userId: user, flowId }),
     async close() {
       if (!closed) await call('close');
       closed = true;
@@ -451,6 +495,94 @@ export const fromWasm = {
         : { identityNeedsUserApproval: identity.identityNeedsUserApproval() }),
     };
   },
+  cancelInfo: (info) =>
+    info && {
+      cancelCode: info.cancelCode(),
+      reason: info.reason(),
+      cancelledbyUs: info.cancelledbyUs(),
+    },
+  /** A `VerificationRequest` snapshot: every getter, `timeRemainingMillis` as a deadline. */
+  verificationRequest: (request) =>
+    defined({
+      kind: 'request',
+      ownUserId: request.ownUserId.toString(),
+      otherUserId: request.otherUserId.toString(),
+      flowId: request.flowId,
+      phase: request.phase(),
+      isPassive: request.isPassive(),
+      isReady: request.isReady(),
+      isDone: request.isDone(),
+      isCancelled: request.isCancelled(),
+      isSelfVerification: request.isSelfVerification(),
+      weStarted: request.weStarted(),
+      timedOut: request.timedOut(),
+      expiresAtMs: Date.now() + request.timeRemainingMillis(),
+      otherDeviceId: request.otherDeviceId?.toString(),
+      roomId: request.roomId?.toString(),
+      cancelInfo: fromWasm.cancelInfo(request.cancelInfo),
+      // The getter throws on a method WASM does not know.
+      theirSupportedMethods: (() => {
+        try {
+          return request.theirSupportedMethods;
+        } catch (error) {
+          return { throws: String(error.message ?? error) };
+        }
+      })(),
+      ourSupportedMethods: request.ourSupportedMethods,
+      verification: fromWasm.verification(request.getVerification()),
+    }),
+  /** A `Sas` or `Qr` snapshot, or `undefined`. */
+  verification: (verification) => {
+    if (verification instanceof wasm.Sas) return fromWasm.sas(verification);
+    if (verification instanceof wasm.Qr) return fromWasm.qr(verification);
+    return undefined;
+  },
+  sas: (sas) =>
+    defined({
+      kind: 'sas',
+      userId: sas.userId.toString(),
+      deviceId: sas.deviceId.toString(),
+      otherUserId: sas.otherUserId.toString(),
+      otherDeviceId: sas.otherDeviceId.toString(),
+      flowId: sas.flowId,
+      supportsEmoji: sas.supportsEmoji(),
+      startedFromRequest: sas.startedFromRequest(),
+      isSelfVerification: sas.isSelfVerification(),
+      haveWeConfirmed: sas.haveWeConfirmed(),
+      hasBeenAccepted: sas.hasBeenAccepted(),
+      weStarted: sas.weStarted(),
+      timedOut: sas.timedOut(),
+      canBePresented: sas.canBePresented(),
+      isDone: sas.isDone(),
+      isCancelled: sas.isCancelled(),
+      roomId: sas.roomId?.toString(),
+      cancelInfo: fromWasm.cancelInfo(sas.cancelInfo()),
+      emoji: sas
+        .emoji()
+        ?.map(({ symbol, description }) => ({ symbol, description })),
+      emojiIndex: sas.emojiIndex() && [...sas.emojiIndex()],
+      decimals: sas.decimals() && [...sas.decimals()],
+    }),
+  qr: (qr) =>
+    defined({
+      kind: 'qr',
+      state: qr.state(),
+      hasBeenScanned: qr.hasBeenScanned(),
+      hasBeenConfirmed: qr.hasBeenConfirmed(),
+      userId: qr.userId.toString(),
+      otherUserId: qr.otherUserId.toString(),
+      otherDeviceId: qr.otherDeviceId.toString(),
+      weStarted: qr.weStarted(),
+      isDone: qr.isDone(),
+      isCancelled: qr.isCancelled(),
+      isSelfVerification: qr.isSelfVerification(),
+      reciprocated: qr.reciprocated(),
+      flowId: qr.flowId,
+      roomId: qr.roomId?.toString(),
+      cancelInfo: fromWasm.cancelInfo(qr.cancelInfo()),
+    }),
+  /** An outgoing verification request (`ToDeviceRequest` or `RoomMessageRequest`), or null. */
+  outgoing: (request) => (request ? plain(request) : null),
   crossSigningStatus: ({ hasMaster, hasSelfSigning, hasUserSigning }) => ({
     hasMaster,
     hasSelfSigning,
@@ -493,7 +625,15 @@ const wasmDevice = async (userId, deviceId) => {
   machine.registerDevicesUpdatedCallback(async (userIds) => {
     events.push({ type: 'devicesUpdated', userIds: [...userIds].sort() });
   });
-  const respond = fromWasm.response;
+  // WASM runs change callbacks on its own promise chain, some time after the call. The
+  // native crate queues a call's events before it returns: let the callbacks run first, so
+  // both see the objects as the call left them.
+  const callbacksRun = () => new Promise((done) => setTimeout(done, 0));
+  const respond = async (run, map) => {
+    const answer = await fromWasm.response(run, map);
+    await callbacksRun();
+    return answer;
+  };
   // WASM's object methods; native resolves the object by its keys on each call.
   const onDevice = async (user, id) => {
     const found = await machine.getDevice(
@@ -508,6 +648,72 @@ const wasmDevice = async (userId, deviceId) => {
     if (!found) throw new Error(`unknown identity ${user}`);
     return found;
   };
+  // Verification objects as matrix-js-sdk holds them: the request first seen for a flow, and
+  // the latest Sas or Qr (matrix-js-sdk switches its verifier when the request changes). Change
+  // callbacks follow the native crate's watches: one live callback per object key, replaced
+  // when the object is handed out again or its request changes while it holds one, and ended
+  // with the object. (A replaced object gets no more events, so nothing else needs ending.)
+  const held = new Map();
+  const live = new Map();
+  const heldKey = (user, flowId, kind) => `${user}|${flowId}|${kind}`;
+  const kindOf = (object) =>
+    object instanceof wasm.VerificationRequest
+      ? 'request'
+      : object instanceof wasm.Sas
+        ? 'sas'
+        : 'qr';
+  const over = (object) => object.isDone() || object.isCancelled();
+  const seen = (object) => {
+    if (!object) return object;
+    const kind = kindOf(object);
+    const user = object.otherUserId.toString();
+    const flowId = object.flowId;
+    const watchKey = `${user}|${flowId}|${kind === 'request'}`;
+    if (kind !== 'request' || !held.has(heldKey(user, flowId, kind)))
+      held.set(heldKey(user, flowId, kind), object);
+    if (over(object)) return object;
+    const token = {};
+    live.set(watchKey, token);
+    object.registerChangesCallback(async () => {
+      if (live.get(watchKey) !== token) return;
+      if (kind === 'request') {
+        events.push({
+          type: 'verificationRequestChanged',
+          request: fromWasm.verificationRequest(object),
+        });
+        if (over(object)) {
+          live.delete(watchKey);
+        } else if (object.getVerification()) {
+          seen(object.getVerification());
+        }
+      } else {
+        events.push({
+          type: 'verificationChanged',
+          verification: fromWasm.verification(object),
+        });
+        if (over(object)) live.delete(watchKey);
+      }
+    });
+    return object;
+  };
+  const userIdOf = (user) => new wasm.UserId(user);
+  const onRequest = (user, flowId) => {
+    const found =
+      held.get(heldKey(user, flowId, 'request')) ??
+      machine.getVerificationRequest(userIdOf(user), flowId);
+    if (!found) throw new Error(`unknown verification request ${flowId}`);
+    return seen(found);
+  };
+  const onVerification = (kind, type) => (user, flowId) => {
+    const found =
+      held.get(heldKey(user, flowId, kind)) ??
+      machine.getVerification(userIdOf(user), flowId);
+    if (!(found instanceof type)) throw new Error(`no ${kind} for ${flowId}`);
+    return seen(found);
+  };
+  const onSas = onVerification('sas', wasm.Sas);
+  const onQr = onVerification('qr', wasm.Qr);
+  const outgoing = fromWasm.outgoing;
   let closed = false;
   return {
     kind: 'wasm',
@@ -519,18 +725,21 @@ const wasmDevice = async (userId, deviceId) => {
       curve25519: machine.identityKeys.curve25519.toBase64(),
     },
     outgoingRequests: async () => (await machine.outgoingRequests()).map(plain),
-    markRequestAsSent: async (id, type, response) => ({
-      result: await machine.markRequestAsSent(id, type, response),
-    }),
-    receiveSyncChanges: async (toDeviceEvents, counts) =>
-      (
-        await machine.receiveSyncChanges(
-          toDeviceEvents,
-          new wasm.DeviceLists(),
-          new Map(Object.entries(counts)),
-          new Set(),
-        )
-      ).map((event) => defined(fromWasm.toDevice(event))),
+    markRequestAsSent: async (id, type, response) => {
+      const result = await machine.markRequestAsSent(id, type, response);
+      await callbacksRun();
+      return { result };
+    },
+    receiveSyncChanges: async (toDeviceEvents, counts) => {
+      const received = await machine.receiveSyncChanges(
+        toDeviceEvents,
+        new wasm.DeviceLists(),
+        new Map(Object.entries(counts)),
+        new Set(),
+      );
+      await callbacksRun();
+      return received.map((event) => defined(fromWasm.toDevice(event)));
+    },
     updateTrackedUsers: async (list) =>
       (await machine.updateTrackedUsers(users(list))) ?? null,
     getMissingSessions: async (list) => {
@@ -728,6 +937,114 @@ const wasmDevice = async (userId, deviceId) => {
           ),
         fromWasm.crossSigningStatus,
       ),
+    getVerificationRequest: (user, flowId) =>
+      respond(
+        () => machine.getVerificationRequest(userIdOf(user), flowId),
+        (found) => (found ? fromWasm.verificationRequest(seen(found)) : null),
+      ),
+    getVerificationRequests: (user) =>
+      respond(
+        () => machine.getVerificationRequests(userIdOf(user)),
+        (found) =>
+          found
+            .map((it) => fromWasm.verificationRequest(seen(it)))
+            .sort((a, b) => a.flowId.localeCompare(b.flowId)),
+      ),
+    getVerification: (user, flowId) =>
+      respond(
+        () => machine.getVerification(userIdOf(user), flowId),
+        (found) => (found ? fromWasm.verification(seen(found)) : null),
+      ),
+    receiveVerificationEvent: (event, roomId) =>
+      respond(() => machine.receiveVerificationEvent(event, room(roomId))),
+    requestDeviceVerification: (user, id, methods) =>
+      respond(async () => {
+        const [request, toDevice] = (
+          await onDevice(user, id)
+        ).requestVerification(methods);
+        return [fromWasm.verificationRequest(seen(request)), plain(toDevice)];
+      }),
+    requestIdentityVerification: ({
+      userId: user,
+      methods,
+      roomId,
+      requestEventId,
+    }) =>
+      respond(async () => {
+        const identity = await onIdentity(user);
+        if (identity instanceof wasm.OwnUserIdentity) {
+          const [request, toDevice] =
+            await identity.requestVerification(methods);
+          return [fromWasm.verificationRequest(seen(request)), plain(toDevice)];
+        }
+        return fromWasm.verificationRequest(
+          seen(
+            identity.requestVerification(
+              room(roomId),
+              new wasm.EventId(requestEventId),
+              methods,
+            ),
+          ),
+        );
+      }),
+    verificationRequestContent: (user, methods) =>
+      respond(async () =>
+        (await onIdentity(user)).verificationRequestContent(methods),
+      ),
+    acceptVerificationRequest: (user, flowId, methods) =>
+      respond(() => {
+        const request = onRequest(user, flowId);
+        return outgoing(
+          methods ? request.acceptWithMethods(methods) : request.accept(),
+        );
+      }),
+    cancelVerificationRequest: (user, flowId) =>
+      respond(() => outgoing(onRequest(user, flowId).cancel())),
+    startSas: (user, flowId) =>
+      respond(async () => {
+        const started = await onRequest(user, flowId).startSas();
+        if (!started) return null;
+        const [sas, request] = started;
+        return [fromWasm.sas(seen(sas)), plain(request)];
+      }),
+    generateQrCode: (user, flowId) =>
+      respond(async () => {
+        const qr = await onRequest(user, flowId).generateQrCode();
+        return qr ? fromWasm.qr(seen(qr)) : null;
+      }),
+    scanQrCode: (user, flowId, data) =>
+      respond(async () => {
+        const qr = await onRequest(user, flowId).scanQrCode(
+          wasm.QrCodeScan.fromBytes(
+            new Uint8ClampedArray(Buffer.from(data, 'base64')),
+          ),
+        );
+        return qr ? fromWasm.qr(seen(qr)) : null;
+      }),
+    acceptSas: (user, flowId) =>
+      respond(() => outgoing(onSas(user, flowId).accept())),
+    confirmSas: (user, flowId) =>
+      respond(async () =>
+        (await onSas(user, flowId).confirm()).map((request) => plain(request)),
+      ),
+    cancelSas: (user, flowId, code) =>
+      respond(() => {
+        const sas = onSas(user, flowId);
+        return outgoing(code ? sas.cancelWithCode(code) : sas.cancel());
+      }),
+    cancelQr: (user, flowId, code) =>
+      respond(() => {
+        const qr = onQr(user, flowId);
+        return outgoing(code ? qr.cancelWithCode(code) : qr.cancel());
+      }),
+    confirmQrScanning: (user, flowId) =>
+      respond(() => outgoing(onQr(user, flowId).confirmScanning())),
+    reciprocateQr: (user, flowId) =>
+      respond(() => outgoing(onQr(user, flowId).reciprocate())),
+    qrCodeBytes: (user, flowId) =>
+      respond(() =>
+        Buffer.from(onQr(user, flowId).toBytes()).toString('base64'),
+      ),
     close() {
       if (!closed) machine.close();
       closed = true;
@@ -894,11 +1211,19 @@ export class Homeserver {
       case RequestType.ToDevice: {
         for (const [user, devices] of Object.entries(body.messages)) {
           for (const [target, content] of Object.entries(devices)) {
-            this.#queue(user, target).push({
-              type: request.event_type,
-              sender: device.userId,
-              content,
-            });
+            // `*`: every device of the user but the sender.
+            const targets =
+              target === '*'
+                ? Object.keys(this.deviceKeys.get(user) ?? {}).filter(
+                    (id) => user !== device.userId || id !== device.deviceId,
+                  )
+                : [target];
+            for (const id of targets)
+              this.#queue(user, id).push({
+                type: request.event_type,
+                sender: device.userId,
+                content,
+              });
           }
         }
         return {};
@@ -925,9 +1250,63 @@ export class Homeserver {
         }
         return { failures: {} };
       }
+      case RequestType.RoomMessage:
+        return {
+          event_id: this.sendRoomEvent(
+            device,
+            request.room_id,
+            request.event_type,
+            body,
+          ),
+        };
       default:
         throw new Error(`unexpected request type ${request.type}`);
     }
+  }
+
+  /** Room ID → `{ members, events }`, for in-room verification. */
+  rooms = new Map();
+  /** `user|device|room` → how many of the room's events that device has received. */
+  #cursors = new Map();
+
+  joinRoom(roomId, members) {
+    this.rooms.set(roomId, { members, events: [] });
+  }
+
+  /** `PUT /rooms/{roomId}/send/{type}`: the new event's ID. */
+  sendRoomEvent(device, roomId, type, content) {
+    const eventId = `$${randomBytes(18).toString('base64url')}`;
+    this.rooms.get(roomId).events.push({
+      event_id: eventId,
+      type,
+      sender: device.userId,
+      content,
+      origin_server_ts: Date.now(),
+    });
+    return eventId;
+  }
+
+  /**
+   * Hands `device` the room events it has not seen (its own included), as a sync would, and
+   * returns receiveVerificationEvent's answers.
+   */
+  async syncRooms(device) {
+    const answers = [];
+    for (const [roomId, { members, events }] of this.rooms) {
+      if (!members.includes(device)) continue;
+      const key = `${device.userId}|${device.deviceId}|${roomId}`;
+      const from = this.#cursors.get(key) ?? 0;
+      this.#cursors.set(key, events.length);
+      for (const event of events.slice(from)) {
+        const answer = await device.receiveVerificationEvent(
+          JSON.stringify(event),
+          roomId,
+        );
+        expect(answer.error, 'receiveVerificationEvent').toBeUndefined();
+        answers.push(answer);
+      }
+    }
+    return answers;
   }
 
   #otks(user, device) {

@@ -113,9 +113,10 @@
         "note": "snapshot field: read from the getDevice snapshot"
       },
       "requestVerification": {
-        "status": "planned",
+        "status": "done",
         "area": "devices-identities",
-        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
+        "note": "call: takes userId, deviceId, methods and ed25519Key (StaleObject when the device has another key now); [request snapshot, to-device request]",
+        "native": "requestDeviceVerification"
       },
       "setLocalTrust": {
         "status": "done",
@@ -273,10 +274,17 @@
         "native": "getUserDevices",
         "note": "the Device snapshots in no order; the shim builds UserDevices"
       },
-      "getVerificationRequest": { "status": "planned", "area": "verification" },
+      "getVerificationRequest": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "call: takes userId (the other user) and flowId; the request snapshot or null; the crate watches the request from here on"
+      },
       "getVerificationRequests": {
-        "status": "planned",
-        "area": "verification"
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequests",
+        "note": "call: takes userId; request snapshots sorted by flowId"
       },
       "hasDownloadedAllRoomKeys": {
         "status": "planned",
@@ -342,8 +350,10 @@
       },
       "receiveSyncChangesMsc4186": { "status": "planned", "area": "core" },
       "receiveVerificationEvent": {
-        "status": "planned",
-        "area": "verification"
+        "status": "done",
+        "area": "verification",
+        "native": "receiveVerificationEvent",
+        "note": "call: takes event (JSON string) and roomId"
       },
       "registerDevicesUpdatedCallback": {
         "status": "done",
@@ -444,6 +454,18 @@
         "native": "getIdentity",
         "note": "snapshot field: only on kind \"other\""
       },
+      "isVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field of getIdentity (both kinds, as are wasPreviouslyVerified and hasVerificationViolation)"
+      },
+      "masterKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
       "pinCurrentMasterKey": {
         "status": "done",
         "area": "devices-identities",
@@ -451,14 +473,34 @@
         "note": "call: takes userId; refused for the own identity, which has no such method in WASM"
       },
       "requestVerification": {
-        "status": "planned",
+        "status": "done",
         "area": "devices-identities",
-        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
+        "note": "call: takes userId, roomId, requestEventId, methods and masterKey (StaleObject when the identity has another master key now); the request snapshot",
+        "native": "requestIdentityVerification"
+      },
+      "selfSigningKey": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
       },
       "verificationRequestContent": {
-        "status": "planned",
+        "status": "done",
         "area": "devices-identities",
-        "note": "slice C: must take the snapshot's masterKey and refuse with StaleObject, as the other identity calls do"
+        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); the content as a JSON string",
+        "native": "verificationRequestContent"
+      },
+      "wasPreviouslyVerified": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "getIdentity",
+        "note": "snapshot field: read from the getIdentity snapshot"
+      },
+      "withdrawVerification": {
+        "status": "done",
+        "area": "devices-identities",
+        "native": "withdrawVerification",
+        "note": "call: takes userId; either identity kind"
       }
     },
     "OwnUserIdentity": {
@@ -480,9 +522,10 @@
         "note": "snapshot field: read from the getIdentity snapshot"
       },
       "requestVerification": {
-        "status": "planned",
+        "status": "done",
         "area": "devices-identities",
-        "note": "slice C: must take the snapshot's key (ed25519Key or masterKey) and refuse with StaleObject, as the other object calls do"
+        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); [request snapshot, to-device request]",
+        "native": "requestIdentityVerification"
       },
       "selfSigningKey": {
         "status": "done",
@@ -516,11 +559,73 @@
       }
     },
     "Qr": {
-      "confirmScanning": { "status": "planned", "area": "verification" },
-      "hasBeenScanned": { "status": "planned", "area": "verification" },
-      "reciprocate": { "status": "planned", "area": "verification" },
-      "state": { "status": "planned", "area": "verification" },
-      "toBytes": { "status": "planned", "area": "verification" }
+      "cancel": {
+        "status": "done",
+        "area": "verification",
+        "native": "cancelQr",
+        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+      },
+      "cancelInfo": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "confirmScanning": {
+        "status": "done",
+        "area": "verification",
+        "native": "confirmQrScanning",
+        "note": "call: takes userId and flowId; the outgoing request or null"
+      },
+      "hasBeenScanned": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "isCancelled": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "isDone": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "otherUserId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "reciprocate": {
+        "status": "done",
+        "area": "verification",
+        "native": "reciprocateQr",
+        "note": "call: takes userId and flowId; the outgoing request or null"
+      },
+      "registerChangesCallback": {
+        "status": "done",
+        "area": "verification",
+        "native": "pollEvents",
+        "note": "event verificationChanged with the full Qr snapshot",
+        "event": "verificationChanged"
+      },
+      "state": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "toBytes": {
+        "status": "done",
+        "area": "verification",
+        "native": "qrCodeBytes",
+        "note": "call: takes userId and flowId; base64 (they hold the flow's shared secret, as in WASM, so they are in no snapshot or event); the shim converts to Uint8ClampedArray"
+      }
     },
     "RehydratedDevice": {
       "free": {
@@ -531,20 +636,72 @@
       "receiveEvents": { "status": "planned", "area": "dehydrated-devices" }
     },
     "Sas": {
-      "accept": { "status": "planned", "area": "verification" },
-      "cancel": { "status": "planned", "area": "verification" },
-      "cancelInfo": { "status": "planned", "area": "verification" },
-      "cancelWithCode": { "status": "planned", "area": "verification" },
-      "confirm": { "status": "planned", "area": "verification" },
-      "decimals": { "status": "planned", "area": "verification" },
-      "emoji": { "status": "planned", "area": "verification" },
-      "isCancelled": { "status": "planned", "area": "verification" },
-      "isDone": { "status": "planned", "area": "verification" },
-      "otherUserId": { "status": "planned", "area": "verification" },
-      "registerChangesCallback": {
-        "status": "planned",
+      "accept": {
+        "status": "done",
         "area": "verification",
-        "event": "verificationChanged"
+        "native": "acceptSas",
+        "note": "call: takes userId and flowId; the outgoing request or null"
+      },
+      "cancel": {
+        "status": "done",
+        "area": "verification",
+        "native": "cancelSas",
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+      },
+      "cancelInfo": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "cancelWithCode": {
+        "status": "done",
+        "area": "verification",
+        "native": "cancelSas",
+        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+      },
+      "confirm": {
+        "status": "done",
+        "area": "verification",
+        "native": "confirmSas",
+        "note": "call: takes userId, flowId and decimals, required: the decimals the shim displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last"
+      },
+      "decimals": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "emoji": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "isCancelled": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "isDone": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "otherUserId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerification",
+        "note": "snapshot field: read from the getVerification snapshot (also in every verificationChanged event and in the request snapshot's verification)"
+      },
+      "registerChangesCallback": {
+        "status": "done",
+        "area": "verification",
+        "event": "verificationChanged",
+        "native": "pollEvents",
+        "note": "event verificationChanged with the full Sas snapshot"
       }
     },
     "StoreHandle": {
@@ -578,29 +735,121 @@
       }
     },
     "VerificationRequest": {
-      "acceptWithMethods": { "status": "planned", "area": "verification" },
-      "cancel": { "status": "planned", "area": "verification" },
-      "cancelInfo": { "status": "planned", "area": "verification" },
-      "flowId": { "status": "planned", "area": "verification" },
-      "generateQrCode": { "status": "planned", "area": "verification" },
-      "getVerification": { "status": "planned", "area": "verification" },
-      "isCancelled": { "status": "planned", "area": "verification" },
-      "isPassive": { "status": "planned", "area": "verification" },
-      "isSelfVerification": { "status": "planned", "area": "verification" },
-      "otherDeviceId": { "status": "planned", "area": "verification" },
-      "otherUserId": { "status": "planned", "area": "verification" },
-      "phase": { "status": "planned", "area": "verification" },
-      "registerChangesCallback": {
-        "status": "planned",
+      "acceptWithMethods": {
+        "status": "done",
         "area": "verification",
-        "event": "verificationRequestChanged"
+        "native": "acceptVerificationRequest",
+        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
       },
-      "roomId": { "status": "planned", "area": "verification" },
-      "scanQrCode": { "status": "planned", "area": "verification" },
-      "startSas": { "status": "planned", "area": "verification" },
-      "theirSupportedMethods": { "status": "planned", "area": "verification" },
-      "timeRemainingMillis": { "status": "planned", "area": "verification" },
-      "weStarted": { "status": "planned", "area": "verification" }
+      "cancel": {
+        "status": "done",
+        "area": "verification",
+        "native": "cancelVerificationRequest",
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+      },
+      "cancelInfo": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "flowId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "generateQrCode": {
+        "status": "done",
+        "area": "verification",
+        "native": "generateQrCode",
+        "note": "call: takes userId and flowId; the Qr snapshot or null"
+      },
+      "getVerification": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field verification: the Sas or Qr snapshot while the phase is Transitioned; the shim builds a Sas or Qr by its kind (js-sdk uses instanceof)"
+      },
+      "isCancelled": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "isPassive": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "isSelfVerification": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "otherDeviceId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "otherUserId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "phase": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "registerChangesCallback": {
+        "status": "done",
+        "area": "verification",
+        "event": "verificationRequestChanged",
+        "native": "pollEvents",
+        "note": "event verificationRequestChanged with the full request snapshot; one per call that changed the request"
+      },
+      "roomId": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "scanQrCode": {
+        "status": "done",
+        "area": "verification",
+        "native": "scanQrCode",
+        "note": "call: takes userId, flowId and data (the scanned bytes, base64; the shim does not need QrCodeScan.fromBytes); the Qr snapshot or null"
+      },
+      "startSas": {
+        "status": "done",
+        "area": "verification",
+        "native": "startSas",
+        "note": "call: takes userId and flowId; [Sas snapshot, outgoing request] or null"
+      },
+      "theirSupportedMethods": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      },
+      "timeRemainingMillis": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field expiresAtMs (ms since the epoch): the shim answers max(0, expiresAtMs - Date.now())"
+      },
+      "weStarted": {
+        "status": "done",
+        "area": "verification",
+        "native": "getVerificationRequest",
+        "note": "snapshot field: read from the getVerificationRequest snapshot (also in every verificationRequestChanged event)"
+      }
     }
   },
   "wasmHelpers": {
@@ -692,9 +941,10 @@
     "HistoryVisibility": ["Invited", "Joined", "Shared", "WorldReadable"],
     "IdentityKeys": ["curve25519", "ed25519"],
     "initAsync": [],
-    "KeysBackupRequest": ["body", "version"],
-    "KeysClaimRequest": ["body"],
-    "KeysQueryRequest": ["body"],
+    "InvalidToDeviceEvent": ["rawEvent", "type"],
+    "KeysBackupRequest": ["body", "id", "type", "version"],
+    "KeysClaimRequest": ["body", "id", "type"],
+    "KeysQueryRequest": ["body", "id", "type"],
     "KeysUploadRequest": ["body", "id", "type"],
     "LocalTrust": ["BlackListed", "Unset", "Verified"],
     "MaybeSignature": ["isValid", "signature"],
@@ -709,6 +959,7 @@
       "senderSigningKey"
     ],
     "PickledSession": ["creationTime", "lastUseTime", "pickle", "senderKey"],
+    "PlainTextToDeviceEvent": ["rawEvent", "type"],
     "ProcessedToDeviceEventType": [
       "Decrypted",
       "Invalid",
@@ -729,7 +980,14 @@
     "RoomKeyCounts": ["backedUp", "total"],
     "RoomKeyInfo": ["roomId", "senderKey", "sessionId"],
     "RoomKeyWithheldInfo": ["roomId", "sessionId"],
-    "RoomMessageRequest": ["body", "event_type", "room_id", "txn_id"],
+    "RoomMessageRequest": [
+      "body",
+      "event_type",
+      "id",
+      "room_id",
+      "txn_id",
+      "type"
+    ],
     "RoomPendingKeyBundleDetails": [
       "inviteAcceptedAtMillis",
       "inviterId",
@@ -753,7 +1011,7 @@
     ],
     "Signature": ["toBase64"],
     "Signatures": ["asJSON", "get"],
-    "SignatureUploadRequest": ["body"],
+    "SignatureUploadRequest": ["body", "id", "type"],
     "SignatureVerification": ["trusted"],
     "StoredRoomKeyBundleData": ["url"],
     "ToDeviceEncryptionInfo": [
@@ -762,10 +1020,11 @@
       "senderCurve25519Key",
       "senderDevice"
     ],
-    "ToDeviceRequest": ["body", "event_type", "txn_id"],
+    "ToDeviceRequest": ["body", "event_type", "id", "txn_id", "type"],
     "TrustRequirement": ["CrossSignedOrLegacy", "Untrusted"],
     "UploadSigningKeysRequest": ["body"],
     "UserId": ["clone", "toString"],
+    "UTDToDeviceEvent": ["rawEvent", "type"],
     "VerificationMethod": [
       "QrCodeScanV1",
       "QrCodeShowV1",
