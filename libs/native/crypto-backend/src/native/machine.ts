@@ -1,6 +1,7 @@
 import {
   BackupDecryptionKey,
   type BackupKeys,
+  type CollectStrategy,
   type CrossSigningBootstrapRequests,
   type CrossSigningKeyExport,
   type CrossSigningStatus,
@@ -9,6 +10,9 @@ import {
   DeviceId,
   type Device,
   type DeviceLists,
+  type DehydratedDevices,
+  EncryptedAttachment,
+  EncryptionAlgorithm,
   type EncryptionInfo,
   type EncryptionSettings,
   type IdentityKeys,
@@ -28,6 +32,7 @@ import {
   type RoomKeyImportResult,
   type RoomPendingKeyBundleDetails,
   type RoomSettings,
+  type SecretsBundle,
   type Signatures,
   type SignatureVerification,
   StoreHandle,
@@ -35,24 +40,33 @@ import {
   type ToDeviceRequest,
   type UserDevices,
   UserId,
+  type VerificationRequest,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
 import type { CallQueue } from './call-queue';
 import {
+  base64ToBytes,
+  type BundleDataJson,
+  bytesToBase64,
   type CrossSigningKeyExportJson,
   type CrossSigningStatusJson,
   encryptionSettingsJson,
   type EncryptionInfoJson,
   type ImportResultJson,
   isBootstrapRequests,
+  isBundleData,
   isCrossSigningKeyExport,
   isCrossSigningStatus,
   isImportResult,
+  isSecretsBundle,
   type MegolmErrorDetails,
+  NativeSecretsBundle,
   type RequestJson,
   roomSettingsJson,
+  strategyName,
   type RoomSettingsJson,
   toBootstrapRequests,
+  toBundleData,
   toCrossSigningKeyExport,
   toCrossSigningStatus,
   toDecryptedRoomEvent,
@@ -71,7 +85,8 @@ import {
   toSignatures,
   toSignatureVerification,
 } from './convert';
-import { NotOnNativeError, standIn } from './guard';
+import { NativeDehydratedDevices } from './dehydrated';
+import { standIn } from './guard';
 import {
   type DeviceJson,
   type IdentityJson,
@@ -93,6 +108,7 @@ import {
   type NativeEvents,
   NativeMachineLostError,
 } from './types';
+import { Verifications } from './verification';
 
 /** What `init` opens: a SQLite store with its raw key, or memory. */
 export class NativeStoreHandle {
@@ -200,7 +216,61 @@ const REPLAYABLE = new Set([
   // Keys already imported are skipped (the replay reports fewer new ones).
   'importExportedRoomKeys',
   'importBackedUpRoomKeys',
+  'importSecretsBundle',
+  'receiveRoomKeyBundle',
+  // Verification reads; a reload drops every flow (the registry is cleared), so a replay finds
+  // none. Calls that send or advance a flow are not replayed: requesting, accepting, starting,
+  // scanning, confirming, cancelling and an in-room verification event.
+  'getVerificationRequest',
+  'getVerificationRequests',
+  'getVerification',
+  'qrCodeBytes',
+  'verificationRequestContent',
+  // Reads, absolute setters, and calls whose result never reached JavaScript: the bundle and the
+  // dehydrated device a replay builds again were never uploaded, and a rehydration is held in
+  // memory only. Not replayed: `shareRoomKeyBundleData` (Olm encryption, as the encrypt calls)
+  // and `receiveRehydratedEvents` (the reload dropped the rehydrated device it needs).
+  'exportSecretsBundle',
+  'buildRoomKeyBundle',
+  'hasDownloadedAllRoomKeys',
+  'setHasDownloadedAllRoomKeys',
+  'createDehydratedDevice',
+  'getDehydratedDeviceKey',
+  'saveDehydratedDeviceKey',
+  'rehydrateDevice',
+  'dropRehydratedDevice',
 ]);
+
+/** Sessions remembered for a retry after lost events; the oldest go first past this many. */
+const UNDECRYPTABLE_LIMIT = 1000;
+
+type RoomKeyJson = Parameters<typeof toRoomKeyInfo>[0];
+
+/** The sender and flow of an incoming verification request, if `event` is one. */
+function incomingRequest(
+  event: string,
+): { userId: string; flowId: string } | undefined {
+  try {
+    const parsed = JSON.parse(event) as {
+      type?: unknown;
+      sender?: unknown;
+      event_id?: unknown;
+      content?: { msgtype?: unknown; transaction_id?: unknown };
+    };
+    const flowId =
+      parsed.type === 'm.key.verification.request'
+        ? parsed.content?.transaction_id
+        : parsed.type === 'm.room.message' &&
+            parsed.content?.msgtype === 'm.key.verification.request'
+          ? parsed.event_id
+          : undefined;
+    return typeof flowId === 'string' && typeof parsed.sender === 'string'
+      ? { userId: parsed.sender, flowId }
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 const isShield = (value: unknown) =>
   isObject(value) && typeof value['color'] === 'number';
@@ -257,6 +327,9 @@ export class NativeOlmMachine {
   /** How the device and identity stand-ins call: through this machine's reload and loss rules. */
   readonly #objectCall: MachineCall = (method, params) =>
     this.#call(method, params);
+  readonly #verifications: Verifications;
+  /** Megolm sessions that failed to decrypt, by room and session, for a retry after lost events. */
+  readonly #undecryptable = new Map<string, RoomKeyJson>();
 
   private constructor(
     context: MachineContext,
@@ -268,6 +341,7 @@ export class NativeOlmMachine {
     this.#description = description;
     this.#store = store;
     this.#roomKeyRequestsEnabled = roomKeyRequestsEnabled;
+    this.#verifications = new Verifications(this.#objectCall, context.logger);
     context.queue.listen(
       description,
       (events) => this.#deliver(events),
@@ -275,6 +349,7 @@ export class NativeOlmMachine {
         this.#context.logger?.warn(reason);
         this.#context.onEventsDropped?.(undefined);
         if (malformed) this.#lose(reason);
+        else this.#resync();
       },
     );
   }
@@ -409,6 +484,8 @@ export class NativeOlmMachine {
         ) {
           throw new Error('the store holds another account');
         }
+        // Verifications live in the dropped machine's memory only.
+        this.#verifications.clear();
       } catch (error) {
         this.#lose(
           `init could not reload the machine: ${describeError(error)}`,
@@ -421,6 +498,7 @@ export class NativeOlmMachine {
     if (this.#lost || this.#closed) return;
     this.#lost = true;
     this.#store = undefined;
+    this.#verifications.clear();
     this.#context.queue.unlisten(this.#description);
     this.#context.logger?.warn(`native crypto lost the machine: ${reason}`);
     this.#context.onMachineLost?.(reason);
@@ -460,14 +538,14 @@ export class NativeOlmMachine {
   #deliver({ events, dropped }: NativeEvents): void {
     for (const event of events) {
       switch (event.type) {
-        case 'roomKeysReceived':
-          this.#invoke(
-            'roomKeysReceived',
-            (event['keys'] as Parameters<typeof toRoomKeyInfo>[0][]).map(
-              toRoomKeyInfo,
-            ),
-          );
+        case 'roomKeysReceived': {
+          const keys = event['keys'] as RoomKeyJson[];
+          // matrix-js-sdk retries these sessions itself now.
+          for (const key of keys)
+            this.#undecryptable.delete(sessionKey(key.roomId, key.sessionId));
+          this.#invoke('roomKeysReceived', keys.map(toRoomKeyInfo));
           break;
+        }
         case 'roomKeysWithheld':
           this.#invoke(
             'roomKeysWithheld',
@@ -489,6 +567,12 @@ export class NativeOlmMachine {
           // matrix-js-sdk ignores the value and reads the inbox; the crate never sends it.
           this.#invoke('secretReceived', event['name'], '');
           break;
+        case 'verificationRequestChanged':
+          this.#verifications.requestChanged(event['request']);
+          break;
+        case 'verificationChanged':
+          this.#verifications.verificationChanged(event['verification']);
+          break;
         default:
           this.#context.logger?.warn(
             `native crypto event ${event.type} has no handler on native yet`,
@@ -497,9 +581,67 @@ export class NativeOlmMachine {
     }
     if (dropped > 0) {
       this.#context.logger?.warn(
-        `native crypto dropped ${dropped} events: undecryptable events need a retry`,
+        `native crypto dropped ${dropped} events: retrying undecryptable events and reading verifications again`,
       );
       this.#context.onEventsDropped?.(dropped);
+      this.#resync();
+    }
+  }
+
+  /**
+   * After lost events (a room key, a verification change): matrix-js-sdk retries the events of
+   * every session that failed to decrypt, through the room key callback it retries a session's
+   * events from, and each verification mirror reads its object again.
+   */
+  #resync(): void {
+    const sessions = [...this.#undecryptable.values()];
+    this.#undecryptable.clear();
+    if (sessions.length > 0)
+      this.#invoke('roomKeysReceived', sessions.map(toRoomKeyInfo));
+    void this.#verifications.refresh();
+  }
+
+  /** Remembers a session whose event did not decrypt, for `#resync`. */
+  #failedToDecrypt(event: string, roomId: string): void {
+    try {
+      const content = (
+        JSON.parse(event) as { content?: Record<string, unknown> }
+      ).content;
+      const sessionId = content?.['session_id'];
+      if (typeof sessionId !== 'string') return;
+      const senderKey = content?.['sender_key'];
+      const key = sessionKey(roomId, sessionId);
+      this.#undecryptable.delete(key);
+      this.#undecryptable.set(key, {
+        algorithm: EncryptionAlgorithm.MegolmV1AesSha2,
+        roomId,
+        sessionId,
+        // matrix-js-sdk only logs it; the field is deprecated and may be missing.
+        senderKey:
+          typeof senderKey === 'string'
+            ? senderKey
+            : this.#description.identityKeys.curve25519,
+      });
+      if (this.#undecryptable.size > UNDECRYPTABLE_LIMIT) {
+        this.#undecryptable.delete(this.#undecryptable.keys().next().value!);
+      }
+    } catch {
+      // Not JSON: matrix-js-sdk would not have it pending either.
+    }
+  }
+
+  /** Puts an incoming request in the registry: matrix-js-sdk asks for it synchronously next. */
+  async #fetchRequest(found: {
+    userId: string;
+    flowId: string;
+  }): Promise<void> {
+    try {
+      const answer = await this.#call('getVerificationRequest', found);
+      if (answer !== null) this.#verifications.request(answer);
+    } catch (error) {
+      this.#context.logger?.warn(
+        `native crypto getVerificationRequest failed: ${describeError(error)}`,
+      );
     }
   }
 
@@ -604,6 +746,8 @@ export class NativeOlmMachine {
     unusedFallbackKeys?: Set<string>,
     decryptionSettings?: DecryptionSettings,
   ): Promise<ProcessedToDeviceEvent[]> {
+    // Upstream collects the flows that are over at the start of a sync input.
+    const collectable = this.#verifications.collectable();
     let answer: unknown;
     try {
       answer = await this.#call(method, {
@@ -626,17 +770,24 @@ export class NativeOlmMachine {
       if (this.#lost) return forever();
       throw error;
     }
+    let processed: ProcessedToDeviceEvent[];
     try {
       if (!Array.isArray(answer) || !answer.every(isToDeviceEvent))
         throw new Error('unexpected shape');
-      return (answer as Parameters<typeof toProcessedToDeviceEvent>[0][]).map(
-        toProcessedToDeviceEvent,
-      );
+      processed = (
+        answer as Parameters<typeof toProcessedToDeviceEvent>[0][]
+      ).map(toProcessedToDeviceEvent);
     } catch (error) {
       // A rejection here would let matrix-js-sdk move past these events too.
       this.#lose(`${method} answered ${describeError(error)}`);
       return forever();
     }
+    this.#verifications.drop(collectable);
+    for (const event of processed) {
+      const found = incomingRequest(event.rawEvent);
+      if (found) await this.#fetchRequest(found);
+    }
+    return processed;
   }
 
   public async outgoingRequests(): Promise<OutgoingRequest[]> {
@@ -748,7 +899,7 @@ export class NativeOlmMachine {
         roomId: roomId.toString(),
         decryptionSettings: decryptionSettingsJson(decryptionSettings),
       });
-      return toDecryptedRoomEvent(
+      const result = toDecryptedRoomEvent(
         checked<Parameters<typeof toDecryptedRoomEvent>[0]>(
           'decryptRoomEvent',
           decrypted,
@@ -758,11 +909,18 @@ export class NativeOlmMachine {
             typeof value['event'] === 'string',
         ),
       );
+      const sessionId = (
+        JSON.parse(event) as { content?: { session_id?: unknown } }
+      ).content?.session_id;
+      if (typeof sessionId === 'string')
+        this.#undecryptable.delete(sessionKey(roomId.toString(), sessionId));
+      return result;
     } catch (error) {
       if (
         error instanceof NativeCryptoError &&
         error.code === 'MegolmDecryptionError'
       ) {
+        this.#failedToDecrypt(event, roomId.toString());
         throw toMegolmDecryptionError(error.details as MegolmErrorDetails);
       }
       throw error;
@@ -828,7 +986,10 @@ export class NativeOlmMachine {
       (value) => value === null || isIdentity(value),
     );
     return identity
-      ? toIdentity(identity, userId.toString(), this.#objectCall)
+      ? toIdentity(identity, userId.toString(), {
+          call: this.#objectCall,
+          verifications: this.#verifications,
+        })
       : undefined;
   }
 
@@ -847,7 +1008,11 @@ export class NativeOlmMachine {
       (value) => value === null || isDevice(value),
     );
     return device
-      ? (new NativeDevice(device, this.#objectCall) as unknown as Device)
+      ? (new NativeDevice(
+          device,
+          this.#objectCall,
+          this.#verifications,
+        ) as unknown as Device)
       : undefined;
   }
 
@@ -864,7 +1029,10 @@ export class NativeOlmMachine {
       (value) => Array.isArray(value) && value.every(isDevice),
     );
     return new NativeUserDevices(
-      devices.map((device) => new NativeDevice(device, this.#objectCall)),
+      devices.map(
+        (device) =>
+          new NativeDevice(device, this.#objectCall, this.#verifications),
+      ),
     ) as unknown as UserDevices;
   }
 
@@ -1122,19 +1290,153 @@ export class NativeOlmMachine {
     });
   }
 
-  /** Only "no bundle" so far: received bundles come with the room key bundle calls. */
   public async getReceivedRoomKeyBundleData(
     roomId: RoomId,
     inviter: UserId,
   ): Promise<StoredRoomKeyBundleData | undefined> {
-    const data = await this.#call('getReceivedRoomKeyBundleData', {
-      roomId: roomId.toString(),
-      inviter: inviter.toString(),
-    });
-    if (data === null) return undefined;
-    throw new NotOnNativeError(
-      'OlmMachine.getReceivedRoomKeyBundleData (a received bundle)',
+    const data = checked<BundleDataJson | null>(
+      'getReceivedRoomKeyBundleData',
+      await this.#call('getReceivedRoomKeyBundleData', {
+        roomId: roomId.toString(),
+        inviter: inviter.toString(),
+      }),
+      (value) => value === null || isBundleData(value),
     );
+    return data ? toBundleData(data) : undefined;
+  }
+
+  /**
+   * WASM takes the bundle data object JavaScript cannot forge; the crate reads it again by room
+   * and inviter and refuses (`StaleObject`) when its URL is not the one downloaded.
+   */
+  public async receiveRoomKeyBundle(
+    bundleData: StoredRoomKeyBundleData,
+    encryptedBundle: Uint8Array,
+  ): Promise<void> {
+    await this.#call('receiveRoomKeyBundle', {
+      roomId: bundleData.roomId.toString(),
+      inviter: bundleData.senderUser.toString(),
+      url: bundleData.url,
+      encryptedBundle: bytesToBase64(encryptedBundle),
+    });
+  }
+
+  public async buildRoomKeyBundle(
+    roomId: RoomId,
+  ): Promise<EncryptedAttachment | undefined> {
+    const bundle = checked<{
+      encryptedData: string;
+      mediaEncryptionInfo: string;
+    } | null>(
+      'buildRoomKeyBundle',
+      await this.#call('buildRoomKeyBundle', { roomId: roomId.toString() }),
+      (value) =>
+        value === null ||
+        (isObject(value) &&
+          typeof value['encryptedData'] === 'string' &&
+          typeof value['mediaEncryptionInfo'] === 'string'),
+    );
+    return bundle
+      ? new EncryptedAttachment(
+          base64ToBytes(bundle.encryptedData),
+          bundle.mediaEncryptionInfo,
+        )
+      : undefined;
+  }
+
+  public async shareRoomKeyBundleData(
+    userId: UserId,
+    roomId: RoomId,
+    url: string,
+    mediaEncryptionInfo: string | undefined,
+    sharingStrategy: CollectStrategy,
+  ): Promise<ToDeviceRequest[]> {
+    const requests = checked<RequestJson[]>(
+      'shareRoomKeyBundleData',
+      await this.#call('shareRoomKeyBundleData', {
+        userId: userId.toString(),
+        roomId: roomId.toString(),
+        url,
+        mediaEncryptionInfo,
+        sharingStrategy: strategyName(sharingStrategy),
+      }),
+      (value) =>
+        Array.isArray(value) &&
+        value.every(
+          (request) =>
+            isObject(request) && request['type'] === RequestType.ToDevice,
+        ),
+    );
+    return requests.map(toRequest) as ToDeviceRequest[];
+  }
+
+  public async hasDownloadedAllRoomKeys(roomId: RoomId): Promise<boolean> {
+    return checked<boolean>(
+      'hasDownloadedAllRoomKeys',
+      await this.#call('hasDownloadedAllRoomKeys', {
+        roomId: roomId.toString(),
+      }),
+      (value) => typeof value === 'boolean',
+    );
+  }
+
+  public async setHasDownloadedAllRoomKeys(roomId: RoomId): Promise<void> {
+    await this.#call('setHasDownloadedAllRoomKeys', {
+      roomId: roomId.toString(),
+    });
+  }
+
+  /** The private cross-signing seeds and the backup key, as WASM returns them. */
+  public async exportSecretsBundle(): Promise<SecretsBundle> {
+    return new NativeSecretsBundle(
+      checked(
+        'exportSecretsBundle',
+        await this.#call('exportSecretsBundle'),
+        isSecretsBundle,
+      ),
+    ) as unknown as SecretsBundle;
+  }
+
+  /** Takes the bundle as WASM does: it is freed whatever the outcome. */
+  public async importSecretsBundle(bundle: SecretsBundle): Promise<void> {
+    try {
+      await this.#call('importSecretsBundle', { bundle: bundle.to_json() });
+    } finally {
+      bundle.free();
+    }
+  }
+
+  /** From the registry, which the crate's answers and events keep (see verification.ts). */
+  public getVerificationRequest(
+    userId: UserId,
+    flowId: string,
+  ): VerificationRequest | undefined {
+    return this.#verifications.get(userId.toString(), flowId);
+  }
+
+  public getVerificationRequests(userId: UserId): VerificationRequest[] {
+    return this.#verifications.forUser(userId.toString());
+  }
+
+  /** An in-room verification event; a new request goes in the registry before this resolves. */
+  public async receiveVerificationEvent(
+    event: string,
+    roomId: RoomId,
+  ): Promise<void> {
+    await this.#call('receiveVerificationEvent', {
+      event,
+      roomId: roomId.toString(),
+    });
+    const found = incomingRequest(event);
+    if (found) await this.#fetchRequest(found);
+  }
+
+  /** Its calls hold nothing: the crate's dehydrated device calls are addressed by device ID. */
+  public dehydratedDevices(): DehydratedDevices {
+    return new NativeDehydratedDevices(
+      this.#objectCall,
+      this.#context.logger,
+    ) as unknown as DehydratedDevices;
   }
 
   public async clearRoomPendingKeyBundle(roomId: RoomId): Promise<void> {
@@ -1148,6 +1450,7 @@ export class NativeOlmMachine {
     if (this.#closed) return;
     this.#closed = true;
     this.#store = undefined;
+    this.#verifications.clear();
     if (this.#lost) return;
     this.#send('close').then(
       () => this.#context.queue.unlisten(this.#description),
@@ -1166,6 +1469,9 @@ export class NativeOlmMachine {
   }
 }
 standIn(NativeOlmMachine, OlmMachine);
+
+const sessionKey = (roomId: string, sessionId: string) =>
+  JSON.stringify([roomId, sessionId]);
 
 const decryptionSettingsJson = (settings: DecryptionSettings) => ({
   sender_device_trust_requirement: settings.sender_device_trust_requirement,

@@ -26,6 +26,7 @@ import {
   DeviceKey,
   DeviceKeyId,
   type EncryptionAlgorithm,
+  type EventId,
   type LocalTrust,
   MaybeSignature,
   OtherUserIdentity,
@@ -34,13 +35,18 @@ import {
   Signature,
   Signatures,
   type SignatureUploadRequest,
+  type RoomId,
+  type ToDeviceRequest,
   UserDevices,
   UserId,
+  type VerificationMethod,
+  type VerificationRequest,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
 import { type RequestJson, strategyName, toRequest } from './convert';
 import { standIn, wasmValue } from './guard';
 import { checked, isObject, NativeCryptoError } from './types';
+import type { Verifications } from './verification';
 
 /** A call on the machine the object came from (its reload and loss rules apply). */
 export type MachineCall = (
@@ -109,6 +115,32 @@ export const isDevice = (value: unknown): boolean =>
   typeof value['localTrustState'] === 'number' &&
   DEVICE_FLAGS.every((flag) => typeof value[flag] === 'boolean');
 
+const isToDevice = (value: unknown) =>
+  isObject(value) &&
+  value['type'] === RequestType.ToDevice &&
+  typeof value['body'] === 'string';
+
+/** `[request snapshot, to-device request]`, as WASM's tuple; the request is the registry's. */
+const startedOnDevice = (
+  method: string,
+  answer: unknown,
+  verifications: Verifications,
+): [VerificationRequest, ToDeviceRequest] => {
+  const [request, toDevice] = checked<[unknown, RequestJson]>(
+    method,
+    answer,
+    (value) =>
+      Array.isArray(value) && value.length === 2 && isToDevice(value[1]),
+  );
+  return [
+    verifications.request(request, method),
+    toRequest(toDevice) as ToDeviceRequest,
+  ];
+};
+
+const methodsParam = (methods?: VerificationMethod[] | null) =>
+  methods ? { methods } : {};
+
 /** A `SignatureUploadRequest` as `verifyDevice` and `verifyIdentity` answer it (no `id`). */
 const isSignatureUpload = (value: unknown) =>
   isObject(value) &&
@@ -137,17 +169,23 @@ const maybeSignature = (json: MaybeSignatureJson): MaybeSignature =>
 
 /**
  * WASM `Device`: the getters from the snapshot, the methods as calls with its ed25519 key.
- * Not here (they throw): `requestVerification` (slice 4), `getKey`, `firstTimeSeen` and the
- * key getters matrix-js-sdk does not read.
+ * Not here (they throw): `getKey`, `firstTimeSeen` and the key getters matrix-js-sdk does not
+ * read.
  */
 export class NativeDevice {
   /** `undefined` once spent (see the header). */
   #json: DeviceJson | undefined;
   readonly #call: MachineCall;
+  readonly #verifications: Verifications;
 
-  public constructor(json: DeviceJson, call: MachineCall) {
+  public constructor(
+    json: DeviceJson,
+    call: MachineCall,
+    verifications: Verifications,
+  ) {
     this.#json = json;
     this.#call = call;
+    this.#verifications = verifications;
   }
 
   #read(member: string): DeviceJson {
@@ -277,6 +315,20 @@ export class NativeDevice {
     ) as SignatureUploadRequest;
   }
 
+  /** Synchronous in WASM: matrix-js-sdk awaits it through the repository's patch. */
+  public async requestVerification(
+    methods?: VerificationMethod[] | null,
+  ): Promise<[VerificationRequest, ToDeviceRequest]> {
+    return startedOnDevice(
+      'requestDeviceVerification',
+      await this.#call('requestDeviceVerification', {
+        ...this.#target('requestDeviceVerification'),
+        ...methodsParam(methods),
+      }),
+      this.#verifications,
+    );
+  }
+
   /** A replaced device rejects (`StaleObject`): matrix-js-sdk's batch then fails, as for any one failed device. */
   public async encryptToDeviceEvent(
     eventType: string,
@@ -348,6 +400,12 @@ export const isIdentity = (value: unknown): boolean =>
 type OwnJson = IdentityJson & { readonly userSigningKey: string };
 type OtherJson = IdentityJson & { readonly identityNeedsUserApproval: boolean };
 
+/** What an identity stand-in calls through. */
+export interface IdentityContext {
+  readonly call: MachineCall;
+  readonly verifications: Verifications;
+}
+
 /** The snapshot an identity stand-in answers from, and its calls. */
 class IdentitySnapshot<T extends IdentityJson> {
   /** `undefined` once spent (see the header). */
@@ -355,17 +413,27 @@ class IdentitySnapshot<T extends IdentityJson> {
   readonly #userId: string;
   readonly #call: MachineCall;
   readonly #owner: string;
+  public readonly verifications: Verifications;
 
   public constructor(
     json: T,
     userId: string,
-    call: MachineCall,
+    context: IdentityContext,
     owner: string,
   ) {
     this.#json = json;
     this.#userId = userId;
-    this.#call = call;
+    this.#call = context.call;
+    this.verifications = context.verifications;
     this.#owner = owner;
+  }
+
+  /** A call that only reads or starts something: no change to this object's state. */
+  public send(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.#call(method, { ...this.target(method), ...params });
   }
 
   public read(member: string): T {
@@ -440,17 +508,31 @@ function publicMasterKey(masterKeyJson: string): string | undefined {
 
 /**
  * WASM `OwnUserIdentity` (matrix-js-sdk tells the kinds apart with `instanceof`). Not here:
- * `requestVerification` (slice 4) and `trustsOurOwnDevice`.
+ * `trustsOurOwnDevice`.
  */
 export class NativeOwnUserIdentity {
   readonly #snapshot: IdentitySnapshot<OwnJson>;
 
-  public constructor(json: OwnJson, userId: string, call: MachineCall) {
+  public constructor(json: OwnJson, userId: string, context: IdentityContext) {
     this.#snapshot = new IdentitySnapshot(
       json,
       userId,
-      call,
+      context,
       'OwnUserIdentity',
+    );
+  }
+
+  /** A to-device request to the user's other devices. */
+  public async requestVerification(
+    methods?: VerificationMethod[] | null,
+  ): Promise<[VerificationRequest, ToDeviceRequest]> {
+    return startedOnDevice(
+      'requestIdentityVerification',
+      await this.#snapshot.send(
+        'requestIdentityVerification',
+        methodsParam(methods),
+      ),
+      this.#snapshot.verifications,
     );
   }
 
@@ -496,17 +578,52 @@ standIn(NativeOwnUserIdentity, OwnUserIdentity);
 
 /**
  * WASM `OtherUserIdentity`; it has no `userSigningKey`, which matrix-js-sdk tests with `in`.
- * Not here: `requestVerification` and `verificationRequestContent` (slice 4).
+ * `requestVerification` and `verificationRequestContent` are synchronous in WASM: matrix-js-sdk
+ * awaits them through the repository's patch.
  */
 export class NativeOtherUserIdentity {
   readonly #snapshot: IdentitySnapshot<OtherJson>;
 
-  public constructor(json: OtherJson, userId: string, call: MachineCall) {
+  public constructor(
+    json: OtherJson,
+    userId: string,
+    context: IdentityContext,
+  ) {
     this.#snapshot = new IdentitySnapshot(
       json,
       userId,
-      call,
+      context,
       'OtherUserIdentity',
+    );
+  }
+
+  /** The content of the `m.room.message` that starts a verification in a DM. */
+  public async verificationRequestContent(
+    methods?: VerificationMethod[] | null,
+  ): Promise<string> {
+    return checked<string>(
+      'verificationRequestContent',
+      await this.#snapshot.send(
+        'verificationRequestContent',
+        methodsParam(methods),
+      ),
+      (value) => typeof value === 'string',
+    );
+  }
+
+  /** The request for the DM message sent with `verificationRequestContent`'s content. */
+  public async requestVerification(
+    roomId: RoomId,
+    requestEventId: EventId,
+    methods?: VerificationMethod[] | null,
+  ): Promise<VerificationRequest> {
+    return this.#snapshot.verifications.request(
+      await this.#snapshot.send('requestIdentityVerification', {
+        roomId: roomId.toString(),
+        requestEventId: requestEventId.toString(),
+        ...methodsParam(methods),
+      }),
+      'requestIdentityVerification',
     );
   }
 
@@ -558,14 +675,14 @@ standIn(NativeOtherUserIdentity, OtherUserIdentity);
 export function toIdentity(
   json: IdentityJson,
   userId: string,
-  call: MachineCall,
+  context: IdentityContext,
 ): OwnUserIdentity | OtherUserIdentity {
   return (json.kind === 'own'
-    ? new NativeOwnUserIdentity(json as OwnJson, userId, call)
+    ? new NativeOwnUserIdentity(json as OwnJson, userId, context)
     : new NativeOtherUserIdentity(
         json as OtherJson,
         userId,
-        call,
+        context,
       )) as unknown as OwnUserIdentity | OtherUserIdentity;
 }
 
