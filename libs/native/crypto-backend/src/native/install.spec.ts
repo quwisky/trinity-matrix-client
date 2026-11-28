@@ -52,7 +52,7 @@ const machine = async (
   answers = {},
 ) => {
   const crate = fakeCrate(answers);
-  const uninstall = install({
+  const { uninstallForTests: uninstall } = install({
     bridge: crate.bridge,
     storeDirectory: '/stores',
     ...options,
@@ -78,7 +78,7 @@ beforeAll(() => real.initAsync());
 describe('install', () => {
   it('patches the static factories and the uninstaller restores the originals', () => {
     const before = statics();
-    const uninstall = install(fakeCrate());
+    const { uninstallForTests: uninstall } = install(fakeCrate());
     for (const [owner, member, descriptor] of before) {
       expect(Object.getOwnPropertyDescriptor(owner, member)?.value).not.toBe(
         descriptor?.value,
@@ -103,7 +103,10 @@ describe('install', () => {
   });
 
   it('refuses a named store without a key, a wrong key length and the libolm migration', async () => {
-    const uninstall = install({ ...fakeCrate(), storeDirectory: '/stores' });
+    const { uninstallForTests: uninstall } = install({
+      ...fakeCrate(),
+      storeDirectory: '/stores',
+    });
     try {
       await expect(
         real.StoreHandle.open('prefix', 'passphrase'),
@@ -173,7 +176,10 @@ describe('install', () => {
 
   it('puts no key material in its own errors', async () => {
     const key = new Uint8Array(31).fill(0xab);
-    const uninstall = install({ ...fakeCrate(), storeDirectory: '/stores' });
+    const { uninstallForTests: uninstall } = install({
+      ...fakeCrate(),
+      storeDirectory: '/stores',
+    });
     try {
       const error = await real.StoreHandle.openWithKey('prefix', key).catch(
         (caught: Error) => caught,
@@ -182,5 +188,22 @@ describe('install', () => {
     } finally {
       uninstall();
     }
+  });
+
+  it('changes nothing when a target lacks a member, and can be installed afterwards', () => {
+    const before = statics();
+    const targets = {
+      ...real,
+      OlmMachine: Object.assign(function OlmMachine() {}, {
+        initFromStore: () => undefined,
+      }),
+    };
+    expect(() =>
+      install(fakeCrate(), targets as unknown as typeof real),
+    ).toThrow(/OlmMachine.initialize is not in the WASM package/);
+    expect(statics()).toEqual(before);
+    const { uninstallForTests } = install(fakeCrate());
+    uninstallForTests();
+    expect(statics()).toEqual(before);
   });
 });

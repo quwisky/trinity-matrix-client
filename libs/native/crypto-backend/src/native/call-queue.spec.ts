@@ -1,5 +1,6 @@
 import { CallQueue } from './call-queue';
 import {
+  NativeBridgeError,
   NativeCryptoError,
   type NativeEvents,
   type NativeRequest,
@@ -43,7 +44,7 @@ describe('CallQueue', () => {
   it('splits a batch at the size cap and keeps the order across batches', async () => {
     const { batches, bridge } = fakeBridge(echo);
     const cap = 4096 + 300;
-    const queue = new CallQueue(bridge, cap);
+    const queue = new CallQueue(bridge, { maxBatchLength: cap });
     const values = Array.from({ length: 7 }, (_, index) =>
       `${index}`.padEnd(100, '.'),
     );
@@ -164,12 +165,73 @@ describe('CallQueue', () => {
   it('settles the calls of a batch whose event listener throws', async () => {
     const logger = { warn: vi.fn() };
     const { bridge } = fakeBridge(echo);
-    const queue = new CallQueue(bridge, undefined, logger);
+    const queue = new CallQueue(bridge, { logger });
     queue.listen(alice, () => {
       throw new Error('listener broke');
     });
     expect(await call(queue, 'step', 1)).toBe(1);
     expect(await call(queue, 'step', 2)).toBe(2);
     expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it('rejects a batch the bridge does not answer in time, with a longer limit for slow calls', async () => {
+    const never = () => new Promise<string>(() => undefined);
+    const queue = new CallQueue(
+      { call: never, callBatch: never },
+      { timeoutMs: 20, slowTimeoutMs: 200 },
+    );
+    const started = Date.now();
+    const fast = await call(queue, 'trackedUsers').catch(
+      (error: unknown) => error,
+    );
+    expect(fast).toBeInstanceOf(NativeBridgeError);
+    expect((fast as Error).message).toBe(
+      'native crypto trackedUsers: the bridge timed out',
+    );
+    const slow = await call(queue, 'importExportedRoomKeys').catch(
+      (error: unknown) => error,
+    );
+    expect(slow).toBeInstanceOf(NativeBridgeError);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(200);
+  });
+
+  it('reports a failed or malformed poll to the machine', async () => {
+    let poll: NativeResponse = {
+      error: { code: 'UnknownMachine', message: 'gone' },
+    };
+    const { bridge } = fakeBridge((request) =>
+      request.method === 'pollEvents' ? poll : echo(request),
+    );
+    const queue = new CallQueue(bridge);
+    const failures: [string, boolean][] = [];
+    queue.listen(
+      alice,
+      () => undefined,
+      (reason, malformed) => failures.push([reason, malformed]),
+    );
+    await call(queue, 'step');
+    poll = { result: { events: 'nope', dropped: 0 } };
+    await call(queue, 'step');
+    expect(failures).toEqual([
+      ['native crypto pollEvents failed (UnknownMachine)', false],
+      ['native crypto pollEvents answered an unexpected shape', true],
+    ]);
+  });
+
+  it('keeps the bridge failure reason out of every call of a batch that carries init', async () => {
+    const queue = new CallQueue({
+      call: () => Promise.reject(new Error('request {"storeKey":"secret"}')),
+      callBatch: () =>
+        Promise.reject(new Error('request {"storeKey":"secret"}')),
+    });
+    const answers = await Promise.allSettled([
+      call(queue, 'init'),
+      call(queue, 'roomKeyRequestsEnabled'),
+    ]);
+    for (const answer of answers) {
+      expect(answer.status === 'rejected' && answer.reason.message).not.toMatch(
+        /secret/,
+      );
+    }
   });
 });
