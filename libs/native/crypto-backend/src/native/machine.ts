@@ -108,6 +108,7 @@ import {
   type NativeEvent,
   type NativeEvents,
   NativeMachineClosedError,
+  type NativeMachineId,
   NativeMachineLostError,
 } from './types';
 import {
@@ -156,7 +157,7 @@ interface MachineContext {
   readonly queue: CallQueue;
   readonly logger?: NativeCryptoLogger;
   readonly onEventsDropped?: (dropped: number | undefined) => void;
-  readonly onMachineLost?: (reason: string) => void;
+  readonly onMachineLost?: (reason: string, machine: NativeMachineId) => void;
   readonly trace?: (line: string) => void;
 }
 
@@ -538,7 +539,8 @@ export class NativeOlmMachine {
     this.#verifications.clear();
     this.#context.queue.unlisten(this.#description);
     this.#context.logger?.warn(`native crypto lost the machine: ${reason}`);
-    this.#context.onMachineLost?.(reason);
+    const { userId, deviceId } = this.#description;
+    this.#context.onMachineLost?.(reason, { userId, deviceId });
   }
 
   /** Runs a call nobody awaits (WASM's member is synchronous) and reports its failure. */

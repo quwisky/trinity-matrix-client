@@ -434,7 +434,10 @@ describe("a poll's events", () => {
       { type: 'verificationChanged', verification: sas({ isDone: true }) },
     );
     await Promise.resolve(verifier.accept()).catch(() => undefined);
-    expect(lost).toHaveBeenCalledWith('pollEvents answered a malformed event');
+    expect(lost).toHaveBeenCalledWith(
+      'pollEvents answered a malformed event',
+      expect.anything(),
+    );
     expect(changes).not.toHaveBeenCalled();
     await expect(olm.trackedUsers()).rejects.toThrow();
   });
@@ -804,7 +807,10 @@ describe('failing polls', () => {
     for (let call = 0; call < 3; call++)
       await olm.trackedUsers().catch(() => undefined);
     await vi.waitFor(() =>
-      expect(lost).toHaveBeenCalledWith('pollEvents failed 3 times in a row'),
+      expect(lost).toHaveBeenCalledWith(
+        'pollEvents failed 3 times in a row',
+        expect.anything(),
+      ),
     );
     // The first failure starts a refresh; failures in its own batches start none.
     expect(reads).toBeLessThanOrEqual(2);

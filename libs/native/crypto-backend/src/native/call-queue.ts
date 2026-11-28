@@ -5,6 +5,7 @@ import {
   NativeCryptoError,
   type NativeCryptoLogger,
   type NativeEvents,
+  type NativeMachineId,
   type NativeRequest,
   type NativeResponse,
 } from './types';
@@ -147,7 +148,7 @@ const isResponse = (value: unknown): value is NativeResponse =>
 
 /**
  * Coalesces the calls made in one JavaScript task into batches for the bridge, sent one at a
- * time in call order. Each batch also polls the events of every machine it called, and those
+ * time in call order (per machine when the bridge runs machines concurrently). Each batch also polls the events of every machine it called, and those
  * events reach their listener before any call of the batch settles: WASM runs its callbacks
  * during the call that caused them.
  */
@@ -155,6 +156,8 @@ export class CallQueue {
   private queued: Pending[] = [];
   private flushScheduled = false;
   private tail: Promise<void> = Promise.resolve();
+  /** With a concurrent bridge: each machine's last batch, so its own batches stay in order. */
+  private readonly tails = new Map<string, Promise<void>>();
   private readonly listeners = new Map<
     string,
     { events: EventListener; failed?: PollFailure }
@@ -199,13 +202,29 @@ export class CallQueue {
 
   private flush(): void {
     this.flushScheduled = false;
-    for (const chunk of this.chunks(this.queued.splice(0))) {
-      this.tail = this.tail.then(() => this.send(chunk));
-    }
     // A failure inside `send` must not stop the batches queued behind it.
-    this.tail = this.tail.catch((error: unknown) =>
-      this.logger?.warn(`native crypto batch failed: ${describeError(error)}`),
-    );
+    const settle = (tail: Promise<void>) =>
+      tail.catch((error: unknown) =>
+        this.logger?.warn(
+          `native crypto batch failed: ${describeError(error)}`,
+        ),
+      );
+    for (const chunk of this.chunks(this.queued.splice(0))) {
+      if (this.bridge.concurrentMachines) {
+        const key = keyOf(chunk[0].request);
+        const tail = settle(
+          (this.tails.get(key) ?? Promise.resolve()).then(() =>
+            this.send(chunk),
+          ),
+        );
+        this.tails.set(key, tail);
+        void tail.then(() => {
+          if (this.tails.get(key) === tail) this.tails.delete(key);
+        });
+      } else {
+        this.tail = settle(this.tail.then(() => this.send(chunk)));
+      }
+    }
   }
 
   /**
@@ -332,6 +351,8 @@ export class CallQueue {
     const timeout = this.timeout(chunk);
     const batch = ++this.batches;
     const machine = chunk[0] ? keyOf(chunk[0].request) : '';
+    const { userId, deviceId } = chunk[0].request;
+    const machineId: NativeMachineId = { userId, deviceId };
     this.options.trace?.(
       `batch ${batch} ${machine} ${calls.map(({ request }) => request.method).join(' ')}${items.length > calls.length ? ' +poll' : ''}`,
     );
@@ -339,8 +360,8 @@ export class CallQueue {
     let answer: Promise<string>;
     try {
       answer = single
-        ? this.bridge.call(lines[0])
-        : this.bridge.callBatch(`[${lines.join(',')}]`);
+        ? this.bridge.call(lines[0], machineId)
+        : this.bridge.callBatch(`[${lines.join(',')}]`, machineId);
     } catch (error) {
       answer = Promise.reject(error);
     }

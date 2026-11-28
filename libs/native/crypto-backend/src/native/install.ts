@@ -25,7 +25,25 @@ function factories(options: NativeCryptoOptions) {
     onMachineLost: options.onMachineLost,
     trace: options.trace,
   };
-  const memory = async (storeName: string | null | undefined) => {
+  const ownsStores = options.bridge.ownsStores === true;
+  const memory = async (
+    storeName: string | null | undefined,
+    passphrase?: string | null,
+  ) => {
+    if (ownsStores) {
+      // The bridge opens the store with its own path and key; a memory store would lose the account.
+      if (!storeName) {
+        throw new Error(
+          'native crypto: this host keeps every store on disk; open it with a store name',
+        );
+      }
+      if (passphrase) {
+        throw new Error(
+          'native crypto: a store passphrase is not supported; this host keys its stores itself',
+        );
+      }
+      return new NativeStoreHandle();
+    }
     if (storeName) {
       throw new Error(
         'native crypto: StoreHandle.open with a store name is not supported; open the store with a key (StoreHandle.openWithKey)',
@@ -34,6 +52,11 @@ function factories(options: NativeCryptoOptions) {
     return new NativeStoreHandle();
   };
   const openWithKey = async (storeName: string, storeKey: Uint8Array) => {
+    if (ownsStores) {
+      throw new Error(
+        'native crypto: this host keys its stores itself; the store key stays native',
+      );
+    }
     if (!options.storeDirectory)
       throw new Error('native crypto: no store directory is configured');
     if (!storeName)
@@ -76,7 +99,10 @@ function factories(options: NativeCryptoOptions) {
     initFromStore(
       userId,
       deviceId,
-      (await memory(storeName)) as unknown as StoreHandle,
+      (await memory(
+        storeName,
+        rest[0] as string | undefined,
+      )) as unknown as StoreHandle,
       ...rest.slice(1),
     );
   const migration = refuse(
