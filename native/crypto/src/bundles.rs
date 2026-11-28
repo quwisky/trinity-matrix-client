@@ -87,11 +87,9 @@ pub async fn share_room_key_bundle_data(
     let info = params
         .media_encryption_info
         .ok_or_else(|| CallError::crypto("shareRoomKeyBundleData: nullish encryption info"))?;
-    let info: MediaEncryptionInfo = serde_json::from_str(&info).map_err(|error| {
-        CallError::crypto(format!(
-            "Unable to validate room key media encryption info: {error}"
-        ))
-    })?;
+    // WASM's message adds serde's, which could quote the file key: left out.
+    let info: MediaEncryptionInfo = serde_json::from_str(&info)
+        .map_err(|_| CallError::crypto("Unable to validate room key media encryption info"))?;
     let strategy = collect_strategy(&params.sharing_strategy)?;
     let bundle_data = RoomKeyBundleContent {
         room_id: params.room_id,
@@ -175,7 +173,9 @@ pub async fn receive_room_key_bundle(
         decryptor
             .read_to_end(&mut decrypted)
             .map_err(CallError::crypto)?;
-        serde_json::from_slice(&decrypted).map_err(CallError::crypto)?
+        // A fixed message: serde's could quote a value of the decrypted bundle, such as a key.
+        serde_json::from_slice(&decrypted)
+            .map_err(|_| CallError::crypto("the room key bundle does not parse"))?
     };
     machine
         .store()

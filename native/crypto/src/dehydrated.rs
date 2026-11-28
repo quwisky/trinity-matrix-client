@@ -105,14 +105,13 @@ pub struct RehydrateParams {
 }
 
 /// `DehydratedDevices.rehydrate`: holds the device for `receiveRehydratedEvents`, replacing
-/// one held before.
+/// one held before once the new one is rehydrated (a failure keeps the old one).
 pub async fn rehydrate_device(
     machine: &OlmMachine,
     rehydration: &mut Rehydration,
     params: RehydrateParams,
 ) -> CallResult {
     let key = key(params.dehydrated_device_key)?;
-    *rehydration = None;
     let device_data = serde_json::from_str(&params.device_data)?;
     let device = machine
         .dehydrated_devices()

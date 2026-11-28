@@ -10,6 +10,7 @@ use std::collections::BTreeSet;
 use matrix_sdk_common::ruma::events::secret::request::SecretName;
 use matrix_sdk_crypto::OlmMachine;
 use matrix_sdk_crypto::types::SecretsBundle;
+use matrix_sdk_crypto::vodozemac::Ed25519SecretKey;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -80,8 +81,18 @@ pub async fn import_secrets_bundle(
     params: ImportSecretsBundleParams,
 ) -> CallResult {
     // A fixed message: serde's would quote the value it could not read, which may be a key.
-    let bundle: SecretsBundle = serde_json::from_value(params.bundle)
-        .map_err(|_| CallError::invalid("invalid secrets bundle"))?;
+    let invalid = || CallError::invalid("invalid secrets bundle");
+    let bundle: SecretsBundle = serde_json::from_value(params.bundle).map_err(|_| invalid())?;
+    // Unlike WASM, every seed is checked first: upstream keeps the keys it imported before
+    // failing on a later one, leaving a master key that matches no public identity.
+    let seeds = &bundle.cross_signing;
+    for seed in [
+        &seeds.master_key,
+        &seeds.self_signing_key,
+        &seeds.user_signing_key,
+    ] {
+        Ed25519SecretKey::from_base64(seed).map_err(|_| invalid())?;
+    }
     machine
         .store()
         .import_secrets_bundle(&bundle)
