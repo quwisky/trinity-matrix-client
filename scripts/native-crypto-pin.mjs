@@ -5,6 +5,11 @@
 // when a crate in both lock files has another version here than in native/crypto/wasm-lock.json,
 // the snapshot of that WASM lock.
 //
+// The WASM package name resolves to the facade libs/native/crypto-backend (a pnpm override),
+// which installs the real package under an `npm:` alias. The override also replaces
+// matrix-js-sdk's exact WASM pin without a warning, so the alias, the root package.json and
+// the installed matrix-js-sdk's pin must all name the same version.
+//
 // On a WASM bump, refresh the snapshot from the release tag's lock file:
 //   curl -fsSLO https://raw.githubusercontent.com/matrix-org/matrix-sdk-crypto-wasm/v<version>/Cargo.lock
 //   node scripts/native-crypto-pin.mjs snapshot Cargo.lock <version> <tag commit>
@@ -12,6 +17,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const WASM = '@matrix-org/matrix-sdk-crypto-wasm';
+const FACADE = 'libs/native/crypto-backend/package.json';
 const SDK_CRATES = [
   'matrix-sdk-crypto',
   'matrix-sdk-common',
@@ -55,8 +61,34 @@ const sharedVersionErrors = (cargoLock, snapshot) => {
 const tomlString = (text, key) =>
   text.match(new RegExp(`^${key} = "([^"]+)"$`, 'm'))?.[1];
 
+const facadeErrors = (wasm, facadePackageJson, jsSdkPackageJson) => {
+  const aliases = Object.values(
+    JSON.parse(facadePackageJson).dependencies ?? {},
+  ).filter((spec) => spec.startsWith(`npm:${WASM}@`));
+  const alias = aliases[0]?.slice(`npm:${WASM}@`.length);
+  const sdk = JSON.parse(jsSdkPackageJson).dependencies?.[WASM];
+  const errors = [];
+  if (aliases.length !== 1) {
+    errors.push(
+      `${FACADE} must depend on ${WASM} through exactly one npm: alias; found ${aliases.length}`,
+    );
+  } else if (alias !== wasm) {
+    errors.push(
+      `${FACADE} re-exports ${WASM} ${alias}, but package.json has ${wasm}: move them together`,
+    );
+  }
+  if (sdk !== wasm) {
+    errors.push(
+      `the installed matrix-js-sdk pins ${WASM} ${sdk}, but package.json has ${wasm}; the pnpm override would run the SDK on the facade's version without a warning: move package.json, ${FACADE} and native/crypto to the SDK's pin`,
+    );
+  }
+  return errors;
+};
+
 export const checkNativeCryptoPin = ({
   packageJson,
+  facadePackageJson,
+  jsSdkPackageJson,
   cargoToml,
   cargoLock,
   wasmLock,
@@ -72,8 +104,8 @@ export const checkNativeCryptoPin = ({
       'native/crypto/Cargo.toml has no [package.metadata.trinity.wasm-pin] pairing',
     ];
   }
-  const errors = [];
   const wasm = JSON.parse(packageJson).dependencies?.[WASM];
+  const errors = facadeErrors(wasm, facadePackageJson, jsSdkPackageJson);
   if (wasm !== recordedWasm) {
     errors.push(
       `package.json has ${WASM} ${wasm}, but native/crypto is pinned for ${recordedWasm}: read the matrix-sdk-crypto version off that release's Cargo.lock and move the crate pins and wasm-pin with it`,
@@ -125,12 +157,16 @@ if (import.meta.main) {
   } else {
     const errors = checkNativeCryptoPin({
       packageJson: read('package.json'),
+      facadePackageJson: read(FACADE),
+      jsSdkPackageJson: read('node_modules/matrix-js-sdk/package.json'),
       cargoToml: read('native/crypto/Cargo.toml'),
       cargoLock: read('native/crypto/Cargo.lock'),
       wasmLock: read('native/crypto/wasm-lock.json'),
     });
     for (const error of errors) console.error(error);
     if (errors.length > 0) process.exit(1);
-    console.log('native/crypto matches the WASM package.');
+    console.log(
+      'native/crypto, the crypto-backend facade and matrix-js-sdk match the WASM package.',
+    );
   }
 }

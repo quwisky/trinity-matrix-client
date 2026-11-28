@@ -1,0 +1,18 @@
+{
+  "name": "@trinity/crypto-backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Stands in for @matrix-org/matrix-sdk-crypto-wasm through a pnpm override and re-exports it unchanged.",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./src/matrix-sdk-crypto-wasm.d.ts",
+      "require": "./src/matrix-sdk-crypto-wasm.cjs",
+      "default": "./src/matrix-sdk-crypto-wasm.mjs"
+    }
+  },
+  "dependencies": {
+    "@matrix-org/matrix-sdk-crypto-wasm-real": "npm:@matrix-org/matrix-sdk-crypto-wasm@18.9.0"
+  }
+}

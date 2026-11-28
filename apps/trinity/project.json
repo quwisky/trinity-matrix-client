@@ -55,7 +55,7 @@
           },
           {
             "glob": "matrix_sdk_crypto_wasm_bg.wasm",
-            "input": "node_modules/@matrix-org/matrix-sdk-crypto-wasm/pkg",
+            "input": "libs/native/crypto-backend/node_modules/@matrix-org/matrix-sdk-crypto-wasm-real/pkg",
             "output": "assets/crypto"
           },
           {

@@ -14,6 +14,10 @@
 #     `libs/native/capacitor-app-lock` (name `@trinity/capacitor-app-lock`) and
 #     `libs/native/capacitor-auth-session` (name `@trinity/capacitor-auth-session`) join for
 #     the same reason.
+#   - `libs/native/crypto-backend` (name `@trinity/crypto-backend`) is a member so that the
+#     `overrides` entry below can link it in place of `@matrix-org/matrix-sdk-crypto-wasm`
+#     everywhere, matrix-js-sdk's own copy included, and so that pnpm installs the real
+#     package under its `-real` alias. Nothing imports it by its own name.
 #   - `libs/spartan/*` carry a `package.json` (name `@trinity/helm/*`) only for the
 #     `@spartan-ng/cli` generator; they are consumed via the path aliases above.
 #   - `libs/components/{controls,overlay,generic-content}`,
@@ -30,6 +34,7 @@ packages:
   - libs/native/capacitor-push
   - libs/native/capacitor-app-lock
   - libs/native/capacitor-auth-session
+  - libs/native/crypto-backend
 minimumReleaseAge: 1440
 
 # Which dependencies may run install/build scripts. pnpm 11 removed
@@ -50,6 +55,12 @@ allowBuilds:
   appium: false
   edgedriver: false
   geckodriver: false
+
+# The facade above takes the WASM package's name. An override also replaces matrix-js-sdk's
+# exact pin without a warning, so scripts/native-crypto-pin.mjs checks that the facade's
+# alias, the root package.json and the installed SDK name the same version.
+overrides:
+  '@matrix-org/matrix-sdk-crypto-wasm': link:libs/native/crypto-backend
 
 patchedDependencies:
   '@capacitor/privacy-screen@2.0.1': patches/@capacitor__privacy-screen@2.0.1.patch

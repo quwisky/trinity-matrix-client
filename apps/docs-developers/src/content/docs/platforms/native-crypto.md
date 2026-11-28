@@ -21,7 +21,7 @@ cd ../..
 pnpm nx run scripts:native-crypto-interop
 ```
 
-The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities, and every step, change event and sent request of each verification flow (SAS, QR codes, cancels) in all four pairings of native and WASM devices, and the secrets inbox and bundle, room key bundles for shared history, dehydrated devices and the remaining machine calls in both mixed pairings. The timeout case waits 61 seconds. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version or the workflow change.
+The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities, and every step, change event and sent request of each verification flow (SAS, QR codes, cancels) in all four pairings of native and WASM devices, and the secrets inbox and bundle, room key bundles for shared history, dehydrated devices and the remaining machine calls in both mixed pairings. The timeout case waits 61 seconds. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version, the facade or the workflow change.
 
 ## Surface status {#surface}
 
@@ -55,9 +55,17 @@ pnpm android:build
 
 The script cross-builds `libtrinity_crypto.so` for `x86_64` (pass other ABIs as arguments) into `android/app/src/debug/jniLibs/`, which git ignores. It needs an Android NDK, the Rust Android target and `cargo-ndk`; the README lists the versions. Debug builds then expose the `TrinityCryptoDebug` Capacitor plugin on Android 10 or newer. Without the library the plugin rejects with `NOT_BUILT`, so `pnpm android:build` and the mobile E2E suite need neither Rust nor the NDK.
 
+## The crypto backend facade {#facade}
+
+`@matrix-org/matrix-sdk-crypto-wasm` resolves to `libs/native/crypto-backend`, everywhere: Trinity's libs, the E2E support code and matrix-js-sdk's own imports. An `overrides` entry in `pnpm-workspace.yaml` links the facade in place of the package, and the facade installs the real package under the alias `@matrix-org/matrix-sdk-crypto-wasm-real` and re-exports all of it with `export *` (ESM and types) or as the same `module.exports` object (CommonJS). This is where a native backend can later slot in under matrix-js-sdk.
+
+Today it changes nothing: every export is the WASM package's own object, which `src/matrix-sdk-crypto-wasm.spec.ts` checks name by name, and the build serves the same `.wasm` file at `assets/crypto/matrix_sdk_crypto_wasm_bg.wasm`. Nx cannot see the override, so `libs/util/matrix` and `e2e/support` name the facade in `implicitDependencies`; every other project that loads the package reaches it through them, which `scripts/crypto-backend-dependents.spec.mjs` checks, so an edit to the facade re-runs their builds and tests. Code that needs the package's files rather than its exports, such as the build's asset rule, reads them from `libs/native/crypto-backend/node_modules/@matrix-org/matrix-sdk-crypto-wasm-real`.
+
 ## Keep the WASM pin {#pin}
 
 The crate pins `matrix-sdk-crypto`, `matrix-sdk-common` and `matrix-sdk-sqlite` exactly to the release the WASM package in the root `package.json` is built on. `node scripts/native-crypto-pin.mjs`, also part of `pnpm nx test scripts`, fails when the WASM version, the pins, `Cargo.lock` or the snapshot `native/crypto/wasm-lock.json` disagree. On a WASM bump, download that release's `Cargo.lock`, refresh the snapshot with `node scripts/native-crypto-pin.mjs snapshot <Cargo.lock> <version> <commit>`, then move the pins and the lock to match.
+
+The same check fails unless three versions are equal: the root `package.json`'s WASM version, the facade's `npm:` alias in `libs/native/crypto-backend/package.json`, and the exact version the installed matrix-js-sdk depends on. The override replaces matrix-js-sdk's own pin without a warning, so a matrix-js-sdk update that moves its pin would otherwise run on the old WASM. Renovate does not bump the three together: it never moves the WASM package, in either manifest, and the matrix-js-sdk update it opens changes only the SDK's pin. The pin check fails that update until whoever takes it moves both the root `package.json` version and the facade's alias to the SDK's new pin (and `native/crypto` with them, as above).
 
 ## Release isolation {#release-isolation}
 
