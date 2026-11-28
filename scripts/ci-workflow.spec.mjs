@@ -1582,6 +1582,8 @@ describe('native crypto job', () => {
       'scripts/native-crypto-pin.mjs',
       'scripts/native-crypto-sdk.e2e.mjs',
       'patches/matrix-js-sdk@45.0.0.patch',
+      'e2e/support/homeserver/lease.mts',
+      'libs/data-access/matrix-client/src/lib/stale-membership-repair.ts',
       'scripts/project.json',
       '.github/actions/setup/action.yml',
       '.github/workflows/ci.yml',

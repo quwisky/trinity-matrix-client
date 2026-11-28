@@ -154,7 +154,8 @@ jobs:
       # Whether a pull request or push touches the native crypto crate, its scripts and their
       # Nx target (the SDK test bed among them), the WASM version it is pinned against, the
       # facade that re-exports it and holds the shim, the matrix-js-sdk patch the shim relies
-      # on, the setup action, or this workflow.
+      # on, the E2E support code whose homeserver lifecycle the test bed uses and the membership
+      # repair its clients run, the setup action, or this workflow.
       # Pull requests diff against their base, pushes against the commit before them; a
       # missing or unknown base runs the job.
       - id: native-crypto
@@ -165,7 +166,7 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifest=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json)
-            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|patches/matrix-js-sdk|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
+            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|patches/matrix-js-sdk|e2e/support/|libs/data-access/matrix-client/src/lib/stale-membership-repair\.ts$|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
               run=false
             fi
           fi
