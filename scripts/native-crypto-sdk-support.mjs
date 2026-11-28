@@ -228,6 +228,7 @@ const syncNetwork = (who) => {
       await jitter('NATIVE_CRYPTO_JITTER');
       const response = await fetch(input, init);
       await jitter('NATIVE_CRYPTO_JITTER');
+      if (sent) trace(`${who} sent ${sent[1]}: ${response.status}`);
       if (isSync && response.ok && traceFile) {
         const types = ((await response.clone().json()).to_device?.events ?? [])
           .map((event) => event.type)

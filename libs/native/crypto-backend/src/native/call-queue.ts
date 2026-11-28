@@ -469,6 +469,7 @@ function describeEvent(event: NativeEvents['events'][number]): string {
   const state = ['kind', 'phase', 'state', 'isDone', 'isCancelled']
     .filter((name) => fields[name] !== undefined)
     .map((name) => `${name}=${String(fields[name])}`)
+    .concat(fields['decimals'] === undefined ? [] : ['shown'])
     .join(',');
   return `${event.type}(${String(fields['flowId'])} ${state})`;
 }

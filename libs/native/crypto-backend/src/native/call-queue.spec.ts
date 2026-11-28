@@ -60,7 +60,7 @@ describe('CallQueue', () => {
     await call(queue, 'importSecretsBundle', 'secret-parameter');
     expect(lines).toEqual([
       `batch 1 ${JSON.stringify([alice.userId, alice.deviceId])} importSecretsBundle +poll`,
-      `events 1 ${JSON.stringify([alice.userId, alice.deviceId])} verificationChanged(flow kind=sas,isDone=true) dropped=0`,
+      `events 1 ${JSON.stringify([alice.userId, alice.deviceId])} verificationChanged(flow kind=sas,isDone=true,shown) dropped=0`,
     ]);
   });
 

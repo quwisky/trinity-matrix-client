@@ -564,6 +564,9 @@ describe.skipIf(missing)(
                 ),
               );
               const canceller = side === 'request' ? alice : bob;
+              trace(`case: ${what}`);
+              traced('requester', pair.request);
+              traced('responder', pair.incoming);
               const verifiers = {};
               const outcome = {};
               if (stage !== 'requested') {
@@ -575,21 +578,32 @@ describe.skipIf(missing)(
                   await pair.request.startVerification('m.sas.v1');
                 await phaseIs(pair.incoming, Started, what);
                 verifiers.incoming = pair.incoming.verifier;
-                for (const key of ['request', 'incoming'])
-                  outcome[key] = verifiers[key].verify().then(
+                for (const key of ['request', 'incoming']) {
+                  const done = verifiers[key].verify();
+                  tracedVerifier(key, verifiers[key], done);
+                  outcome[key] = done.then(
                     () => 'done',
                     (error) => error.message,
                   );
+                }
               }
               if (stage === 'requested' || stage === 'ready') {
                 await pair[side].cancel();
               } else if (stage === 'started') {
                 verifiers[side].cancel();
               } else {
-                const [mine, theirs] = await Promise.all([
-                  sasOf(verifiers.request),
-                  sasOf(verifiers.incoming),
-                ]);
+                const shown = {};
+                const [mine, theirs] = await settled(
+                  Promise.all(
+                    ['request', 'incoming'].map((key) =>
+                      Promise.resolve(sasOf(verifiers[key])).then(
+                        (callbacks) => (shown[key] = callbacks),
+                      ),
+                    ),
+                  ),
+                  () =>
+                    `both sides to show the SAS (${what}; shown by ${Object.keys(shown).join(', ') || 'neither'})`,
+                );
                 (side === 'request' ? mine : theirs)[how]();
               }
               const code = how === 'mismatch' ? 'm.mismatched_sas' : 'm.user';
