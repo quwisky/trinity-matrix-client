@@ -706,6 +706,68 @@ describe('lost events', () => {
   });
 });
 
+describe('reading flows again after lost events', () => {
+  async function shownSas() {
+    const answers: Record<string, Answer> = {
+      confirmSas: [],
+      trackedUsers: [],
+    };
+    const opened = await incoming(answers);
+    answers['startSas'] = withEvents(opened.crate, [sas(), toDevice], {
+      type: 'verificationRequestChanged',
+      request: transitioned(sas()),
+    });
+    const [verifier] = (await opened.found.startSas())!;
+    answers['acceptSas'] = withEvents(opened.crate, null, {
+      type: 'verificationChanged',
+      verification: sas({ emoji: EMOJI, decimals: [1, 2, 3] }),
+    });
+    await verifier.accept();
+    verifier.emoji();
+    return { ...opened, answers, verifier };
+  }
+
+  it('keeps the stand-in of a Transitioned flow and runs its callbacks when it changed', async () => {
+    const { olm, crate, answers, found, verifier } = await shownSas();
+    const changes = vi.fn();
+    verifier.registerChangesCallback(changes);
+    const keys = { emoji: EMOJI, decimals: [1, 2, 3] };
+    answers['getVerificationRequest'] = transitioned(
+      sas({ ...keys, isDone: true }),
+    );
+    answers['getVerification'] = sas({ ...keys, isDone: true });
+    crate.dropped = 1;
+    await olm.trackedUsers();
+    await vi.waitFor(() => expect(changes).toHaveBeenCalledTimes(1));
+    expect(found.getVerification()).toBe(verifier);
+    expect(verifier.isDone()).toBe(true);
+    // Still the flow's current object: it acts on the flow.
+    await verifier.confirm();
+    expect(sent(crate, 'confirmSas')).toHaveLength(1);
+  });
+
+  it('forgets the shown decimals of a flow the crate no longer knows', async () => {
+    const { olm, crate, answers } = await shownSas();
+    answers['getVerificationRequest'] = null;
+    crate.dropped = 1;
+    await olm.trackedUsers();
+    await vi.waitFor(() =>
+      expect(olm.getVerificationRequests(bob())).toEqual([]),
+    );
+    // The same flow ID comes back: nothing of the old flow was shown on it.
+    answers['getVerificationRequest'] = transitioned(
+      sas({ emoji: EMOJI, decimals: [4, 5, 6] }),
+    );
+    await olm.receiveVerificationEvent(inRoomRequest, room());
+    const again = olm.getVerificationRequest(bob(), FLOW)!;
+    const replacement = again.getVerification() as real.Sas;
+    await expect(replacement.confirm()).rejects.toMatchObject({
+      code: 'InvalidRequest',
+    });
+    expect(sent(crate, 'confirmSas')).toEqual([]);
+  });
+});
+
 describe('secrets bundles', () => {
   const bundle = {
     cross_signing: {

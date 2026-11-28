@@ -694,8 +694,7 @@ export class Verifications {
       try {
         const answer = await this.#call('getVerificationRequest', params);
         if (answer === null) {
-          this.#requests.delete(key);
-          this.#verifications.delete(key);
+          this.#forget(key);
           continue;
         }
         const json = checked<RequestSnapshot>(
@@ -705,8 +704,9 @@ export class Verifications {
         );
         for (const mirror of this.#applyRequest(json, 'refresh').due)
           mirror.notify();
+        // An ended request carries no verification: its SAS or QR code is read on its own.
         const verification = this.#verifications.get(key);
-        if (verification && !verification.final) {
+        if (!json.verification && verification && !verification.final) {
           const fresh = await this.#call('getVerification', params);
           if (isVerificationSnapshot(fresh)) {
             const placed = this.#place(
@@ -732,8 +732,8 @@ export class Verifications {
 
   /**
    * Puts a request snapshot (and the verification it holds) on its flow. `due`: the mirrors
-   * whose callbacks the change calls for: an event runs the request's (each verification change
-   * has an event of its own); a refresh runs it when it found the request changed.
+   * whose callbacks the change calls for, in order: an event runs the request's (each verification
+   * change has an event of its own); a refresh runs those whose state it found changed.
    */
   #applyRequest(
     json: RequestSnapshot,
@@ -741,10 +741,14 @@ export class Verifications {
   ): { request: NativeVerificationRequest; due: Mirror<Snapshot>[] } {
     const key = keyOf(json.otherUserId, json.flowId);
     const known = this.#requests.get(key);
-    // A change while the mirror is Transitioned already replaced the flow's verification.
-    const replaced = from !== 'answer' && known?.phase() === TRANSITIONED;
+    // A change event while the mirror is Transitioned already replaced the flow's verification.
+    // A refresh is no change event: it reads the same objects again.
+    const replaced = from === 'event' && known?.phase() === TRANSITIONED;
     const due: Mirror<Snapshot>[] = [];
-    if (json.verification) this.#place(json.verification, replaced);
+    if (json.verification) {
+      const placed = this.#place(json.verification, replaced);
+      if (from === 'refresh' && placed.changed) due.push(placed.mirror);
+    }
     if (!known) {
       const created = new NativeVerificationRequest(json, this);
       this.#requests.set(key, created);
