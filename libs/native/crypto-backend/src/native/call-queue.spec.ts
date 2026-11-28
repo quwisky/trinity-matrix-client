@@ -1,3 +1,6 @@
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
+
 import { CallQueue } from './call-queue';
 import {
   NativeBridgeError,
@@ -254,5 +257,64 @@ describe('CallQueue', () => {
         /secret/,
       );
     }
+  });
+
+  it('keeps no cause on the errors of a batch that carries init', async () => {
+    const queue = new CallQueue({
+      call: () => Promise.reject(new Error('request {"storeKey":"secret"}')),
+      callBatch: () =>
+        Promise.reject(new Error('request {"storeKey":"secret"}')),
+    });
+    const answers = await Promise.allSettled([
+      call(queue, 'init'),
+      call(queue, 'trackedUsers'),
+    ]);
+    for (const answer of answers) {
+      expect(
+        answer.status === 'rejected' && answer.reason.cause,
+      ).toBeUndefined();
+    }
+    const plain = await call(
+      new CallQueue({
+        call: () => Promise.reject(new Error('died')),
+        callBatch: () => Promise.reject(new Error('died')),
+      }),
+      'trackedUsers',
+    ).catch((error: unknown) => error);
+    expect((plain as Error).cause).toBeInstanceOf(Error);
+  });
+
+  it('lets go of init parameters once the batch is with the bridge', async () => {
+    setFlagsFromString('--expose-gc');
+    const gc = runInNewContext('gc') as () => void;
+    const never = () => new Promise<string>(() => undefined);
+    const queue = new CallQueue({ call: never, callBatch: never });
+    let params: Record<string, string> | undefined = { storeKey: 'secret' };
+    const ref = new WeakRef(params);
+    void queue.call({ method: 'init', ...alice, params });
+    params = undefined;
+    let gone = false;
+    for (let attempt = 0; attempt < 10 && !gone; attempt++) {
+      await new Promise((done) => setTimeout(done, 0));
+      gc();
+      gone = !ref.deref();
+    }
+    expect(gone).toBe(true);
+  });
+
+  it('sends each machine its own batch, so a stuck one loses only its own calls', async () => {
+    const { batches, bridge } = fakeBridge(echo);
+    const queue = new CallQueue(bridge);
+    const bob = { userId: '@bob:example.org', deviceId: 'BOB' };
+    const answers = await Promise.all([
+      call(queue, 'a1', 1),
+      queue.call({ method: 'b1', ...bob, params: { value: 2 } }),
+      call(queue, 'a2', 3),
+    ]);
+    expect(answers).toEqual([1, 2, 3]);
+    expect(batches.map((batch) => batch.map(({ method }) => method))).toEqual([
+      ['a1', 'a2'],
+      ['b1'],
+    ]);
   });
 });
