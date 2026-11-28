@@ -478,7 +478,7 @@ describe('backup and room keys on the native shim', () => {
     expect(keys.backupVersion).toBeUndefined();
   });
 
-  it('saves the key as base64, and a refused key fails as WASM fails: an Error', async () => {
+  it('saves the key as base64, and a refused key fails as WASM fails: an Error, code only', async () => {
     const { olm, crate } = await machine({
       saveBackupDecryptionKey: (request: NativeRequest) =>
         request.params?.['version'] === 'bad'
@@ -501,7 +501,8 @@ describe('backup and room keys on the native shim', () => {
     );
     expect(error).toBeInstanceOf(Error);
     expect(error).toMatchObject({ code: 'CryptoError' });
-    expect((error as Error).message).toContain('invalid backup decryption key');
+    // A call that carries the key gets its code only: no crate text at all.
+    expect((error as Error).message).toContain('withheld');
     expect((error as Error).message).not.toContain(backupKey.toBase64());
   });
 

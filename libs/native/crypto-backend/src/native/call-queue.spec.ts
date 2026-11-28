@@ -1,4 +1,5 @@
 import { setFlagsFromString } from 'node:v8';
+import { inspect } from 'node:util';
 import { runInNewContext } from 'node:vm';
 
 import { CallQueue, QUIET_METHODS } from './call-queue';
@@ -156,8 +157,8 @@ describe('CallQueue', () => {
         (result) => result.status === 'rejected' && result.reason.message,
       ),
     ).toEqual([
-      'native crypto one: the bridge failed: process died',
-      'native crypto two: the bridge failed: process died',
+      'native crypto one: the bridge failed',
+      'native crypto two: the bridge failed',
     ]);
     fail = false;
     expect(
@@ -274,14 +275,17 @@ describe('CallQueue', () => {
         answer.status === 'rejected' && answer.reason.cause,
       ).toBeUndefined();
     }
-    const plain = await call(
-      new CallQueue({
-        call: () => Promise.reject(new Error('died')),
-        callBatch: () => Promise.reject(new Error('died')),
-      }),
+    const debugged = await call(
+      new CallQueue(
+        {
+          call: () => Promise.reject(new Error('died')),
+          callBatch: () => Promise.reject(new Error('died')),
+        },
+        { debugBridgeErrors: true },
+      ),
       'trackedUsers',
     ).catch((error: unknown) => error);
-    expect((plain as Error).cause).toBeInstanceOf(Error);
+    expect((debugged as Error).cause).toBeInstanceOf(Error);
   });
 
   it('lets go of init parameters once the batch is with the bridge', async () => {
@@ -300,6 +304,153 @@ describe('CallQueue', () => {
       gone = !ref.deref();
     }
     expect(gone).toBe(true);
+  });
+
+  describe('keeps bridge and parser text out of every error', () => {
+    const MARKER = 'MARKER-7f3a';
+    const shown = (error: unknown) =>
+      [
+        (error as Error).message,
+        (error as Error).stack,
+        String((error as Error).cause ?? ''),
+        (error as Error).cause instanceof Error
+          ? ((error as Error).cause as Error).stack
+          : '',
+        JSON.stringify(error),
+        inspect(error, { depth: 10 }),
+      ].join('\n');
+    const PATHS: Record<
+      string,
+      () => {
+        call(text: string): Promise<string>;
+        callBatch(text: string): Promise<string>;
+      }
+    > = {
+      'a transport failure': () => {
+        const fail = (text: string) =>
+          Promise.reject(
+            new Error(`broken pipe while writing ${text} ${MARKER}`),
+          );
+        return { call: fail, callBatch: fail };
+      },
+      'a timeout': () => {
+        const never = () => new Promise<string>(() => undefined);
+        return { call: never, callBatch: never };
+      },
+      'a refusal of the whole batch': () => {
+        const refuse = async (text: string) =>
+          JSON.stringify({
+            error: {
+              code: 'InvalidRequest',
+              message: `invalid type: string "${text}" ${MARKER}`,
+            },
+          });
+        return { call: refuse, callBatch: refuse };
+      },
+      'an answer that is not JSON': () => {
+        const broken = async () => `${MARKER} not json`;
+        return { call: broken, callBatch: broken };
+      },
+      'an answer of the wrong shape': () => {
+        const wrong = async () => JSON.stringify([{ result: MARKER }]);
+        return { call: wrong, callBatch: wrong };
+      },
+    };
+    const send = async (
+      path: string,
+      method: string,
+      debugBridgeErrors = false,
+    ): Promise<unknown[]> => {
+      const queue = new CallQueue(PATHS[path]!(), {
+        timeoutMs: 20,
+        heavyTimeoutMs: 20,
+        slowTimeoutMs: 20,
+        debugBridgeErrors,
+      });
+      // Two calls: a batch, so a refusal of it is the whole batch's.
+      const answers = await Promise.allSettled([
+        call(queue, method, MARKER),
+        call(queue, 'trackedUsers', MARKER),
+      ]);
+      return answers.map((answer) => {
+        expect(answer.status).toBe('rejected');
+        return (answer as PromiseRejectedResult).reason;
+      });
+    };
+
+    it.each(
+      Object.keys(PATHS).flatMap((path) => [
+        [path, 'saveBackupDecryptionKey'],
+        [path, 'trackedUsers'],
+      ]),
+    )(
+      'after %s, a batch with %s shows no request or answer text',
+      async (path, method) => {
+        for (const error of await send(path, method)) {
+          expect(shown(error)).not.toContain(MARKER);
+          expect(error).toHaveProperty(
+            error instanceof NativeBridgeError ? 'kind' : 'code',
+          );
+        }
+      },
+    );
+
+    it.each(
+      Object.keys(PATHS).filter(
+        (path) => !['a timeout', 'an answer of the wrong shape'].includes(path),
+      ),
+    )(
+      'with debugBridgeErrors, %s shows its text for a call without secrets only',
+      async (path) => {
+        const [plain] = await send(path, 'trackedUsers', true);
+        expect(shown(plain)).toContain(MARKER);
+        for (const error of await send(path, 'saveBackupDecryptionKey', true)) {
+          expect(shown(error)).not.toContain(MARKER);
+        }
+      },
+    );
+
+    it('lets the crate message of a per-call error through, except for code-only calls', async () => {
+      const refuse = async (text: string) =>
+        JSON.stringify(
+          (JSON.parse(text) as NativeRequest[]).map(() => ({
+            error: {
+              code: 'StoreError',
+              message: `crate says ${MARKER}`,
+              details: { m: MARKER },
+            },
+          })),
+        );
+      const queue = new CallQueue({ call: refuse, callBatch: refuse });
+      const [plain, quiet, secretAnswer] = (
+        await Promise.allSettled([
+          call(queue, 'trackedUsers'),
+          call(queue, 'importCrossSigningKeys'),
+          call(queue, 'exportCrossSigningKeys'),
+        ])
+      ).map(
+        (answer) =>
+          (answer as PromiseRejectedResult).reason as NativeCryptoError,
+      );
+      expect(plain!.message).toContain(MARKER);
+      for (const error of [quiet!, secretAnswer!]) {
+        expect(error.code).toBe('StoreError');
+        expect(shown(error)).not.toContain(MARKER);
+      }
+    });
+
+    it('repeats no bridge code that is not a plain word', async () => {
+      const refuse = async () =>
+        JSON.stringify({ error: { code: `Bad ${MARKER}`, message: 'x' } });
+      const queue = new CallQueue({ call: refuse, callBatch: refuse });
+      const [error] = await Promise.allSettled([
+        call(queue, 'a'),
+        call(queue, 'b'),
+      ]);
+      expect((error as PromiseRejectedResult).reason).toMatchObject({
+        code: 'BridgeRefused',
+      });
+    });
   });
 
   it('treats every call that carries key material or plaintext as quiet', () => {
