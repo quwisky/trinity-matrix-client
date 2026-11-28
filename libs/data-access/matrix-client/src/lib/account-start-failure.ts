@@ -10,6 +10,7 @@ export type PersistedAccountStartOutcome =
         | 'transient-network'
         | 'crypto-failure'
         | 'crypto-store-key-lost'
+        | 'crypto-backend-mismatch'
         | 'secure-storage-unavailable';
     };
 

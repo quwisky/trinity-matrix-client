@@ -123,6 +123,23 @@ export class AccountRuntimeService {
   readonly inactiveRestoreOutcomes: Observable<AccountRestoreOutcome> =
     this.lateInactiveOutcomes.asObservable();
 
+  constructor() {
+    // A lost native crypto machine stopped the client: report it as a failed restore, which
+    // the Account health surface shows with "Retry Account" (a retry starts it again).
+    this.adapter.cryptoLost
+      ?.pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((accountId) => {
+        const outcome = {
+          accountId,
+          role: 'inactive',
+          kind: 'failed',
+          failure: 'crypto-failure',
+        } as const satisfies AccountRestoreOutcome;
+        this.publishInactiveOutcome(outcome);
+        this.lateInactiveOutcomes.next(outcome);
+      });
+  }
+
   restoreSavedAccounts(): Observable<AccountRestoreResult> {
     return defer(() => {
       const operation = this.currentOperation();
@@ -403,8 +420,11 @@ export class AccountRuntimeService {
     if (state.phase !== 'settled') return;
     const result = state.result;
     if (
-      result.kind !== 'restored-with-inactive-failures' &&
-      result.kind !== 'restored'
+      (result.kind !== 'restored-with-inactive-failures' &&
+        result.kind !== 'restored') ||
+      // A lost native crypto machine can stop the Active Account too; it stays the active
+      // one in the result, and the outcome only drives its health report and retry.
+      outcome.accountId === result.activeAccountId
     ) {
       return;
     }

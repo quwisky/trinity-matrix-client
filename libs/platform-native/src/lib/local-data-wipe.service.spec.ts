@@ -1,6 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { HostUserPresenceService } from '@trinity/runtime/host';
 import { MockProvider } from 'ng-mocks';
+import {
+  type NativeCryptoHost,
+  NativeCryptoService,
+} from './native-crypto.service';
 import { EMPTY, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -59,9 +63,13 @@ function fakeIdb(names?: string[]) {
   return { factory, deleted };
 }
 
-function setup() {
+function setup(native?: NativeCryptoHost) {
   TestBed.configureTestingModule({
-    providers: [LocalDataWipeService, MockProvider(SecureStorageService)],
+    providers: [
+      LocalDataWipeService,
+      MockProvider(SecureStorageService),
+      MockProvider(NativeCryptoService, { host: async () => native ?? null }),
+    ],
   });
   return TestBed.inject(LocalDataWipeService);
 }
@@ -72,6 +80,22 @@ describe('LocalDataWipeService', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   describe('beginIndexedDbWipe', () => {
+    it('deletes the native crypto stores of the records before the databases', async () => {
+      const { factory, deleted } = fakeIdb();
+      vi.stubGlobal('indexedDB', factory);
+      const order: string[] = [];
+      const deleteStores = vi.fn(async () => {
+        order.push(`native:${deleted.length}`);
+      });
+      const native = { deleteStores } as unknown as NativeCryptoHost;
+      const records = [{ ...ALICE, cryptoBackend: 'native' as const }];
+
+      await setup(native).beginIndexedDbWipe(records).observation;
+
+      expect(deleteStores).toHaveBeenCalledWith(records);
+      expect(order).toEqual(['native:0']);
+    });
+
     it('deletes the sync store under its REAL name, not the one the app passes', async () => {
       // matrix-js-sdk prepends `matrix-js-sdk:` to the dbName it is given, so deleting
       // `trinity-sync:@alice:hs` would silently delete nothing and the "cleared" claim

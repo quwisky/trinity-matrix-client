@@ -9,6 +9,7 @@ import { WRAPPING_KEY_DB_NAME } from './crypto-store-wrapping-keys';
 import { FileSaveService } from './host-media/file-save.service';
 import { RETIRED_DIAGNOSTIC_LOG_DB_NAME } from './retired-diagnostic-log';
 import { MENTION_INDEX_DB_NAME } from './mention-index-db-name';
+import { NativeCryptoService } from './native-crypto.service';
 import { firstValueFrom } from 'rxjs';
 import { beginDatabaseDeletion, listDatabaseNames } from './indexed-db-wipe';
 import { SecureStorageService } from './secure-storage.service';
@@ -45,6 +46,7 @@ export class LocalDataWipeService {
   private readonly secure = inject(SecureStorageService);
   private readonly presence = inject(HostUserPresenceService);
   private readonly files = inject(FileSaveService);
+  private readonly nativeCrypto = inject(NativeCryptoService);
 
   /**
    * Delete every IndexedDB database this app could own: start deletion and retain queued
@@ -79,6 +81,12 @@ export class LocalDataWipeService {
   }
 
   private async startIndexedDbWipe(records: readonly AccountRecord[]) {
+    // The native crypto stores and their wrapped keys, while the records still name them.
+    await (
+      await this.nativeCrypto.host().catch(() => null)
+    )
+      ?.deleteStores(records)
+      .catch(() => undefined);
     const idb = globalThis.indexedDB;
     if (typeof idb === 'undefined') {
       return { attempts: [], enumerated: false };

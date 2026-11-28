@@ -163,6 +163,34 @@ describe('AccountRuntimeService', () => {
     vi.useRealTimers();
   });
 
+  it('reports an Account whose native crypto was lost as a failed restore it can retry', async () => {
+    const test = testAdapter({
+      kind: 'available',
+      activeAccountId: '@me:hs',
+      accountIds: ['@me:hs'],
+    });
+    const cryptoLost = new Subject<string>();
+    const runtime = setup({
+      ...test,
+      adapter: { ...test.adapter, cryptoLost: cryptoLost.asObservable() },
+    });
+    await firstValueFrom(runtime.restoreSavedAccounts());
+    const late = vi.fn();
+    runtime.inactiveRestoreOutcomes.subscribe(late);
+
+    cryptoLost.next('@me:hs');
+
+    expect(late).toHaveBeenCalledExactlyOnceWith({
+      accountId: '@me:hs',
+      role: 'inactive',
+      kind: 'failed',
+      failure: 'crypto-failure',
+    });
+    test.restoreAccount.mockClear();
+    await firstValueFrom(runtime.retryInactiveAccount('@me:hs'));
+    expect(test.restoreAccount).toHaveBeenCalledWith('@me:hs', 'inactive');
+  });
+
   it('signs out an explicit Account and reports the coherent surviving Account set', async () => {
     const test = testAdapter({
       kind: 'available',

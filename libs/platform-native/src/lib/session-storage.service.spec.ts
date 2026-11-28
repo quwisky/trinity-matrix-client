@@ -18,6 +18,7 @@ import {
 } from './session-storage.service';
 import { SecureStorageService } from './secure-storage.service';
 import { CryptoStoreKeyService } from './crypto-store-key.service';
+import { NativeCryptoService } from './native-crypto.service';
 import { MatrixSession } from '@trinity/util/matrix';
 
 // In-memory @capacitor/preferences (hoisted so the vi.mock factory can see it).
@@ -108,14 +109,28 @@ function save(
  * so the keychain stand-in round-trips like the real thing; `secure.store` exposes
  * that map for assertions.
  */
-function setup(options: { nativeBridge?: boolean } = { nativeBridge: true }) {
+function setup(
+  options: { nativeBridge?: boolean; nativeCrypto?: boolean } = {
+    nativeBridge: true,
+  },
+) {
   const store = new Map<string, string>();
   const storeKeys = new Map<string, Uint8Array>();
+  const nativeStoresDeleted: string[] = [];
   TestBed.configureTestingModule({
     providers: [
       SessionStorageService,
       MockProvider(SecureStorageService),
       MockProvider(CryptoStoreKeyService),
+      MockProvider(NativeCryptoService, {
+        host: async () =>
+          options.nativeCrypto
+            ? ({} as Awaited<ReturnType<NativeCryptoService['host']>>)
+            : null,
+        deleteStore: async (userId, deviceId) => {
+          nativeStoresDeleted.push(`${userId}|${deviceId}`);
+        },
+      }),
       ...(options.nativeBridge ? [MockProvider(PushHandoffBridge)] : []),
     ],
   });
@@ -159,6 +174,7 @@ function setup(options: { nativeBridge?: boolean } = { nativeBridge: true }) {
     svc: TestBed.inject(SessionStorageService),
     bridge: bridge as NonNullable<typeof bridge>,
     removals: vi.mocked(secure.remove),
+    nativeStoresDeleted,
     secure: { store },
     keys: {
       store: storeKeys,
@@ -260,6 +276,56 @@ describe('SessionStorageService', () => {
           lineage: expect.any(String),
         },
       ],
+    });
+  });
+
+  describe('on a host with native crypto', () => {
+    it('marks a new device native and creates no JavaScript store key', async () => {
+      const { svc, keys } = setup({ nativeBridge: true, nativeCrypto: true });
+      const stored = await firstValueFrom(save(svc, ALICE));
+      expect(stored).toEqual({
+        ...ALICE,
+        cryptoPrefix: 'trinity-crypto:@alice:hs:DEV1',
+        cryptoBackend: 'native',
+        lineage: expect.any(String),
+      });
+      expect(stored.cryptoStoreKeyed).toBeUndefined();
+      expect(keys.create).not.toHaveBeenCalled();
+      expect(
+        JSON.parse(prefs.get('matrix.accounts') ?? '').accounts[0],
+      ).toMatchObject({ cryptoBackend: 'native' });
+    });
+
+    it('keeps the mark on a same-device sign-in and deletes the old native store on a device change', async () => {
+      const { svc, nativeStoresDeleted } = setup({
+        nativeBridge: true,
+        nativeCrypto: true,
+      });
+      await firstValueFrom(save(svc, ALICE));
+      const again = await firstValueFrom(save(svc, ALICE));
+      expect(again.cryptoBackend).toBe('native');
+      expect(nativeStoresDeleted).toEqual([]);
+      const moved = await firstValueFrom(
+        save(svc, { ...ALICE, deviceId: 'DEV9' }),
+      );
+      expect(moved).toMatchObject({
+        deviceId: 'DEV9',
+        cryptoBackend: 'native',
+      });
+      await vi.waitFor(() =>
+        expect(nativeStoresDeleted).toEqual(['@alice:hs|DEV1']),
+      );
+    });
+
+    it('keeps an existing WASM record unmarked on a same-device sign-in', async () => {
+      const wasm = setup();
+      await firstValueFrom(save(wasm.svc, ALICE));
+      TestBed.resetTestingModule();
+      const { svc, keys } = setup({ nativeBridge: true, nativeCrypto: true });
+      const again = await firstValueFrom(save(svc, ALICE));
+      expect(again.cryptoBackend).toBeUndefined();
+      expect(again.cryptoStoreKeyed).toBe(true);
+      expect(keys.create).not.toHaveBeenCalled();
     });
   });
 

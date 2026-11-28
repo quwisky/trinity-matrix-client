@@ -6,6 +6,8 @@ export type AccountRestoreFailure =
   | 'crypto-failure'
   /** A keyed crypto store whose key is missing; only a new-device sign-in helps. */
   | 'crypto-store-key-lost'
+  /** A crypto store made by the other backend (native or WASM); sign out and in again. */
+  | 'crypto-backend-mismatch'
   /** The OS keychain cannot be reached right now; retry once it is unlocked. */
   | 'secure-storage-unavailable'
   /** A defect in a background restore; a retry may still bring the Account back. */
@@ -113,6 +115,7 @@ export type AccountEstablishmentFailure =
   | 'transient-network'
   | 'crypto-failure'
   | 'crypto-store-key-lost'
+  | 'crypto-backend-mismatch'
   | 'secure-storage-unavailable'
   /** No usable keychain, and the person chose not to store the secrets unprotected. */
   | 'unprotected-storage-declined';

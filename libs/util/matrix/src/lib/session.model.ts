@@ -40,6 +40,13 @@ export interface MatrixSession {
    */
   cryptoStoreKeyed?: true;
   /**
+   * Set when this device's crypto store was created by the native crypto crate (the Android
+   * app with its library), whose store and key live in native code: such a session has no
+   * {@link cryptoStoreKeyed} key. Absent for a store created on WASM. A session is only ever
+   * opened by the backend that created it; see {@link cryptoBackendFor}. Non-secret.
+   */
+  cryptoBackend?: 'native';
+  /**
    * Names the sign-in whose tokens the stored record holds. Storage mints a new one on each
    * save and a token refresh keeps it, so a refresh never overwrites a newer sign-in's
    * tokens for the same account. Non-secret. Absent for sessions saved before it existed.
@@ -100,4 +107,20 @@ export interface OidcIdTokenClaims {
   exp: number;
   iat: number;
   [claim: string]: unknown;
+}
+
+/**
+ * Which crypto backend opens a session's store. A new device's store is native whenever the
+ * host has native crypto. An existing store opens only on the backend that created it: the
+ * other kind is refused, never opened, and the account has to be signed in again on this build.
+ * There is no migration between them (the mobile apps have no released users).
+ */
+export function cryptoBackendFor(input: {
+  readonly nativeAvailable: boolean;
+  readonly mark: MatrixSession['cryptoBackend'];
+  readonly newDevice: boolean;
+}): 'native' | 'wasm' | 'refuse' {
+  if (input.newDevice) return input.nativeAvailable ? 'native' : 'wasm';
+  if ((input.mark === 'native') !== input.nativeAvailable) return 'refuse';
+  return input.nativeAvailable ? 'native' : 'wasm';
 }
