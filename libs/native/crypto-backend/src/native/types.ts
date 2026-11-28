@@ -31,10 +31,14 @@ export interface NativeCryptoOptions {
   readonly onMachineLost?: (reason: string) => void;
   /** The size cap of one batch, in characters of JSON. */
   readonly maxBatchLength?: number;
-  /** How long a batch may take before its machines are lost, in milliseconds. */
+  /** How long a batch may take before its machines are lost, in milliseconds (60 s). */
   readonly timeoutMs?: number;
-  /** The same for a batch holding a call known to be slow, such as a room key import. */
+  /** The same for a batch holding a sync input, `shareRoomKey`, `markRequestAsSent` or `getMissingSessions` (5 min). */
+  readonly heavyTimeoutMs?: number;
+  /** The same for a batch holding `init` or a room key export or import (10 min). */
   readonly slowTimeoutMs?: number;
+  /** A batch still waiting after this long is logged once (60 s). */
+  readonly warnAfterMs?: number;
 }
 
 export interface NativeRequest {

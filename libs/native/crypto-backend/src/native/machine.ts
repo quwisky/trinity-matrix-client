@@ -180,7 +180,8 @@ type Callback = (...args: never[]) => unknown;
 export class NativeOlmMachine {
   readonly #context: MachineContext;
   readonly #description: MachineDescription;
-  readonly #store: Record<string, string>;
+  /** The `init` parameters for a reload, store key included, until the machine is closed or lost. */
+  #store: Record<string, string> | undefined;
   #roomKeyRequestsEnabled: boolean;
   readonly #callbacks = new Map<string, Callback>();
   #recovery: Promise<void> | undefined;
@@ -251,6 +252,8 @@ export class NativeOlmMachine {
     params?: Record<string, unknown>,
   ): Promise<unknown> {
     if (this.#lost) throw new NativeMachineLostError(method);
+    // A reload in flight goes first, then the replays it holds, then this call.
+    if (this.#recovery) await this.#afterRecovery(method);
     try {
       return await this.#send(method, params);
     } catch (error) {
@@ -270,6 +273,7 @@ export class NativeOlmMachine {
   #isDropped(error: unknown): boolean {
     return (
       !this.#closed &&
+      !this.#lost &&
       error instanceof NativeCryptoError &&
       DROPPED.has(error.code)
     );
@@ -281,14 +285,23 @@ export class NativeOlmMachine {
     return this.#lost ? new NativeMachineLostError(method) : error;
   }
 
+  #afterRecovery(method: string): Promise<void> {
+    return (this.#recovery ?? Promise.resolve()).then(() => {
+      if (this.#lost) throw new NativeMachineLostError(method);
+    });
+  }
+
   #recover(method: string): Promise<void> {
+    const store = this.#store;
+    if (this.#lost || !store)
+      return Promise.reject(new NativeMachineLostError(method));
     this.#recovery ??= (async () => {
       this.#context.logger?.warn(
         `native crypto ${method}: the crate dropped the machine; reloading it`,
       );
       try {
         const [description] = await Promise.all([
-          this.#send('init', this.#store),
+          this.#send('init', store),
           this.#send('roomKeyRequestsEnabled', {
             enabled: this.#roomKeyRequestsEnabled,
           }),
@@ -312,14 +325,13 @@ export class NativeOlmMachine {
         this.#recovery = undefined;
       }
     })();
-    return this.#recovery.then(() => {
-      if (this.#lost) throw new NativeMachineLostError(method);
-    });
+    return this.#afterRecovery(method);
   }
 
   #lose(reason: string): void {
     if (this.#lost) return;
     this.#lost = true;
+    this.#store = undefined;
     this.#context.queue.unlisten(this.#description);
     this.#context.logger?.warn(`native crypto lost the machine: ${reason}`);
     this.#context.onMachineLost?.(reason);
@@ -525,11 +537,13 @@ export class NativeOlmMachine {
       if (this.#lost) return forever();
       throw error;
     }
-    return checked<Parameters<typeof toProcessedToDeviceEvent>[0][]>(
-      method,
-      answer,
-      Array.isArray,
-    ).map(toProcessedToDeviceEvent);
+    if (!Array.isArray(answer)) {
+      this.#lose(`${method} answered an unexpected shape`);
+      return forever();
+    }
+    return (answer as Parameters<typeof toProcessedToDeviceEvent>[0][]).map(
+      toProcessedToDeviceEvent,
+    );
   }
 
   public async outgoingRequests(): Promise<OutgoingRequest[]> {
@@ -796,6 +810,7 @@ export class NativeOlmMachine {
   public close(): void {
     if (this.#closed) return;
     this.#closed = true;
+    this.#store = undefined;
     if (this.#lost) return;
     this.#send('close').then(
       () => this.#context.queue.unlisten(this.#description),

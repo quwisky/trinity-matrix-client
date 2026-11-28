@@ -10,16 +10,31 @@ import {
 } from './types';
 
 export const DEFAULT_MAX_BATCH_LENGTH = 1_000_000;
-/** A local bridge answers in milliseconds; a batch this late means the bridge is stuck. */
+/**
+ * How long a batch may take before the bridge counts as stuck and its machines are lost; a batch
+ * gets the longest limit of the calls it holds. A false loss stops a healthy client, so the limits
+ * are generous: a local bridge answers in milliseconds.
+ */
 export const DEFAULT_TIMEOUT_MS = 60_000;
+/** Calls whose work grows with a sync or a room's members. */
+export const DEFAULT_HEAVY_TIMEOUT_MS = 300_000;
+const HEAVY_METHODS = new Set([
+  'receiveSyncChanges',
+  'receiveSyncChangesMsc4186',
+  'shareRoomKey',
+  'markRequestAsSent',
+  'getMissingSessions',
+]);
+/** Calls whose work grows with all of the user's data. */
 export const DEFAULT_SLOW_TIMEOUT_MS = 600_000;
-/** Calls whose work grows with the user's data. */
 const SLOW_METHODS = new Set([
   'init',
   'exportRoomKeys',
   'importExportedRoomKeys',
   'importBackedUpRoomKeys',
 ]);
+/** A batch still waiting after this long is logged, once, whatever its limit. */
+export const DEFAULT_WARN_AFTER_MS = 60_000;
 /** Room kept in every batch for the `pollEvents` requests added to it. */
 const POLL_RESERVE = 4096;
 
@@ -30,7 +45,9 @@ type PollFailure = (reason: string, malformed: boolean) => void;
 export interface CallQueueOptions {
   readonly maxBatchLength?: number;
   readonly timeoutMs?: number;
+  readonly heavyTimeoutMs?: number;
   readonly slowTimeoutMs?: number;
+  readonly warnAfterMs?: number;
   readonly logger?: NativeCryptoLogger;
 }
 
@@ -175,29 +192,47 @@ export class CallQueue {
   }
 
   private timeout(chunk: readonly Pending[]): number {
-    return chunk.some(({ request }) => SLOW_METHODS.has(request.method))
-      ? (this.options.slowTimeoutMs ?? DEFAULT_SLOW_TIMEOUT_MS)
-      : (this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    const { timeoutMs, heavyTimeoutMs, slowTimeoutMs } = this.options;
+    const methods = chunk.map(({ request }) => request.method);
+    if (methods.some((method) => SLOW_METHODS.has(method))) {
+      return slowTimeoutMs ?? DEFAULT_SLOW_TIMEOUT_MS;
+    }
+    if (methods.some((method) => HEAVY_METHODS.has(method))) {
+      return heavyTimeoutMs ?? DEFAULT_HEAVY_TIMEOUT_MS;
+    }
+    return timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   /** The bridge's answer, or a rejection once the batch's time is up. */
   private async exchange(
-    lines: readonly string[],
+    text: string,
+    single: boolean,
     ms: number,
+    methods: string,
   ): Promise<string> {
+    const warnAfter = this.options.warnAfterMs ?? DEFAULT_WARN_AFTER_MS;
+    const warning =
+      ms > warnAfter
+        ? setTimeout(
+            () =>
+              this.logger?.warn(
+                `native crypto ${methods}: still waiting for the bridge after ${warnAfter} ms`,
+              ),
+            warnAfter,
+          )
+        : undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const late = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new TimedOut()), ms);
     });
     try {
       return await Promise.race([
-        lines.length === 1
-          ? this.bridge.call(lines[0])
-          : this.bridge.callBatch(`[${lines.join(',')}]`),
+        single ? this.bridge.call(text) : this.bridge.callBatch(text),
         late,
       ]);
     } finally {
       clearTimeout(timer);
+      clearTimeout(warning);
     }
   }
 
@@ -211,9 +246,20 @@ export class CallQueue {
     );
     // The bridge's own message may quote the batch, and `init` carries the store key.
     const quiet = calls.some(({ request }) => request.method === 'init');
+    const single = lines.length === 1;
     let responses: unknown;
     try {
-      responses = JSON.parse(await this.exchange(lines, this.timeout(chunk)));
+      const text = single ? lines[0] : `[${lines.join(',')}]`;
+      // Only the bridge keeps the request text (and `init`'s key) once the batch is sent.
+      lines.length = 0;
+      responses = JSON.parse(
+        await this.exchange(
+          text,
+          single,
+          this.timeout(chunk),
+          [...new Set(calls.map(({ request }) => request.method))].join(', '),
+        ),
+      );
     } catch (cause) {
       const what = cause instanceof TimedOut ? 'timed out' : 'failed';
       for (const { request, reject } of calls) {
@@ -226,7 +272,7 @@ export class CallQueue {
       }
       return;
     }
-    const answers = lines.length === 1 ? [responses] : responses;
+    const answers = single ? [responses] : responses;
     if (
       !Array.isArray(answers) ||
       answers.length !== items.length ||
