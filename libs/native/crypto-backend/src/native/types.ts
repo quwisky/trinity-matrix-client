@@ -116,6 +116,14 @@ export class NativeMachineLostError extends Error {
   }
 }
 
+/** A call on a machine closed on purpose, as matrix-js-sdk makes after `stopClient`. */
+export class NativeMachineClosedError extends Error {
+  public constructor(method: string) {
+    super(`native crypto ${method}: the machine is closed`);
+    this.name = 'NativeMachineClosedError';
+  }
+}
+
 /** A message for a log line: never the error object, whose `cause` may hold a request. */
 export const describeError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);

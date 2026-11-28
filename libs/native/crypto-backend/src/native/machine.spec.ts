@@ -423,6 +423,18 @@ describe('order and loss', () => {
     expect(lost).not.toHaveBeenCalled();
   });
 
+  it('rejects a call made after close without sending it', async () => {
+    const { machine, crate } = await open();
+    machine.close();
+    const sent = crate.requests.length;
+    await expect(machine.trackedUsers()).rejects.toThrow(
+      'native crypto trackedUsers: the machine is closed',
+    );
+    expect(
+      crate.requests.slice(sent).map(({ method }) => method),
+    ).not.toContain('trackedUsers');
+  });
+
   it('holds a sync answer with a malformed event as a lost machine', async () => {
     const { machine, crate, lost } = await open();
     crate.answers['receiveSyncChanges'] = [{ type: 0, rawEvent: '{}' }];
