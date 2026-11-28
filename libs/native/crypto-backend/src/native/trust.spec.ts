@@ -194,8 +194,7 @@ describe('devices on the native shim', () => {
     ]).toEqual([true, true, false, false, false]);
     expect(found.userId.toString()).toBe(BOB);
     expect(found.localTrustState).toBe(real.LocalTrust.Unset);
-    // Members matrix-js-sdk does not read, and verification (slice 4), still throw.
-    expect(() => found.requestVerification()).toThrow(NotOnNativeError);
+    // Members matrix-js-sdk does not read still throw.
     expect(() => found.firstTimeSeen()).toThrow(NotOnNativeError);
     expect(() => found.curve25519Key).toThrow(NotOnNativeError);
     found.free();
@@ -361,7 +360,6 @@ describe('identities on the native shim', () => {
     expect(own_.userSigningKey).toBe(own.userSigningKey);
     expect(own_.selfSigningKey).toBe(own.selfSigningKey);
     expect(() => own_.trustsOurOwnDevice()).toThrow(NotOnNativeError);
-    expect(() => other_.verificationRequestContent()).toThrow(NotOnNativeError);
   });
 
   it('answers no identity as undefined and fails closed on a wrong shape', async () => {
@@ -1129,7 +1127,7 @@ interface ManifestEntry {
 
 /**
  * Every device and identity method whose manifest note says the shim must pass the snapshot's
- * key: implemented ones must send it, the others must still throw without sending anything.
+ * key: each is implemented and must send it.
  * A member added to the manifest is covered without touching this list.
  */
 describe('the expected key on every device and identity call (from the manifest)', () => {
@@ -1153,6 +1151,10 @@ describe('the expected key on every device and identity call (from the manifest)
   const ARGS: Record<string, unknown[]> = {
     'Device.setLocalTrust': [real.LocalTrust.Verified],
     'Device.encryptToDeviceEvent': ['m.test', {}],
+    'OtherUserIdentity.requestVerification': [
+      new real.RoomId('!dm:example.org'),
+      new real.EventId('$request'),
+    ],
   };
   const EXPECTED = {
     ed25519Key: 'bob-ed25519',
@@ -1203,13 +1205,8 @@ describe('the expected key on every device and identity call (from the manifest)
       target as unknown as Record<string, (...args: unknown[]) => unknown>
     )[member]!;
     const calls = () => sent(crate, entry.native!);
-    if (!entry.shimImpl) {
-      expect(() =>
-        method.apply(target, ARGS[`${owner}.${member}`] ?? []),
-      ).toThrow(NotOnNativeError);
-      expect(calls()).toEqual([]);
-      return;
-    }
+    // Every guarded member is implemented now (slice 4 added the verification starts).
+    expect(entry.shimImpl, `${owner}.${member} is not marked`).toBe(true);
     await Promise.resolve(
       method.apply(target, ARGS[`${owner}.${member}`] ?? []),
     ).catch(() => undefined);

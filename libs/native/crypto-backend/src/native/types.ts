@@ -30,6 +30,12 @@ export interface NativeCryptoOptions {
    */
   readonly onMachineLost?: (reason: string) => void;
   /**
+   * Diagnostics: one line per batch sent, per poll's events and per verification mirror change
+   * (method names, flow IDs, phases and states; never parameters or answers). Off unless set;
+   * the SDK test bed sets it with `NATIVE_CRYPTO_TRACE`.
+   */
+  readonly trace?: (line: string) => void;
+  /**
    * Puts the bridge's own error text (which may quote requests and answers) back into the
    * errors of calls that carry no secret. For local diagnosis only; never enable it in a release
    * build.

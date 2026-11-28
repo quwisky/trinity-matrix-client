@@ -31,10 +31,12 @@ import {
   RoomMessageRequest,
   RoomPendingKeyBundleDetails,
   RoomSettings,
+  SecretsBundle,
   ShieldState,
   Signatures,
   SignatureUploadRequest,
   SignatureVerification,
+  StoredRoomKeyBundleData,
   ToDeviceEncryptionInfo,
   ToDeviceRequest,
   ToDeviceUnableToDecryptInfo,
@@ -43,8 +45,21 @@ import {
   UTDToDeviceEvent,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
-import { wasmValue } from './guard';
+import { standIn, wasmValue } from './guard';
 import { isObject } from './types';
+
+/** Standard base64, in chunks: a spread of a large array would overflow the stack. */
+export function bytesToBase64(bytes: Uint8Array | Uint8ClampedArray): string {
+  let text = '';
+  for (let start = 0; start < bytes.length; start += 0x8000) {
+    text += String.fromCharCode(...bytes.subarray(start, start + 0x8000));
+  }
+  return btoa(text);
+}
+
+export function base64ToBytes(base64: string): Uint8Array {
+  return Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+}
 
 export interface RequestJson {
   readonly id?: string;
@@ -493,3 +508,64 @@ export const toImportResult = (json: ImportResultJson): RoomKeyImportResult =>
         ]),
       ),
   });
+
+const isSeed = (value: unknown) => typeof value === 'string';
+
+/** What `SecretsBundle.to_json()` gives: the private cross-signing seeds and maybe the backup key. */
+export const isSecretsBundle = (value: unknown): boolean =>
+  isObject(value) &&
+  isObject(value['cross_signing']) &&
+  ['master_key', 'self_signing_key', 'user_signing_key'].every((name) =>
+    isSeed((value['cross_signing'] as Record<string, unknown>)[name]),
+  ) &&
+  (value['backup'] === undefined || isObject(value['backup']));
+
+/**
+ * WASM `SecretsBundle` from `exportSecretsBundle`: `to_json()` gives the crate's JSON back, as
+ * WASM's does, and `free()` drops it. The secrets sit in a private field, out of reach of
+ * `JSON.stringify` and `console.log`.
+ */
+export class NativeSecretsBundle {
+  #json: unknown;
+
+  public constructor(json: unknown) {
+    this.#json = json;
+  }
+
+  public to_json(): unknown {
+    if (this.#json === undefined) {
+      throw new Error('native crypto: the secrets bundle was freed');
+    }
+    return this.#json;
+  }
+
+  public free(): void {
+    this.#json = undefined;
+  }
+}
+standIn(NativeSecretsBundle, SecretsBundle);
+
+export interface BundleDataJson {
+  readonly senderUser: string;
+  readonly roomId: string;
+  readonly url: string;
+  readonly encryptionInfo: string;
+}
+
+export const isBundleData = (value: unknown): boolean =>
+  isObject(value) &&
+  ['senderUser', 'roomId', 'url', 'encryptionInfo'].every(
+    (field) => typeof value[field] === 'string',
+  );
+
+/** WASM `StoredRoomKeyBundleData`; the file key in `encryptionInfo` is hidden as a secret. */
+export const toBundleData = (json: BundleDataJson): StoredRoomKeyBundleData =>
+  wasmValue(
+    StoredRoomKeyBundleData,
+    {
+      senderUser: new UserId(json.senderUser),
+      roomId: new RoomId(json.roomId),
+      url: json.url,
+    },
+    { encryptionInfo: json.encryptionInfo },
+  );

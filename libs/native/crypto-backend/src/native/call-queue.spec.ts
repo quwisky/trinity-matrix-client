@@ -33,6 +33,37 @@ const call = (queue: CallQueue, method: string, value?: unknown) =>
   queue.call({ method, ...alice, params: { value } });
 
 describe('CallQueue', () => {
+  it('traces methods and event states only, never parameters or answers', async () => {
+    const lines: string[] = [];
+    const { bridge } = fakeBridge((request) =>
+      request.method === 'pollEvents'
+        ? {
+            result: {
+              events: [
+                {
+                  type: 'verificationChanged',
+                  verification: {
+                    kind: 'sas',
+                    flowId: 'flow',
+                    isDone: true,
+                    decimals: [1, 2, 3],
+                  },
+                },
+              ],
+              dropped: 0,
+            },
+          }
+        : { result: 'secret-answer' },
+    );
+    const queue = new CallQueue(bridge, { trace: (line) => lines.push(line) });
+    queue.listen(alice, () => undefined);
+    await call(queue, 'importSecretsBundle', 'secret-parameter');
+    expect(lines).toEqual([
+      `batch 1 ${JSON.stringify([alice.userId, alice.deviceId])} importSecretsBundle +poll`,
+      `events 1 ${JSON.stringify([alice.userId, alice.deviceId])} verificationChanged(flow kind=sas,isDone=true,shown) dropped=0`,
+    ]);
+  });
+
   it('sends the calls of one task as one batch and answers them in call order', async () => {
     const { batches, bridge } = fakeBridge(echo);
     const queue = new CallQueue(bridge);
@@ -382,6 +413,9 @@ describe('CallQueue', () => {
       Object.keys(PATHS).flatMap((path) => [
         [path, 'saveBackupDecryptionKey'],
         [path, 'trackedUsers'],
+        // Slice 4's: a quiet call (a secrets bundle in) and a secret answer (one out).
+        [path, 'importSecretsBundle'],
+        [path, 'exportSecretsBundle'],
       ]),
     )(
       'after %s, a batch with %s shows no request or answer text',
@@ -422,18 +456,20 @@ describe('CallQueue', () => {
           })),
         );
       const queue = new CallQueue({ call: refuse, callBatch: refuse });
-      const [plain, quiet, secretAnswer] = (
+      const [plain, ...codeOnlyErrors] = (
         await Promise.allSettled([
           call(queue, 'trackedUsers'),
           call(queue, 'importCrossSigningKeys'),
           call(queue, 'exportCrossSigningKeys'),
+          call(queue, 'rehydrateDevice'),
+          call(queue, 'qrCodeBytes'),
         ])
       ).map(
         (answer) =>
           (answer as PromiseRejectedResult).reason as NativeCryptoError,
       );
       expect(plain!.message).toContain(MARKER);
-      for (const error of [quiet!, secretAnswer!]) {
+      for (const error of codeOnlyErrors) {
         expect(error.code).toBe('StoreError');
         expect(shown(error)).not.toContain(MARKER);
       }
@@ -465,10 +501,12 @@ describe('CallQueue', () => {
         'importExportedRoomKeys',
         'importSecretsBundle',
         'init',
+        'receiveRoomKeyBundle',
         'rehydrateDevice',
         'saveBackupDecryptionKey',
         'saveDehydratedDeviceKey',
         'scanQrCode',
+        'shareRoomKeyBundleData',
       ].sort(),
     );
   });

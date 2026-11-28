@@ -64,6 +64,9 @@ export const QUIET_METHODS: ReadonlySet<string> = new Set([
   'rehydrateDevice',
   'saveDehydratedDeviceKey',
   'scanQrCode',
+  // The bundle's file key (`mediaEncryptionInfo`), and the downloaded bundle.
+  'shareRoomKeyBundleData',
+  'receiveRoomKeyBundle',
 ]);
 /**
  * Calls whose ANSWERS carry secrets (private keys, room keys, the backup key, inbox secrets, a
@@ -79,6 +82,9 @@ export const SECRET_ANSWER_METHODS: ReadonlySet<string> = new Set([
   'exportSecretsBundle',
   'getDehydratedDeviceKey',
   'qrCodeBytes',
+  // The bundle's file key (`encryptionInfo`, `mediaEncryptionInfo`).
+  'getReceivedRoomKeyBundleData',
+  'buildRoomKeyBundle',
 ]);
 const codeOnly = (method: string) =>
   QUIET_METHODS.has(method) || SECRET_ANSWER_METHODS.has(method);
@@ -106,6 +112,8 @@ export interface CallQueueOptions {
   /** Puts the bridge's own error text back into errors of calls not code-only. Never in a release. */
   readonly debugBridgeErrors?: boolean;
   readonly logger?: NativeCryptoLogger;
+  /** See `NativeCryptoOptions.trace`. */
+  readonly trace?: (line: string) => void;
 }
 
 interface Pending {
@@ -152,6 +160,7 @@ export class CallQueue {
     { events: EventListener; failed?: PollFailure }
   >();
   private readonly logger?: NativeCryptoLogger;
+  private batches = 0;
 
   public constructor(
     private readonly bridge: NativeCryptoBridge,
@@ -321,6 +330,11 @@ export class CallQueue {
       ...new Set(calls.map(({ request }) => request.method)),
     ].join(', ');
     const timeout = this.timeout(chunk);
+    const batch = ++this.batches;
+    const machine = chunk[0] ? keyOf(chunk[0].request) : '';
+    this.options.trace?.(
+      `batch ${batch} ${machine} ${calls.map(({ request }) => request.method).join(' ')}${items.length > calls.length ? ' +poll' : ''}`,
+    );
     // The text goes straight to the bridge, which is then the queue's only holder of its secrets.
     let answer: Promise<string>;
     try {
@@ -406,6 +420,10 @@ export class CallQueue {
             true,
           );
         } else {
+          if (this.options.trace && answer.result.events.length > 0)
+            this.options.trace(
+              `events ${batch} ${item.key} ${answer.result.events.map(describeEvent).join(' | ')} dropped=${answer.result.dropped}`,
+            );
           listener?.events(answer.result);
         }
       } catch (error) {
@@ -442,3 +460,17 @@ export class CallQueue {
 }
 
 class TimedOut extends Error {}
+
+/** An event for the trace: its type, and a verification's flow and state, nothing else. */
+function describeEvent(event: NativeEvents['events'][number]): string {
+  if (typeof event !== 'object' || event === null) return 'malformed';
+  const object = event['request'] ?? event['verification'];
+  if (typeof object !== 'object' || object === null) return event.type;
+  const fields = object as Record<string, unknown>;
+  const state = ['kind', 'phase', 'state', 'isDone', 'isCancelled']
+    .filter((name) => fields[name] !== undefined)
+    .map((name) => `${name}=${String(fields[name])}`)
+    .concat(fields['decimals'] === undefined ? [] : ['shown'])
+    .join(',');
+  return `${event.type}(${String(fields['flowId'])} ${state})`;
+}

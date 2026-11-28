@@ -150,10 +150,10 @@ describe('install', () => {
   it('throws for every member it does not implement, methods and getters alike', async () => {
     const { olm } = await machine();
     expect(() =>
-      olm.getVerificationRequests(new real.UserId(description.userId)),
+      olm.getVerification(new real.UserId(description.userId), 'flow'),
     ).toThrow(NotOnNativeError);
-    expect(() => olm.dehydratedDevices()).toThrow(
-      'OlmMachine.dehydratedDevices is not implemented on native crypto',
+    expect(() => olm.roomKeyForwardingEnabled).toThrow(
+      'OlmMachine.roomKeyForwardingEnabled is not implemented on native crypto',
     );
     expect(() =>
       (olm as unknown as { __destroy_into_raw(): number }).__destroy_into_raw(),

@@ -5,9 +5,9 @@
  * Needs cargo (the CLI) and Docker (the homeserver); without either a bed is skipped and says
  * why, and with `CI` set it fails instead.
  */
-import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
@@ -136,10 +136,70 @@ export const deleteDevice = async (account, deviceId) => {
 };
 
 /**
+ * matrix-js-sdk 45 reads a dehydrated device's events with `GET …/events?from=` and stops at an
+ * absent `next_batch`, an older draft of MSC3814; Tuwunel serves the current one, `POST …/events`
+ * with `next_batch` in the body, and ends with `next_batch: null`.
+ */
+const dehydratedEvents = async (url, init) => {
+  const target = new URL(url);
+  const from = target.searchParams.get('from');
+  target.search = '';
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', 'application/json');
+  const response = await fetch(target.toString(), {
+    ...init,
+    method: 'POST',
+    headers,
+    body: JSON.stringify(from ? { next_batch: from } : {}),
+  });
+  if (!response.ok) return response;
+  const { next_batch: next, ...rest } = await response.json();
+  return new Response(
+    JSON.stringify(next === null ? rest : { ...rest, next_batch: next }),
+    {
+      status: response.status,
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+};
+
+/**
+ * Diagnosis of a flow that does not finish (off by default):
+ * - `NATIVE_CRYPTO_TRACE=<file>`: the shim's trace (batches, events, mirror changes) and each
+ *   client's verification to-device traffic, kept in memory; `dumpTrace` appends it to the file.
+ * - `NATIVE_CRYPTO_JITTER=<ms>` / `NATIVE_CRYPTO_BRIDGE_JITTER=<ms>`: a random delay up to that
+ *   long around each HTTP request / after each bridge answer, to slide the clients' timing.
+ * - `NATIVE_CRYPTO_BED_LOAD=<n>`: n busy processes while a bed runs.
+ */
+const traceFile = process.env.NATIVE_CRYPTO_TRACE;
+const traceLines = [];
+const traceStart = Date.now();
+export const trace = (line) => {
+  if (!traceFile) return;
+  traceLines.push(`${String(Date.now() - traceStart).padStart(7)} ${line}`);
+  if (traceLines.length > 20_000) traceLines.splice(0, 5_000);
+};
+/** Where the trace is now, to dump from. */
+export const traceMark = () => traceLines.length;
+export const dumpTrace = (from, why) => {
+  if (traceFile)
+    appendFileSync(
+      traceFile,
+      `\n== ${why}\n${traceLines.slice(from).join('\n')}\n`,
+    );
+};
+const jitter = (name) => {
+  const ms = Number(process.env[name] ?? 0);
+  return ms > 0
+    ? new Promise((done) => setTimeout(done, Math.random() * ms))
+    : undefined;
+};
+
+/**
  * A fetch that can hold back the to-device events of /sync responses and hand them over in a
  * later one: the room message arrives before its room key.
  */
-const syncNetwork = () => {
+const syncNetwork = (who) => {
   const held = [];
   const network = {
     holding: false,
@@ -149,7 +209,23 @@ const syncNetwork = () => {
       const url = String(input instanceof Request ? input.url : input);
       const isSync = url.includes('/_matrix/client/v3/sync');
       if (isSync) network.syncs++;
+      if (/\/dehydrated_device\/[^/]+\/events/.test(url)) {
+        return dehydratedEvents(url, init);
+      }
+      const sent = /\/sendToDevice\/(m\.key\.verification\.[a-z_]+)\//.exec(
+        url,
+      );
+      if (sent) trace(`${who} sends ${sent[1]}`);
+      await jitter('NATIVE_CRYPTO_JITTER');
       const response = await fetch(input, init);
+      await jitter('NATIVE_CRYPTO_JITTER');
+      if (sent) trace(`${who} sent ${sent[1]}: ${response.status}`);
+      if (isSync && response.ok && traceFile) {
+        const types = ((await response.clone().json()).to_device?.events ?? [])
+          .map((event) => event.type)
+          .filter((type) => type.startsWith('m.key.verification'));
+        if (types.length > 0) trace(`${who} receives ${types.join(' ')}`);
+      }
       if (!isSync || !response.ok) return response;
       if (!network.holding && held.length === 0) return response;
       const body = await response.json();
@@ -171,7 +247,12 @@ let cliPath;
 let storeRoot;
 
 /** Builds the CLI and starts the homeserver: a bed's `beforeAll`. */
+let load = [];
 export const openBed = async () => {
+  load = Array.from(
+    { length: Number(process.env.NATIVE_CRYPTO_BED_LOAD ?? 0) },
+    () => spawn(process.execPath, ['-e', 'for(;;){}'], { stdio: 'ignore' }),
+  );
   await wasm.initAsync();
   cliPath = buildCli();
   storeRoot = mkdtempSync(join(tmpdir(), 'native-crypto-sdk-'));
@@ -180,6 +261,7 @@ export const openBed = async () => {
 
 /** Stops what `openBed` started: a bed's `afterAll`. */
 export const closeBed = async (invocation) => {
+  for (const child of load.splice(0)) child.kill('SIGKILL');
   await invocation?.close();
   if (storeRoot) rmSync(storeRoot, { recursive: true, force: true });
 };
@@ -194,7 +276,8 @@ export const startClient = async (
   account,
   { storeKey, clientOptions } = {},
 ) => {
-  const network = syncNetwork();
+  const who = `${kind} ${account.deviceId}`;
+  const network = syncNetwork(who);
   const client = createClient({
     baseUrl: HOMESERVER_HTTP,
     userId: account.userId,
@@ -211,6 +294,18 @@ export const startClient = async (
   const lost = [];
   if (kind === 'native') {
     bridge = startCliBridge(cliPath);
+    if (process.env.NATIVE_CRYPTO_BRIDGE_JITTER) {
+      const slow = (send) => async (line) => {
+        const answer = await send(line);
+        await jitter('NATIVE_CRYPTO_BRIDGE_JITTER');
+        return answer;
+      };
+      bridge = {
+        ...bridge,
+        call: slow(bridge.call),
+        callBatch: slow(bridge.callBatch),
+      };
+    }
     const { uninstallForTests } = await installNativeCrypto({
       bridge,
       storeDirectory: storeRoot,
@@ -218,6 +313,7 @@ export const startClient = async (
       debugBridgeErrors: true,
       logger: quiet,
       onMachineLost: (reason) => lost.push(reason),
+      ...(traceFile ? { trace: (line) => trace(`${who} ${line}`) } : {}),
     });
     // Installed only around this client's init: the other clients of the process stay on
     // WASM, and the shim's machine keeps working once its factories are restored.

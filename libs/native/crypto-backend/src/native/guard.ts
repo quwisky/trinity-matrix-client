@@ -57,6 +57,22 @@ export function standIn(
   shim: WasmClass<{ free(): void }>,
   real: WasmClass,
 ): void {
+  // The guard replaces the class's prototype chain: members of its own base classes move onto it.
+  for (
+    let base = Object.getPrototypeOf(shim.prototype) as object | null;
+    base && base !== Object.prototype;
+    base = Object.getPrototypeOf(base) as object | null
+  ) {
+    for (const key of Reflect.ownKeys(base)) {
+      if (key !== 'constructor' && !Object.hasOwn(shim.prototype, key)) {
+        Object.defineProperty(
+          shim.prototype,
+          key,
+          Object.getOwnPropertyDescriptor(base, key)!,
+        );
+      }
+    }
+  }
   Object.setPrototypeOf(shim.prototype, guardOf(real));
   disposeAsFree(shim.prototype, function (this: { free(): void }) {
     this.free();
