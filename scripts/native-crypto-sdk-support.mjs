@@ -145,6 +145,34 @@ export const deleteDevice = async (account, deviceId) => {
 };
 
 /**
+ * matrix-js-sdk 45 reads a dehydrated device's events with `GET …/events?from=` and stops at an
+ * absent `next_batch`, an older draft of MSC3814; Tuwunel serves the current one, `POST …/events`
+ * with `next_batch` in the body, and ends with `next_batch: null`.
+ */
+const dehydratedEvents = async (url, init) => {
+  const target = new URL(url);
+  const from = target.searchParams.get('from');
+  target.search = '';
+  const headers = new Headers(init?.headers);
+  headers.set('Content-Type', 'application/json');
+  const response = await fetch(target.toString(), {
+    ...init,
+    method: 'POST',
+    headers,
+    body: JSON.stringify(from ? { next_batch: from } : {}),
+  });
+  if (!response.ok) return response;
+  const { next_batch: next, ...rest } = await response.json();
+  return new Response(
+    JSON.stringify(next === null ? rest : { ...rest, next_batch: next }),
+    {
+      status: response.status,
+      headers: { 'Content-Type': 'application/json' },
+    },
+  );
+};
+
+/**
  * A fetch that can hold back the to-device events of /sync responses and hand them over in a
  * later one: the room message arrives before its room key.
  */
@@ -158,6 +186,9 @@ const syncNetwork = () => {
       const url = String(input instanceof Request ? input.url : input);
       const isSync = url.includes('/_matrix/client/v3/sync');
       if (isSync) network.syncs++;
+      if (/\/dehydrated_device\/[^/]+\/events/.test(url)) {
+        return dehydratedEvents(url, init);
+      }
       const response = await fetch(input, init);
       if (!isSync || !response.ok) return response;
       if (!network.holding && held.length === 0) return response;
