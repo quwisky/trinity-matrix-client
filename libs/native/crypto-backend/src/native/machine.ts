@@ -215,6 +215,19 @@ const isDescription = (value: unknown) =>
   typeof value['identityKeys']['curve25519'] === 'string' &&
   typeof value['deviceCreationTimeMs'] === 'number';
 
+/** A processed to-device event as the crate answers it (`ProcessedToDeviceEventType` 0–3). */
+const isToDeviceEvent = (value: unknown) =>
+  isObject(value) &&
+  typeof value['rawEvent'] === 'string' &&
+  (value['type'] === 0
+    ? isObject(value['encryptionInfo']) &&
+      typeof value['encryptionInfo']['sender'] === 'string' &&
+      typeof value['encryptionInfo']['senderCurve25519Key'] === 'string' &&
+      typeof value['encryptionInfo']['isSenderVerified'] === 'boolean'
+    : value['type'] === 1
+      ? isObject(value['utdInfo'])
+      : value['type'] === 2 || value['type'] === 3);
+
 /** A sync input on a lost machine: never settles, so matrix-js-sdk never moves past it. */
 const forever = <T>(): Promise<T> => new Promise<T>(() => undefined);
 
@@ -232,6 +245,8 @@ export class NativeOlmMachine {
   #roomKeyRequestsEnabled: boolean;
   readonly #callbacks = new Map<string, Callback>();
   #recovery: Promise<void> | undefined;
+  /** Calls waiting on `#recovery` that have not enqueued yet. */
+  #waiting = 0;
   #lost = false;
   #closed = false;
   /** How the device and identity stand-ins call: through this machine's reload and loss rules. */
@@ -302,16 +317,20 @@ export class NativeOlmMachine {
     params?: Record<string, unknown>,
   ): Promise<unknown> {
     if (this.#lost) throw new NativeMachineLostError(method);
-    // A reload in flight goes first, then the replays it holds, then this call.
-    if (this.#recovery) await this.#afterRecovery(method);
+    const send = () => this.#send(method, params);
     try {
-      return await this.#send(method, params);
+      // A reload in flight goes first, then the replays it holds, then this call.
+      return await (this.#recovery
+        ? this.#afterRecovery(method, send)
+        : send());
     } catch (error) {
       if (!this.#isDropped(error)) throw this.#failure(method, error);
-      await this.#recover(method);
-      if (!REPLAYABLE.has(method)) throw error;
+      this.#recover(method);
+      if (!REPLAYABLE.has(method)) {
+        await this.#afterRecovery(method, () => Promise.reject(error));
+      }
       try {
-        return await this.#send(method, params);
+        return await this.#afterRecovery(method, send);
       } catch (again) {
         if (this.#isDropped(again))
           this.#lose(`${method} dropped the machine again after a re-init`);
@@ -335,16 +354,34 @@ export class NativeOlmMachine {
     return this.#lost ? new NativeMachineLostError(method) : error;
   }
 
-  #afterRecovery(method: string): Promise<void> {
-    return (this.#recovery ?? Promise.resolve()).then(() => {
+  /**
+   * Runs `run` once the reload in flight is done. `run` enqueues its call before this returns
+   * control, and the reload counts as in flight until every call waiting on it has enqueued, so
+   * nothing made meanwhile can pass a replay.
+   */
+  async #afterRecovery(
+    method: string,
+    run: () => Promise<unknown>,
+  ): Promise<unknown> {
+    const recovery = this.#recovery;
+    if (!recovery) return run();
+    this.#waiting++;
+    let result: Promise<unknown> | undefined;
+    try {
+      await recovery;
       if (this.#lost) throw new NativeMachineLostError(method);
-    });
+      result = run();
+    } finally {
+      if (--this.#waiting === 0 && this.#recovery === recovery)
+        this.#recovery = undefined;
+    }
+    return result;
   }
 
-  #recover(method: string): Promise<void> {
+  /** Starts a reload unless one is in flight; a lost or closed machine has nothing to reload. */
+  #recover(method: string): void {
     const store = this.#store;
-    if (this.#lost || !store)
-      return Promise.reject(new NativeMachineLostError(method));
+    if (this.#lost || !store) return;
     this.#recovery ??= (async () => {
       this.#context.logger?.warn(
         `native crypto ${method}: the crate dropped the machine; reloading it`,
@@ -371,15 +408,12 @@ export class NativeOlmMachine {
         this.#lose(
           `init could not reload the machine: ${describeError(error)}`,
         );
-      } finally {
-        this.#recovery = undefined;
       }
     })();
-    return this.#afterRecovery(method);
   }
 
   #lose(reason: string): void {
-    if (this.#lost) return;
+    if (this.#lost || this.#closed) return;
     this.#lost = true;
     this.#store = undefined;
     this.#context.queue.unlisten(this.#description);
@@ -587,13 +621,17 @@ export class NativeOlmMachine {
       if (this.#lost) return forever();
       throw error;
     }
-    if (!Array.isArray(answer)) {
-      this.#lose(`${method} answered an unexpected shape`);
+    try {
+      if (!Array.isArray(answer) || !answer.every(isToDeviceEvent))
+        throw new Error('unexpected shape');
+      return (answer as Parameters<typeof toProcessedToDeviceEvent>[0][]).map(
+        toProcessedToDeviceEvent,
+      );
+    } catch (error) {
+      // A rejection here would let matrix-js-sdk move past these events too.
+      this.#lose(`${method} answered ${describeError(error)}`);
       return forever();
     }
-    return (answer as Parameters<typeof toProcessedToDeviceEvent>[0][]).map(
-      toProcessedToDeviceEvent,
-    );
   }
 
   public async outgoingRequests(): Promise<OutgoingRequest[]> {

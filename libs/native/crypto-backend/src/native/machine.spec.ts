@@ -381,6 +381,56 @@ describe('order and loss', () => {
     expect(lost).toHaveBeenCalledTimes(1);
   });
 
+  it.each(Array.from({ length: 12 }, (_, hops) => hops))(
+    'runs a call made %i microtasks after the reload answered after the replays',
+    async (hops) => {
+      const { machine, crate } = await open();
+      crate.answers['trackedUsers'] = [];
+      crate.open = false;
+      let later: Promise<unknown> | undefined;
+      crate.onInit = () => {
+        crate.onInit = undefined;
+        let left = hops;
+        const hop = (): void => {
+          if (left-- > 0) queueMicrotask(hop);
+          else later = machine.trackedUsers();
+        };
+        // The bridge answers right after this returns; the call lands `hops` microtasks later.
+        Promise.resolve().then(hop);
+      };
+      await sync(machine);
+      await later;
+      const order = crate.requests
+        .map(({ method }) => method)
+        .filter(
+          (method) =>
+            method === 'receiveSyncChanges' || method === 'trackedUsers',
+        );
+      expect(order).toEqual([
+        'receiveSyncChanges',
+        'receiveSyncChanges',
+        'trackedUsers',
+      ]);
+    },
+  );
+
+  it('does not report a machine closed on purpose as lost', async () => {
+    const { machine, crate, lost } = await open();
+    crate.dead = true;
+    const inFlight = machine.trackedUsers().catch((error: unknown) => error);
+    machine.close();
+    expect(await inFlight).toBeInstanceOf(NativeBridgeError);
+    expect(lost).not.toHaveBeenCalled();
+  });
+
+  it('holds a sync answer with a malformed event as a lost machine', async () => {
+    const { machine, crate, lost } = await open();
+    crate.answers['receiveSyncChanges'] = [{ type: 0, rawEvent: '{}' }];
+    expect(await settled(sync(machine))).toBe(pending);
+    crate.answers['receiveSyncChanges'] = [];
+    expect(lost).toHaveBeenCalledTimes(1);
+  });
+
   it('runs calls made during a reload after the replays of the calls before them', async () => {
     const { machine, crate } = await open();
     crate.answers['trackedUsers'] = [];

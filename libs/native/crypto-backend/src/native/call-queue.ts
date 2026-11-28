@@ -52,8 +52,9 @@ export interface CallQueueOptions {
 }
 
 interface Pending {
-  readonly request: NativeRequest;
-  readonly line: string;
+  /** Emptied of `init`'s parameters (the store key) once the batch is with the bridge. */
+  request: NativeRequest;
+  line: string;
   readonly resolve: (result: unknown) => void;
   readonly reject: (error: Error) => void;
 }
@@ -141,10 +142,24 @@ export class CallQueue {
     );
   }
 
-  /** Splits at the size cap; a single call over the cap goes alone. */
+  /**
+   * One batch per machine (in the order the machines were first called), so a stuck machine's
+   * timeout loses only its own calls; split at the size cap, a single call over it goes alone.
+   */
   private chunks(calls: readonly Pending[]): Pending[][] {
     const budget =
       (this.options.maxBatchLength ?? DEFAULT_MAX_BATCH_LENGTH) - POLL_RESERVE;
+    const byMachine = new Map<string, Pending[]>();
+    for (const pending of calls) {
+      const key = keyOf(pending.request);
+      byMachine.set(key, [...(byMachine.get(key) ?? []), pending]);
+    }
+    return [...byMachine.values()].flatMap((machineCalls) =>
+      this.split(machineCalls, budget),
+    );
+  }
+
+  private split(calls: readonly Pending[], budget: number): Pending[][] {
     const chunks: Pending[][] = [];
     let current: Pending[] = [];
     let length = 2;
@@ -205,8 +220,7 @@ export class CallQueue {
 
   /** The bridge's answer, or a rejection once the batch's time is up. */
   private async exchange(
-    text: string,
-    single: boolean,
+    answer: Promise<string>,
     ms: number,
     methods: string,
   ): Promise<string> {
@@ -226,10 +240,7 @@ export class CallQueue {
       timer = setTimeout(() => reject(new TimedOut()), ms);
     });
     try {
-      return await Promise.race([
-        single ? this.bridge.call(text) : this.bridge.callBatch(text),
-        late,
-      ]);
+      return await Promise.race([answer, late]);
     } finally {
       clearTimeout(timer);
       clearTimeout(warning);
@@ -247,26 +258,40 @@ export class CallQueue {
     // The bridge's own message may quote the batch, and `init` carries the store key.
     const quiet = calls.some(({ request }) => request.method === 'init');
     const single = lines.length === 1;
+    const methods = [
+      ...new Set(calls.map(({ request }) => request.method)),
+    ].join(', ');
+    const timeout = this.timeout(chunk);
+    // The text goes straight to the bridge, which is then the only holder of `init`'s key.
+    let answer: Promise<string>;
+    try {
+      answer = single
+        ? this.bridge.call(lines[0])
+        : this.bridge.callBatch(`[${lines.join(',')}]`);
+    } catch (error) {
+      answer = Promise.reject(error);
+    }
+    lines.length = 0;
+    for (const pending of calls) {
+      if (pending.request.method === 'init') {
+        const { method, userId, deviceId } = pending.request;
+        pending.request = { method, userId, deviceId };
+        pending.line = '';
+      }
+    }
     let responses: unknown;
     try {
-      const text = single ? lines[0] : `[${lines.join(',')}]`;
-      // Only the bridge keeps the request text (and `init`'s key) once the batch is sent.
-      lines.length = 0;
-      responses = JSON.parse(
-        await this.exchange(
-          text,
-          single,
-          this.timeout(chunk),
-          [...new Set(calls.map(({ request }) => request.method))].join(', '),
-        ),
-      );
+      responses = JSON.parse(await this.exchange(answer, timeout, methods));
     } catch (cause) {
       const what = cause instanceof TimedOut ? 'timed out' : 'failed';
+      const detail =
+        quiet || cause instanceof TimedOut ? '' : `: ${describeError(cause)}`;
       for (const { request, reject } of calls) {
         reject(
           new NativeBridgeError(
-            `native crypto ${request.method}: the bridge ${what}${quiet || cause instanceof TimedOut ? '' : `: ${describeError(cause)}`}`,
-            { cause },
+            `native crypto ${request.method}: the bridge ${what}${detail}`,
+            // The bridge's error may quote the batch, and with it the store key.
+            quiet ? undefined : { cause },
           ),
         );
       }
