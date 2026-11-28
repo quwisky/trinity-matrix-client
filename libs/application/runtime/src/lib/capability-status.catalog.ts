@@ -160,6 +160,7 @@ const CAPABILITY_DIAGNOSTIC_REASONS = {
       'account-restore-corrupt-local-state',
       'account-restore-crypto-failure',
       'account-restore-crypto-store-key-lost',
+      'account-restore-crypto-backend-mismatch',
       'account-restore-secure-storage-unavailable',
       'account-restore-unexpected',
     ],

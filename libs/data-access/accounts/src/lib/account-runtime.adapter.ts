@@ -43,6 +43,8 @@ export interface AccountRuntimeAdapter {
    * failed or cancelled establishment and is restored on the next launch. Hot; never replays.
    */
   readonly newDevices: Observable<NewDeviceEstablishment>;
+  /** Accounts whose native crypto stopped mid-session (their client is stopped). Hot. */
+  readonly cryptoLost?: Observable<string>;
   sweepOrphanedStores(): Observable<void>;
   /** Errors, removing nothing, when the saved Accounts can't be read. */
   sweepNativeTokens(): Observable<void>;

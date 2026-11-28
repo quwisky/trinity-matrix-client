@@ -8,7 +8,7 @@ pageType: how-to
 platforms: [android]
 ---
 
-Android packages the shared Angular renderer in a Capacitor WebView and supplies native host operations through plugins. Development requires the Android SDK, Java, and an emulator or device.
+Android packages the shared Angular renderer in a Capacitor WebView and supplies native host operations through plugins. Development requires the Android SDK, Java, the [native crypto toolchain](#native-crypto-toolchain), and an emulator or device.
 
 ## Synchronize and run {#sync-run}
 
@@ -32,7 +32,23 @@ The static verifier checks host contracts. Native verification runs Android unit
 
 The release target creates an AAB but remains unsigned unless external signing is configured. Build it after the release is published, with the release notes the app bundles: `TRINITY_RELEASE_NOTES=required GITHUB_TOKEN=$(gh auth token) pnpm android:build:release`. Keep credentials and publishing procedure out of public documentation.
 
-The experimental native crypto crate has its own debug-only Android plugin; see [Native crypto](../native-crypto/).
+## Native crypto toolchain {#native-crypto-toolchain}
+
+The Android app runs end-to-end encryption on the native crypto crate (`native/crypto`), not on WASM; see [Native crypto](../native-crypto/#android). Every Android build, debug and release, cross-builds the crate's `libtrinity_crypto.so` for the four ABIs the app ships (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`) in the Gradle task `buildNativeCrypto`, which Gradle skips while the crate's sources are unchanged. It needs:
+
+- Rust 1.99.1 (the version CI pins) with the Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`;
+- `cargo install cargo-ndk --locked --version 4.1.2`;
+- the NDK `28.2.13676358` (`sdkmanager "ndk;28.2.13676358"`), found through `ANDROID_NDK_HOME` or under `$ANDROID_HOME/ndk`.
+
+Without them the build fails and says what is missing; it never produces an app without native crypto by accident. The first build of each ABI takes a few minutes. Gradle properties, or the environment variables beside them, change what is built:
+
+| Property                              | Environment                            | Effect                                                                                                                                               |
+| ------------------------------------- | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-PtrinityNativeCrypto=false`         | `TRINITY_NATIVE_CRYPTO=0`              | No library: the app runs crypto on WASM, as web and desktop do. Accounts signed in on the other kind of build refuse to start until signed in again. |
+| `-PtrinityNativeCryptoAbis=x86_64`    | `TRINITY_NATIVE_CRYPTO_ABIS=x86_64`    | Builds only those ABIs, for an emulator. A release needs all four.                                                                                   |
+| `-PtrinityNativeCryptoPrebuilt=<dir>` | `TRINITY_NATIVE_CRYPTO_PREBUILT=<dir>` | Packages `<dir>/<abi>/libtrinity_crypto.so` instead of building (what CI does).                                                                      |
+
+`pnpm android:build:release` checks the bundle with `scripts/android-release-isolation.mjs`: the library for every ABI and the `TrinityCrypto` plugin, or with `TRINITY_NATIVE_CRYPTO=0` no library at all, and never debug-only crypto code.
 
 ## Push rendering {#push-rendering}
 

@@ -1,11 +1,29 @@
+/** The machine a request is for: one user's device. */
+export interface NativeMachineId {
+  readonly userId: string;
+  readonly deviceId: string;
+}
+
 /**
  * The native crypto crate's call surface as a host reaches it: `call` takes one request
  * as JSON and answers one response; `callBatch` takes a JSON array and answers an array in
- * the same order (native/crypto/README.md). A rejection means the bridge itself failed.
+ * the same order (native/crypto/README.md). Every request of one call is for `machine`. A
+ * rejection means the bridge itself failed.
  */
 export interface NativeCryptoBridge {
-  call(request: string): Promise<string>;
-  callBatch(requests: string): Promise<string>;
+  call(request: string, machine: NativeMachineId): Promise<string>;
+  callBatch(requests: string, machine: NativeMachineId): Promise<string>;
+  /**
+   * The bridge runs different machines' calls at once (one thread per machine), so the queue
+   * sends each machine's batches as they come instead of one batch at a time.
+   */
+  readonly concurrentMachines?: boolean;
+  /**
+   * The bridge opens each machine's store itself (path and key never in JavaScript) and
+   * refuses an `init` it has no store for. `StoreHandle.open` with a store name then sends
+   * `init` without parameters; a memory store and a JavaScript store key are refused.
+   */
+  readonly ownsStores?: boolean;
 }
 
 export interface NativeCryptoLogger {
@@ -26,9 +44,9 @@ export interface NativeCryptoOptions {
    * Called once when a machine is lost (the bridge failed or timed out, or the crate dropped
    * the machine and `init` could not reload it). Its sync input calls never settle from then
    * on, so matrix-js-sdk cannot move past to-device events it never processed: the host must
-   * stop the client.
+   * stop that machine's client.
    */
-  readonly onMachineLost?: (reason: string) => void;
+  readonly onMachineLost?: (reason: string, machine: NativeMachineId) => void;
   /**
    * Diagnostics: one line per batch sent, per poll's events and per verification mirror change
    * (method names, flow IDs, phases and states; never parameters or answers). Off unless set;

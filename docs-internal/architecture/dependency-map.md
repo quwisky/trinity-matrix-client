@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **81 Nx projects** and **330 dependencies**. No project cycles detected.
+This snapshot contains **81 Nx projects** and **332 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -71,6 +71,7 @@ Every classified library has exactly one explicit primary entrypoint. Additional
 | `components-generic-content`      | `@trinity/components/generic-content`      | `./libs/components/generic-content/src/index.ts`      |
 | `components-navigation-layout`    | `@trinity/components/navigation-layout`    | `./libs/components/navigation-layout/src/index.ts`    |
 | `components-overlay`              | `@trinity/components/overlay`              | `./libs/components/overlay/src/index.ts`              |
+| `native-crypto-backend`           | `@trinity/crypto-backend`                  | `./libs/native/crypto-backend/src/index.ts`           |
 | `data-access-accounts`            | `@trinity/data-access/accounts`            | `./libs/data-access/accounts/src/index.ts`            |
 | `data-access-app-lock`            | `@trinity/data-access/app-lock`            | `./libs/data-access/app-lock/src/index.ts`            |
 | `data-access-auth`                | `@trinity/data-access/auth`                | `./libs/data-access/auth/src/index.ts`                |
@@ -177,7 +178,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `native-capacitor-push-android`     | `libs/native/capacitor-push/android`     | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push-ios`         | `libs/native/capacitor-push/ios`         | role:adapter; capability:host                   |                   0 |
 | `native-crypto-backend`             | `libs/native/crypto-backend`             | role:kernel; capability:shared                  |                   0 |
-| `platform-native`                   | `libs/platform-native`                   | role:adapter; capability:host                   |                   8 |
+| `platform-native`                   | `libs/platform-native`                   | role:adapter; capability:host                   |                  10 |
 | `progress`                          | `libs/spartan/progress`                  | role:design-system; capability:design-system    |                   1 |
 | `projection-runtime`                | `libs/runtime/projection`                | role:kernel; capability:shared                  |                   0 |
 | `runtime-host`                      | `libs/runtime/host`                      | role:kernel; capability:host                    |                   0 |

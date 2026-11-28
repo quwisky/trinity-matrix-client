@@ -2,7 +2,7 @@
 
 Trinity's native end-to-end encryption for the Android and iOS apps: `matrix-sdk-crypto`
 behind one JSON call surface, so the phone apps can run the same crypto as the web app
-without WebAssembly. Experimental: nothing in a release build uses it yet.
+without WebAssembly. The Android app runs on it; iOS does not yet.
 
 ## Build and test
 
@@ -327,7 +327,8 @@ from the store.
 The crate wipes its own copies of the key, but it cannot wipe the request string, the serde
 buffers the key passed through on the way in, or on Android the JVM's own string and the
 buffer the JVM hands to native code. Pass the key only in `init`, and drop the
-caller's copies as soon as `init` returns.
+caller's copies as soon as `init` returns. The Android plugin's JNI entry avoids the JSON
+string for the key: it passes it as a byte array that it wipes after the call (see "Android").
 
 The backup decryption key is no better off: the crate wipes its own base64 copy in
 `saveBackupDecryptionKey`, but not the request string or serde's buffers, and the base64 that
@@ -369,25 +370,25 @@ value is wiped; the decrypted event upstream returns is not.
 - Events are polled with `pollEvents` after a call returns (see "Events"); the crate never
   calls into the JVM.
 
-## Android (debug builds only)
+## Android
 
-`native/crypto/build-android.sh [abi …]` (default `x86_64`, the emulator) cross-builds
-`libtrinity_crypto.so` with the `jni` feature into `android/app/src/debug/jniLibs/`, which git
-ignores. It needs an Android NDK (the Android Gradle Plugin's default, 28.2.13676358, through
-`sdkmanager`), `rustup target add x86_64-linux-android` (one target per ABI) and
-`cargo install cargo-ndk`.
+`native/crypto/build-android.sh <output dir> [abi …]` (default: the four ABIs the app ships)
+cross-builds `libtrinity_crypto.so` with the `jni` feature into `<output dir>/<abi>/`. The app's
+Gradle build runs it (task `buildNativeCrypto`) for every Android build; it needs an Android
+NDK (28.2.13676358, the Android Gradle Plugin's default), `rustup target add <target>` per ABI
+and `cargo install cargo-ndk --locked --version 4.1.2`, and says which is missing.
+`-PtrinityNativeCrypto=false` builds the app without it.
 
-Debug builds then have the Capacitor plugin `TrinityCryptoDebug`: `call({ request })` and
-`callBatch({ requests })` take the JSON strings above and resolve `{ response, nativeMs }`.
-Calls run one at a time on one background thread; an error in the native call (for example a
-stale library without a method) rejects the call with `NATIVE_ERROR`. A debug-only
-`Application` registers the plugin, so `MainActivity` never names it. Registration needs
-Android 10 (API 29): on API 24 to 28 debug builds have no plugin, and JS gets Capacitor's "not
-implemented" error. The `secondaryDebug` build type does not use `src/debug`, so it has no
-plugin either. Without the library the plugin rejects with `NOT_BUILT`; `pnpm android:build`
-and the mobile E2E suite need neither Rust nor the NDK. Release builds hold neither the plugin
-nor the library: `pnpm android:build:release` checks the bundle with
-`scripts/android-release-isolation.mjs`.
+The plugin is `TrinityCrypto` in `android/app/src/main/java/dev/trinityproject/trinity/crypto`;
+its interface, store path and key handling are on the developer page (Platforms → Native
+crypto → Run it on Android). Its JNI entry is `TrinityCryptoNative.call(userId, deviceId,
+request, storePath, storeKey)` (`src/jni.rs`, `src/host.rs`): `request` is one request or a
+JSON array of them, every one of which must be for that user and device (another fails alone
+with `InvalidRequest`); `init` gets `storePath` and the raw 32-byte `storeKey` byte array in
+place of whatever the request named, and is refused with `StoreUnavailable` when either is
+null, so a host machine never runs in memory. The key arrives as a byte array, not inside the
+JSON string, so the caller can wipe its copy; the crate wipes the copies it makes.
+`scripts/android-release-isolation.mjs` checks release bundles.
 
 ## The pin rule
 

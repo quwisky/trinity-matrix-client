@@ -72,6 +72,7 @@ export class MatrixAccountRuntimeAdapter implements AccountRuntimeAdapter {
   readonly activeAccountId = this.matrix.activeUserId;
   readonly newDevices: Observable<NewDeviceEstablishment> =
     this.newDeviceFacts.asObservable();
+  readonly cryptoLost = this.matrix.cryptoLost;
 
   sweepOrphanedStores(): Observable<void> {
     return this.storage.sweepOrphanedCryptoStores();

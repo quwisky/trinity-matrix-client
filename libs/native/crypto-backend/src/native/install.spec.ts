@@ -130,6 +130,61 @@ describe('install', () => {
     }
   });
 
+  it('sends init without a path or key when the bridge owns the stores', async () => {
+    const crate = fakeCrate();
+    const { uninstallForTests: uninstall } = install({
+      bridge: { ...crate.bridge, ownsStores: true },
+    });
+    try {
+      const store = await real.StoreHandle.open(
+        'trinity-crypto:prefix',
+        undefined,
+      );
+      const olm = await real.OlmMachine.initFromStore(
+        new real.UserId(description.userId),
+        new real.DeviceId(description.deviceId),
+        store,
+      );
+      expect(olm).toBeInstanceOf(real.OlmMachine);
+      expect(crate.requests[0]).toEqual({
+        method: 'init',
+        userId: description.userId,
+        deviceId: description.deviceId,
+        params: {},
+      });
+    } finally {
+      uninstall();
+    }
+  });
+
+  it('refuses a memory store, a passphrase and a JavaScript key when the bridge owns the stores', async () => {
+    const crate = fakeCrate();
+    const { uninstallForTests: uninstall } = install({
+      bridge: { ...crate.bridge, ownsStores: true },
+      storeDirectory: '/stores',
+    });
+    try {
+      await expect(real.StoreHandle.open(null, null)).rejects.toThrow(
+        'native crypto: this host keeps every store on disk; open it with a store name',
+      );
+      await expect(real.StoreHandle.open('prefix', 'pass')).rejects.toThrow(
+        /passphrase/,
+      );
+      await expect(
+        real.StoreHandle.openWithKey('prefix', new Uint8Array(32)),
+      ).rejects.toThrow(/key stays native/);
+      await expect(
+        real.OlmMachine.initialize(
+          new real.UserId(description.userId),
+          new real.DeviceId(description.deviceId),
+        ),
+      ).rejects.toThrow(/keeps every store on disk/);
+      expect(crate.requests).toEqual([]);
+    } finally {
+      uninstall();
+    }
+  });
+
   it('builds a machine that passes instanceof, answers its constants and owns no wasm memory', async () => {
     const { olm } = await machine();
     expect(olm).toBeInstanceOf(real.OlmMachine);

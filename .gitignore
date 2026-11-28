@@ -48,8 +48,6 @@ log.txt
 
 # Rust build output of the native crypto crate
 /native/crypto/target/
-# Built by native/crypto/build-android.sh for debug builds
-/android/app/src/debug/jniLibs/
 
 # Node. Unanchored on purpose: pnpm and Vite create nested package dirs — `vitest` writes a
 # cache into `libs/<lib>/node_modules/.vite/`, and an anchored `/node_modules` left those

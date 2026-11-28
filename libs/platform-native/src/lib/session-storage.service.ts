@@ -24,6 +24,7 @@ import {
   SecureStorageService,
 } from './secure-storage.service';
 import { CryptoStoreKeyService } from './crypto-store-key.service';
+import { NativeCryptoService } from './native-crypto.service';
 
 /**
  * Non-secret per-account record. Both credentials (access token and OIDC refresh token)
@@ -121,6 +122,7 @@ const CRYPTO_PREFIX = 'trinity-crypto:';
 export class SessionStorageService {
   private readonly secure = inject(SecureStorageService);
   private readonly storeKeys = inject(CryptoStoreKeyService);
+  private readonly nativeCrypto = inject(NativeCryptoService);
   private readonly handoff = inject(PushHandoffBridge);
 
   /**
@@ -510,6 +512,10 @@ export class SessionStorageService {
         `The crypto store for ${incoming.userId} already belongs to another account.`,
       );
     }
+    const createsKey = !existing || deviceChanged;
+    // A new device's store is native where the host has native crypto: its key never enters
+    // JavaScript, so there is no store key to create here.
+    const native = createsKey && (await this.nativeCrypto.host()) !== null;
     const record: AccountRecord =
       existing && !deviceChanged
         ? // Same-device re-login: reuse the exact crypto store (including a migrated
@@ -533,15 +539,16 @@ export class SessionStorageService {
             accessTokenExpiresAt: incoming.accessTokenExpiresAt,
             oidc: incoming.oidc,
             cryptoPrefix: newPrefix,
-            cryptoStoreKeyed: true,
+            ...(native
+              ? { cryptoBackend: 'native' as const }
+              : { cryptoStoreKeyed: true as const }),
             lineage,
           };
     registry.accounts = [
       ...registry.accounts.filter((a) => a.userId !== incoming.userId),
       record,
     ];
-    const createsKey = !existing || deviceChanged;
-    if (createsKey) {
+    if (createsKey && !native) {
       // A new store's key is written BEFORE the tokens and the registry: a keyed record
       // without its key could never open its store, and a failure here must leave the
       // stored device's tokens as they were. A same-device re-login keeps whatever its
@@ -586,7 +593,7 @@ export class SessionStorageService {
     } catch (error) {
       // No record names the new store yet. Its key would make a retry of this same
       // sign-in refuse, since a store key is never replaced.
-      if (createsKey) {
+      if (createsKey && !native) {
         await this.storeKeys.remove(newPrefix).catch(() => undefined);
       }
       if (replaced) {
@@ -606,7 +613,7 @@ export class SessionStorageService {
     }
     if (existing && deviceChanged) {
       // No sign-out wiped the old device's store, so reclaim it here or it leaks on disk.
-      this.reclaimCryptoStore(existing.cryptoPrefix);
+      this.reclaimCryptoStore(existing);
       await this.removeStoreKey(existing);
     }
     return {
@@ -648,12 +655,16 @@ export class SessionStorageService {
    * OlmMachine connection releases on GC, and nothing awaits it. A no-op off-browser.
    * An undefined prefix is a migrated legacy account on the SDK default store.
    */
-  private reclaimCryptoStore(prefix: string | undefined): void {
+  private reclaimCryptoStore(record: AccountRecord): void {
+    if (record.cryptoBackend === 'native') {
+      void this.nativeCrypto.deleteStore(record.userId, record.deviceId);
+      return;
+    }
     const idb = globalThis.indexedDB;
     if (typeof idb === 'undefined') {
       return;
     }
-    for (const dbName of rustCryptoStoreDbNames(prefix)) {
+    for (const dbName of rustCryptoStoreDbNames(record.cryptoPrefix)) {
       try {
         idb.deleteDatabase(dbName);
       } catch {

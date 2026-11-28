@@ -41,9 +41,12 @@ import {
   timeout,
 } from 'rxjs';
 import {
+  CryptoBackendMismatchError,
   CryptoStoreKeyService,
   HostNetworkPolicyService,
   NATIVE_REFRESH_MARKER,
+  type NativeCryptoHost,
+  NativeCryptoService,
   NativeTokenBridge,
   SessionStorageService,
   deleteDatabase,
@@ -155,6 +158,11 @@ interface AccountClient {
   readonly cryptoPrefix: string | undefined;
   /** Whether its crypto store is keyed (false for a store created before store keys). */
   readonly cryptoStoreEncrypted: boolean;
+  /** Its device ID and whether its crypto store is native (deleted through the plugin). */
+  readonly deviceId: string;
+  readonly nativeCrypto: boolean;
+  /** Ends its {@link NativeCryptoHost.onMachineLost} registration. */
+  readonly stopMachineLostListener: () => void;
   /** The account's persistent sync store, retained so its IndexedDB can be closed. */
   readonly syncStore: IndexedDBStore | null;
   /** This account's coarse sync state (null until its first sync transition). */
@@ -242,6 +250,7 @@ export class MatrixClientService {
   private readonly projections = inject(ProjectionRuntime);
   private readonly hostNetworkPolicy = inject(HostNetworkPolicyService);
   private readonly nativeTokens = inject(NativeTokenBridge);
+  private readonly nativeCrypto = inject(NativeCryptoService);
 
   private readonly clients = new Map<string, AccountClient>();
   private readonly logoutHolds = new Map<string, LogoutHoldState>();
@@ -301,6 +310,14 @@ export class MatrixClientService {
    * the order they ended. Consumers read the first.
    */
   readonly reauthTargets = this._reauthTargets.asReadonly();
+
+  private readonly _cryptoLost = new Subject<string>();
+  /**
+   * Accounts whose native crypto machine was lost (the bridge failed or the crate could not
+   * reload it). Each one's client is stopped first, so its sync cannot move past to-device
+   * events the machine never processed; starting it again reloads the machine.
+   */
+  readonly cryptoLost: Observable<string> = this._cryptoLost.asObservable();
 
   private readonly _accessTokenRotations = new Subject<AccessTokenRotation>();
   /**
@@ -977,6 +994,8 @@ export class MatrixClientService {
       // can't read or overwrite another account's key.
       const holder = new SecretStorageKeyHolder();
       let stopClientTrackers = (): void => undefined;
+      let nativeHost: NativeCryptoHost | null = null;
+      let stopMachineLostListener = (): void => undefined;
       /**
        * Undo whatever this attempt managed to do. Driven from `finalize`, so it covers the
        * error path AND the cancelled one: an unsubscribed start still reaches the end, and
@@ -994,6 +1013,7 @@ export class MatrixClientService {
         created?.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
         created?.off(RoomEvent.LocalEchoUpdated, onLocalEchoUpdated);
         stopClientTrackers();
+        stopMachineLostListener();
         created?.stopClient();
         holder.clear();
         this.forgetOAuthTokens(session.userId, created);
@@ -1048,7 +1068,32 @@ export class MatrixClientService {
         switchMap(() =>
           preloadCryptoWasm().pipe(catchError(classifyCryptoStartupFailure)),
         ),
-        switchMap(() => from(pendingStorageKey)),
+        switchMap(() =>
+          from(
+            this.nativeCrypto.prepare(session.cryptoBackend).then((host) => {
+              nativeHost = host;
+              stopMachineLostListener =
+                host?.onMachineLost(session.userId, session.deviceId, () =>
+                  this.handleCryptoLost(session.userId, created),
+                ) ?? stopMachineLostListener;
+              return pendingStorageKey;
+            }),
+          ).pipe(
+            catchError((error: unknown) =>
+              error instanceof MatrixClientStartupError
+                ? throwError(() => error)
+                : error instanceof CryptoBackendMismatchError
+                  ? throwError(
+                      () =>
+                        new MatrixClientStartupError(
+                          'crypto-backend-mismatch',
+                          error,
+                        ),
+                    )
+                  : classifyCryptoStartupFailure(error),
+            ),
+          ),
+        ),
         switchMap((storageKey) =>
           // An unset prefix (migrated legacy account) means the SDK default store, which
           // keeps its existing keys.
@@ -1170,6 +1215,9 @@ export class MatrixClientService {
             client: created!,
             cryptoPrefix: session.cryptoPrefix,
             cryptoStoreEncrypted: session.cryptoStoreKeyed === true,
+            deviceId: session.deviceId,
+            nativeCrypto: nativeHost !== null,
+            stopMachineLostListener,
             syncStore: store,
             syncState,
             waitingCount,
@@ -1433,6 +1481,18 @@ export class MatrixClientService {
         );
   }
 
+  /** Stops a client whose native machine is lost and reports it; see {@link cryptoLost}. */
+  private handleCryptoLost(userId: string, client: MatrixClient | null): void {
+    const account = this.clients.get(userId);
+    if (!account || account.client !== client) {
+      // Still starting: its crypto calls reject, which fails the start.
+      client?.stopClient();
+      return;
+    }
+    account.client.stopClient();
+    this._cryptoLost.next(userId);
+  }
+
   /**
    * Open the account's Rust crypto store, with its store key when it has one. A store
    * created without a key is opened without one: the crypto WASM refuses to open an
@@ -1467,6 +1527,7 @@ export class MatrixClientService {
         account.onLocalEchoUpdated,
       );
       account.stopClientTrackers();
+      account.stopMachineLostListener();
       account.client.stopClient();
       account.holder.clear();
       this.closeStore(account.syncStore);
@@ -1507,6 +1568,7 @@ export class MatrixClientService {
     account.client.off(HttpApiEvent.SessionLoggedOut, account.onLoggedOut);
     account.client.off(RoomEvent.LocalEchoUpdated, account.onLocalEchoUpdated);
     account.stopClientTrackers();
+    account.stopMachineLostListener();
     account.client.stopClient(); // clearStores must run with the client stopped
     account.holder.clear();
     this.clients.delete(userId);
@@ -1528,6 +1590,11 @@ export class MatrixClientService {
         account.client
           .clearStores({ cryptoDatabasePrefix: account.cryptoPrefix })
           .catch(() => undefined)
+          .then(() =>
+            account.nativeCrypto
+              ? this.nativeCrypto.deleteStore(userId, account.deviceId)
+              : undefined,
+          )
           .finally(() => this.closeStore(store)),
       );
     } else {
@@ -1553,7 +1620,9 @@ export class MatrixClientService {
     const wipeDone = firstValueFrom(this.storage.record(userId))
       .then(async (record) => {
         const names = [syncStoreIndexedDbName(userId)];
-        if (record) {
+        if (record?.cryptoBackend === 'native') {
+          await this.nativeCrypto.deleteStore(record.userId, record.deviceId);
+        } else if (record) {
           names.push(...rustCryptoStoreDbNames(record.cryptoPrefix));
         }
         await Promise.all(names.map((name) => deleteDatabase(idb, name)));

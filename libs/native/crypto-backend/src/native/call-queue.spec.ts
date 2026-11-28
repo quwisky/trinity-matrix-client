@@ -567,4 +567,82 @@ describe('CallQueue', () => {
       ['b1'],
     ]);
   });
+
+  it('hands the bridge the machine of each batch', async () => {
+    const machines: unknown[] = [];
+    const { bridge } = fakeBridge(echo);
+    const queue = new CallQueue({
+      call: (text, machine) => (machines.push(machine), bridge.call(text)),
+      callBatch: (text, machine) => (
+        machines.push(machine),
+        bridge.callBatch(text)
+      ),
+    });
+    const bob = { userId: '@bob:example.org', deviceId: 'BOB' };
+    await Promise.all([
+      call(queue, 'a1', 1),
+      call(queue, 'a2', 2),
+      queue.call({ method: 'b1', ...bob }),
+    ]);
+    expect(machines).toEqual([alice, bob]);
+  });
+
+  it('sends one batch at a time unless the bridge runs machines concurrently', async () => {
+    const bob = { userId: '@bob:example.org', deviceId: 'BOB' };
+    for (const concurrentMachines of [false, true]) {
+      const started: string[] = [];
+      let releaseAlice: () => void = () => undefined;
+      const aliceHeld = new Promise<void>((done) => (releaseAlice = done));
+      const { bridge } = fakeBridge(echo);
+      const queue = new CallQueue({
+        concurrentMachines,
+        call: async (text, machine) => {
+          started.push(machine.userId);
+          if (machine.userId === alice.userId) await aliceHeld;
+          return bridge.call(text);
+        },
+        callBatch: (text) => bridge.callBatch(text),
+      });
+      const first = call(queue, 'a1', 1);
+      await Promise.resolve();
+      // Bob's call is made in a later task, while Alice's batch is still with the bridge.
+      const second = queue.call({ method: 'b1', ...bob, params: { value: 2 } });
+      const bobFirst = await Promise.race([
+        second.then(() => 'bob'),
+        new Promise((done) => setTimeout(() => done('waiting'), 20)),
+      ]);
+      expect(bobFirst).toBe(concurrentMachines ? 'bob' : 'waiting');
+      releaseAlice();
+      expect(await Promise.all([first, second])).toEqual([1, 2]);
+      expect(started).toEqual([alice.userId, bob.userId]);
+    }
+  });
+
+  it('keeps one machine in order while another runs beside it', async () => {
+    const bob = { userId: '@bob:example.org', deviceId: 'BOB' };
+    const order: string[] = [];
+    let releaseFirst: () => void = () => undefined;
+    const held = new Promise<void>((done) => (releaseFirst = done));
+    let calls = 0;
+    const { bridge } = fakeBridge(echo);
+    const queue = new CallQueue({
+      concurrentMachines: true,
+      call: async (text, machine) => {
+        const { method } = JSON.parse(text) as NativeRequest;
+        if (machine.userId === alice.userId && calls++ === 0) await held;
+        order.push(method);
+        return bridge.call(text);
+      },
+      callBatch: (text) => bridge.callBatch(text),
+    });
+    const a1 = call(queue, 'a1', 1);
+    await Promise.resolve();
+    const a2 = call(queue, 'a2', 2);
+    await Promise.resolve();
+    const b1 = queue.call({ method: 'b1', ...bob, params: { value: 3 } });
+    await b1;
+    releaseFirst();
+    await Promise.all([a1, a2]);
+    expect(order).toEqual(['b1', 'a1', 'a2']);
+  });
 });

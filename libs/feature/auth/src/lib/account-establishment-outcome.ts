@@ -36,6 +36,8 @@ export function accountEstablishmentError(
       return SECURE_STORAGE_UNAVAILABLE;
     case 'unprotected-storage-declined':
       return 'Sign-in cancelled. Nothing was stored on this device.';
+    // A store of the other crypto backend: the same remedy, a sign-in as a new session.
+    case 'crypto-backend-mismatch':
     case 'crypto-store-key-lost':
       return 'This device can no longer unlock this account’s stored keys. Sign in again to set it up as a new session.';
   }

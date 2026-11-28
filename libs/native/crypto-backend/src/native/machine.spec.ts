@@ -208,6 +208,11 @@ describe('a machine the crate dropped', () => {
     expect(other).toMatchObject({ error: expect.any(NativeMachineLostError) });
     expect(lost).toHaveBeenCalledTimes(1);
     expect(String(lost.mock.calls[0][0])).toMatch(/init/);
+    // The host learns which machine, to stop that account's client.
+    expect(lost.mock.calls[0][1]).toEqual({
+      userId: description.userId,
+      deviceId: description.deviceId,
+    });
   });
 
   it('is lost when the bridge fails, and keeps the failed sync input pending', async () => {
