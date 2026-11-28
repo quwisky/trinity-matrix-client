@@ -21,7 +21,7 @@ cd ../..
 pnpm nx run scripts:native-crypto-interop
 ```
 
-The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities, and every step, change event and sent request of each verification flow (SAS, QR codes, cancels) in all four pairings of native and WASM devices, and the secrets inbox and bundle, room key bundles for shared history, dehydrated devices and the remaining machine calls in both mixed pairings. The timeout case waits 61 seconds. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version, the facade or the workflow change.
+The interop target drives the crate's command-line binary and the repository's WASM package as two devices and compares their answers and request shapes with a golden file. It also runs the contract tests, which run each finished native call and the same WASM call side by side and expect the same answer, including every trust answer about devices and identities, and every step, change event and sent request of each verification flow (SAS, QR codes, cancels) in all four pairings of native and WASM devices, and the secrets inbox and bundle, room key bundles for shared history, dehydrated devices and the remaining machine calls in both mixed pairings. The timeout case waits 61 seconds. Without cargo both are skipped locally and fail in CI. CI runs these checks in the `Native crypto (Rust)` job when the crate, its scripts, the WASM version, the facade, the matrix-js-sdk patch or the workflow change.
 
 ## Surface status {#surface}
 
@@ -45,6 +45,22 @@ The interop target drives the crate's command-line binary and the repository's W
 `pnpm nx test scripts` fails when matrix-js-sdk uses a member the manifest lacks or no longer uses one it lists, when a `done` member has no contract case, when a member is `planned` without being listed in `ALLOWED_PLANNED` (`scripts/native-crypto-surface.mjs`, empty), or when this table disagrees with the manifest. After a matrix-js-sdk bump, run `node scripts/native-crypto-surface.mjs write`: new members arrive as `planned`, so the check fails until each is a native call or a shim, and members of `OlmMachine` need an area as well.
 
 The libolm migration (`Migration.*`) is not ported. matrix-js-sdk migrates only from a legacy crypto store that holds data; Trinity passes none to `createClient`, so js-sdk's default empty `MemoryCryptoStore` is used and the migration never runs. The same spec fails if the app starts passing a legacy store or pickle key, or sets a store factory.
+
+## The JavaScript shim {#shim}
+
+The shim lets matrix-js-sdk's own crypto layer (`initRustCrypto`) run on the crate. It lives in `libs/native/crypto-backend/src/native` and loads only through `installNativeCrypto` from `libs/native/crypto-backend/src/index.ts`, a dynamic `import()` that nothing in the app calls yet. `installNativeCrypto({ bridge, storeDirectory })` points the static factories of the real WASM classes (`StoreHandle.open` and `openWithKey`, `OlmMachine.initFromStore` and `initialize`, `Migration.*`) at the crate and returns the uninstaller, which puts the originals back. Every other export stays the WASM package's own object.
+
+- A factory returns a stand-in for the WASM class: its prototype sits on a guard of the real prototype, so `instanceof` holds and every member the shim does not implement throws "… is not implemented on native crypto" instead of reaching wasm with no pointer. The stand-ins own no wasm memory; their `free()` releases nothing.
+- Values the crate returns become real WASM objects where JavaScript can construct the class (identifiers, every outgoing request class, `RoomSettings`), and guarded value objects of the class otherwise (`DecryptedRoomEvent`, `EncryptionInfo`, `MegolmDecryptionError`, …).
+- The bridge is `call(request)` and `callBatch(requests)` over the crate's JSON. Calls made in one JavaScript task go as one batch, split to stay under 1 MB, answered in call order, and one refused item fails only its own call. Each batch also polls the events of the machines it called, and those reach matrix-js-sdk's callbacks before any call of the batch settles.
+- `StoreHandle.openWithKey` opens `<storeDirectory>/<store name>` with the raw key; `StoreHandle.open` with a store name is refused, and without one it is a memory store. A wrong key fails at `init`.
+- `native/crypto/surface.json` marks each member the shim implements with `shimImpl: true`; `libs/native/crypto-backend/src/native/surface.spec.ts` fails when a marked member has no implementation.
+
+```bash
+pnpm nx run scripts:native-crypto-sdk
+```
+
+The SDK test bed starts the disposable homeserver and runs real matrix-js-sdk clients in Node: one on the shim with the crate's CLI as the bridge, the others on WASM, in both roles, and the same flows with every client on WASM as the control. It checks device key upload, an encrypted room that members join later, messages both ways, a rotated session, a message whose room key arrives after it, the encryption info a WASM receiver reports for the same event, a restart on the same store (and a wrong key that fails), and a CLI that dies mid-session. It needs cargo and Docker: without either it is skipped and says why, and in CI it fails instead. CI runs it in the `Native crypto (Rust)` job.
 
 ## Run it on Android {#android}
 

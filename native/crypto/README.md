@@ -76,7 +76,9 @@ or the homeserver's comparison of the requests it saw); a call made only for set
 answer is dropped, does not count. Without cargo on `PATH` the suites are skipped and say why;
 with `CI` set they fail instead.
 CI runs the crate checks and this test in the `Native crypto (Rust)` job when the crate, its
-scripts, the WASM version or the CI workflow change.
+scripts, the WASM version, the facade, the matrix-js-sdk patch or the CI workflow change. The
+same job runs `pnpm nx run scripts:native-crypto-sdk`, matrix-js-sdk's own crypto on the
+JavaScript shim with this CLI as the bridge, against the disposable homeserver.
 
 ## The call surface
 
@@ -298,7 +300,8 @@ from its sources by `scripts/native-crypto-surface.mjs` (TypeScript's checker; t
 as matrix-js-sdk's verifier generic over `Qr | Sas`, counts for every class of the union).
 Members of stateful classes carry `status`
 (`done`: answered by the `native` call; `planned`; `shim`: answered in JavaScript, with a
-`note`), an `area`, and for callbacks the `event` type. `wasmHelpers` are stateless helpers that
+`note`), an `area`, for callbacks the `event` type, and `shimImpl: true` once the JavaScript
+shim in `libs/native/crypto-backend` implements the member. `wasmHelpers` are stateless helpers that
 keep running on WASM; `pureJs` are value types the shim implements, and `shimNotes` says what
 the shim must do for one of them or a helper where that is not obvious (such as mapping
 `CollectStrategy.deviceBasedStrategy` onto the crate's strategy names). `node
