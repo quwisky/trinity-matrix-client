@@ -174,25 +174,46 @@ describe('CallQueue', () => {
     expect(logger.warn).toHaveBeenCalled();
   });
 
-  it('rejects a batch the bridge does not answer in time, with a longer limit for slow calls', async () => {
+  it('gives a batch the time of the slowest call class it holds, and warns once a minute passed', async () => {
     const never = () => new Promise<string>(() => undefined);
+    const logger = { warn: vi.fn() };
     const queue = new CallQueue(
       { call: never, callBatch: never },
-      { timeoutMs: 20, slowTimeoutMs: 200 },
+      {
+        timeoutMs: 20,
+        heavyTimeoutMs: 80,
+        slowTimeoutMs: 160,
+        warnAfterMs: 40,
+        logger,
+      },
     );
-    const started = Date.now();
-    const fast = await call(queue, 'trackedUsers').catch(
-      (error: unknown) => error,
+    const time = async (method: string) => {
+      const started = Date.now();
+      const error = await call(queue, method).catch(
+        (caught: unknown) => caught,
+      );
+      expect(error).toBeInstanceOf(NativeBridgeError);
+      expect((error as Error).message).toBe(
+        `native crypto ${method}: the bridge timed out`,
+      );
+      return Date.now() - started;
+    };
+    expect(await time('trackedUsers')).toBeLessThan(80);
+    expect(logger.warn).not.toHaveBeenCalled();
+    for (const method of [
+      'receiveSyncChanges',
+      'shareRoomKey',
+      'markRequestAsSent',
+      'getMissingSessions',
+    ]) {
+      const took = await time(method);
+      expect(took).toBeGreaterThanOrEqual(70);
+      expect(took).toBeLessThan(160);
+    }
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/receiveSyncChanges.*still waiting/),
     );
-    expect(fast).toBeInstanceOf(NativeBridgeError);
-    expect((fast as Error).message).toBe(
-      'native crypto trackedUsers: the bridge timed out',
-    );
-    const slow = await call(queue, 'importExportedRoomKeys').catch(
-      (error: unknown) => error,
-    );
-    expect(slow).toBeInstanceOf(NativeBridgeError);
-    expect(Date.now() - started).toBeGreaterThanOrEqual(200);
+    expect(await time('importExportedRoomKeys')).toBeGreaterThanOrEqual(150);
   });
 
   it('reports a failed or malformed poll to the machine', async () => {

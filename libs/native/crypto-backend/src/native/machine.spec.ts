@@ -1,6 +1,9 @@
 import * as real from '@matrix-org/matrix-sdk-crypto-wasm-real';
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
 
 import { install } from './install';
+import { NativeStoreHandle } from './machine';
 import {
   NativeBridgeError,
   NativeCryptoError,
@@ -38,17 +41,29 @@ function fakeCrate() {
     } as Record<string, unknown>,
     hang: false,
     dead: false,
+    malformedPoll: false,
+    /** Runs when a batch holding `init` arrives, before it is answered. */
+    onInit: undefined as (() => void) | undefined,
   };
   const answer = (request: NativeRequest): NativeResponse => {
-    requests.push(request);
+    // Without the parameters: the store key must be the shim's alone to keep or drop.
+    requests.push({
+      ...request,
+      params: request.method === 'init' ? {} : request.params,
+    });
     if (request.method === 'init') {
+      crate.onInit?.();
       if (crate.failInit)
         return { error: { code: 'StoreError', message: 'locked' } };
       crate.open = true;
       return { result: description };
     }
     if (request.method === 'pollEvents')
-      return { result: { events: [], dropped: 0 } };
+      return {
+        result: crate.malformedPoll
+          ? { events: null }
+          : { events: [], dropped: 0 },
+      };
     if (!crate.open)
       return { error: { code: 'UnknownMachine', message: 'call init' } };
     if (crate.panicOn.delete(request.method)) {
@@ -77,8 +92,11 @@ function fakeCrate() {
   return { crate, bridge: { call: run, callBatch: run } };
 }
 
-async function open(options: Partial<NativeCryptoOptions> = {}) {
-  const { crate, bridge } = fakeCrate();
+async function open(
+  options: Partial<NativeCryptoOptions> = {},
+  handle?: NativeStoreHandle,
+  { crate, bridge } = fakeCrate(),
+) {
   const lost = vi.fn();
   const { uninstallForTests } = install({
     bridge,
@@ -87,7 +105,9 @@ async function open(options: Partial<NativeCryptoOptions> = {}) {
     ...options,
   });
   try {
-    const store = await real.StoreHandle.openWithKey('prefix', key);
+    const store = handle
+      ? (handle as unknown as real.StoreHandle)
+      : await real.StoreHandle.openWithKey('prefix', key);
     const machine = await real.OlmMachine.initFromStore(
       new real.UserId(description.userId),
       new real.DeviceId(description.deviceId),
@@ -226,7 +246,10 @@ describe('a machine the crate dropped', () => {
   });
 
   it('is lost when a batch times out', async () => {
-    const { machine, crate, lost } = await open({ timeoutMs: 20 });
+    const { machine, crate, lost } = await open({
+      timeoutMs: 20,
+      heavyTimeoutMs: 20,
+    });
     crate.hang = true;
     expect(await settled(sync(machine))).toBe(pending);
     await new Promise((done) => setTimeout(done, 60));
@@ -285,5 +308,100 @@ describe('answers', () => {
     ).not.toThrow();
     const keys = machine.identityKeys as unknown as Record<symbol, () => void>;
     expect(() => keys[dispose]()).not.toThrow();
+  });
+});
+
+setFlagsFromString('--expose-gc');
+const gc = runInNewContext('gc') as () => void;
+/** Whether the object behind `ref` is garbage once nothing else holds it. */
+async function collected(ref: WeakRef<object>): Promise<boolean> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await new Promise((done) => setTimeout(done, 0));
+    gc();
+    if (!ref.deref()) return true;
+  }
+  return false;
+}
+
+/** A store handle over a parameters object the caller can watch. */
+function watchedStore(): { handle: NativeStoreHandle; ref: WeakRef<object> } {
+  const params = {
+    storePath: '/stores/watched',
+    storeKey: btoa('k'.repeat(32)),
+  };
+  return { handle: new NativeStoreHandle(params), ref: new WeakRef(params) };
+}
+
+describe('the store key', () => {
+  it('is kept while the machine is open and dropped when it closes', async () => {
+    const { handle, ref } = watchedStore();
+    const { machine } = await open({}, handle);
+    expect(await collected(ref)).toBe(false);
+    machine.close();
+    expect(await collected(ref)).toBe(true);
+  });
+
+  it('is dropped when the machine is lost, although its sync never settles', async () => {
+    const { handle, ref } = watchedStore();
+    const { machine, crate } = await open({}, handle);
+    crate.dead = true;
+    expect(await settled(sync(machine))).toBe(pending);
+    expect(await collected(ref)).toBe(true);
+  });
+
+  it('is not held by a timed-out init batch', async () => {
+    const { handle, ref } = watchedStore();
+    const { crate, bridge } = fakeCrate();
+    crate.hang = true;
+    const failed = await open({ slowTimeoutMs: 20 }, handle, {
+      crate,
+      bridge,
+    }).catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(NativeBridgeError);
+    expect(await collected(ref)).toBe(true);
+  });
+});
+
+describe('order and loss', () => {
+  it('does not reopen a lost machine when a late UnknownMachine arrives', async () => {
+    const { machine, crate, lost } = await open();
+    crate.open = false;
+    crate.malformedPoll = true;
+    await expect(machine.trackedUsers()).rejects.toBeInstanceOf(
+      NativeMachineLostError,
+    );
+    expect(lost).toHaveBeenCalledTimes(1);
+    expect(inits(crate.requests)).toHaveLength(1);
+  });
+
+  it('holds a malformed sync answer as a lost machine', async () => {
+    const { machine, crate, lost } = await open();
+    crate.answers['receiveSyncChanges'] = { events: [] };
+    expect(await settled(sync(machine))).toBe(pending);
+    expect(lost).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs calls made during a reload after the replays of the calls before them', async () => {
+    const { machine, crate } = await open();
+    crate.answers['trackedUsers'] = [];
+    crate.open = false;
+    let later: Promise<unknown> | undefined;
+    crate.onInit = () => {
+      crate.onInit = undefined;
+      later = machine.trackedUsers();
+    };
+    await sync(machine);
+    await later;
+    const order = crate.requests
+      .map(({ method }) => method)
+      .filter(
+        (method) =>
+          method === 'receiveSyncChanges' || method === 'trackedUsers',
+      );
+    expect(order).toEqual([
+      'receiveSyncChanges',
+      'receiveSyncChanges',
+      'trackedUsers',
+    ]);
   });
 });
