@@ -207,6 +207,7 @@ export abstract class Mirror<T extends Snapshot> {
   public constructor(json: T, registry: Verifications) {
     this.json = json;
     this.registry = registry;
+    registry.trace(`new ${json.kind} ${json.flowId}`);
   }
 
   public get key(): string {
@@ -228,6 +229,9 @@ export abstract class Mirror<T extends Snapshot> {
   }
 
   public notify(): void {
+    this.registry.trace(
+      `notify ${this.json.kind} ${this.json.flowId} callbacks=${this.#callbacks.length}`,
+    );
     for (const callback of [...this.#callbacks]) {
       try {
         Promise.resolve(callback()).catch((error: unknown) =>
@@ -592,14 +596,24 @@ standIn(NativeVerificationRequest, VerificationRequest);
 export class Verifications {
   readonly #call: MachineCall;
   readonly #logger: NativeCryptoLogger | undefined;
+  readonly #trace: ((line: string) => void) | undefined;
   readonly #requests = new Map<string, NativeVerificationRequest>();
   readonly #verifications = new Map<string, NativeSas | NativeQr>();
   /** The decimals last handed out on each flow. */
   readonly #shown = new Map<string, readonly number[]>();
 
-  public constructor(call: MachineCall, logger?: NativeCryptoLogger) {
+  public constructor(
+    call: MachineCall,
+    logger?: NativeCryptoLogger,
+    trace?: (line: string) => void,
+  ) {
     this.#call = call;
     this.#logger = logger;
+    this.#trace = trace;
+  }
+
+  public trace(line: string): void {
+    this.#trace?.(`verification: ${line}`);
   }
 
   public call(
@@ -642,7 +656,10 @@ export class Verifications {
   public verificationChanged(
     json: SasSnapshot | QrSnapshot,
   ): Mirror<Snapshot>[] {
-    if (!this.#requests.has(keyOf(json.otherUserId, json.flowId))) return [];
+    if (!this.#requests.has(keyOf(json.otherUserId, json.flowId))) {
+      this.trace(`ignored ${json.kind} ${json.flowId}: no request`);
+      return [];
+    }
     return [this.#place(json, false).mirror];
   }
 

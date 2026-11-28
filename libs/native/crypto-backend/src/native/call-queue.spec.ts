@@ -33,6 +33,37 @@ const call = (queue: CallQueue, method: string, value?: unknown) =>
   queue.call({ method, ...alice, params: { value } });
 
 describe('CallQueue', () => {
+  it('traces methods and event states only, never parameters or answers', async () => {
+    const lines: string[] = [];
+    const { bridge } = fakeBridge((request) =>
+      request.method === 'pollEvents'
+        ? {
+            result: {
+              events: [
+                {
+                  type: 'verificationChanged',
+                  verification: {
+                    kind: 'sas',
+                    flowId: 'flow',
+                    isDone: true,
+                    decimals: [1, 2, 3],
+                  },
+                },
+              ],
+              dropped: 0,
+            },
+          }
+        : { result: 'secret-answer' },
+    );
+    const queue = new CallQueue(bridge, { trace: (line) => lines.push(line) });
+    queue.listen(alice, () => undefined);
+    await call(queue, 'importSecretsBundle', 'secret-parameter');
+    expect(lines).toEqual([
+      `batch 1 ${JSON.stringify([alice.userId, alice.deviceId])} importSecretsBundle +poll`,
+      `events 1 ${JSON.stringify([alice.userId, alice.deviceId])} verificationChanged(flow kind=sas,isDone=true) dropped=0`,
+    ]);
+  });
+
   it('sends the calls of one task as one batch and answers them in call order', async () => {
     const { batches, bridge } = fakeBridge(echo);
     const queue = new CallQueue(bridge);

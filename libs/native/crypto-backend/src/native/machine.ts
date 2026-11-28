@@ -156,6 +156,7 @@ interface MachineContext {
   readonly logger?: NativeCryptoLogger;
   readonly onEventsDropped?: (dropped: number | undefined) => void;
   readonly onMachineLost?: (reason: string) => void;
+  readonly trace?: (line: string) => void;
 }
 
 /** The crate dropped the machine (a panic, or a call after one): `init` reloads it from the store. */
@@ -365,7 +366,11 @@ export class NativeOlmMachine {
     this.#description = description;
     this.#store = store;
     this.#roomKeyRequestsEnabled = roomKeyRequestsEnabled;
-    this.#verifications = new Verifications(this.#objectCall, context.logger);
+    this.#verifications = new Verifications(
+      this.#objectCall,
+      context.logger,
+      context.trace,
+    );
     context.queue.listen(
       description,
       (events) => {

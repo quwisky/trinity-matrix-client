@@ -23,6 +23,7 @@ function factories(options: NativeCryptoOptions) {
     logger: options.logger,
     onEventsDropped: options.onEventsDropped,
     onMachineLost: options.onMachineLost,
+    trace: options.trace,
   };
   const memory = async (storeName: string | null | undefined) => {
     if (storeName) {

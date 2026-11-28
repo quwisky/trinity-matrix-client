@@ -25,6 +25,8 @@ import {
 import {
   closeBed,
   decrypted,
+  deleteDevice,
+  dumpTrace,
   encryptedRoom,
   joined,
   login,
@@ -37,6 +39,8 @@ import {
   startClient,
   startParty,
   stopClient,
+  trace,
+  traceMark,
   uiaWith,
   undecryptable,
   until,
@@ -105,17 +109,36 @@ const phaseIs = (request, phase, what) =>
       `${what} to reach phase ${phase} (now ${request.phase}, cancelled ${request.cancellationCode} by ${request.cancellingUserId})`,
   );
 
-/** `promise`, or an error naming `what` once 30 s passed. */
-const settled = (promise, what) =>
-  Promise.race([
-    promise,
-    new Promise((_, fail) =>
-      setTimeout(
-        () => fail(new Error(`timed out waiting for ${what()}`)),
-        30_000,
-      ),
-    ),
+/** Where the current flow's trace starts (`NATIVE_CRYPTO_TRACE`, see the support file). */
+let flowMark = 0;
+
+/** `promise`, or an error naming `what` once 30 s passed (the trace is dumped then). */
+const settled = (promise, what) => {
+  let timer;
+  return Promise.race([
+    promise.finally(() => clearTimeout(timer)),
+    new Promise((_, fail) => {
+      timer = setTimeout(() => {
+        dumpTrace(flowMark, `stuck: ${what()}`);
+        fail(new Error(`timed out waiting for ${what()}`));
+      }, 30_000);
+    }),
   ]);
+};
+
+/** Traces what matrix-js-sdk shows of a request and its verifier. */
+const traced = (label, request) =>
+  request.on(VerificationRequestEvent.Change, () =>
+    trace(`js ${label} ${request.transactionId} phase ${request.phase}`),
+  );
+const tracedVerifier = (label, verifier, done) => {
+  for (const name of Object.values(VerifierEvent))
+    verifier.on(name, () => trace(`js ${label} verifier ${name}`));
+  done.then(
+    () => trace(`js ${label} verify resolved`),
+    (error) => trace(`js ${label} verify rejected: ${error.message}`),
+  );
+};
 
 /** The phases a request goes through, as its Change events show them (repeats folded). */
 const track = (request) => {
@@ -173,6 +196,10 @@ const learning = { native: [], wasm: [] };
 
 /** A request from `from` and the same request as `to` received it, both tracked. */
 const requestPair = async (from, to, start) => {
+  flowMark = traceMark();
+  trace(
+    `flow: ${from.kind} ${from.account.deviceId} requests ${to.kind} ${to.account.deviceId}`,
+  );
   await knows(to, from);
   await knows(from, to);
   const request = await start();
@@ -186,6 +213,8 @@ const requestPair = async (from, to, start) => {
 
 /** SAS to done from a pair whose responder has not accepted yet. */
 const runSas = async ({ request, incoming }) => {
+  traced('requester', request);
+  traced('responder', incoming);
   await incoming.accept();
   await phaseIs(request, Ready, 'the requester');
   const verifier = await request.startVerification('m.sas.v1');
@@ -198,6 +227,8 @@ const runSas = async ({ request, incoming }) => {
   const state = () =>
     `requester ${request.phase} ${JSON.stringify(events.request)}, responder ${incoming.phase} ${JSON.stringify(events.incoming)}`;
   const done = [verifier.verify(), other.verify()];
+  tracedVerifier('requester', verifier, done[0]);
+  tracedVerifier('responder', other, done[1]);
   const [mine, theirs] = await settled(
     Promise.all([sasOf(verifier), sasOf(other)]),
     () => `both sides to show the SAS (${state()})`,
@@ -221,6 +252,8 @@ const runSas = async ({ request, incoming }) => {
 const runQr = async (pair, showerSide) => {
   const shower = pair[showerSide];
   const scanner = pair[showerSide === 'request' ? 'incoming' : 'request'];
+  traced('shower', shower);
+  traced('scanner', scanner);
   await pair.incoming.accept();
   await phaseIs(pair.request, Ready, 'the requester');
   await phaseIs(pair.incoming, Ready, 'the responder');
@@ -230,11 +263,13 @@ const runQr = async (pair, showerSide) => {
   expect(shower.phase).toBe(Ready);
   const scanned = await scanner.scanQRCode(bytes);
   const scanDone = scanned.verify();
+  tracedVerifier('scanner', scanned, scanDone);
   await phaseIs(shower, Started, 'the shower');
   const shown = shower.verifier;
   const callbacks = shown.getReciprocateQrCodeCallbacks();
   expect(callbacks).not.toBeNull();
   const showDone = shown.verify();
+  tracedVerifier('shower', shown, showDone);
   callbacks.confirm();
   await settled(
     Promise.all([scanDone, showDone]),
@@ -251,6 +286,10 @@ describe.skipIf(missing)(
   'matrix-js-sdk verification, secrets, bundles and dehydrated devices on the native crypto shim',
   () => {
     let invocation;
+    afterEach(({ task }) => {
+      if (task.result?.state === 'fail')
+        dumpTrace(flowMark, `failed: ${task.name}`);
+    });
     beforeAll(async () => {
       invocation = await openBed();
     });
@@ -468,6 +507,44 @@ describe.skipIf(missing)(
               );
             }
           }, 120_000);
+
+          // Diagnosis: `NATIVE_CRYPTO_REPEAT=<n>` self-verifies n new devices in turn (SAS, QR shown
+          // by the new device, QR shown by the trusted one; `NATIVE_CRYPTO_REPEAT_FLOWS` picks).
+          it.runIf(process.env.NATIVE_CRYPTO_REPEAT)(
+            'self-verifies new devices again and again',
+            async () => {
+              const { trusted } = parties;
+              const flows = (
+                process.env.NATIVE_CRYPTO_REPEAT_FLOWS ?? 'sas,request,incoming'
+              ).split(',');
+              for (
+                let round = 0;
+                round < Number(process.env.NATIVE_CRYPTO_REPEAT);
+                round++
+              ) {
+                const flow = flows[round % flows.length];
+                const fresh = await startVerifier(
+                  requesterKind,
+                  await login(trusted.account),
+                  storageOf(secrets.alice),
+                );
+                await eventually(
+                  fresh,
+                  () => crypto(fresh).userHasCrossSigningKeys(),
+                  'the new device to see its identity',
+                );
+                const pair = await requestPair(fresh, trusted, () =>
+                  crypto(fresh).requestOwnUserVerification(),
+                );
+                if (flow === 'sas') await runSas(pair);
+                else await runQr(pair, flow);
+                console.log(`round ${round} ${flow} done`);
+                await stopClient(fresh);
+                await deleteDevice(fresh.account, fresh.account.deviceId);
+              }
+            },
+            24 * 3_600_000,
+          );
 
           const STAGES = ['requested', 'ready', 'started', 'shown'];
           it('cancels at every stage from either side, with code and reason on both ends', async () => {
