@@ -501,7 +501,7 @@ describe('the decimals a SAS confirms', () => {
     });
   });
 
-  it('keeps the decimals read before an event changed the mirror', async () => {
+  it('keeps the decimals read before an event changed the mirror, and ends the flow when they are stale', async () => {
     const { crate, answers, started } = await shownSas();
     started.emoji();
     answers['acceptSas'] = withEvents(crate, null, {
@@ -515,12 +515,20 @@ describe('the decimals a SAS confirms', () => {
         message: 'the SAS on this flow is not the one shown',
       },
     });
-    await expect(started.confirm()).rejects.toMatchObject({
-      code: 'StaleObject',
-    });
+    answers['cancelSas'] = toDevice;
+    // What the user confirmed is not the flow's SAS: the flow ends as a mismatch, and the
+    // cancellation is what matrix-js-sdk sends, so the other side ends too.
+    const requests = await started.confirm();
     expect(sent(crate, 'confirmSas')[0]?.params?.['decimals']).toEqual([
       1, 2, 3,
     ]);
+    expect(sent(crate, 'cancelSas')[0]?.params).toEqual({
+      userId: BOB,
+      flowId: FLOW,
+      code: 'm.mismatched_sas',
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toBeInstanceOf(real.ToDeviceRequest);
   });
 
   it("sends the flow's shown decimals from the SAS that replaced the one read", async () => {

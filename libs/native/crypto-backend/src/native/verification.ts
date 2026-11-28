@@ -355,9 +355,23 @@ export class NativeSas extends FlowVerification<SasSnapshot> {
         'no decimals of this SAS were shown',
       );
     }
+    let confirmed: unknown;
+    try {
+      confirmed = await this.act('confirmSas', { decimals: [...decimals] });
+    } catch (error) {
+      if (!(error instanceof NativeCryptoError) || error.code !== 'StaleObject')
+        throw error;
+      // The user confirmed a SAS the flow no longer shows: the flow ends as a mismatch, and the
+      // cancellation goes back to be sent, as upstream's confirm answers a failed check.
+      const cancel = outgoing(
+        'cancelSas',
+        await this.act('cancelSas', { code: 'm.mismatched_sas' }),
+      );
+      return cancel ? [cancel] : [];
+    }
     const answer = checked<RequestJson[]>(
       'confirmSas',
-      await this.act('confirmSas', { decimals: [...decimals] }),
+      confirmed,
       (value) =>
         Array.isArray(value) &&
         value.every(
