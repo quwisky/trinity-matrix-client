@@ -81,8 +81,12 @@ describe('requests from the crate', () => {
 
   it('refuses an unknown type or a missing field', () => {
     expect(() => toRequest({ id: 'x', type: 9, body: '{}' })).toThrow(
-      /unknown type 9/,
+      /unknown type$/,
     );
+    // The type comes from the bridge's answer, so it stays out of the message.
+    expect(() =>
+      toRequest({ id: 'x', type: 'leaked' as unknown as number, body: '{}' }),
+    ).toThrow(/^(?!.*leaked)/);
     expect(() => toRequest({ id: 'x', type: 3, body: '{}' })).toThrow(
       /no event_type/,
     );

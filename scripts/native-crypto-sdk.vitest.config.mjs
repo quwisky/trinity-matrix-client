@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['native-crypto-sdk.e2e.mjs'],
+    include: ['native-crypto-sdk*.e2e.mjs'],
     reporters: ['verbose'],
     env: { TRINITY_E2E_PORT_OFFSET: '' },
     fileParallelism: false,
@@ -18,9 +18,11 @@ export default defineConfig({
     // The bridge-failure case kills the CLI. matrix-js-sdk's RoomEncryptor starts
     // `doProcessOutgoingRequests()` without a catch, so the failed `outgoingRequests` call that
     // follows is unhandled there, as it is on WASM once the machine is gone. Only that call's
-    // error, from a CLI the test killed or the machine that lost, is ignored.
+    // error, from a CLI the test killed or the machine that lost, is ignored. So is a call
+    // matrix-js-sdk makes without a catch after `stopClient` closed the machine (a late
+    // membership change discarding the room's session): WASM's freed machine throws there too.
     onUnhandledError: (error) =>
-      !/^native crypto outgoingRequests: (the bridge failed: trinity-crypto-cli exited \(SIGKILL\)|the machine is lost; stop the client)$/.test(
+      !/^native crypto (outgoingRequests: (the bridge failed: trinity-crypto-cli exited \(SIGKILL\)|the machine is lost; stop the client)|\w+: the machine is closed)$/.test(
         error?.message ?? '',
       ),
   },

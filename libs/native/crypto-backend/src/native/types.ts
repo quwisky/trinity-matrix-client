@@ -29,6 +29,12 @@ export interface NativeCryptoOptions {
    * stop the client.
    */
   readonly onMachineLost?: (reason: string) => void;
+  /**
+   * Puts the bridge's own error text (which may quote requests and answers) back into the
+   * errors of calls that carry no secret. For local diagnosis only; never enable it in a release
+   * build.
+   */
+  readonly debugBridgeErrors?: boolean;
   /** The size cap of one batch, in characters of JSON. */
   readonly maxBatchLength?: number;
   /** How long a batch may take before its machines are lost, in milliseconds (60 s). */
@@ -81,9 +87,16 @@ export class NativeCryptoError extends Error {
   }
 }
 
+/** Why a bridge-level failure happened; its text never carries the bridge's own words. */
+export type NativeBridgeFailure = 'failed' | 'timedOut' | 'malformed';
+
 /** The bridge failed, timed out or answered something that is not an answer. */
 export class NativeBridgeError extends Error {
-  public constructor(message: string, options?: ErrorOptions) {
+  public constructor(
+    message: string,
+    public readonly kind: NativeBridgeFailure = 'failed',
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = 'NativeBridgeError';
   }
@@ -97,6 +110,33 @@ export class NativeMachineLostError extends Error {
   }
 }
 
+/** A call on a machine closed on purpose, as matrix-js-sdk makes after `stopClient`. */
+export class NativeMachineClosedError extends Error {
+  public constructor(method: string) {
+    super(`native crypto ${method}: the machine is closed`);
+    this.name = 'NativeMachineClosedError';
+  }
+}
+
 /** A message for a log line: never the error object, whose `cause` may hold a request. */
 export const describeError = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
+
+/** Fails closed: an answer the crate never gives must not read as a legitimate one. */
+export function checked<T>(
+  method: string,
+  value: unknown,
+  valid: (value: unknown) => boolean,
+): T {
+  if (!valid(value)) {
+    throw new NativeCryptoError(
+      method,
+      'UnexpectedAnswer',
+      'unexpected answer from the crate',
+    );
+  }
+  return value as T;
+}
+
+export const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);

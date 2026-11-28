@@ -33,6 +33,61 @@ const SLOW_METHODS = new Set([
   'importExportedRoomKeys',
   'importBackedUpRoomKeys',
 ]);
+/**
+ * Error text. Nothing the bridge layer says, and nothing from parsing its output, enters a
+ * shim error: transport failures, timeouts, a refusal of the whole batch and an answer that does
+ * not parse or has the wrong shape get fixed messages and a machine-readable `kind` or `code`
+ * (a bridge's or parser's text may quote the request or the answer). The one text let through is
+ * the crate's own `message` of a well-formed per-call error, which the crate keeps free of key
+ * material by design, and not even that for the calls below (code only, no details).
+ * `debugBridgeErrors` restores the bridge's text for calls not listed here; never in a release.
+ *
+ * Calls whose parameters carry key material or plaintext: the store key, private cross-signing
+ * keys, the backup key, room keys, a secrets bundle, a dehydration key, the scanned QR secret, or
+ * the cleartext of an event to encrypt. The queue also drops their parameters once the batch text
+ * is with the bridge; a replayable one is sent again from the parameters its caller holds until
+ * it settles (machine.ts), never from the queue's copy. Sync inputs are not here: they carry
+ * to-device ciphertext and public key counts. A slice that adds a call carrying a secret adds it
+ * here.
+ */
+export const QUIET_METHODS: ReadonlySet<string> = new Set([
+  'init',
+  'saveBackupDecryptionKey',
+  'importCrossSigningKeys',
+  'importExportedRoomKeys',
+  'importBackedUpRoomKeys',
+  'encryptRoomEvent',
+  'encryptStateEvent',
+  'encryptToDeviceEvent',
+  'importSecretsBundle',
+  'createDehydratedDevice',
+  'rehydrateDevice',
+  'saveDehydratedDeviceKey',
+  'scanQrCode',
+]);
+/**
+ * Calls whose ANSWERS carry secrets (private keys, room keys, the backup key, inbox secrets, a
+ * secrets bundle, a dehydration key, QR bytes): their per-call errors are code only too. Not
+ * `decryptRoomEvent`: a failed decryption returns no plaintext, and its structured details
+ * (the decryption error code matrix-js-sdk shows) are needed.
+ */
+export const SECRET_ANSWER_METHODS: ReadonlySet<string> = new Set([
+  'exportCrossSigningKeys',
+  'exportRoomKeys',
+  'getBackupKeys',
+  'getSecretsFromInbox',
+  'exportSecretsBundle',
+  'getDehydratedDeviceKey',
+  'qrCodeBytes',
+]);
+const codeOnly = (method: string) =>
+  QUIET_METHODS.has(method) || SECRET_ANSWER_METHODS.has(method);
+/** A code as the crate writes them; anything else from the bridge is not repeated. */
+const safeCode = (code: unknown, fallback: string) =>
+  typeof code === 'string' && /^[A-Z][A-Za-z]{0,39}$/.test(code)
+    ? code
+    : fallback;
+
 /** A batch still waiting after this long is logged, once, whatever its limit. */
 export const DEFAULT_WARN_AFTER_MS = 60_000;
 /** Room kept in every batch for the `pollEvents` requests added to it. */
@@ -48,11 +103,13 @@ export interface CallQueueOptions {
   readonly heavyTimeoutMs?: number;
   readonly slowTimeoutMs?: number;
   readonly warnAfterMs?: number;
+  /** Puts the bridge's own error text back into errors of calls not code-only. Never in a release. */
+  readonly debugBridgeErrors?: boolean;
   readonly logger?: NativeCryptoLogger;
 }
 
 interface Pending {
-  /** Emptied of `init`'s parameters (the store key) once the batch is with the bridge. */
+  /** Emptied of a quiet call's parameters once the batch is with the bridge. */
   request: NativeRequest;
   line: string;
   readonly resolve: (result: unknown) => void;
@@ -255,14 +312,16 @@ export class CallQueue {
     const lines = items.map((item) =>
       item.kind === 'call' ? item.pending.line : item.line,
     );
-    // The bridge's own message may quote the batch, and `init` carries the store key.
-    const quiet = calls.some(({ request }) => request.method === 'init');
+    // Debug text only for a batch none of whose calls is code-only.
+    const debug =
+      this.options.debugBridgeErrors === true &&
+      !calls.some(({ request }) => codeOnly(request.method));
     const single = lines.length === 1;
     const methods = [
       ...new Set(calls.map(({ request }) => request.method)),
     ].join(', ');
     const timeout = this.timeout(chunk);
-    // The text goes straight to the bridge, which is then the only holder of `init`'s key.
+    // The text goes straight to the bridge, which is then the queue's only holder of its secrets.
     let answer: Promise<string>;
     try {
       answer = single
@@ -273,7 +332,7 @@ export class CallQueue {
     }
     lines.length = 0;
     for (const pending of calls) {
-      if (pending.request.method === 'init') {
+      if (QUIET_METHODS.has(pending.request.method)) {
         const { method, userId, deviceId } = pending.request;
         pending.request = { method, userId, deviceId };
         pending.line = '';
@@ -283,15 +342,24 @@ export class CallQueue {
     try {
       responses = JSON.parse(await this.exchange(answer, timeout, methods));
     } catch (cause) {
-      const what = cause instanceof TimedOut ? 'timed out' : 'failed';
-      const detail =
-        quiet || cause instanceof TimedOut ? '' : `: ${describeError(cause)}`;
+      const timedOut = cause instanceof TimedOut;
+      const kind = timedOut
+        ? 'timedOut'
+        : cause instanceof SyntaxError
+          ? 'malformed'
+          : 'failed';
+      const what = {
+        timedOut: 'timed out',
+        malformed: 'answered something that is not JSON',
+        failed: 'failed',
+      }[kind];
+      const detail = debug && !timedOut ? `: ${describeError(cause)}` : '';
       for (const { request, reject } of calls) {
         reject(
           new NativeBridgeError(
             `native crypto ${request.method}: the bridge ${what}${detail}`,
-            // The bridge's error may quote the batch, and with it the store key.
-            quiet ? undefined : { cause },
+            kind,
+            debug ? { cause } : undefined,
           ),
         );
       }
@@ -309,11 +377,14 @@ export class CallQueue {
           refusal
             ? new NativeCryptoError(
                 request.method,
-                refusal.code,
-                refusal.message,
+                safeCode(refusal.code, 'BridgeRefused'),
+                debug && typeof refusal.message === 'string'
+                  ? `the bridge refused the batch: ${refusal.message}`
+                  : 'the bridge refused the batch',
               )
             : new NativeBridgeError(
                 `native crypto ${request.method}: the bridge answered something other than the batch`,
+                'malformed',
               ),
         );
       }
@@ -326,7 +397,7 @@ export class CallQueue {
       try {
         if (answer.error) {
           listener?.failed?.(
-            `native crypto pollEvents failed (${answer.error.code})`,
+            `native crypto pollEvents failed (${safeCode(answer.error.code, 'Refused')})`,
             false,
           );
         } else if (!isEvents(answer.result)) {
@@ -348,13 +419,20 @@ export class CallQueue {
       const answer = answers[index];
       if (answer.error) {
         const { code, message, details } = answer.error;
+        const method = item.pending.request.method;
         item.pending.reject(
-          new NativeCryptoError(
-            item.pending.request.method,
-            code,
-            message,
-            details,
-          ),
+          codeOnly(method)
+            ? new NativeCryptoError(
+                method,
+                safeCode(code, 'Refused'),
+                'refused (the message is withheld for this call)',
+              )
+            : new NativeCryptoError(
+                method,
+                safeCode(code, 'Refused'),
+                typeof message === 'string' ? message : 'refused',
+                details,
+              ),
         );
       } else {
         item.pending.resolve(answer.result);

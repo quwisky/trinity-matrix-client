@@ -66,11 +66,13 @@ export function standIn(
 /**
  * A value object of a WASM class that JavaScript cannot construct (no public constructor):
  * the given fields as read-only own properties over the class's guard, and a `free` that
- * releases nothing.
+ * releases nothing. `secrets` become non-enumerable getters, so `JSON.stringify`, `console.log`
+ * and error reporters that walk the object do not print them (WASM's object holds a pointer).
  */
 export function wasmValue<T extends object>(
   real: WasmClass<T>,
   fields: object,
+  secrets: object = {},
 ): T {
   const value = Object.create(guardOf(real)) as T;
   const free = (): void => undefined;
@@ -79,6 +81,9 @@ export function wasmValue<T extends object>(
       value: field,
       enumerable: key !== 'free',
     });
+  }
+  for (const [key, secret] of Object.entries(secrets)) {
+    Object.defineProperty(value, key, { get: () => secret });
   }
   disposeAsFree(value, free);
   return Object.freeze(value);

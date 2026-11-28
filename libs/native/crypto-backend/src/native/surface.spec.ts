@@ -4,6 +4,13 @@ import { resolve } from 'node:path';
 
 import { SHIM_STATICS } from './install';
 import { NativeOlmMachine, NativeStoreHandle } from './machine';
+import {
+  NativeBackupKeys,
+  NativeDevice,
+  NativeOtherUserIdentity,
+  NativeOwnUserIdentity,
+  NativeUserDevices,
+} from './trust';
 
 interface Entry {
   readonly status: string;
@@ -20,6 +27,11 @@ const surface = JSON.parse(
 const SHIM_CLASSES: Record<string, object> = {
   OlmMachine: NativeOlmMachine.prototype,
   StoreHandle: NativeStoreHandle.prototype,
+  Device: NativeDevice.prototype,
+  UserDevices: NativeUserDevices.prototype,
+  OwnUserIdentity: NativeOwnUserIdentity.prototype,
+  OtherUserIdentity: NativeOtherUserIdentity.prototype,
+  BackupKeys: NativeBackupKeys.prototype,
 };
 
 const claimed = Object.entries(surface.stateful).flatMap(([owner, members]) =>
@@ -59,5 +71,10 @@ describe('the shim against native/crypto/surface.json', () => {
       real.OlmMachine,
     );
     expect(new NativeStoreHandle()).toBeInstanceOf(real.StoreHandle);
+    for (const [owner, prototype] of Object.entries(SHIM_CLASSES)) {
+      expect(Object.create(prototype), owner).toBeInstanceOf(
+        (real as unknown as Record<string, new () => object>)[owner]!,
+      );
+    }
   });
 });

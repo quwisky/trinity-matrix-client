@@ -4,240 +4,29 @@
  * encrypted messages and must see the same thing. The same flows run with every client on WASM
  * as the control, so a broken test bed fails there too.
  *
- * Needs cargo (the CLI) and Docker (the disposable homeserver); without either the suite is
- * skipped and says why, and with `CI` set it fails instead.
+ * Needs cargo (the CLI) and Docker (the disposable homeserver); see native-crypto-sdk-support.mjs.
+ * The trust flows (cross-signing, backup, devices) are in native-crypto-sdk-trust.e2e.mjs.
  */
-import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
-import { ClientEvent, createClient } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api/index.js';
-import { repairStaleMembership } from '../libs/data-access/matrix-client/src/lib/stale-membership-repair.ts';
-import { installNativeCrypto } from '../libs/native/crypto-backend/src/index.ts';
-import { registerUser } from '../e2e/mobile/support/matrix.mts';
-import { openE2EInvocation } from '../e2e/support/invocation.mts';
-import { HOMESERVER_HTTP } from '../e2e/support/homeserver/constants.mjs';
-import { startCliBridge } from './native-crypto-cli-bridge.mjs';
-import { buildCli, hasCargo } from './native-crypto-harness.mjs';
-
-const hasDocker = spawnSync('docker', ['info']).status === 0;
-if (!hasDocker && process.env.CI) {
-  throw new Error('The native crypto SDK test bed needs Docker in CI.');
-}
-const missing = !hasCargo
-  ? 'cargo is not on PATH'
-  : !hasDocker
-    ? 'Docker is not available'
-    : '';
-if (missing) console.warn(`native crypto SDK test bed skipped: ${missing}.`);
-
-const verbose = Boolean(process.env.NATIVE_CRYPTO_SDK_LOG);
-const quiet = {
-  trace() {},
-  debug() {},
-  info() {},
-  warn: (...args) => verbose && console.warn(...args),
-  error: (...args) => verbose && console.error(...args),
-  getChild: () => quiet,
-};
-
-const until = async (check, what, timeoutMs = 30_000) => {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const value = await check();
-    if (value) return value;
-    if (Date.now() > deadline) {
-      throw new Error(
-        `timed out waiting for ${typeof what === 'function' ? what() : what}`,
-      );
-    }
-    await new Promise((done) => setTimeout(done, 100));
-  }
-};
-
-const api = async (path, { token, method = 'GET', body } = {}) => {
-  const response = await fetch(`${HOMESERVER_HTTP}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body && JSON.stringify(body),
-  });
-  const text = await response.text();
-  if (!response.ok)
-    throw new Error(`${method} ${path}: ${response.status} ${text}`);
-  return JSON.parse(text);
-};
-
-const registerAndLogin = async (name) => {
-  const username = `${name}-${randomBytes(4).toString('hex')}`;
-  const password = randomBytes(12).toString('hex');
-  await registerUser(username, password);
-  const login = await api('/_matrix/client/v3/login', {
-    method: 'POST',
-    body: {
-      type: 'm.login.password',
-      identifier: { type: 'm.id.user', user: username },
-      password,
-    },
-  });
-  return {
-    userId: login.user_id,
-    deviceId: login.device_id,
-    accessToken: login.access_token,
-  };
-};
-
-/**
- * A fetch that can hold back the to-device events of /sync responses and hand them over in a
- * later one: the room message arrives before its room key.
- */
-const syncNetwork = () => {
-  const held = [];
-  const network = {
-    holding: false,
-    /** /sync requests made: a client whose sync waits makes none. */
-    syncs: 0,
-    fetchFn: async (input, init) => {
-      const url = String(input instanceof Request ? input.url : input);
-      const isSync = url.includes('/_matrix/client/v3/sync');
-      if (isSync) network.syncs++;
-      const response = await fetch(input, init);
-      if (!isSync || !response.ok) return response;
-      if (!network.holding && held.length === 0) return response;
-      const body = await response.json();
-      const events = body.to_device?.events ?? [];
-      body.to_device = {
-        events: network.holding ? [] : [...held.splice(0), ...events],
-      };
-      if (network.holding) held.push(...events);
-      return new Response(JSON.stringify(body), {
-        status: response.status,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    },
-  };
-  return network;
-};
-
-let cliPath;
-const storeRoot = mkdtempSync(join(tmpdir(), 'native-crypto-sdk-'));
-
-/**
- * A logged-in client with crypto: on the shim (`native`, a SQLite store with `storeKey` in its
- * own CLI process) or on WASM (memory store: Node has no IndexedDB).
- */
-const startClient = async (kind, account, { storeKey } = {}) => {
-  const network = syncNetwork();
-  const client = createClient({
-    baseUrl: HOMESERVER_HTTP,
-    ...account,
-    fetchFn: network.fetchFn,
-    logger: quiet,
-  });
-  // As the app does: Tuwunel can send a `state_after` that lags the same response's timeline
-  // (a join beside the invite it replaces), and the SDK applies only `state_after`.
-  repairStaleMembership(client);
-  let bridge;
-  const lost = [];
-  if (kind === 'native') {
-    bridge = startCliBridge(cliPath);
-    const { uninstallForTests } = await installNativeCrypto({
-      bridge,
-      storeDirectory: storeRoot,
-      logger: quiet,
-      onMachineLost: (reason) => lost.push(reason),
-    });
-    // Installed only around this client's init: the other clients of the process stay on
-    // WASM, and the shim's machine keeps working once its factories are restored.
-    try {
-      await client.initRustCrypto({
-        cryptoDatabasePrefix: `${account.userId}|${account.deviceId}`,
-        storageKey: storeKey,
-      });
-    } catch (error) {
-      await bridge.stop();
-      throw error;
-    } finally {
-      uninstallForTests();
-    }
-  } else {
-    await client.initRustCrypto({ useIndexedDB: false });
-  }
-  const prepared = new Promise((done) =>
-    client.on(ClientEvent.Sync, (state) => state === 'PREPARED' && done()),
-  );
-  await client.startClient({ initialSyncLimit: 50, pollTimeout: 1000 });
-  await prepared;
-  return { kind, account, client, network, bridge, storeKey, lost };
-};
-
-const stopClient = async (party) => {
-  party.client.stopClient();
-  await party.bridge?.stop();
-};
-
-/** The machine under the client's RustCrypto: a shim object owns no wasm pointer. */
-const machineOf = (party) => party.client.getCrypto().olmMachine;
-
-const eventIn = (party, roomId, eventId) =>
-  party.client
-    .getRoom(roomId)
-    ?.getLiveTimeline()
-    .getEvents()
-    .find((event) => event.getId() === eventId);
-
-const describeEvent = (event) =>
-  event
-    ? JSON.stringify({
-        type: event.getType(),
-        failure: event.decryptionFailureReason,
-        clear: event.getClearContent(),
-        status: event.status,
-      })
-    : 'no event';
-
-const decrypted = (party, roomId, eventId, what) =>
-  until(
-    () => {
-      const event = eventIn(party, roomId, eventId);
-      return (
-        event?.isEncrypted() &&
-        !event.isBeingDecrypted() &&
-        !event.isDecryptionFailure() &&
-        event.getClearContent()?.body &&
-        event
-      );
-    },
-    () =>
-      `${party.kind} ${party.account.userId} to decrypt ${what} (${describeEvent(eventIn(party, roomId, eventId))}; sync ${party.client.getSyncState()})`,
-  );
-
-const joined = async (party, roomId, userId) => {
-  try {
-    await until(
-      () =>
-        party.client.getRoom(roomId)?.getMember(userId)?.membership === 'join',
-      () =>
-        `${party.account.userId} to see ${userId} join (${party.client.getRoom(roomId)?.getMember(userId)?.membership}, sync ${party.client.getSyncState()}, ${party.network.syncs} syncs)`,
-    );
-  } catch (error) {
-    const members = await api(
-      `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
-      { token: party.account.accessToken },
-    ).catch((failure) => failure.message);
-    throw new Error(
-      `${error.message}; the server's joined members: ${JSON.stringify(Object.keys(members.joined ?? members))}`,
-    );
-  }
-};
-
-const send = async (party, roomId, body) =>
-  (await party.client.sendTextMessage(roomId, body)).event_id;
+import {
+  api,
+  closeBed,
+  decrypted,
+  deviceKeysOnServer,
+  eventIn,
+  joined,
+  machineOf,
+  missing,
+  openBed,
+  ORIENTATIONS,
+  registerAndLogin,
+  send,
+  startClient,
+  stopClient,
+  until,
+} from './native-crypto-sdk-support.mjs';
 
 /** What a receiver reports about a decrypted event. */
 const viewOf = async (party, event) => ({
@@ -248,34 +37,12 @@ const viewOf = async (party, event) => ({
   info: await party.client.getCrypto().getEncryptionInfoForEvent(event),
 });
 
-const deviceKeysOnServer = async (viewer, account) => {
-  const answer = await api('/_matrix/client/v3/keys/query', {
-    token: viewer.account.accessToken,
-    method: 'POST',
-    body: { device_keys: { [account.userId]: [] } },
-  });
-  return answer.device_keys[account.userId] ?? {};
-};
-
-const ORIENTATIONS = {
-  shim: [
-    ['native', 'wasm'],
-    ['wasm', 'native'],
-  ],
-  control: [['wasm', 'wasm']],
-};
-
 describe.skipIf(missing)('matrix-js-sdk on the native crypto shim', () => {
   let invocation;
   beforeAll(async () => {
-    await wasm.initAsync();
-    cliPath = buildCli();
-    invocation = await openE2EInvocation({ resources: ['homeserver'] });
+    invocation = await openBed();
   });
-  afterAll(async () => {
-    await invocation?.close();
-    rmSync(storeRoot, { recursive: true, force: true });
-  });
+  afterAll(() => closeBed(invocation));
 
   for (const [mode, orientations] of Object.entries(ORIENTATIONS)) {
     describe.each(orientations)(
