@@ -354,6 +354,7 @@ export class NativeOlmMachine {
   #pollFailures = 0;
   /** A refresh of the verifications in flight: its own batches' failed polls start no other. */
   #refreshing = false;
+  #refreshAgain = false;
   /** Megolm sessions that failed to decrypt, by room and session, for a retry after lost events. */
   readonly #undecryptable = new Map<string, RoomKeyJson>();
 
@@ -694,10 +695,21 @@ export class NativeOlmMachine {
     this.#undecryptable.clear();
     if (sessions.length > 0)
       this.#invoke('roomKeysReceived', sessions.map(toRoomKeyInfo));
-    if (this.#refreshing) return;
+    this.#refresh();
+  }
+
+  /** One refresh at a time; events lost while it runs are read by one more after it. */
+  #refresh(): void {
+    if (this.#refreshing) {
+      this.#refreshAgain = true;
+      return;
+    }
     this.#refreshing = true;
     void this.#verifications.refresh().finally(() => {
       this.#refreshing = false;
+      if (!this.#refreshAgain) return;
+      this.#refreshAgain = false;
+      if (!this.#lost && !this.#closed) this.#refresh();
     });
   }
 

@@ -463,6 +463,7 @@ class TimedOut extends Error {}
 
 /** An event for the trace: its type, and a verification's flow and state, nothing else. */
 function describeEvent(event: NativeEvents['events'][number]): string {
+  if (typeof event !== 'object' || event === null) return 'malformed';
   const object = event['request'] ?? event['verification'];
   if (typeof object !== 'object' || object === null) return event.type;
   const fields = object as Record<string, unknown>;

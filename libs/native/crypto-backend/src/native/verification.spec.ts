@@ -810,6 +810,20 @@ describe('failing polls', () => {
     expect(reads).toBeLessThanOrEqual(2);
   });
 
+  it('reads the flows once more when events are lost during a refresh', async () => {
+    const answers: Record<string, Answer> = { trackedUsers: [] };
+    const { olm, crate } = await incoming(answers);
+    let reads = 0;
+    answers['getVerificationRequest'] = () => {
+      // The first refresh's own batch loses events again.
+      if (reads++ === 0) crate.dropped = 1;
+      return { result: request() };
+    };
+    crate.dropped = 1;
+    await olm.trackedUsers();
+    await vi.waitFor(() => expect(reads).toBe(2));
+  });
+
   it('counts only failures in a row', async () => {
     const lost = vi.fn();
     const { olm, crate } = await machine(
