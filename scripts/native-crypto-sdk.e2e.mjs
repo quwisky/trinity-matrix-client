@@ -8,7 +8,7 @@
  * skipped and says why, and with `CI` set it fails instead.
  */
 import { spawnSync } from 'node:child_process';
-import { createHmac, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,11 +17,9 @@ import { ClientEvent, createClient } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api/index.js';
 import { repairStaleMembership } from '../libs/data-access/matrix-client/src/lib/stale-membership-repair.ts';
 import { installNativeCrypto } from '../libs/native/crypto-backend/src/index.ts';
+import { registerUser } from '../e2e/mobile/support/matrix.mts';
 import { openE2EInvocation } from '../e2e/support/invocation.mts';
-import {
-  HOMESERVER_HTTP,
-  REGISTRATION_SHARED_SECRET,
-} from '../e2e/support/homeserver/constants.mjs';
+import { HOMESERVER_HTTP } from '../e2e/support/homeserver/constants.mjs';
 import { startCliBridge } from './native-crypto-cli-bridge.mjs';
 import { buildCli, hasCargo } from './native-crypto-harness.mjs';
 
@@ -78,14 +76,7 @@ const api = async (path, { token, method = 'GET', body } = {}) => {
 const registerAndLogin = async (name) => {
   const username = `${name}-${randomBytes(4).toString('hex')}`;
   const password = randomBytes(12).toString('hex');
-  const { nonce } = await api('/_synapse/admin/v1/register');
-  const mac = createHmac('sha1', REGISTRATION_SHARED_SECRET)
-    .update(`${nonce}\0${username}\0${password}\0notadmin`)
-    .digest('hex');
-  await api('/_synapse/admin/v1/register', {
-    method: 'POST',
-    body: { nonce, username, password, admin: false, mac },
-  });
+  await registerUser(username, password);
   const login = await api('/_matrix/client/v3/login', {
     method: 'POST',
     body: {

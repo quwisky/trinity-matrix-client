@@ -166,7 +166,7 @@ jobs:
           if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             changed=$(git -c core.quotePath=false diff --no-renames --name-only "$BASE...HEAD")
             manifest=$(git diff --no-renames -U0 "$BASE...HEAD" -- package.json)
-            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|patches/matrix-js-sdk|e2e/support/|libs/data-access/matrix-client/src/lib/stale-membership-repair\.ts$|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
+            if ! grep -qE '^(native/crypto/|libs/native/crypto-backend/|patches/matrix-js-sdk|e2e/support/|e2e/mobile/support/matrix\.mts$|libs/data-access/matrix-client/src/lib/stale-membership-repair\.ts$|scripts/native-crypto-|scripts/project\.json$|\.github/actions/setup/|\.github/workflows/ci\.yml$)' <<< "$changed" && ! grep -qE '^[+-].*@matrix-org/matrix-sdk-crypto-wasm' <<< "$manifest"; then
               run=false
             fi
           fi
