@@ -666,7 +666,9 @@ describe.skipIf(missing)(
                 'wasm',
                 await registerAndLogin('dave'),
               );
-              await viewer.client.invite(roomId, dave.account.userId);
+              // Carol (WASM, not cross-signed) invites: a cross-signed inviter shares room history
+              // (MSC4268 key bundles), which the shim leaves to slice 4.
+              await parties.carol.client.invite(roomId, dave.account.userId);
               await until(
                 () => dave.client.getRoom(roomId),
                 'dave to get the invite',
