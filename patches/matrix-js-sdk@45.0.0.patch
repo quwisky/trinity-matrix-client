@@ -727,6 +727,50 @@ index 97a01598f3c0328fd6b8684e2879719e9461f7e0..ab8b12b181a58e3d5fba221a9b2d29b3
      const backupDecryptor = this.createBackupDecryptor(decryptionKey);
      this.importKeyBackup({
        rooms: {
+diff --git a/lib/rust-crypto/rust-crypto.js b/lib/rust-crypto/rust-crypto.js
+index 53fc9177870f797c5e0e99758595cb5ccd20135b..645534ec250a42ead771e55a3e03d68933690cf3 100644
+--- a/lib/rust-crypto/rust-crypto.js
++++ b/lib/rust-crypto/rust-crypto.js
+@@ -229,7 +229,8 @@ export class RustCrypto extends TypedEventEmitter {
+     //   but we don't have an easy way to check that. Possibly the rust side could trigger a key request and then
+     //   block until it happens.
+     logger.info(`Checking inviter cross-signing keys`);
+-    const request = this.olmMachine.queryKeysForUsers([new RustSdkCryptoJs.UserId(inviter)]);
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    const request = await this.olmMachine.queryKeysForUsers([new RustSdkCryptoJs.UserId(inviter)]);
+     await this.outgoingRequestProcessor.makeOutgoingRequest(request);
+     const bundleData = await this.olmMachine.getReceivedRoomKeyBundleData(new RustSdkCryptoJs.RoomId(roomId), new RustSdkCryptoJs.UserId(inviter));
+     if (!bundleData) {
+@@ -353,7 +354,8 @@ export class RustCrypto extends TypedEventEmitter {
+         /* make sure we have an *up-to-date* idea of the user's cross-signing keys. This is important, because if we
+          * return "false" here, we will end up generating new cross-signing keys and replacing the existing ones.
+          */
+-        const request = this.olmMachine.queryKeysForUsers(
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const request = await this.olmMachine.queryKeysForUsers(
+         // clone as rust layer will take ownership and it's reused later
+         [rustTrackedUser.clone()]);
+         await this.outgoingRequestProcessor.makeOutgoingRequest(request);
+@@ -1355,7 +1357,8 @@ export class RustCrypto extends TypedEventEmitter {
+     logger.info(`Uploaded encrypted key blob: ${JSON.stringify(uploadResponse)}`);
+ 
+     // 4. We may not share a room with the user, so get a fresh list of devices for the invited user.
+-    const req = this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(userId)]);
++    // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++    const req = await this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(userId)]);
+     await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+ 
+     // 5. Establish Olm sessions with all of the recipient's devices.
+@@ -1810,7 +1813,8 @@ export class RustCrypto extends TypedEventEmitter {
+       // will immediately abort verification. So we explicitly fetch it
+       // from /keys/query and wait for that request to complete before we
+       // call receiveVerificationEvent.
+-      const req = this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(senderId)]);
++      // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++      const req = await this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(senderId)]);
+       await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+     }
+     await this.getOlmMachineOrThrow().receiveVerificationEvent(JSON.stringify({
 diff --git a/src/http-api/fetch.ts b/src/http-api/fetch.ts
 index f52b7d4b31298925ff8c51ae0579131da69562c9..b0bd31ed2090671be267084199b26cd936366eca 100644
 --- a/src/http-api/fetch.ts
@@ -1206,3 +1250,47 @@ index 684c083daad4500dacf17678217f2827a5d0e25c..7be0333ee5163cf605525751fd204a5b
              prefix: ClientPrefix.V3,
          });
      }
+diff --git a/src/rust-crypto/rust-crypto.ts b/src/rust-crypto/rust-crypto.ts
+index 3904a9d55cbed0c2cbadab2a30bfa1ed186694b7..f6e9f0f36e356f21142d443b102cd8bdd15b441b 100644
+--- a/src/rust-crypto/rust-crypto.ts
++++ b/src/rust-crypto/rust-crypto.ts
+@@ -350,7 +350,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+         //   but we don't have an easy way to check that. Possibly the rust side could trigger a key request and then
+         //   block until it happens.
+         logger.info(`Checking inviter cross-signing keys`);
+-        const request = this.olmMachine.queryKeysForUsers([new RustSdkCryptoJs.UserId(inviter)]);
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const request = await this.olmMachine.queryKeysForUsers([new RustSdkCryptoJs.UserId(inviter)]);
+         await this.outgoingRequestProcessor.makeOutgoingRequest(request);
+ 
+         const bundleData = await this.olmMachine.getReceivedRoomKeyBundleData(
+@@ -518,7 +519,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+                 /* make sure we have an *up-to-date* idea of the user's cross-signing keys. This is important, because if we
+                  * return "false" here, we will end up generating new cross-signing keys and replacing the existing ones.
+                  */
+-                const request = this.olmMachine.queryKeysForUsers(
++                // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++                const request = await this.olmMachine.queryKeysForUsers(
+                     // clone as rust layer will take ownership and it's reused later
+                     [rustTrackedUser.clone()],
+                 );
+@@ -1694,7 +1696,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+         logger.info(`Uploaded encrypted key blob: ${JSON.stringify(uploadResponse)}`);
+ 
+         // 4. We may not share a room with the user, so get a fresh list of devices for the invited user.
+-        const req = this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(userId)]);
++        // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++        const req = await this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(userId)]);
+         await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+ 
+         // 5. Establish Olm sessions with all of the recipient's devices.
+@@ -2225,7 +2228,8 @@ export class RustCrypto extends TypedEventEmitter<RustCryptoEvents, CryptoEventH
+             // will immediately abort verification. So we explicitly fetch it
+             // from /keys/query and wait for that request to complete before we
+             // call receiveVerificationEvent.
+-            const req = this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(senderId)]);
++            // Trinity patch: awaited, as the native crypto shim answers it with a promise.
++            const req = await this.getOlmMachineOrThrow().queryKeysForUsers([new RustSdkCryptoJs.UserId(senderId)]);
+             await this.outgoingRequestProcessor.makeOutgoingRequest(req);
+         }
+ 
