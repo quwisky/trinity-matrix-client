@@ -895,10 +895,10 @@ describe('Android E2E split', () => {
     expect(wait.wait).toEqual(['android-prebuild', 'homeserver-pull']);
   });
 
-  it('reports both Android jobs under the required check name', () => {
+  it('reports both Android jobs and the release builds under the required check name', () => {
     const gate = workflow.jobs['mobile-e2e-result'];
     expect(gate.name).toBe('Mobile E2E (Android)');
-    expect(gate.needs).toEqual(['classify', 'mobile-e2e']);
+    expect(gate.needs).toEqual(['classify', 'mobile-e2e', 'android-release']);
     expect(gate.steps).toEqual([RESULT_GATE_STEP]);
     expect(job.name).not.toBe('Mobile E2E (Android)');
   });
@@ -1604,5 +1604,82 @@ describe('native crypto job', () => {
       expect(detect({ 'libs/a.ts': 'changed\n' }, '')).toBe('run=true');
       expect(detect({}, '0'.repeat(40))).toBe('run=true');
     });
+  });
+});
+
+describe('Native crypto on Android', () => {
+  const PREBUILT = '${{ github.workspace }}/dist/native-crypto-android';
+  const ARTIFACT =
+    'native-crypto-android-${{ github.run_id }}-${{ github.run_attempt }}';
+  const libraries = workflow.jobs['native-crypto-android'];
+  const release = workflow.jobs['android-release'];
+
+  it('cross-builds the libraries once per run with a pinned toolchain, behind a source-keyed cache', () => {
+    expect(libraries.env).toEqual({
+      RUSTUP_TOOLCHAIN: workflow.jobs['native-crypto'].env.RUSTUP_TOOLCHAIN,
+      CARGO_NDK_VERSION: '4.1.2',
+      ANDROID_NDK_VERSION: '28.2.13676358',
+    });
+    const cache = libraries.steps.find(({ id }) => id === 'libraries');
+    for (const input of [
+      'native/crypto/Cargo.lock',
+      'native/crypto/src/**',
+      'native/crypto/build-android.sh',
+      'env.RUSTUP_TOOLCHAIN',
+      'env.ANDROID_NDK_VERSION',
+    ])
+      expect(cache.with.key).toContain(input);
+    const runs = libraries.steps.map(({ run }) => run ?? '').join('\n');
+    expect(runs).toContain(
+      'native/crypto/build-android.sh dist/native-crypto-android',
+    );
+    for (const target of [
+      'aarch64-linux-android',
+      'armv7-linux-androideabi',
+      'i686-linux-android',
+      'x86_64-linux-android',
+    ])
+      expect(runs).toContain(target);
+    expect(runs).toContain(
+      'cargo install cargo-ndk --locked --version "$CARGO_NDK_VERSION"',
+    );
+    const upload = libraries.steps.find(({ uses }) =>
+      uses?.startsWith('actions/upload-artifact@'),
+    );
+    expect(upload.with.name).toBe(ARTIFACT);
+  });
+
+  it('hands the libraries to every Android build, which then needs no Rust', () => {
+    for (const id of ['mobile-e2e', 'mobile-mas-e2e', 'android-release']) {
+      const job = workflow.jobs[id];
+      expect(job.needs).toContain('native-crypto-android');
+      expect(job.if).toContain(
+        "needs.native-crypto-android.result == 'success'",
+      );
+      expect(job.env.TRINITY_NATIVE_CRYPTO_PREBUILT).toBe(PREBUILT);
+      const download = job.steps.find(({ uses }) =>
+        uses?.startsWith('actions/download-artifact@'),
+      );
+      expect(download.with).toEqual({
+        name: ARTIFACT,
+        path: 'dist/native-crypto-android',
+      });
+    }
+  });
+
+  it('builds a release with native crypto and without it, each checked for isolation', () => {
+    expect(release.strategy.matrix['native-crypto']).toEqual(['on', 'off']);
+    expect(release.env.TRINITY_NATIVE_CRYPTO).toBe(
+      "${{ matrix.native-crypto == 'on' && '1' || '0' }}",
+    );
+    const runs = release.steps.map(({ run }) => run ?? '');
+    const build = runs.findIndex((run) => run.includes('bundleRelease'));
+    const check = runs.findIndex((run) =>
+      run.startsWith('node scripts/android-release-isolation.mjs'),
+    );
+    expect(build).toBeGreaterThanOrEqual(0);
+    expect(check).toBeGreaterThan(build);
+    expect(runs[check]).toContain('app-release.aab');
+    expect(runs[check]).toContain('app-release-unsigned.apk');
   });
 });

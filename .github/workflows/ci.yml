@@ -817,14 +817,147 @@ jobs:
   # E2E cannot substitute for native Back, process relaunch, Android TLS policy, or the
   # packaged application itself. See e2e/README.md.
   #
+  # The native crypto crate's Android libraries (libtrinity_crypto.so for the four ABIs the app
+  # ships), which every Android build packages by default. Built once per run and handed to
+  # the Android jobs as an artifact, so they need no Rust; restored from a cache keyed on the
+  # crate's sources, toolchain and NDK when the crate is unchanged. The toolchain, cargo-ndk
+  # and NDK versions are pinned here and in the developer docs (platforms/android.md).
+  native-crypto-android:
+    needs: classify
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
+    name: Native crypto (Android libraries)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1
+      CARGO_NDK_VERSION: 4.1.2
+      ANDROID_NDK_VERSION: 28.2.13676358
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: libraries
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/native-crypto-android
+          key: native-crypto-android-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-ndk${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('native/crypto/Cargo.toml', 'native/crypto/Cargo.lock', 'native/crypto/build-android.sh', 'native/crypto/src/**') }}
+      - name: Install Rust, the Android targets, cargo-ndk and the NDK
+        if: steps.libraries.outputs.cache-hit != 'true'
+        run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal \
+            --target aarch64-linux-android --target armv7-linux-androideabi \
+            --target i686-linux-android --target x86_64-linux-android
+          cargo install cargo-ndk --locked --version "$CARGO_NDK_VERSION"
+          { yes || :; } | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION" >> "$GITHUB_ENV"
+      # The cargo registry and the cross-build target dir, so a crate change rebuilds only the
+      # crate. Saved on main only (about 3 GB); pull requests restore main's.
+      - id: cargo-cache
+        if: steps.libraries.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            native/crypto/target
+          key: native-crypto-android-cargo-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('native/crypto/Cargo.lock') }}
+          restore-keys: native-crypto-android-cargo-${{ runner.os }}-${{ env.RUSTUP_TOOLCHAIN }}-
+      - name: Cross-build the libraries
+        if: steps.libraries.outputs.cache-hit != 'true'
+        env:
+          CARGO_INCREMENTAL: '0'
+        run: native/crypto/build-android.sh dist/native-crypto-android
+      - if: steps.libraries.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: dist/native-crypto-android
+          key: ${{ steps.libraries.outputs.cache-primary-key }}
+      - if: github.ref == 'refs/heads/main' && steps.libraries.outputs.cache-hit != 'true' && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            native/crypto/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+      - run: ls -l dist/native-crypto-android/*/libtrinity_crypto.so | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-crypto-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/native-crypto-android
+          if-no-files-found: error
+          retention-days: 7
+
+  # A release bundle and APK from the verified renderer, with native crypto (the default) and
+  # without it (the escape hatch), each checked by scripts/android-release-isolation.mjs: the
+  # library for every shipped ABI and the plugin, or no library at all; never debug-only code.
+  # Sizes per ABI go to the step summary.
+  android-release:
+    needs: [classify, renderer, native-crypto-android]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' && needs.native-crypto-android.result == 'success' }}
+    name: Android release build (native crypto ${{ matrix.native-crypto }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        native-crypto: ['on', 'off']
+    env:
+      TRINITY_NATIVE_CRYPTO: ${{ matrix.native-crypto == 'on' && '1' || '0' }}
+      TRINITY_NATIVE_CRYPTO_PREBUILT: ${{ github.workspace }}/dist/native-crypto-android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/restore-verified-renderer
+        with:
+          sha: ${{ needs.renderer.outputs.sha }}
+          source-run-id: ${{ github.run_id }}
+          artifact-id: ${{ needs.renderer.outputs.artifact-id }}
+          artifact-name: ${{ needs.renderer.outputs.artifact-name }}
+          manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
+          destination: dist/renderer-download
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-crypto-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/native-crypto-android
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'android/**/*.gradle', 'libs/native/*/android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+      - run: pnpm nx run trinity-android:sync-prebuilt
+      - run: ./android/gradlew -p android bundleRelease assembleRelease
+      - run: node scripts/android-release-isolation.mjs android/app/build/outputs/bundle/release/app-release.aab android/app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Record the sizes
+        run: |
+          {
+            echo "### Android release, native crypto $TRINITY_NATIVE_CRYPTO"
+            ls -l android/app/build/outputs/bundle/release/app-release.aab android/app/build/outputs/apk/release/app-release-unsigned.apk
+            unzip -l android/app/build/outputs/apk/release/app-release-unsigned.apk 'lib/*' | awk '$4 ~ /^lib\// { split($4, p, "/"); size[p[2]] += $1 } END { for (abi in size) print abi, size[abi] }'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify the release build left the worktree unchanged
+        if: ${{ !cancelled() }}
+        run: git diff --exit-code
+
   # Two jobs, each with its own emulator and homeserver, split the spec files by measured
   # duration (run 37659485183): navigation (~2:20) and deep-link (~1:30) are the slow ones
   # and sit in different shards, about 4:50 of specs each. Put a new spec in the lighter
   # shard; scripts/ci-workflow.spec.mjs fails while a spec file is in neither, but for
   # mas-native-tokens.e2e.mts, which `mobile-mas-e2e` runs.
   mobile-e2e:
-    needs: [classify, renderer]
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' }}
+    needs: [classify, renderer, native-crypto-android]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' && needs.renderer.result == 'success' && needs.native-crypto-android.result == 'success' }}
     name: Mobile E2E (Android ${{ matrix.shard }}/2)
     runs-on: ubuntu-latest
     permissions:
@@ -838,6 +971,8 @@ jobs:
       TRINITY_EMULATOR_API_LEVEL: '36'
       TRINITY_EMULATOR_TARGET: google_apis
       TRINITY_EMULATOR_ARCH: x86_64
+      # Every Android build packages native crypto; these are the libraries built above.
+      TRINITY_NATIVE_CRYPTO_PREBUILT: ${{ github.workspace }}/dist/native-crypto-android
     strategy:
       fail-fast: false
       matrix:
@@ -885,6 +1020,10 @@ jobs:
           artifact-name: ${{ needs.renderer.outputs.artifact-name }}
           manifest-digest: ${{ needs.renderer.outputs.manifest-digest }}
           destination: dist/renderer-download
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: native-crypto-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/native-crypto-android
 
       # Restored here and saved at the end of a successful run on main only; other refs
       # restore main's entries.
@@ -1108,8 +1247,8 @@ jobs:
   # says what to do). The owner's rule: non-blocking until about 10 green runs in a row, then
   # required through a result job.
   mobile-mas-e2e:
-    needs: [classify, renderer]
-    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.android-mas == 'true' && needs.renderer.result == 'success' }}
+    needs: [classify, renderer, native-crypto-android]
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.android-mas == 'true' && needs.renderer.result == 'success' && needs.native-crypto-android.result == 'success' }}
     name: Mobile E2E (Android ${{ matrix.shard }}, non-blocking)
     continue-on-error: true
     runs-on: ubuntu-latest
@@ -1123,6 +1262,7 @@ jobs:
       TRINITY_EMULATOR_API_LEVEL: '36'
       TRINITY_EMULATOR_TARGET: google_apis
       TRINITY_EMULATOR_ARCH: x86_64
+      TRINITY_NATIVE_CRYPTO_PREBUILT: ${{ github.workspace }}/dist/native-crypto-android
       TRINITY_E2E_MAS: '1'
     strategy:
       matrix:
@@ -1131,10 +1271,10 @@ jobs:
             specs: ./specs/mas-native-tokens.e2e.mts
     steps: *android-e2e-steps
 
-  # Branch rules require the check "Mobile E2E (Android)"; both Android jobs report under
-  # it through this job, which succeeds only when both succeeded.
+  # Branch rules require the check "Mobile E2E (Android)"; both Android jobs and the two
+  # release builds report under it through this job, which succeeds only when all succeeded.
   mobile-e2e-result:
-    needs: [classify, mobile-e2e]
+    needs: [classify, mobile-e2e, android-release]
     if: ${{ !cancelled() && github.event_name != 'schedule' && needs.classify.outputs.mode != 'docs' }}
     name: Mobile E2E (Android)
     runs-on: ubuntu-latest
