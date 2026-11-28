@@ -2,6 +2,11 @@ import * as real from '@matrix-org/matrix-sdk-crypto-wasm-real';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import {
+  NativeDehydratedDevice,
+  NativeDehydratedDevices,
+  NativeRehydratedDevice,
+} from './dehydrated';
 import { SHIM_STATICS } from './install';
 import { NativeOlmMachine, NativeStoreHandle } from './machine';
 import {
@@ -11,6 +16,7 @@ import {
   NativeOwnUserIdentity,
   NativeUserDevices,
 } from './trust';
+import { NativeQr, NativeSas, NativeVerificationRequest } from './verification';
 
 interface Entry {
   readonly status: string;
@@ -32,6 +38,12 @@ const SHIM_CLASSES: Record<string, object> = {
   OwnUserIdentity: NativeOwnUserIdentity.prototype,
   OtherUserIdentity: NativeOtherUserIdentity.prototype,
   BackupKeys: NativeBackupKeys.prototype,
+  VerificationRequest: NativeVerificationRequest.prototype,
+  Sas: NativeSas.prototype,
+  Qr: NativeQr.prototype,
+  DehydratedDevices: NativeDehydratedDevices.prototype,
+  DehydratedDevice: NativeDehydratedDevice.prototype,
+  RehydratedDevice: NativeRehydratedDevice.prototype,
 };
 
 const claimed = Object.entries(surface.stateful).flatMap(([owner, members]) =>
@@ -41,7 +53,17 @@ const claimed = Object.entries(surface.stateful).flatMap(([owner, members]) =>
 );
 
 describe('the shim against native/crypto/surface.json', () => {
-  it('claims members', () => {
+  it('claims every member a native call or the shim answers', () => {
+    const unclaimed = Object.entries(surface.stateful).flatMap(
+      ([owner, members]) =>
+        Object.entries(members)
+          .filter(
+            ([, entry]) =>
+              ['done', 'shim'].includes(entry.status) && !entry.shimImpl,
+          )
+          .map(([member]) => `${owner}.${member}`),
+    );
+    expect(unclaimed).toEqual([]);
     expect(claimed.length).toBeGreaterThan(0);
   });
 

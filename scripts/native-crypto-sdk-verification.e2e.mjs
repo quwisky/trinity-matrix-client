@@ -101,8 +101,21 @@ const incomingOf = (party, flowId) =>
 const phaseIs = (request, phase, what) =>
   until(
     () => request.phase === phase,
-    () => `${what} to reach phase ${phase} (now ${request.phase})`,
+    () =>
+      `${what} to reach phase ${phase} (now ${request.phase}, cancelled ${request.cancellationCode} by ${request.cancellingUserId})`,
   );
+
+/** `promise`, or an error naming `what` once 30 s passed. */
+const settled = (promise, what) =>
+  Promise.race([
+    promise,
+    new Promise((_, fail) =>
+      setTimeout(
+        () => fail(new Error(`timed out waiting for ${what()}`)),
+        30_000,
+      ),
+    ),
+  ]);
 
 /** The phases a request goes through, as its Change events show them (repeats folded). */
 const track = (request) => {
@@ -142,8 +155,21 @@ const crossSign = async (party) => {
   );
 };
 
+/**
+ * Waits until `viewer` knows `subject`'s device: upstream ignores a request from a device it has
+ * not downloaded yet, on either backend.
+ */
+const knows = (viewer, subject) =>
+  eventually(
+    viewer,
+    async () => (await deviceStatus(viewer, subject)) !== null,
+    `${viewer.account.deviceId} to know ${subject.account.deviceId}`,
+  );
+
 /** A request from `from` and the same request as `to` received it, both tracked. */
 const requestPair = async (from, to, start) => {
+  await knows(to, from);
+  await knows(from, to);
   const request = await start();
   const incoming = await incomingOf(to, request.transactionId);
   return {
@@ -194,7 +220,11 @@ const runQr = async (pair, showerSide) => {
   expect(callbacks).not.toBeNull();
   const showDone = shown.verify();
   callbacks.confirm();
-  await Promise.all([scanDone, showDone]);
+  await settled(
+    Promise.all([scanDone, showDone]),
+    () =>
+      `both QR verifiers to finish (shower ${shower.phase}, scanner ${scanner.phase}, shown QR done ${shown.hasBeenCancelled})`,
+  );
   await phaseIs(shower, Done, 'the shower');
   await phaseIs(scanner, Done, 'the scanner');
 };
@@ -574,11 +604,19 @@ describe.skipIf(missing)(
           it.skipIf(!native)(
             'sees a request that arrived while the shim client was offline',
             async () => {
-              const offlineName =
-                parties.alice.kind === 'native' ? 'alice' : 'bob';
-              const offline = parties[offlineName];
+              // A new user: a client started again without a sync token gets the timeline again,
+              // and an old in-room request from the same user in it would cancel the new one
+              // upstream (on either backend).
+              const offline = await start(
+                'native',
+                await registerAndLogin('dave'),
+              );
               const requester =
-                offlineName === 'alice' ? parties.bob : parties.alice;
+                parties.alice.kind === 'wasm' ? parties.alice : parties.bob;
+              // A room without verification events in it, so both track each other's devices.
+              await encryptedRoom(requester, [offline]);
+              await knows(offline, requester);
+              await knows(requester, offline);
               await stopClient(offline);
               const request = await crypto(requester).requestDeviceVerification(
                 offline.account.userId,
@@ -586,11 +624,8 @@ describe.skipIf(missing)(
               );
               const back = await startClient('native', offline.account, {
                 storeKey: offline.storeKey,
-                clientOptions: offline.clientOptions,
               });
-              watchRequests(back);
               started.push(back);
-              parties[offlineName] = back;
               const seen = await until(
                 () =>
                   crypto(back)
