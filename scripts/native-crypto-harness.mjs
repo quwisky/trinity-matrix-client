@@ -24,7 +24,7 @@ if (!hasCargo) {
 }
 
 /** Builds the CLI (incrementally) and returns its path, or fails with cargo's output. */
-const buildCli = () => {
+export const buildCli = () => {
   const manifest = resolve(root, 'native/crypto/Cargo.toml');
   const args = ['build', '--locked', '--bin', 'trinity-crypto-cli'];
   const result = spawnSync(

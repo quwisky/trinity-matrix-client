@@ -64,6 +64,16 @@
         "cwd": "{workspaceRoot}"
       }
     },
+    "native-crypto-sdk": {
+      "//": "matrix-js-sdk's own crypto layer on the native crypto shim (the crate's CLI as the bridge) and on WASM against the disposable homeserver, with an all-WASM control run. Needs cargo and Docker: skips with a stated reason when either is missing, and fails instead in CI.",
+      "cache": false,
+      "parallelism": false,
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --config scripts/native-crypto-sdk.vitest.config.mjs",
+        "cwd": "{workspaceRoot}"
+      }
+    },
     "record-renderer": {
       "cache": false,
       "executor": "nx:run-commands",
