@@ -67,6 +67,22 @@ describe('the shim against native/crypto/surface.json', () => {
     expect(claimed.length).toBeGreaterThan(0);
   });
 
+  it('covers the whole stateful surface, every member done or shimmed', () => {
+    const entries = Object.entries(surface.stateful).flatMap(
+      ([owner, members]) =>
+        Object.entries(members).map(([member, entry]) => ({
+          member: `${owner}.${member}`,
+          status: entry.status,
+        })),
+    );
+    // A member added to or removed from the manifest changes this on purpose.
+    expect(entries).toHaveLength(162);
+    expect(
+      entries.filter(({ status }) => !['done', 'shim'].includes(status)),
+    ).toEqual([]);
+    expect(claimed).toHaveLength(162);
+  });
+
   it.each(claimed)('implements %s.%s', (owner, member) => {
     const statics: readonly string[] =
       SHIM_STATICS[owner as keyof typeof SHIM_STATICS] ?? [];
