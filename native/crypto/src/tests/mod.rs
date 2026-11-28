@@ -6,7 +6,11 @@ use serde_json::{Value, json};
 use crate::{call, call_batch};
 
 mod backup;
+mod dehydrated;
+mod devices;
 mod events;
+mod secrets;
+mod verification;
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
@@ -45,6 +49,8 @@ const TO_DEVICE: u64 = 3;
 #[derive(Default)]
 pub(super) struct Homeserver {
     device_keys: BTreeMap<String, Value>,
+    /// User → `/keys/device_signing/upload` body (master, self-signing, user-signing keys).
+    cross_signing: BTreeMap<String, Value>,
     one_time_keys: BTreeMap<String, Vec<(String, Value)>>,
     pub(super) inbox: BTreeMap<String, VecDeque<Value>>,
 }
@@ -56,8 +62,8 @@ impl Homeserver {
             KEYS_UPLOAD => {
                 let me = format!("{user}|{device}");
                 if let Some(keys) = body.get("device_keys") {
-                    self.device_keys
-                        .insert(user.to_owned(), json!({ device: keys }));
+                    let devices = self.device_keys.entry(user.to_owned()).or_insert(json!({}));
+                    devices[device] = keys.clone();
                 }
                 let otks = self.one_time_keys.entry(me).or_default();
                 for (id, key) in body["one_time_keys"].as_object().into_iter().flatten() {
@@ -72,7 +78,23 @@ impl Homeserver {
                         device_keys.insert(queried.clone(), keys.clone());
                     }
                 }
-                json!({ "device_keys": device_keys, "failures": {} })
+                let mut response = json!({ "device_keys": device_keys, "failures": {} });
+                for (field, key) in [
+                    ("master_keys", "master_key"),
+                    ("self_signing_keys", "self_signing_key"),
+                ] {
+                    let keys: serde_json::Map<String, Value> = body["device_keys"]
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .filter_map(|queried| {
+                            let found = self.cross_signing.get(queried)?.get(key)?;
+                            Some((queried.clone(), found.clone()))
+                        })
+                        .collect();
+                    response[field] = Value::Object(keys);
+                }
+                response
             }
             KEYS_CLAIM => {
                 let mut claimed = serde_json::Map::new();
@@ -105,6 +127,16 @@ impl Homeserver {
             }
             other => panic!("unexpected request type {other}"),
         }
+    }
+
+    /// Forgets every device of `user`, as when they are all logged out.
+    pub(super) fn forget_devices(&mut self, user: &str) {
+        self.device_keys.insert(user.to_owned(), json!({}));
+    }
+
+    /// `/keys/device_signing/upload`: replaces `user`'s public cross-signing keys.
+    pub(super) fn upload_signing_keys(&mut self, user: &str, request: &Value) {
+        self.cross_signing.insert(user.to_owned(), body(request));
     }
 
     pub(super) fn send_outgoing(&mut self, user: &str, device: &str) {
@@ -459,6 +491,9 @@ pub(crate) mod hooks {
     pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
     pub(crate) static HOLD: Mutex<Option<(Sender<()>, Receiver<()>)>> = Mutex::new(None);
     pub(crate) static QUEUED: Mutex<Option<(MachineKey, Sender<()>)>> = Mutex::new(None);
+    /// Flow IDs whose requests count as passive and past their deadline.
+    pub(crate) static EXPIRED: Mutex<std::collections::BTreeSet<String>> =
+        Mutex::new(std::collections::BTreeSet::new());
 
     pub(crate) fn hold() {
         let (held, release) = HOLD.lock().unwrap().take().expect("a test set up the hold");

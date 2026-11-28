@@ -10,6 +10,9 @@ use std::sync::LazyLock;
 use serde_json::{Value, json};
 
 mod backup;
+mod bundles;
+mod dehydrated;
+mod devices;
 mod error;
 mod events;
 #[cfg(feature = "jni")]
@@ -17,9 +20,11 @@ mod jni;
 mod machine;
 mod requests;
 mod responses;
+mod secrets;
 mod settings;
 #[cfg(test)]
 mod tests;
+mod verification;
 
 use error::{CallError, CallResult};
 

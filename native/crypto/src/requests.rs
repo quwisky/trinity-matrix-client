@@ -84,7 +84,7 @@ fn keys_upload(id: String, request: &KeysUploadRequest) -> CallResult {
     Ok(json!({ "id": id, "type": RequestType::KeysUpload as u8, "body": body }))
 }
 
-fn keys_query(id: String, request: &KeysQueryRequest) -> CallResult {
+pub fn keys_query(id: String, request: &KeysQueryRequest) -> CallResult {
     let body = body(&[
         ("timeout", timeout_ms(request.timeout)),
         ("device_keys", to_value(&request.device_keys)?),
@@ -116,7 +116,14 @@ fn signature_upload(id: String, request: &SignatureUploadRequest) -> CallResult 
     Ok(json!({ "id": id, "type": RequestType::SignatureUpload as u8, "body": body }))
 }
 
-fn room_message(id: String, request: &RoomMessageRequest) -> CallResult {
+/// A signature upload a call returns directly (`Device.verify`, `bootstrapCrossSigning`):
+/// WASM gives it no ID, as it is not marked as sent.
+pub fn signature_upload_without_id(request: &SignatureUploadRequest) -> CallResult {
+    let body = serde_json::to_string(&request.signed_keys)?;
+    Ok(json!({ "type": RequestType::SignatureUpload as u8, "body": body }))
+}
+
+pub fn room_message(id: String, request: &RoomMessageRequest) -> CallResult {
     Ok(json!({
         "id": id,
         "type": RequestType::RoomMessage as u8,

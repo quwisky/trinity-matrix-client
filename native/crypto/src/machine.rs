@@ -25,11 +25,16 @@ use tokio::sync::{Mutex, MutexGuard};
 use zeroize::Zeroizing;
 
 use crate::backup;
+use crate::bundles;
+use crate::dehydrated::{self, Rehydration};
+use crate::devices;
 use crate::error::{CallError, CallResult};
 use crate::events;
 use crate::requests::{self, RequestType};
 use crate::responses;
-use crate::settings::{DecryptionSettingsParams, EncryptionSettingsParams};
+use crate::secrets;
+use crate::settings::{self, DecryptionSettingsParams, EncryptionSettingsParams};
+use crate::verification;
 
 pub(crate) type MachineKey = (OwnedUserId, OwnedDeviceId);
 
@@ -43,6 +48,8 @@ struct StoreIdentity {
 struct OpenMachine {
     machine: OlmMachine,
     store: StoreIdentity,
+    /// Goes with the machine; `init` drops it too.
+    rehydration: Rehydration,
 }
 
 /// A device's slot. The machine mutex is held for a whole call, so calls for one device
@@ -91,8 +98,74 @@ const MACHINE_METHODS: &[&str] = &[
     "isBackupEnabled",
     "verifyBackup",
     "sign",
+    "getDevice",
+    "getUserDevices",
+    "getIdentity",
+    "setLocalTrust",
+    "verifyDevice",
+    "encryptToDeviceEvent",
+    "verifyIdentity",
+    "withdrawVerification",
+    "pinCurrentMasterKey",
+    "queryKeysForUsers",
+    "trackedUsers",
+    "markAllTrackedUsersAsDirty",
+    "crossSigningStatus",
+    "bootstrapCrossSigning",
+    "exportCrossSigningKeys",
+    "importCrossSigningKeys",
+    "getVerificationRequest",
+    "getVerificationRequests",
+    "getVerification",
+    "receiveVerificationEvent",
+    "requestDeviceVerification",
+    "requestIdentityVerification",
+    "verificationRequestContent",
+    "acceptVerificationRequest",
+    "cancelVerificationRequest",
+    "startSas",
+    "generateQrCode",
+    "scanQrCode",
+    "acceptSas",
+    "confirmSas",
+    "cancelSas",
+    "cancelQr",
+    "confirmQrScanning",
+    "reciprocateQr",
+    "qrCodeBytes",
+    "receiveSyncChangesMsc4186",
+    "encryptStateEvent",
+    "invalidateGroupSession",
+    "getRoomSettings",
+    "setRoomSettings",
+    "roomKeyRequestsEnabled",
+    "getSecretsFromInbox",
+    "deleteSecretsFromInbox",
+    "pushSecretToVerifiedDevices",
+    "exportSecretsBundle",
+    "importSecretsBundle",
+    "buildRoomKeyBundle",
+    "shareRoomKeyBundleData",
+    "getReceivedRoomKeyBundleData",
+    "receiveRoomKeyBundle",
+    "getPendingKeyBundleDetailsForRoom",
+    "getAllRoomsPendingKeyBundles",
+    "storeRoomPendingKeyBundle",
+    "clearRoomPendingKeyBundle",
+    "hasDownloadedAllRoomKeys",
+    "setHasDownloadedAllRoomKeys",
+    "createDehydratedDevice",
+    "getDehydratedDeviceKey",
+    "saveDehydratedDeviceKey",
+    "rehydrateDevice",
+    "receiveRehydratedEvents",
+    "dropRehydratedDevice",
+    #[cfg(test)]
+    "debugRehydration",
     #[cfg(test)]
     "debugPanic",
+    #[cfg(test)]
+    "debugWatches",
     #[cfg(test)]
     "debugHold",
 ];
@@ -121,12 +194,14 @@ fn unknown_machine() -> CallError {
 
 /// Drops the machine if the call holding it panics: the store keeps what was written, and
 /// the next `init` reloads from it instead of reusing half-updated memory.
-struct DropOnPanic<'a>(MutexGuard<'a, Option<OpenMachine>>);
+/// The verification watches go too: they hold the dead machine's objects, store and account.
+struct DropOnPanic<'a>(MutexGuard<'a, Option<OpenMachine>>, &'a Slot);
 
 impl Drop for DropOnPanic<'_> {
     fn drop(&mut self) {
         if std::thread::panicking() {
             *self.0 = None;
+            events(self.1).watches.clear();
         }
     }
 }
@@ -152,15 +227,38 @@ pub async fn dispatch(request: Request) -> CallResult {
         .get(&key)
         .cloned()
         .ok_or_else(unknown_machine)?;
-    let guard = DropOnPanic(lock_slot(&key, &slot).await);
-    let machine = &guard.0.as_ref().ok_or_else(unknown_machine)?.machine;
-    let result = run(machine, method, request.params).await;
+    #[cfg(test)]
+    if method == "debugWatches" {
+        return Ok(json!(events(&slot).watches.len()));
+    }
+    let mut guard = DropOnPanic(lock_slot(&key, &slot).await, &slot);
+    let open = guard.0.as_mut().ok_or_else(unknown_machine)?;
+    let mut found = verification::Found::default();
+    let result = run(
+        &open.machine,
+        &mut open.rehydration,
+        method,
+        request.params,
+        &mut found,
+    )
+    .await;
     // Coop budgeting could make a ready event look pending; the drain must see everything.
-    tokio::task::unconstrained(async { events(&slot).drain() }).await;
+    tokio::task::unconstrained(async {
+        let mut queue = events(&slot);
+        queue.drain();
+        queue.watches.add(found);
+    })
+    .await;
     result
 }
 
-async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
+async fn run(
+    machine: &OlmMachine,
+    rehydration: &mut Rehydration,
+    method: &str,
+    args: Value,
+    found: &mut verification::Found,
+) -> CallResult {
     match method {
         "identityKeys" => Ok(identity_keys(machine)),
         "outgoingRequests" => outgoing_requests(machine).await,
@@ -190,6 +288,116 @@ async fn run(machine: &OlmMachine, method: &str, args: Value) -> CallResult {
         "isBackupEnabled" => backup::is_backup_enabled(machine).await,
         "verifyBackup" => backup::verify_backup(machine, params(args)?).await,
         "sign" => backup::sign(machine, params(args)?).await,
+        "getDevice" => devices::get_device(machine, params(args)?).await,
+        "getUserDevices" => devices::get_user_devices(machine, params(args)?).await,
+        "getIdentity" => devices::get_identity(machine, params(args)?).await,
+        "setLocalTrust" => devices::set_local_trust(machine, params(args)?).await,
+        "verifyDevice" => devices::verify_device(machine, params(args)?).await,
+        "encryptToDeviceEvent" => devices::encrypt_to_device_event(machine, params(args)?).await,
+        "verifyIdentity" => devices::verify_identity(machine, params(args)?).await,
+        "withdrawVerification" => devices::withdraw_verification(machine, params(args)?).await,
+        "pinCurrentMasterKey" => devices::pin_current_master_key(machine, params(args)?).await,
+        "queryKeysForUsers" => devices::query_keys_for_users(machine, params(args)?),
+        "trackedUsers" => devices::tracked_users(machine).await,
+        "markAllTrackedUsersAsDirty" => devices::mark_all_tracked_users_as_dirty(machine).await,
+        "crossSigningStatus" => devices::get_cross_signing_status(machine).await,
+        "bootstrapCrossSigning" => devices::bootstrap_cross_signing(machine, params(args)?).await,
+        "exportCrossSigningKeys" => devices::export_cross_signing_keys(machine).await,
+        "importCrossSigningKeys" => {
+            devices::import_cross_signing_keys(machine, params(args)?).await
+        }
+        "getVerificationRequest" => {
+            verification::get_verification_request(machine, params(args)?, found)
+        }
+        "getVerificationRequests" => {
+            verification::get_verification_requests(machine, params(args)?, found)
+        }
+        "getVerification" => verification::get_verification(machine, params(args)?, found),
+        "receiveVerificationEvent" => {
+            verification::receive_verification_event(machine, params(args)?).await
+        }
+        "requestDeviceVerification" => {
+            verification::request_device_verification(machine, params(args)?, found).await
+        }
+        "requestIdentityVerification" => {
+            verification::request_identity_verification(machine, params(args)?, found).await
+        }
+        "verificationRequestContent" => {
+            verification::verification_request_content(machine, params(args)?).await
+        }
+        "acceptVerificationRequest" => {
+            verification::accept_verification_request(machine, params(args)?)
+        }
+        "cancelVerificationRequest" => {
+            verification::cancel_verification_request(machine, params(args)?)
+        }
+        "startSas" => verification::start_sas(machine, params(args)?, found).await,
+        "generateQrCode" => verification::generate_qr_code(machine, params(args)?, found).await,
+        "scanQrCode" => verification::scan_qr_code(machine, params(args)?, found).await,
+        "acceptSas" => verification::accept_sas(machine, params(args)?),
+        "confirmSas" => verification::confirm_sas(machine, params(args)?).await,
+        "cancelSas" => verification::cancel_sas(machine, params(args)?),
+        "cancelQr" => verification::cancel_qr(machine, params(args)?),
+        "confirmQrScanning" => verification::confirm_qr_scanning(machine, params(args)?),
+        "reciprocateQr" => verification::reciprocate_qr(machine, params(args)?),
+        "qrCodeBytes" => verification::qr_code_bytes(machine, params(args)?),
+        "receiveSyncChangesMsc4186" => {
+            receive_sync_changes_impl(machine, params(args)?, true).await
+        }
+        "encryptStateEvent" => encrypt_state_event(machine, params(args)?).await,
+        "invalidateGroupSession" => invalidate_group_session(machine, params(args)?).await,
+        "getRoomSettings" => settings::get_room_settings(machine, params(args)?).await,
+        "setRoomSettings" => settings::set_room_settings(machine, params(args)?).await,
+        "roomKeyRequestsEnabled" => Ok(room_key_requests_enabled(machine, params(args)?)),
+        "getSecretsFromInbox" => secrets::get_secrets_from_inbox(machine, params(args)?).await,
+        "deleteSecretsFromInbox" => {
+            secrets::delete_secrets_from_inbox(machine, params(args)?).await
+        }
+        "pushSecretToVerifiedDevices" => {
+            secrets::push_secret_to_verified_devices(machine, params(args)?).await
+        }
+        "exportSecretsBundle" => secrets::export_secrets_bundle(machine).await,
+        "importSecretsBundle" => secrets::import_secrets_bundle(machine, params(args)?).await,
+        "buildRoomKeyBundle" => bundles::build_room_key_bundle(machine, params(args)?).await,
+        "shareRoomKeyBundleData" => {
+            bundles::share_room_key_bundle_data(machine, params(args)?).await
+        }
+        "getReceivedRoomKeyBundleData" => {
+            bundles::get_received_room_key_bundle_data(machine, params(args)?).await
+        }
+        "receiveRoomKeyBundle" => bundles::receive_room_key_bundle(machine, params(args)?).await,
+        "getPendingKeyBundleDetailsForRoom" => {
+            bundles::get_pending_key_bundle_details_for_room(machine, params(args)?).await
+        }
+        "getAllRoomsPendingKeyBundles" => bundles::get_all_rooms_pending_key_bundles(machine).await,
+        "storeRoomPendingKeyBundle" => {
+            bundles::store_room_pending_key_bundle(machine, params(args)?).await
+        }
+        "clearRoomPendingKeyBundle" => {
+            bundles::clear_room_pending_key_bundle(machine, params(args)?).await
+        }
+        "hasDownloadedAllRoomKeys" => {
+            bundles::has_downloaded_all_room_keys(machine, params(args)?).await
+        }
+        "setHasDownloadedAllRoomKeys" => {
+            bundles::set_has_downloaded_all_room_keys(machine, params(args)?).await
+        }
+        "createDehydratedDevice" => {
+            dehydrated::create_dehydrated_device(machine, params(args)?).await
+        }
+        "getDehydratedDeviceKey" => dehydrated::get_dehydrated_device_key(machine).await,
+        "saveDehydratedDeviceKey" => {
+            dehydrated::save_dehydrated_device_key(machine, params(args)?).await
+        }
+        "rehydrateDevice" => {
+            dehydrated::rehydrate_device(machine, rehydration, params(args)?).await
+        }
+        "receiveRehydratedEvents" => {
+            dehydrated::receive_rehydrated_events(rehydration, params(args)?).await
+        }
+        "dropRehydratedDevice" => dehydrated::drop_rehydrated_device(rehydration, params(args)?),
+        #[cfg(test)]
+        "debugRehydration" => Ok(json!(rehydration.as_ref().map(|(id, _)| id))),
         #[cfg(test)]
         "debugPanic" => panic!("debugPanic called"),
         #[cfg(test)]
@@ -295,13 +503,14 @@ async fn init(key: MachineKey, mut raw: Value) -> CallResult {
     loop {
         let slot = slot(&key).await;
         let mut guard = lock_slot(&key, &slot).await;
-        if let Some(open) = guard.as_ref() {
+        if let Some(open) = guard.as_mut() {
             if open.store != identity {
                 return Err(CallError::new(
                     "AlreadyOpen",
                     "this device is open on another store; close it first",
                 ));
             }
+            open.rehydration = None;
             return Ok(describe(&open.machine));
         }
         // A close or a failed init removed this slot while we waited for it.
@@ -321,6 +530,7 @@ async fn init(key: MachineKey, mut raw: Value) -> CallResult {
                 *guard = Some(OpenMachine {
                     machine,
                     store: identity,
+                    rehydration: None,
                 });
                 Ok(description)
             }
@@ -430,6 +640,15 @@ async fn receive_sync_changes(
     machine: &OlmMachine,
     params: ReceiveSyncChangesParams,
 ) -> CallResult {
+    receive_sync_changes_impl(machine, params, false).await
+}
+
+/// `use_msc4186`: a missing one-time key count means unchanged (simplified sliding sync).
+async fn receive_sync_changes_impl(
+    machine: &OlmMachine,
+    params: ReceiveSyncChangesParams,
+    use_msc4186: bool,
+) -> CallResult {
     let decryption_settings = match params.decryption_settings {
         Some(settings) => DecryptionSettings::try_from(settings)?,
         None => DecryptionSettings {
@@ -444,9 +663,15 @@ async fn receive_sync_changes(
         next_batch_token: None,
     };
     // Room key updates are dropped as in WASM; callers learn about them through callbacks.
-    let (events, _) = machine
-        .receive_sync_changes(changes, &decryption_settings)
-        .await?;
+    let (events, _) = if use_msc4186 {
+        machine
+            .receive_sync_changes_msc4186(changes, &decryption_settings)
+            .await?
+    } else {
+        machine
+            .receive_sync_changes(changes, &decryption_settings)
+            .await?
+    };
     Ok(Value::Array(
         events
             .into_iter()
@@ -457,8 +682,8 @@ async fn receive_sync_changes(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct UsersParams {
-    users: Vec<OwnedUserId>,
+pub(crate) struct UsersParams {
+    pub(crate) users: Vec<OwnedUserId>,
 }
 
 async fn update_tracked_users(machine: &OlmMachine, params: UsersParams) -> CallResult {
@@ -550,4 +775,52 @@ async fn get_room_event_encryption_info(machine: &OlmMachine, params: EventParam
         .get_room_event_encryption_info(&event, &params.room_id)
         .await?;
     responses::room_encryption_info_value(info)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EncryptStateEventParams {
+    room_id: OwnedRoomId,
+    event_type: String,
+    state_key: String,
+    content: String,
+}
+
+/// The encrypted content as a JSON string, as WASM's `encryptStateEvent`.
+async fn encrypt_state_event(machine: &OlmMachine, params: EncryptStateEventParams) -> CallResult {
+    let content = serde_json::from_str(&params.content)?;
+    let encrypted = machine
+        .encrypt_state_event_raw(
+            &params.room_id,
+            &params.event_type,
+            &params.state_key,
+            &content,
+        )
+        .await?;
+    Ok(Value::String(encrypted.json().get().to_owned()))
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct RoomIdParams {
+    pub(crate) room_id: OwnedRoomId,
+}
+
+async fn invalidate_group_session(machine: &OlmMachine, params: RoomIdParams) -> CallResult {
+    Ok(json!(machine.discard_room_key(&params.room_id).await?))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RoomKeyRequestsParams {
+    enabled: Option<bool>,
+}
+
+/// WASM's `roomKeyRequestsEnabled` getter, and its setter when `enabled` is given. Held in
+/// memory only, as upstream: after an `init` it is the default again.
+fn room_key_requests_enabled(machine: &OlmMachine, params: RoomKeyRequestsParams) -> Value {
+    if let Some(enabled) = params.enabled {
+        machine.set_room_key_requests_enabled(enabled);
+    }
+    json!(machine.are_room_key_requests_enabled())
 }

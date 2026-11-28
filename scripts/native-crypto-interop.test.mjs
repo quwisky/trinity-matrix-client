@@ -10,8 +10,9 @@ import { format, resolveConfig } from 'prettier';
 import {
   Homeserver,
   both,
-  compared,
   covered,
+  each,
+  expectSame,
   hasCargo,
   roomEvent,
   shape,
@@ -45,48 +46,40 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
 
   /**
    * One sender, a native and a WASM receiver, the same messages to both. Returns, per step,
-   * what each receiver answered (native first), with the receivers' own IDs and keys replaced.
+   * what each receiver answered (native first), with the receivers' own IDs and keys replaced,
+   * and the view under which the two answers must be equal.
    */
   const exchange = async (server, senderKind) => {
     const sender = await device(senderKind);
     const receivers = [await device('native'), await device('wasm')];
     const users = [sender, ...receivers].map(({ userId }) => userId);
-    const each = (run) => both(receivers, run);
+    const onReceivers = (run) => both(receivers, run);
     const toDevice = (events, rawEvent) =>
       events.map((event) => ({ ...event, rawEvent: rawEvent(event.rawEvent) }));
+    const same = (view = (answer) => answer) => view;
     const roomId = `!${senderKind}:localhost`;
     await shareRoom(server, sender, receivers, roomId);
+    // Nothing new to track: answers nothing on both sides.
+    const tracked = await onReceivers((receiver) =>
+      receiver.updateTrackedUsers(users),
+    );
     const copies = receivers.map((receiver) => server.pending(receiver));
 
-    const roomKey = await each(async (receiver) =>
-      toDevice(await server.sync(receiver), JSON.parse),
-    );
+    const roomKey = await onReceivers((receiver) => server.sync(receiver));
     receivers.forEach((receiver, index) =>
       server.deliver(receiver, copies[index]),
     );
-    // A replayed olm message carries fresh ciphertext per receiver: compare its shape.
-    const replay = await each(async (receiver) =>
-      toDevice(await server.sync(receiver), (raw) => raw),
-    ).then((answers) =>
-      answers.map((events) =>
-        toDevice(events, (raw) => shape(JSON.parse(raw))),
-      ),
-    );
+    const replay = await onReceivers((receiver) => server.sync(receiver));
 
     const content = { msgtype: 'm.text', body: `from ${senderKind}` };
-    const event = roomEvent(
-      sender,
-      roomId,
-      await sender.encryptRoomEvent(
-        roomId,
-        'm.room.message',
-        JSON.stringify(content),
-      ),
+    const encrypted = await each([sender], (it) =>
+      it.encryptRoomEvent(roomId, 'm.room.message', JSON.stringify(content)),
     );
-    const decrypted = await each((receiver) =>
+    const event = roomEvent(sender, roomId, encrypted[0]);
+    const decrypted = await onReceivers((receiver) =>
       receiver.decryptRoomEvent(event, roomId),
     );
-    const encryptionInfo = await each((receiver) =>
+    const encryptionInfo = await onReceivers((receiver) =>
       receiver.getRoomEventEncryptionInfo(event, roomId),
     );
 
@@ -97,28 +90,44 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
       lonelyRoom,
       await sender.encryptRoomEvent(lonelyRoom, 'm.room.message', '{}'),
     );
-    const missingKey = await each((receiver) =>
+    const missingKey = await onReceivers((receiver) =>
       receiver.decryptRoomEvent(lonely, lonelyRoom),
     );
 
     await shareKey(server, sender, users, `!${senderKind}-later:localhost`);
-    const afterReplay = await each(async (receiver) =>
-      (await server.sync(receiver)).map(({ type }) => type),
-    );
+    const afterReplay = await onReceivers((receiver) => server.sync(receiver));
 
     return {
       sender,
       content,
+      encrypted,
       steps: {
-        roomKey,
-        replay,
-        decrypted,
-        encryptionInfo,
-        missingKey,
-        afterReplay,
+        tracked: [tracked, same()],
+        roomKey: [roomKey, same((events) => toDevice(events, JSON.parse))],
+        // A replayed olm message carries fresh ciphertext per receiver: compare its shape.
+        replay: [
+          replay,
+          same((events) => toDevice(events, (raw) => shape(JSON.parse(raw)))),
+        ],
+        decrypted: [decrypted, same()],
+        encryptionInfo: [encryptionInfo, same()],
+        missingKey: [missingKey, same()],
+        afterReplay: [
+          afterReplay,
+          same((events) => events.map(({ type }) => type)),
+        ],
       },
     };
   };
+
+  /** Each step's native answer through its view. */
+  const viewed = (steps) =>
+    Object.fromEntries(
+      Object.entries(steps).map(([step, [answers, view]]) => [
+        step,
+        view(answers[0]),
+      ]),
+    );
 
   describe.each(['native', 'wasm'])('%s sender', (senderKind) => {
     covered(
@@ -126,16 +135,24 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
         'OlmMachine.receiveSyncChanges',
         'OlmMachine.decryptRoomEvent',
         'OlmMachine.getRoomEventEncryptionInfo',
+        'OlmMachine.updateTrackedUsers',
       ],
       'decrypts on native and WASM with the same results',
       async () => {
-        const { sender, content, steps } = await exchange(
+        const exchanged = await exchange(
           new Homeserver(requestShape),
           senderKind,
         );
-        for (const [step, [native, wasmAnswer]] of Object.entries(steps)) {
-          expect(native, step).toEqual(wasmAnswer);
+        const { sender, content } = exchanged;
+        for (const [step, [answers, view]] of Object.entries(exchanged.steps)) {
+          expectSame(answers, step, view);
         }
+        const steps = Object.fromEntries(
+          Object.entries(exchanged.steps).map(([step, [answers, view]]) => [
+            step,
+            answers.map(view),
+          ]),
+        );
 
         expect(steps.roomKey[0].map(({ type }) => type)).toEqual([Decrypted]);
         expect(steps.roomKey[0][0].rawEvent.type).toBe('m.room_key');
@@ -160,13 +177,13 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     );
   });
 
-  // Every request of the native-sender exchange is compared with WASM's by shape, so all of
-  // that exchange counts as compared; the setup calls are only checked here.
+  // The first request of each type a native device sent (from outgoingRequests,
+  // getMissingSessions, shareRoomKey) and the answer to marking it as sent are compared with
+  // WASM's; so is the content each sender encrypted, by shape.
   covered(
     [
       'OlmMachine.outgoingRequests',
       'OlmMachine.markRequestAsSent',
-      'OlmMachine.updateTrackedUsers',
       'OlmMachine.getMissingSessions',
       'OlmMachine.shareRoomKey',
       'OlmMachine.encryptRoomEvent',
@@ -174,8 +191,8 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
     'emits the same request shapes as WASM and matches the golden file',
     async () => {
       const server = new Homeserver(requestShape);
-      const { steps } = await compared(() => exchange(server, 'native'));
-      await exchange(server, 'wasm');
+      const native = await exchange(server, 'native');
+      const other = await exchange(server, 'wasm');
 
       const { RequestType } = wasm;
       expect(Object.keys(server.shapes.wasm).map(Number).sort()).toEqual(
@@ -186,9 +203,18 @@ describe.skipIf(!hasCargo)(`native crypto interop with WASM${skipped}`, () => {
           RequestType.ToDevice,
         ].sort(),
       );
-      expect(server.shapes.native).toEqual(server.shapes.wasm);
+      server.expectSameRequests();
+      // Fresh ciphertext: the encrypted content by shape.
+      expectSame(
+        [native.encrypted, other.encrypted],
+        'encryptRoomEvent',
+        ([content]) => shape(JSON.parse(content)),
+      );
+      // The golden file predates the `tracked` step, which answers nothing.
       const responses = Object.fromEntries(
-        Object.entries(steps).map(([step, [native]]) => [step, shape(native)]),
+        Object.entries(viewed(native.steps))
+          .filter(([step]) => step !== 'tracked')
+          .map(([step, answer]) => [step, shape(answer)]),
       );
       // Written as Prettier writes it, so `pnpm format:check` accepts the updated file.
       const golden = resolve(

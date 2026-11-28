@@ -196,7 +196,7 @@ pub fn processed_to_device_event(event: ProcessedToDeviceEvent) -> Option<Value>
                 VerificationState::Verified
             );
             info.insert("isSenderVerified".into(), json!(verified));
-            json!({ "type": 0, "rawEvent": raw.json().get(), "encryptionInfo": info })
+            json!({ "type": 0, "rawEvent": without_secret(raw.json().get()), "encryptionInfo": info })
         }
         ProcessedToDeviceEvent::UnableToDecrypt {
             encrypted_event,
@@ -209,6 +209,30 @@ pub fn processed_to_device_event(event: ProcessedToDeviceEvent) -> Option<Value>
         }
         ProcessedToDeviceEvent::Invalid(raw) => json!({ "type": 3, "rawEvent": raw.json().get() }),
     })
+}
+
+/// The decrypted to-device events that carry a secret's value in `content.secret`.
+const SECRET_EVENT_TYPES: [&str; 2] = ["m.secret.send", "io.element.msc4385.secret.push"];
+
+/// A decrypted event as WASM returns it, except that a secret event loses `content.secret`
+/// (unlike WASM): matrix-js-sdk reads secrets from the inbox and would hand the event, value
+/// included, to the app as a `ReceivedToDeviceMessage`.
+fn without_secret(raw: &str) -> String {
+    let Ok(mut event) = serde_json::from_str::<Value>(raw) else {
+        return raw.to_owned();
+    };
+    let is_secret = event["type"]
+        .as_str()
+        .is_some_and(|kind| SECRET_EVENT_TYPES.contains(&kind));
+    match event.get_mut("content").and_then(Value::as_object_mut) {
+        Some(content) if is_secret => {
+            if let Some(Value::String(secret)) = content.remove("secret") {
+                drop(zeroize::Zeroizing::new(secret));
+            }
+            event.to_string()
+        }
+        _ => raw.to_owned(),
+    }
 }
 
 /// WASM `DecryptionErrorCode`, in the same order.
