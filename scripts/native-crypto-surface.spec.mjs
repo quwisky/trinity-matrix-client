@@ -15,6 +15,7 @@ import {
   coveredEntries,
   legacyMigrationUses,
   readSurface,
+  shimObligations,
   statusCounts,
   surfaceErrors,
   usedSymbols,
@@ -49,6 +50,42 @@ describe('native/crypto/surface.json', () => {
       ]),
     );
     expect(table).toEqual(statusCounts(readSurface()));
+  });
+
+  it("names every shim obligation in the guide's milestone 3 list", () => {
+    const guide = readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../apps/docs-developers/src/content/docs/platforms/native-crypto.md',
+      ),
+      'utf8',
+    );
+    const section = guide
+      .split('## What milestone 3 needs')[1]
+      ?.split('\n## ')[0];
+    expect(section).toBeDefined();
+    const obligations = shimObligations(readSurface());
+    expect(obligations).toContain('CollectStrategy.deviceBasedStrategy');
+    expect(obligations).toContain('OlmMachine.receiveSyncChanges');
+    expect(
+      obligations.filter((name) => !section.includes(`\`${name}\``)),
+    ).toEqual([]);
+  });
+});
+
+describe('shimObligations', () => {
+  it('lists shim notes and members whose note says the shim must act', () => {
+    expect(
+      shimObligations({
+        shimNotes: { 'UserId.toString': 'x' },
+        stateful: {
+          OlmMachine: {
+            sign: { note: 'the shim must sign' },
+            close: { note: 'nothing to do' },
+          },
+        },
+      }),
+    ).toEqual(['UserId.toString', 'OlmMachine.sign']);
   });
 });
 
@@ -92,13 +129,19 @@ describe('legacy crypto migration', () => {
         'b.ts':
           'setCryptoStoreFactory(() => store);\nconst opts = { pickleKey: key };',
         'c.ts':
-          '// cryptoStore: no\n/* pickleKey: no */\nconst hasCryptoStore = true;',
+          '// cryptoStore: no\n/* pickleKey: no */\nconst hasCryptoStore = "cryptoStore";',
+        'd.ts': 'createClient({ baseUrl, cryptoStore, pickleKey });',
+        'e.ts': 'opts["cryptoStore"] = s;\nopts.legacyPickleKey = k;',
       }),
     ).toEqual([
-      'a.ts: cryptoStore:',
-      'a.ts: IndexedDBCryptoStore',
-      'b.ts: setCryptoStoreFactory',
-      'b.ts: pickleKey:',
+      'a.ts: property cryptoStore',
+      'a.ts: name IndexedDBCryptoStore',
+      'b.ts: name setCryptoStoreFactory',
+      'b.ts: property pickleKey',
+      'd.ts: property cryptoStore',
+      'd.ts: property pickleKey',
+      'e.ts: member cryptoStore',
+      'e.ts: member legacyPickleKey',
     ]);
   });
 });

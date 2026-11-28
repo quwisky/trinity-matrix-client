@@ -393,6 +393,19 @@ export const surfaceErrors = (
   return errors;
 };
 
+/**
+ * What milestone 3's shim must do, named as `Class.member`: every `shimNotes` member and every
+ * stateful member whose note says "the shim must". The developer guide lists them all.
+ */
+export const shimObligations = (surface) => [
+  ...Object.keys(surface.shimNotes ?? {}),
+  ...Object.entries(surface.stateful ?? {}).flatMap(([owner, members]) =>
+    Object.entries(members)
+      .filter(([, entry]) => /the shim must/i.test(entry.note ?? ''))
+      .map(([member]) => `${owner}.${member}`),
+  ),
+];
+
 /** Counts by status per area, for the developer guide's table. */
 export const statusCounts = (surface) => {
   const counts = {};
@@ -413,16 +426,53 @@ export const readSurface = () => JSON.parse(readFileSync(SURFACE_PATH, 'utf8'));
  * `createClient`, or a store factory set for it. js-sdk migrates only from a store that holds
  * data, and its default is an empty `MemoryCryptoStore`.
  */
-const LEGACY_MIGRATION =
-  /\b(?:cryptoStore|pickleKey|legacyCryptoStore|legacyPickleKey)\s*:|\bsetCryptoStoreFactory\b|\b(?:IndexedDBCryptoStore|LocalStorageCryptoStore)\b/g;
+const LEGACY_OPTIONS = new Set([
+  'cryptoStore',
+  'pickleKey',
+  'legacyCryptoStore',
+  'legacyPickleKey',
+]);
+const LEGACY_NAMES = new Set([
+  'setCryptoStoreFactory',
+  'IndexedDBCryptoStore',
+  'LocalStorageCryptoStore',
+]);
 
-/** `file: match` for each legacy-migration option in `sources` (path → text), outside comments. */
+/**
+ * `file: form name` for each legacy-migration option in `sources` (path → text), read with
+ * TypeScript's parser: an object property (`cryptoStore: s`, or shorthand `{ cryptoStore }`),
+ * a member set or read (`opts.cryptoStore = s`, `opts["cryptoStore"]`), or a use of the store
+ * factory or a legacy store class. Comments and strings elsewhere do not count.
+ */
 export const legacyMigrationUses = (sources) =>
-  Object.entries(sources).flatMap(([path, source]) =>
-    [...withoutComments(source).matchAll(LEGACY_MIGRATION)].map(
-      ([found]) => `${path}: ${found}`,
-    ),
-  );
+  Object.entries(sources).flatMap(([path, source]) => {
+    const found = [];
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest);
+    ts.forEachChild(file, function visit(node) {
+      const option = (name, form) => {
+        if (name !== undefined && LEGACY_OPTIONS.has(name))
+          found.push(`${path}: ${form} ${name}`);
+      };
+      if (
+        (ts.isPropertyAssignment(node) ||
+          ts.isShorthandPropertyAssignment(node)) &&
+        (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+      ) {
+        option(node.name.text, 'property');
+      } else if (ts.isPropertyAccessExpression(node)) {
+        option(node.name.text, 'member');
+      } else if (
+        ts.isElementAccessExpression(node) &&
+        ts.isStringLiteralLike(node.argumentExpression)
+      ) {
+        option(node.argumentExpression.text, 'member');
+      } else if (ts.isIdentifier(node) && LEGACY_NAMES.has(node.text)) {
+        found.push(`${path}: name ${node.text}`);
+      }
+      ts.forEachChild(node, visit);
+    });
+    return found;
+  });
 
 const sourceFiles = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
