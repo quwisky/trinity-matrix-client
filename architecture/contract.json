@@ -132,6 +132,10 @@
     {
       "project": "native-capacitor-auth-session-ios",
       "reason": "The authentication session plugin's Swift sources, reached by the iOS host through Capacitor sync, not through a TypeScript import."
+    },
+    {
+      "project": "native-crypto-backend",
+      "reason": "The crypto backend facade, reached under the @matrix-org/matrix-sdk-crypto-wasm name through a pnpm override, not through a @trinity/* import."
     }
   ],
   "secondaryEntrypoints": [],

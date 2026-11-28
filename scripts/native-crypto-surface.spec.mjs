@@ -372,4 +372,41 @@ describe('usedSymbols', () => {
       rmSync(fixture, { recursive: true, force: true });
     }
   });
+
+  it('follows the crypto-backend facade to the package it re-exports', () => {
+    const facadeRoot = mkdtempSync(join(tmpdir(), 'native-crypto-surface-'));
+    try {
+      const write = (path, text) => {
+        mkdirSync(dirname(join(facadeRoot, path)), { recursive: true });
+        writeFileSync(join(facadeRoot, path), text);
+      };
+      const facade = 'node_modules/@matrix-org/matrix-sdk-crypto-wasm';
+      const real = `${facade}/node_modules/@matrix-org/matrix-sdk-crypto-wasm-real`;
+      write(
+        `${facade}/package.json`,
+        '{ "name": "@trinity/crypto-backend", "types": "index.d.ts", "dependencies": { "@matrix-org/matrix-sdk-crypto-wasm-real": "npm:@matrix-org/matrix-sdk-crypto-wasm@18.9.0" } }',
+      );
+      write(
+        `${facade}/index.d.ts`,
+        "export * from '@matrix-org/matrix-sdk-crypto-wasm-real';\n",
+      );
+      write(
+        `${real}/package.json`,
+        '{ "name": "@matrix-org/matrix-sdk-crypto-wasm", "types": "index.d.ts" }',
+      );
+      write(
+        `${real}/index.d.ts`,
+        'export declare class Thing { channel: string; }\n',
+      );
+      write(
+        'node_modules/matrix-js-sdk/src/a.ts',
+        'import { Thing } from "@matrix-org/matrix-sdk-crypto-wasm";\nexport const read = (thing: Thing) => thing.channel;\n',
+      );
+      expect(
+        usedSymbols(join(facadeRoot, 'node_modules/matrix-js-sdk')),
+      ).toEqual(['Thing', 'Thing.channel']);
+    } finally {
+      rmSync(facadeRoot, { recursive: true, force: true });
+    }
+  });
 });

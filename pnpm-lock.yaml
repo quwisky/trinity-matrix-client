@@ -162,6 +162,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  '@matrix-org/matrix-sdk-crypto-wasm': link:libs/native/crypto-backend
+
 patchedDependencies:
   '@capacitor/privacy-screen@2.0.1': 895d821e62e80deee12f2e83515a60ebb6c4727b1cd86079c4b909f531ca3f7e
   '@ctrl/ngx-emoji-mart@9.3.0': 4d506eef6b9b44e36ca18f16eba0a7f341de02c0100116ea377a328e5f890b0e
@@ -289,8 +292,8 @@ importers:
         specifier: ^1.2.3
         version: 1.2.5
       '@matrix-org/matrix-sdk-crypto-wasm':
-        specifier: 18.9.0
-        version: 18.9.0
+        specifier: link:libs/native/crypto-backend
+        version: link:libs/native/crypto-backend
       '@ng-icons/core':
         specifier: ^36.0.0
         version: 36.1.0(@angular-devkit/schematics@22.2.7(chokidar@5.0.0))(@angular/common@22.2.6(@angular/core@22.2.6(@angular/compiler@22.2.6)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.6(@angular/compiler@22.2.6)(rxjs@7.8.2))(@schematics/angular@22.2.7(chokidar@5.0.0))(rxjs@7.8.2)
@@ -559,6 +562,12 @@ importers:
   libs/native/capacitor-auth-session: {}
 
   libs/native/capacitor-push: {}
+
+  libs/native/crypto-backend:
+    dependencies:
+      '@matrix-org/matrix-sdk-crypto-wasm-real':
+        specifier: npm:@matrix-org/matrix-sdk-crypto-wasm@18.9.0
+        version: '@matrix-org/matrix-sdk-crypto-wasm@18.9.0'
 
 packages:
 
@@ -17447,7 +17456,7 @@ snapshots:
   matrix-js-sdk@45.0.0(patch_hash=edb27e3f59e8ca2b48a5f6f55a92a8e1553625585b1732b2a1f8a8d9e83f1ada):
     dependencies:
       '@babel/runtime': 8.0.10
-      '@matrix-org/matrix-sdk-crypto-wasm': 18.9.0
+      '@matrix-org/matrix-sdk-crypto-wasm': link:libs/native/crypto-backend
       another-json: 0.2.0
       bs58: 6.0.0
       content-type: 3.1.1

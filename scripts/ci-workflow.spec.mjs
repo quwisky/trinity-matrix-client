@@ -521,6 +521,7 @@ describe('MAS sign-in journeys', () => {
       'e2e/support/qr-camera.mts',
       'e2e/support/homeserver/tuwunel-oauth/tuwunel.toml',
       'libs/data-access/auth/src/lib/qr-sign-in/qr-sign-in.adapter.ts',
+      'libs/native/crypto-backend/package.json',
       'libs/feature/settings/src/lib/devices/link-device/link-device.component.ts',
       'libs/data-access/trust/src/lib/trust-devices.service.ts',
       'libs/feature/settings/src/lib/devices/devices-section.component.html',
@@ -1576,6 +1577,7 @@ describe('native crypto job', () => {
 
     it.each([
       'native/crypto/src/lib.rs',
+      'libs/native/crypto-backend/package.json',
       'scripts/native-crypto-pin.mjs',
       'scripts/project.json',
       '.github/actions/setup/action.yml',
