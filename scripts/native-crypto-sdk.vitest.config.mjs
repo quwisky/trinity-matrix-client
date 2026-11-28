@@ -8,7 +8,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['native-crypto-sdk.e2e.mjs'],
+    include: ['native-crypto-sdk*.e2e.mjs'],
     reporters: ['verbose'],
     env: { TRINITY_E2E_PORT_OFFSET: '' },
     fileParallelism: false,
