@@ -24,20 +24,27 @@ export const startCliBridge = (executable) => {
   const send = (line) =>
     new Promise((resolve, reject) => {
       if (failure) return reject(failure);
-      waiting.push({ resolve, reject });
+      waiting.push({ resolve, reject, line });
       child.stdin.write(`${line}\n`);
     });
   return {
     call: send,
     callBatch: send,
+    /** The methods of the requests still waiting for an answer. */
+    pending: () =>
+      waiting.map(({ line }) =>
+        [JSON.parse(line)].flat().map((request) => request.method),
+      ),
     /** Kills the process, as a crash would. */
     kill: () => child.kill('SIGKILL'),
-    stop: () =>
-      new Promise((resolve) => {
-        if (child.exitCode !== null || child.signalCode !== null)
-          return resolve();
-        child.once('exit', () => resolve());
-        child.stdin.end();
-      }),
+    /** Ends the process once the requests written so far (and a `close` queued now) are answered. */
+    stop: async () => {
+      do await new Promise((done) => setTimeout(done, 10));
+      while (waiting.length > 0 && !failure);
+      if (child.exitCode !== null || child.signalCode !== null) return;
+      const exited = new Promise((done) => child.once('exit', done));
+      child.stdin.end();
+      await exited;
+    },
   };
 };

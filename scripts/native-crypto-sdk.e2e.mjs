@@ -50,7 +50,11 @@ const until = async (check, what, timeoutMs = 30_000) => {
   for (;;) {
     const value = await check();
     if (value) return value;
-    if (Date.now() > deadline) throw new Error(`timed out waiting for ${what}`);
+    if (Date.now() > deadline) {
+      throw new Error(
+        `timed out waiting for ${typeof what === 'function' ? what() : what}`,
+      );
+    }
     await new Promise((done) => setTimeout(done, 100));
   }
 };
@@ -216,7 +220,8 @@ const joined = (party, roomId, userId) =>
   until(
     () =>
       party.client.getRoom(roomId)?.getMember(userId)?.membership === 'join',
-    `${party.account.userId} to see ${userId} join`,
+    () =>
+      `${party.account.userId} to see ${userId} join (${party.client.getRoom(roomId)?.getMember(userId)?.membership}, sync ${party.client.getSyncState()})${party.bridge ? ` (waiting: ${JSON.stringify(party.bridge.pending())})` : ''}`,
   );
 
 const send = async (party, roomId, body) =>
