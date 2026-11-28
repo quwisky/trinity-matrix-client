@@ -1127,7 +1127,7 @@ interface ManifestEntry {
 
 /**
  * Every device and identity method whose manifest note says the shim must pass the snapshot's
- * key: implemented ones must send it, the others must still throw without sending anything.
+ * key: each is implemented and must send it.
  * A member added to the manifest is covered without touching this list.
  */
 describe('the expected key on every device and identity call (from the manifest)', () => {
@@ -1205,13 +1205,8 @@ describe('the expected key on every device and identity call (from the manifest)
       target as unknown as Record<string, (...args: unknown[]) => unknown>
     )[member]!;
     const calls = () => sent(crate, entry.native!);
-    if (!entry.shimImpl) {
-      expect(() =>
-        method.apply(target, ARGS[`${owner}.${member}`] ?? []),
-      ).toThrow(NotOnNativeError);
-      expect(calls()).toEqual([]);
-      return;
-    }
+    // Every guarded member is implemented now (slice 4 added the verification starts).
+    expect(entry.shimImpl, `${owner}.${member} is not marked`).toBe(true);
     await Promise.resolve(
       method.apply(target, ARGS[`${owner}.${member}`] ?? []),
     ).catch(() => undefined);

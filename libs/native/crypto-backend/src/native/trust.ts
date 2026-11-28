@@ -320,7 +320,11 @@ export class NativeDevice {
     ) as SignatureUploadRequest;
   }
 
-  /** Synchronous in WASM: matrix-js-sdk awaits it through the repository's patch. */
+  /**
+   * Synchronous in WASM: matrix-js-sdk awaits it through the repository's patch. It starts a flow
+   * and changes nothing on the device, so the snapshot is not read again (the request is mirrored
+   * in verification.ts).
+   */
   public async requestVerification(
     methods?: VerificationMethod[] | null,
   ): Promise<[VerificationRequest, ToDeviceRequest]> {
@@ -536,7 +540,7 @@ export class NativeOwnUserIdentity {
     );
   }
 
-  /** A to-device request to the user's other devices. */
+  /** A to-device request to the user's other devices; the identity itself does not change. */
   public async requestVerification(
     methods?: VerificationMethod[] | null,
   ): Promise<[VerificationRequest, ToDeviceRequest]> {

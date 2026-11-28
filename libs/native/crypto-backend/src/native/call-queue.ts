@@ -64,6 +64,9 @@ export const QUIET_METHODS: ReadonlySet<string> = new Set([
   'rehydrateDevice',
   'saveDehydratedDeviceKey',
   'scanQrCode',
+  // The bundle's file key (`mediaEncryptionInfo`), and the downloaded bundle.
+  'shareRoomKeyBundleData',
+  'receiveRoomKeyBundle',
 ]);
 /**
  * Calls whose ANSWERS carry secrets (private keys, room keys, the backup key, inbox secrets, a
@@ -79,6 +82,9 @@ export const SECRET_ANSWER_METHODS: ReadonlySet<string> = new Set([
   'exportSecretsBundle',
   'getDehydratedDeviceKey',
   'qrCodeBytes',
+  // The bundle's file key (`encryptionInfo`, `mediaEncryptionInfo`).
+  'getReceivedRoomKeyBundleData',
+  'buildRoomKeyBundle',
 ]);
 const codeOnly = (method: string) =>
   QUIET_METHODS.has(method) || SECRET_ANSWER_METHODS.has(method);
