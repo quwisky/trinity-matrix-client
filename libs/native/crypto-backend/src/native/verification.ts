@@ -98,7 +98,7 @@ export interface QrSnapshot extends FlowJson {
   readonly hasBeenScanned: boolean;
 }
 
-type Snapshot = RequestSnapshot | SasSnapshot | QrSnapshot;
+export type Snapshot = RequestSnapshot | SasSnapshot | QrSnapshot;
 
 const isCancelInfo = (value: unknown) =>
   value === undefined ||
@@ -140,7 +140,7 @@ const isQrSnapshot = (value: unknown): boolean =>
   typeof value['state'] === 'number' &&
   typeof value['hasBeenScanned'] === 'boolean';
 
-const isVerificationSnapshot = (value: unknown): boolean =>
+export const isVerificationSnapshot = (value: unknown): boolean =>
   isSasSnapshot(value) || isQrSnapshot(value);
 
 export const isRequestSnapshot = (value: unknown): boolean =>
@@ -199,7 +199,7 @@ const stale = (member: string): NativeCryptoError =>
 type Callback = () => Promise<void>;
 
 /** What every mirror shares: its snapshot, its callbacks, and its flow's calls. */
-abstract class Mirror<T extends Snapshot> {
+export abstract class Mirror<T extends Snapshot> {
   protected json: T;
   protected readonly registry: Verifications;
   readonly #callbacks: Callback[] = [];
@@ -218,10 +218,9 @@ abstract class Mirror<T extends Snapshot> {
     return this.json.isDone || this.json.isCancelled;
   }
 
-  /** Takes a newer snapshot; `notify` runs the callbacks, as WASM does once per change. */
-  public update(json: T, notify: boolean): void {
+  /** Takes a newer snapshot; whether its callbacks run is the caller's choice (see `notify`). */
+  public update(json: T): void {
     this.json = json;
-    if (notify) this.notify();
   }
 
   public same(json: T): boolean {
@@ -604,33 +603,29 @@ export class Verifications {
     return this.#applyRequest(
       checked<RequestSnapshot>(method, answer, isRequestSnapshot),
       'answer',
-    ) as unknown as VerificationRequest;
+    ).request as unknown as VerificationRequest;
   }
 
   /** A SAS or QR code from an answer. */
   public verification(json: SasSnapshot | QrSnapshot): NativeSas | NativeQr {
-    return this.#place(json, false, false);
+    return this.#place(json, false).mirror;
   }
 
-  /** `verificationRequestChanged`: the mirror changes, then its callbacks run. */
-  public requestChanged(snapshot: unknown): void {
-    this.#applyRequest(
-      checked<RequestSnapshot>('pollEvents', snapshot, isRequestSnapshot),
-      'event',
-    );
+  /** `verificationRequestChanged`: updates the mirrors; the returned mirror's callbacks are due. */
+  public requestChanged(json: RequestSnapshot): Mirror<Snapshot>[] {
+    return this.#applyRequest(json, 'event').due;
   }
 
-  /** `verificationChanged`: the flow's current SAS or QR code (a new one if the kind changed). */
-  public verificationChanged(snapshot: unknown): void {
-    this.#place(
-      checked<SasSnapshot | QrSnapshot>(
-        'pollEvents',
-        snapshot,
-        isVerificationSnapshot,
-      ),
-      false,
-      true,
-    );
+  /**
+   * `verificationChanged`: the flow's current SAS or QR code (a new one if the kind changed).
+   * A flow the registry no longer holds is ignored: its request ended, and the crate sends a
+   * verification's last change before its request's end, so no held object misses one.
+   */
+  public verificationChanged(
+    json: SasSnapshot | QrSnapshot,
+  ): Mirror<Snapshot>[] {
+    if (!this.#requests.has(keyOf(json.otherUserId, json.flowId))) return [];
+    return [this.#place(json, false).mirror];
   }
 
   public get(
@@ -676,10 +671,7 @@ export class Verifications {
 
   public drop(keys: readonly string[]): void {
     for (const key of keys) {
-      if (!this.#requests.get(key)?.final) continue;
-      this.#requests.delete(key);
-      this.#verifications.delete(key);
-      this.#shown.delete(key);
+      if (this.#requests.get(key)?.final) this.#forget(key);
     }
   }
 
@@ -706,19 +698,22 @@ export class Verifications {
           this.#verifications.delete(key);
           continue;
         }
-        this.#applyRequest(
-          checked<RequestSnapshot>(
-            'getVerificationRequest',
-            answer,
-            isRequestSnapshot,
-          ),
-          'refresh',
+        const json = checked<RequestSnapshot>(
+          'getVerificationRequest',
+          answer,
+          isRequestSnapshot,
         );
+        for (const mirror of this.#applyRequest(json, 'refresh').due)
+          mirror.notify();
         const verification = this.#verifications.get(key);
         if (verification && !verification.final) {
           const fresh = await this.#call('getVerification', params);
           if (isVerificationSnapshot(fresh)) {
-            this.#place(fresh as SasSnapshot | QrSnapshot, false, true, true);
+            const placed = this.#place(
+              fresh as SasSnapshot | QrSnapshot,
+              false,
+            );
+            if (placed.changed) placed.mirror.notify();
           }
         }
       } catch (error) {
@@ -729,53 +724,61 @@ export class Verifications {
     }
   }
 
+  #forget(key: string): void {
+    this.#requests.delete(key);
+    this.#verifications.delete(key);
+    this.#shown.delete(key);
+  }
+
+  /**
+   * Puts a request snapshot (and the verification it holds) on its flow. `due`: the mirrors
+   * whose callbacks the change calls for: an event runs the request's (each verification change
+   * has an event of its own); a refresh runs it when it found the request changed.
+   */
   #applyRequest(
     json: RequestSnapshot,
     from: 'answer' | 'event' | 'refresh',
-  ): NativeVerificationRequest {
+  ): { request: NativeVerificationRequest; due: Mirror<Snapshot>[] } {
     const key = keyOf(json.otherUserId, json.flowId);
     const known = this.#requests.get(key);
     // A change while the mirror is Transitioned already replaced the flow's verification.
     const replaced = from !== 'answer' && known?.phase() === TRANSITIONED;
-    const changed =
-      from === 'event' || (from === 'refresh' && !known?.same(json));
-    if (json.verification) this.#place(json.verification, replaced, false);
+    const due: Mirror<Snapshot>[] = [];
+    if (json.verification) this.#place(json.verification, replaced);
     if (!known) {
       const created = new NativeVerificationRequest(json, this);
       this.#requests.set(key, created);
-      return created;
+      return { request: created, due };
     }
-    known.update(json, changed);
-    return known;
+    const changed =
+      from === 'event' || (from === 'refresh' && !known.same(json));
+    known.update(json);
+    if (changed) due.push(known);
+    return { request: known, due };
   }
 
   /**
    * Puts a SAS or QR snapshot on its flow: a new stand-in when the flow had none, another kind,
-   * or was `replaced`; otherwise the current one takes it. `notify` (its own change event, or a
-   * refresh that found it changed) runs the callbacks.
+   * or was `replaced`; otherwise the current one takes it. `changed`: the current one's state
+   * differs now.
    */
   #place(
     json: SasSnapshot | QrSnapshot,
     replaced: boolean,
-    notify: boolean,
-    onlyIfChanged = false,
-  ): NativeSas | NativeQr {
+  ): { mirror: NativeSas | NativeQr; changed: boolean } {
     const key = keyOf(json.otherUserId, json.flowId);
     const current = this.#verifications.get(key);
     if (current && current.kind === json.kind && !replaced) {
-      (current as Mirror<SasSnapshot | QrSnapshot>).update(
-        json,
-        notify &&
-          (!onlyIfChanged ||
-            !(current as Mirror<SasSnapshot | QrSnapshot>).same(json)),
-      );
-      return current;
+      const mirror = current as Mirror<SasSnapshot | QrSnapshot>;
+      const changed = !mirror.same(json);
+      mirror.update(json);
+      return { mirror: current, changed };
     }
     const created =
       json.kind === 'sas'
         ? new NativeSas(json, this)
         : new NativeQr(json as QrSnapshot, this);
     this.#verifications.set(key, created);
-    return created;
+    return { mirror: created, changed: false };
   }
 }

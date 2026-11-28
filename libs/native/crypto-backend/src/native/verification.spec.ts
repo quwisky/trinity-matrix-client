@@ -117,7 +117,10 @@ function fakeCrate(answers: Record<string, Answer>) {
 }
 
 /** `answers` stays live: a test may add answers after the machine is open. */
-async function machine(answers: Record<string, Answer> = {}) {
+async function machine(
+  answers: Record<string, Answer> = {},
+  options: { onMachineLost?: (reason: string) => void } = {},
+) {
   const defaults = {
     receiveVerificationEvent: null,
     getVerificationRequest: request(),
@@ -129,6 +132,7 @@ async function machine(answers: Record<string, Answer> = {}) {
   const { uninstallForTests } = install({
     bridge,
     storeDirectory: '/stores',
+    ...options,
   });
   try {
     const store = await real.StoreHandle.openWithKey(
@@ -171,8 +175,11 @@ const withEvents =
   };
 
 /** An incoming in-room request, in the registry as matrix-js-sdk reads it. */
-async function incoming(answers: Record<string, Answer> = {}) {
-  const opened = await machine(answers);
+async function incoming(
+  answers: Record<string, Answer> = {},
+  options: { onMachineLost?: (reason: string) => void } = {},
+) {
+  const opened = await machine(answers, options);
   await opened.olm.receiveVerificationEvent(inRoomRequest, room());
   const found = opened.olm.getVerificationRequest(bob(), FLOW)!;
   return { ...opened, found };
@@ -345,6 +352,103 @@ describe('verification requests on the native shim', () => {
     });
     expect(sent(crate, 'cancelSas')).toEqual([]);
     expect(sent(crate, 'qrCodeBytes')).toEqual([]);
+  });
+});
+
+describe("a poll's events", () => {
+  /** A started SAS whose request and SAS mirrors hold callbacks. */
+  async function started(options = {}) {
+    const answers: Record<string, Answer> = {};
+    const opened = await incoming(answers, options);
+    answers['startSas'] = withEvents(opened.crate, [sas(), toDevice], {
+      type: 'verificationRequestChanged',
+      request: transitioned(sas()),
+    });
+    const [verifier] = (await opened.found.startSas())!;
+    return { ...opened, answers, verifier };
+  }
+  const done = {
+    phase: real.VerificationRequestPhase.Done,
+    isDone: true,
+  };
+
+  /** A SAS whose emoji were shown, so it can confirm. */
+  async function shown(options = {}) {
+    const opened = await started(options);
+    opened.answers['acceptSas'] = withEvents(opened.crate, null, {
+      type: 'verificationChanged',
+      verification: sas({ emoji: EMOJI, decimals: [1, 2, 3] }),
+    });
+    await opened.verifier.accept();
+    opened.verifier.emoji();
+    return opened;
+  }
+  /** The crate's order for a SAS that ends: its last change, then its request's end. */
+  const ending = [
+    { type: 'verificationChanged', verification: sas({ isDone: true }) },
+    { type: 'verificationRequestChanged', request: request(done) },
+  ];
+
+  it('updates every mirror of the poll before any callback runs', async () => {
+    const { crate, answers, found, verifier } = await shown();
+    const seen: string[] = [];
+    verifier.registerChangesCallback(async () => {
+      seen.push(`sas done ${verifier.isDone()}, request ${found.phase()}`);
+    });
+    found.registerChangesCallback(async () => {
+      seen.push(`request ${found.phase()}`);
+    });
+    answers['confirmSas'] = withEvents(crate, [], ...ending);
+    await verifier.confirm();
+    expect(seen).toEqual([
+      `sas done true, request ${done.phase}`,
+      `request ${done.phase}`,
+    ]);
+  });
+
+  it('loses the machine on a malformed event and delivers none of the poll', async () => {
+    const lost = vi.fn();
+    const { crate, answers, verifier, olm } = await started({
+      onMachineLost: lost,
+    });
+    const changes = vi.fn();
+    verifier.registerChangesCallback(changes);
+    answers['acceptSas'] = withEvents(
+      crate,
+      null,
+      { type: 'verificationRequestChanged', request: { kind: 'request' } },
+      { type: 'verificationChanged', verification: sas({ isDone: true }) },
+    );
+    await Promise.resolve(verifier.accept()).catch(() => undefined);
+    expect(lost).toHaveBeenCalledWith('pollEvents answered a malformed event');
+    expect(changes).not.toHaveBeenCalled();
+    await expect(olm.trackedUsers()).rejects.toThrow();
+  });
+
+  it('runs the later callbacks of a poll when an earlier one throws', async () => {
+    const { crate, answers, found, verifier } = await shown();
+    verifier.registerChangesCallback(() => {
+      throw new Error('a callback failed');
+    });
+    const sasChanges = vi.fn();
+    verifier.registerChangesCallback(sasChanges);
+    const requestChanges = vi.fn();
+    found.registerChangesCallback(requestChanges);
+    answers['confirmSas'] = withEvents(crate, [], ...ending);
+    await verifier.confirm();
+    expect(sasChanges).toHaveBeenCalledTimes(1);
+    expect(requestChanges).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores a change of a flow the registry no longer holds', async () => {
+    const answers: Record<string, Answer> = {};
+    const { olm, crate } = await machine(answers);
+    answers['trackedUsers'] = withEvents(crate, [], {
+      type: 'verificationChanged',
+      verification: sas({ isDone: true }),
+    });
+    await olm.trackedUsers();
+    expect(olm.getVerificationRequests(bob())).toEqual([]);
   });
 });
 

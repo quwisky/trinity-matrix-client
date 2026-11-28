@@ -105,10 +105,20 @@ import {
   NativeBridgeError,
   NativeCryptoError,
   type NativeCryptoLogger,
+  type NativeEvent,
   type NativeEvents,
   NativeMachineLostError,
 } from './types';
-import { Verifications } from './verification';
+import {
+  isRequestSnapshot,
+  isVerificationSnapshot,
+  type Mirror,
+  type QrSnapshot,
+  type RequestSnapshot,
+  type SasSnapshot,
+  type Snapshot,
+  Verifications,
+} from './verification';
 
 /** What `init` opens: a SQLite store with its raw key, or memory. */
 export class NativeStoreHandle {
@@ -535,56 +545,116 @@ export class NativeOlmMachine {
     }
   }
 
+  /**
+   * A poll's events, in three steps: every event is checked and converted first (one that does
+   * not convert loses the machine, as a malformed poll does: nothing it says can be trusted), then
+   * every verification mirror takes its snapshot, then the callbacks run in the events' order. So
+   * a callback reads the state of the whole poll, as WASM's callbacks read live objects.
+   */
   #deliver({ events, dropped }: NativeEvents): void {
-    for (const event of events) {
-      switch (event.type) {
-        case 'roomKeysReceived': {
-          const keys = event['keys'] as RoomKeyJson[];
-          // matrix-js-sdk retries these sessions itself now.
-          for (const key of keys)
-            this.#undecryptable.delete(sessionKey(key.roomId, key.sessionId));
-          this.#invoke('roomKeysReceived', keys.map(toRoomKeyInfo));
-          break;
-        }
-        case 'roomKeysWithheld':
-          this.#invoke(
-            'roomKeysWithheld',
-            (
-              event['keys'] as Parameters<typeof toRoomKeyWithheldInfo>[0][]
-            ).map(toRoomKeyWithheldInfo),
-          );
-          break;
-        case 'userIdentityUpdated':
-          this.#invoke(
-            'userIdentityUpdated',
-            new UserId(event['userId'] as string),
-          );
-          break;
-        case 'devicesUpdated':
-          this.#invoke('devicesUpdated', event['userIds']);
-          break;
-        case 'secretReceived':
-          // matrix-js-sdk ignores the value and reads the inbox; the crate never sends it.
-          this.#invoke('secretReceived', event['name'], '');
-          break;
-        case 'verificationRequestChanged':
-          this.#verifications.requestChanged(event['request']);
-          break;
-        case 'verificationChanged':
-          this.#verifications.verificationChanged(event['verification']);
-          break;
-        default:
-          this.#context.logger?.warn(
-            `native crypto event ${event.type} has no handler on native yet`,
-          );
-      }
+    let steps: { apply: () => readonly Mirror<Snapshot>[]; run?: () => void }[];
+    try {
+      steps = events.map((event) => this.#step(event));
+    } catch {
+      // Never the conversion's text: it may quote the event.
+      this.#lose('pollEvents answered a malformed event');
+      return;
     }
+    const due = steps.map(({ apply }) => apply());
+    steps.forEach(({ run }, index) => {
+      run?.();
+      for (const mirror of due[index] ?? []) mirror.notify();
+    });
     if (dropped > 0) {
       this.#context.logger?.warn(
         `native crypto dropped ${dropped} events: retrying undecryptable events and reading verifications again`,
       );
       this.#context.onEventsDropped?.(dropped);
       this.#resync();
+    }
+  }
+
+  /** One event, converted: `apply` updates mirrors (returning those due to notify), `run` calls back. */
+  #step(event: NativeEvent): {
+    apply: () => readonly Mirror<Snapshot>[];
+    run?: () => void;
+  } {
+    const none = () => [];
+    switch (event.type) {
+      case 'roomKeysReceived': {
+        const keys = event['keys'] as RoomKeyJson[];
+        const infos = keys.map(toRoomKeyInfo);
+        return {
+          apply: () => {
+            // matrix-js-sdk retries these sessions itself now.
+            for (const key of keys)
+              this.#undecryptable.delete(sessionKey(key.roomId, key.sessionId));
+            return [];
+          },
+          run: () => this.#invoke('roomKeysReceived', infos),
+        };
+      }
+      case 'roomKeysWithheld': {
+        const infos = (
+          event['keys'] as Parameters<typeof toRoomKeyWithheldInfo>[0][]
+        ).map(toRoomKeyWithheldInfo);
+        return {
+          apply: none,
+          run: () => this.#invoke('roomKeysWithheld', infos),
+        };
+      }
+      case 'userIdentityUpdated': {
+        const userId = new UserId(event['userId'] as string);
+        return {
+          apply: none,
+          run: () => this.#invoke('userIdentityUpdated', userId),
+        };
+      }
+      case 'devicesUpdated': {
+        const userIds = event['userIds'];
+        if (
+          !Array.isArray(userIds) ||
+          !userIds.every((id) => typeof id === 'string')
+        )
+          throw new Error('malformed');
+        return {
+          apply: none,
+          run: () => this.#invoke('devicesUpdated', userIds),
+        };
+      }
+      case 'secretReceived': {
+        const name = event['name'];
+        if (typeof name !== 'string') throw new Error('malformed');
+        // matrix-js-sdk ignores the value and reads the inbox; the crate never sends it.
+        return {
+          apply: none,
+          run: () => this.#invoke('secretReceived', name, ''),
+        };
+      }
+      case 'verificationRequestChanged': {
+        const json = checked<RequestSnapshot>(
+          'pollEvents',
+          event['request'],
+          isRequestSnapshot,
+        );
+        return { apply: () => this.#verifications.requestChanged(json) };
+      }
+      case 'verificationChanged': {
+        const json = checked<SasSnapshot | QrSnapshot>(
+          'pollEvents',
+          event['verification'],
+          isVerificationSnapshot,
+        );
+        return { apply: () => this.#verifications.verificationChanged(json) };
+      }
+      default:
+        return {
+          apply: none,
+          run: () =>
+            this.#context.logger?.warn(
+              `native crypto event ${event.type} has no handler on native yet`,
+            ),
+        };
     }
   }
 
