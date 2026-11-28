@@ -106,7 +106,8 @@ export const isDevice = (value: unknown): boolean =>
     (bySigner) =>
       isObject(bySigner) && Object.values(bySigner).every(isSignature),
   ) &&
-  typeof value['localTrustState'] === 'number' &&
+  // WASM `LocalTrust`: Verified, BlackListed, Ignored, Unset.
+  [0, 1, 2, 3].includes(value['localTrustState'] as number) &&
   DEVICE_FLAGS.every((flag) => typeof value[flag] === 'boolean');
 
 /** A `SignatureUploadRequest` as `verifyDevice` and `verifyIdentity` answer it (no `id`). */
@@ -262,8 +263,12 @@ export class NativeDevice {
   /** Resolves once this object answers the new trust, as WASM's does. */
   public async setLocalTrust(localState: LocalTrust): Promise<null> {
     const target = this.#target('setLocalTrust');
-    await this.#call('setLocalTrust', { ...target, localState });
-    await this.#refresh(target);
+    try {
+      await this.#call('setLocalTrust', { ...target, localState });
+    } finally {
+      // Upstream changes the object before it saves, so a failed save leaves it changed too.
+      await this.#refresh(target);
+    }
     return null;
   }
 
@@ -392,22 +397,31 @@ class IdentitySnapshot<T extends IdentityJson> {
   /** A call that changes the object's own state: read again, as WASM's object shows it. */
   public async change(method: string): Promise<void> {
     const target = this.target(method);
-    await this.#call(method, target);
-    await this.#refresh(target);
+    try {
+      await this.#call(method, target);
+    } finally {
+      // Upstream changes the object before it saves, so a failed save leaves it changed too.
+      await this.#refresh(target);
+    }
   }
 
-  /** Signs; for the own identity also marks it verified on the object (`refresh`). */
+  /**
+   * Signs. The own identity is marked verified on the object before it signs (`refresh`), so
+   * it is read again whether signing succeeds or fails.
+   */
   public async verify(refresh: boolean): Promise<SignatureUploadRequest> {
     const target = this.target('verifyIdentity');
-    const request = toRequest(
-      checked<RequestJson>(
-        'verifyIdentity',
-        await this.#call('verifyIdentity', target),
-        isSignatureUpload,
-      ),
-    ) as SignatureUploadRequest;
-    if (refresh) await this.#refresh(target);
-    return request;
+    try {
+      return toRequest(
+        checked<RequestJson>(
+          'verifyIdentity',
+          await this.#call('verifyIdentity', target),
+          isSignatureUpload,
+        ),
+      ) as SignatureUploadRequest;
+    } finally {
+      if (refresh) await this.#refresh(target);
+    }
   }
 
   /** Spent unless the user still has an identity of this kind under the same master key. */

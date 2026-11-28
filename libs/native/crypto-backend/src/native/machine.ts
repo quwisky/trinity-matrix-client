@@ -1082,7 +1082,13 @@ export class NativeOlmMachine {
 
   public async getSecretsFromInbox(secretName: string): Promise<Set<string>> {
     return new Set(
-      (await this.#call('getSecretsFromInbox', { secretName })) as string[],
+      checked<string[]>(
+        'getSecretsFromInbox',
+        await this.#call('getSecretsFromInbox', { secretName }),
+        (value) =>
+          Array.isArray(value) &&
+          value.every((secret) => typeof secret === 'string'),
+      ),
     );
   }
 

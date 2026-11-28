@@ -33,6 +33,31 @@ const SLOW_METHODS = new Set([
   'importExportedRoomKeys',
   'importBackedUpRoomKeys',
 ]);
+/**
+ * Calls whose parameters carry key material or plaintext: the store key, private cross-signing
+ * keys, the backup key, room keys, a secrets bundle, a dehydration key, the scanned QR secret, or
+ * the cleartext of an event to encrypt. A bridge failure in a batch holding one gets a fixed
+ * message and no `cause` (the bridge's own error may quote the batch), and the queue drops the
+ * call's parameters once the batch text is with the bridge. A replayable one is sent again from
+ * the parameters its caller holds until it settles (machine.ts), never from the queue's copy.
+ * Sync inputs are not here: they carry to-device ciphertext and public key counts. A slice that
+ * adds a call carrying a secret adds it here.
+ */
+export const QUIET_METHODS: ReadonlySet<string> = new Set([
+  'init',
+  'saveBackupDecryptionKey',
+  'importCrossSigningKeys',
+  'importExportedRoomKeys',
+  'importBackedUpRoomKeys',
+  'encryptRoomEvent',
+  'encryptStateEvent',
+  'encryptToDeviceEvent',
+  'importSecretsBundle',
+  'createDehydratedDevice',
+  'rehydrateDevice',
+  'saveDehydratedDeviceKey',
+  'scanQrCode',
+]);
 /** A batch still waiting after this long is logged, once, whatever its limit. */
 export const DEFAULT_WARN_AFTER_MS = 60_000;
 /** Room kept in every batch for the `pollEvents` requests added to it. */
@@ -52,7 +77,7 @@ export interface CallQueueOptions {
 }
 
 interface Pending {
-  /** Emptied of `init`'s parameters (the store key) once the batch is with the bridge. */
+  /** Emptied of a quiet call's parameters once the batch is with the bridge. */
   request: NativeRequest;
   line: string;
   readonly resolve: (result: unknown) => void;
@@ -255,14 +280,16 @@ export class CallQueue {
     const lines = items.map((item) =>
       item.kind === 'call' ? item.pending.line : item.line,
     );
-    // The bridge's own message may quote the batch, and `init` carries the store key.
-    const quiet = calls.some(({ request }) => request.method === 'init');
+    // The bridge's own message may quote the batch.
+    const quiet = calls.some(({ request }) =>
+      QUIET_METHODS.has(request.method),
+    );
     const single = lines.length === 1;
     const methods = [
       ...new Set(calls.map(({ request }) => request.method)),
     ].join(', ');
     const timeout = this.timeout(chunk);
-    // The text goes straight to the bridge, which is then the only holder of `init`'s key.
+    // The text goes straight to the bridge, which is then the queue's only holder of its secrets.
     let answer: Promise<string>;
     try {
       answer = single
@@ -273,7 +300,7 @@ export class CallQueue {
     }
     lines.length = 0;
     for (const pending of calls) {
-      if (pending.request.method === 'init') {
+      if (QUIET_METHODS.has(pending.request.method)) {
         const { method, userId, deviceId } = pending.request;
         pending.request = { method, userId, deviceId };
         pending.line = '';
@@ -290,7 +317,7 @@ export class CallQueue {
         reject(
           new NativeBridgeError(
             `native crypto ${request.method}: the bridge ${what}${detail}`,
-            // The bridge's error may quote the batch, and with it the store key.
+            // The bridge's error may quote the batch, and with it a secret.
             quiet ? undefined : { cause },
           ),
         );
