@@ -142,6 +142,13 @@ export const unclassified = (symbols) => [
 
 export const STATUSES = new Set(['done', 'planned', 'shim']);
 
+/**
+ * Entries that may be `planned`. Milestone 2 left none: a member js-sdk starts using (which
+ * `write` adds as planned) or an entry set back to planned fails the check until it is done,
+ * made a shim, or listed here.
+ */
+export const ALLOWED_PLANNED = new Set([]);
+
 const tsFiles = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const path = join(dir, entry.name);
@@ -325,7 +332,12 @@ export const contractSources = () =>
     .map((name) => readFileSync(resolve(root, 'scripts', name), 'utf8'));
 
 /** Every problem with `surface` against the generated lists and the contract tests. */
-export const surfaceErrors = (surface, symbols, covered) => {
+export const surfaceErrors = (
+  surface,
+  symbols,
+  covered,
+  allowedPlanned = ALLOWED_PLANNED,
+) => {
   const errors = unclassified(symbols).map(
     (owner) =>
       `${owner}: not classified; add it to STATEFUL, WASM_HELPERS or PURE_JS in scripts/native-crypto-surface.mjs`,
@@ -369,6 +381,8 @@ export const surfaceErrors = (surface, symbols, covered) => {
         errors.push(`${name}: done without a contract-test case`);
       if (entry.status === 'shim' && !entry.note)
         errors.push(`${name}: shim without a note`);
+      if (entry.status === 'planned' && !allowedPlanned.has(name))
+        errors.push(`${name}: planned, and not in ALLOWED_PLANNED`);
     }
   }
   for (const name of covered) {
@@ -378,6 +392,19 @@ export const surfaceErrors = (surface, symbols, covered) => {
   }
   return errors;
 };
+
+/**
+ * What milestone 3's shim must do, named as `Class.member`: every `shimNotes` member and every
+ * stateful member whose note says "the shim must". The developer guide lists them all.
+ */
+export const shimObligations = (surface) => [
+  ...Object.keys(surface.shimNotes ?? {}),
+  ...Object.entries(surface.stateful ?? {}).flatMap(([owner, members]) =>
+    Object.entries(members)
+      .filter(([, entry]) => /the shim must/i.test(entry.note ?? ''))
+      .map(([member]) => `${owner}.${member}`),
+  ),
+];
 
 /** Counts by status per area, for the developer guide's table. */
 export const statusCounts = (surface) => {
@@ -392,6 +419,86 @@ export const statusCounts = (surface) => {
 };
 
 export const readSurface = () => JSON.parse(readFileSync(SURFACE_PATH, 'utf8'));
+
+/**
+ * What would make matrix-js-sdk migrate a legacy (libolm) crypto store, which the native
+ * crate does not port (the `Migration` entries): a legacy store or pickle key passed to
+ * `createClient`, or a store factory set for it. js-sdk migrates only from a store that holds
+ * data, and its default is an empty `MemoryCryptoStore`.
+ */
+const LEGACY_OPTIONS = new Set([
+  'cryptoStore',
+  'pickleKey',
+  'legacyCryptoStore',
+  'legacyPickleKey',
+]);
+const LEGACY_NAMES = new Set([
+  'setCryptoStoreFactory',
+  'IndexedDBCryptoStore',
+  'LocalStorageCryptoStore',
+]);
+
+/**
+ * `file: form name` for each legacy-migration option in `sources` (path → text), read with
+ * TypeScript's parser: an object property (`cryptoStore: s`, or shorthand `{ cryptoStore }`),
+ * a member set or read (`opts.cryptoStore = s`, `opts["cryptoStore"]`), or a use of the store
+ * factory or a legacy store class. Comments and strings elsewhere do not count.
+ */
+export const legacyMigrationUses = (sources) =>
+  Object.entries(sources).flatMap(([path, source]) => {
+    const found = [];
+    const file = ts.createSourceFile(path, source, ts.ScriptTarget.Latest);
+    ts.forEachChild(file, function visit(node) {
+      const option = (name, form) => {
+        if (name !== undefined && LEGACY_OPTIONS.has(name))
+          found.push(`${path}: ${form} ${name}`);
+      };
+      if (
+        (ts.isPropertyAssignment(node) ||
+          ts.isShorthandPropertyAssignment(node)) &&
+        (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+      ) {
+        option(node.name.text, 'property');
+      } else if (ts.isPropertyAccessExpression(node)) {
+        option(node.name.text, 'member');
+      } else if (
+        ts.isElementAccessExpression(node) &&
+        ts.isStringLiteralLike(node.argumentExpression)
+      ) {
+        option(node.argumentExpression.text, 'member');
+      } else if (ts.isIdentifier(node) && LEGACY_NAMES.has(node.text)) {
+        found.push(`${path}: name ${node.text}`);
+      }
+      ts.forEachChild(node, visit);
+    });
+    return found;
+  });
+
+const sourceFiles = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return ['node_modules', 'dist', 'build', '.angular'].includes(entry.name)
+        ? []
+        : sourceFiles(path);
+    }
+    return /\.(?:ts|mts|js|mjs)$/.test(entry.name) &&
+      !/\.(?:spec|test)\.[mc]?[jt]s$/.test(entry.name) &&
+      !entry.name.endsWith('.d.ts')
+      ? [path]
+      : [];
+  });
+
+/** The app's own sources (not tests): `libs`, `apps` and `electron`. */
+export const appSources = () =>
+  Object.fromEntries(
+    ['libs', 'apps', 'electron'].flatMap((dir) =>
+      sourceFiles(resolve(root, dir)).map((path) => [
+        relative(root, path),
+        readFileSync(path, 'utf8'),
+      ]),
+    ),
+  );
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [command] = process.argv.slice(2);

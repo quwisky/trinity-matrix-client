@@ -698,7 +698,7 @@ fn a_request_past_its_deadline_that_cannot_change_any_more_is_not_watched() {
     let flow = started[0]["flowId"].as_str().unwrap().to_owned();
     assert_eq!(watched(&alice, "ALICE"), json!(1));
     // Upstream's ten-minute deadline runs on a clock tests cannot move: the hook stands in for
-    // a passive request past it, which no change will ever end.
+    // a passive request past it, which no cancel will ever end.
     super::hooks::EXPIRED.lock().unwrap().insert(flow.clone());
     ok(&alice, "ALICE", "pollEvents", json!({}));
     assert_eq!(

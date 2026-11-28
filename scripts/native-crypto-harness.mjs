@@ -261,14 +261,89 @@ const nativeDevice = async (cli, userId, deviceId) => {
         oneTimeKeysCounts,
         unusedFallbackKeys: [],
       }),
+    receiveSyncChangesMsc4186: (toDeviceEvents, oneTimeKeysCounts) =>
+      respond('receiveSyncChangesMsc4186', {
+        toDeviceEvents,
+        changedDevices: { changed: [], left: [] },
+        oneTimeKeysCounts,
+        unusedFallbackKeys: [],
+      }),
     updateTrackedUsers: (users) => call('updateTrackedUsers', { users }),
     getMissingSessions: (users) => call('getMissingSessions', { users }),
-    shareRoomKey: (roomId, users, sharingStrategy) =>
+    shareRoomKey: (roomId, users, sharingStrategy, historyVisibility) =>
       call('shareRoomKey', {
         roomId,
         users,
-        encryptionSettings: defined({ sharingStrategy }),
+        encryptionSettings: defined({ sharingStrategy, historyVisibility }),
       }),
+    encryptStateEvent: (roomId, eventType, stateKey, content) =>
+      respond('encryptStateEvent', { roomId, eventType, stateKey, content }),
+    invalidateGroupSession: (roomId) =>
+      respond('invalidateGroupSession', { roomId }),
+    getRoomSettings: (roomId) => respond('getRoomSettings', { roomId }),
+    setRoomSettings: (roomId, roomSettings) =>
+      respond('setRoomSettings', { roomId, roomSettings }),
+    roomKeyRequestsEnabled: (enabled) =>
+      respond('roomKeyRequestsEnabled', defined({ enabled })),
+    getSecretsFromInbox: (secretName) =>
+      respond('getSecretsFromInbox', { secretName }),
+    deleteSecretsFromInbox: (secretName) =>
+      respond('deleteSecretsFromInbox', { secretName }),
+    pushSecretToVerifiedDevices: (secretName) =>
+      respond('pushSecretToVerifiedDevices', { secretName }),
+    exportSecretsBundle: () => respond('exportSecretsBundle'),
+    importSecretsBundle: (bundle) => respond('importSecretsBundle', { bundle }),
+    buildRoomKeyBundle: (roomId) => respond('buildRoomKeyBundle', { roomId }),
+    shareRoomKeyBundleData: (user, roomId, url, info, sharingStrategy) =>
+      respond(
+        'shareRoomKeyBundleData',
+        defined({
+          userId: user,
+          roomId,
+          url,
+          mediaEncryptionInfo: info,
+          sharingStrategy,
+        }),
+      ),
+    getReceivedRoomKeyBundleData: (roomId, inviter) =>
+      respond('getReceivedRoomKeyBundleData', { roomId, inviter }),
+    // The shim passes the fields of the bundle data it was handed.
+    receiveRoomKeyBundle: (data, encryptedBundle) =>
+      respond('receiveRoomKeyBundle', {
+        roomId: data.roomId,
+        inviter: data.senderUser,
+        url: data.url,
+        encryptedBundle,
+      }),
+    getPendingKeyBundleDetailsForRoom: (roomId) =>
+      respond('getPendingKeyBundleDetailsForRoom', { roomId }),
+    getAllRoomsPendingKeyBundles: () => respond('getAllRoomsPendingKeyBundles'),
+    storeRoomPendingKeyBundle: (roomId, inviter) =>
+      respond('storeRoomPendingKeyBundle', { roomId, inviter }),
+    clearRoomPendingKeyBundle: (roomId) =>
+      respond('clearRoomPendingKeyBundle', { roomId }),
+    hasDownloadedAllRoomKeys: (roomId) =>
+      respond('hasDownloadedAllRoomKeys', { roomId }),
+    setHasDownloadedAllRoomKeys: (roomId) =>
+      respond('setHasDownloadedAllRoomKeys', { roomId }),
+    createDehydratedDevice: (initialDeviceDisplayName, dehydratedDeviceKey) =>
+      respond('createDehydratedDevice', {
+        initialDeviceDisplayName,
+        dehydratedDeviceKey,
+      }),
+    getDehydratedDeviceKey: () => respond('getDehydratedDeviceKey'),
+    saveDehydratedDeviceKey: (dehydratedDeviceKey) =>
+      respond('saveDehydratedDeviceKey', { dehydratedDeviceKey }),
+    rehydrateDevice: (dehydratedDeviceKey, id, deviceData) =>
+      respond('rehydrateDevice', {
+        dehydratedDeviceKey,
+        deviceId: id,
+        deviceData,
+      }),
+    receiveRehydratedEvents: (id, toDeviceEvents) =>
+      respond('receiveRehydratedEvents', { deviceId: id, toDeviceEvents }),
+    dropRehydratedDevice: (id) =>
+      respond('dropRehydratedDevice', { deviceId: id }),
     encryptRoomEvent: (roomId, eventType, content) =>
       call('encryptRoomEvent', { roomId, eventType, content }),
     decryptRoomEvent: (event, roomId) =>
@@ -583,6 +658,11 @@ export const fromWasm = {
     }),
   /** An outgoing verification request (`ToDeviceRequest` or `RoomMessageRequest`), or null. */
   outgoing: (request) => (request ? plain(request) : null),
+  pendingBundle: (details) => ({
+    roomId: details.roomId.toString(),
+    inviterId: details.inviterId.toString(),
+    inviteAcceptedAtMillis: details.inviteAcceptedAtMillis,
+  }),
   crossSigningStatus: ({ hasMaster, hasSelfSigning, hasUserSigning }) => ({
     hasMaster,
     hasSelfSigning,
@@ -625,6 +705,26 @@ const wasmDevice = async (userId, deviceId) => {
   machine.registerDevicesUpdatedCallback(async (userIds) => {
     events.push({ type: 'devicesUpdated', userIds: [...userIds].sort() });
   });
+  // WASM also passes the value, which matrix-js-sdk ignores; the native event has the name only.
+  const secretValues = [];
+  machine.registerReceiveSecretCallback(async (name, value) => {
+    events.push({ type: 'secretReceived', name });
+    secretValues.push(value);
+  });
+  /** The `RehydratedDevice` held, as matrix-js-sdk holds it until `free()`. */
+  let rehydrated;
+  const dehydrationKey = (base64) =>
+    wasm.DehydratedDeviceKey.createKeyFromArray(
+      new Uint8Array(Buffer.from(base64, 'base64')),
+    );
+  const withDehydratedDevices = async (run) => {
+    const devices = machine.dehydratedDevices();
+    try {
+      return await run(devices);
+    } finally {
+      devices.free();
+    }
+  };
   // WASM runs change callbacks on its own promise chain, some time after the call. The
   // native crate queues a call's events before it returns: let the callbacks run first, so
   // both see the objects as the call left them.
@@ -740,14 +840,29 @@ const wasmDevice = async (userId, deviceId) => {
       await callbacksRun();
       return received.map((event) => defined(fromWasm.toDevice(event)));
     },
+    receiveSyncChangesMsc4186: (toDeviceEvents, counts) =>
+      respond(
+        () =>
+          machine.receiveSyncChangesMsc4186(
+            toDeviceEvents,
+            new wasm.DeviceLists(),
+            new Map(Object.entries(counts)),
+            new Set(),
+          ),
+        (received) =>
+          received.map((event) => defined(fromWasm.toDevice(event))),
+      ),
+    secretValues,
     updateTrackedUsers: async (list) =>
       (await machine.updateTrackedUsers(users(list))) ?? null,
     getMissingSessions: async (list) => {
       const request = await machine.getMissingSessions(users(list));
       return request ? plain(request) : null;
     },
-    shareRoomKey: async (roomId, list, sharingStrategy) => {
+    shareRoomKey: async (roomId, list, sharingStrategy, historyVisibility) => {
       const settings = new wasm.EncryptionSettings();
+      if (historyVisibility !== undefined)
+        settings.historyVisibility = historyVisibility;
       if (sharingStrategy) {
         // A constructor name, or a WASM CollectStrategy as matrix-js-sdk builds it.
         settings.sharingStrategy =
@@ -761,6 +876,191 @@ const wasmDevice = async (userId, deviceId) => {
     },
     encryptRoomEvent: (roomId, eventType, content) =>
       machine.encryptRoomEvent(room(roomId), eventType, content),
+    encryptStateEvent: (roomId, eventType, stateKey, content) =>
+      respond(() =>
+        machine.encryptStateEvent(room(roomId), eventType, stateKey, content),
+      ),
+    invalidateGroupSession: (roomId) =>
+      respond(() => machine.invalidateGroupSession(room(roomId))),
+    getRoomSettings: (roomId) =>
+      respond(
+        () => machine.getRoomSettings(room(roomId)),
+        (settings) =>
+          settings
+            ? defined({
+                algorithm: settings.algorithm,
+                encryptStateEvents: settings.encryptStateEvents,
+                onlyAllowTrustedDevices: settings.onlyAllowTrustedDevices,
+                sessionRotationPeriodMs: settings.sessionRotationPeriodMs,
+                sessionRotationPeriodMessages:
+                  settings.sessionRotationPeriodMessages,
+              })
+            : null,
+      ),
+    setRoomSettings: (roomId, fields) =>
+      respond(() => {
+        const settings = new wasm.RoomSettings();
+        Object.assign(settings, fields);
+        return machine.setRoomSettings(room(roomId), settings);
+      }),
+    roomKeyRequestsEnabled: (enabled) =>
+      respond(() => {
+        if (enabled !== undefined) machine.roomKeyRequestsEnabled = enabled;
+        return machine.roomKeyRequestsEnabled;
+      }),
+    getSecretsFromInbox: (name) =>
+      respond(
+        () => machine.getSecretsFromInbox(name),
+        (set) => [...set].sort(),
+      ),
+    deleteSecretsFromInbox: (name) =>
+      respond(() => machine.deleteSecretsFromInbox(name)),
+    pushSecretToVerifiedDevices: (name) =>
+      respond(() => machine.pushSecretToVerifiedDevices(name)),
+    exportSecretsBundle: () =>
+      respond(
+        () => machine.exportSecretsBundle(),
+        (bundle) => {
+          const json = bundle.to_json();
+          bundle.free();
+          return json;
+        },
+      ),
+    importSecretsBundle: (json) =>
+      respond(() =>
+        machine.importSecretsBundle(wasm.SecretsBundle.from_json(json)),
+      ),
+    buildRoomKeyBundle: (roomId) =>
+      respond(
+        () => machine.buildRoomKeyBundle(room(roomId)),
+        (attachment) =>
+          attachment
+            ? {
+                encryptedData: Buffer.from(attachment.encryptedData).toString(
+                  'base64',
+                ),
+                mediaEncryptionInfo: attachment.mediaEncryptionInfo,
+              }
+            : null,
+      ),
+    shareRoomKeyBundleData: (user, roomId, url, info, strategy) =>
+      respond(
+        () =>
+          machine.shareRoomKeyBundleData(
+            new wasm.UserId(user),
+            room(roomId),
+            url,
+            info,
+            wasm.CollectStrategy[strategy](),
+          ),
+        (requests) => requests.map(plain),
+      ),
+    getReceivedRoomKeyBundleData: (roomId, inviter) =>
+      respond(
+        () =>
+          machine.getReceivedRoomKeyBundleData(
+            room(roomId),
+            new wasm.UserId(inviter),
+          ),
+        (data) => {
+          if (!data) return null;
+          const view = {
+            senderUser: data.senderUser.toString(),
+            roomId: data.roomId.toString(),
+            url: data.url,
+            encryptionInfo: data.encryptionInfo,
+          };
+          data.free();
+          return view;
+        },
+      ),
+    // receiveRoomKeyBundle consumes the bundle data: fetched for each call, as matrix-js-sdk does.
+    receiveRoomKeyBundle: (view, encryptedBundle) =>
+      respond(async () =>
+        machine.receiveRoomKeyBundle(
+          await machine.getReceivedRoomKeyBundleData(
+            room(view.roomId),
+            new wasm.UserId(view.senderUser),
+          ),
+          new Uint8Array(Buffer.from(encryptedBundle, 'base64')),
+        ),
+      ),
+    getPendingKeyBundleDetailsForRoom: (roomId) =>
+      respond(
+        () => machine.getPendingKeyBundleDetailsForRoom(room(roomId)),
+        (details) => (details ? fromWasm.pendingBundle(details) : null),
+      ),
+    getAllRoomsPendingKeyBundles: () =>
+      respond(
+        () => machine.getAllRoomsPendingKeyBundles(),
+        (all) =>
+          all
+            .map(fromWasm.pendingBundle)
+            .sort((a, b) => a.roomId.localeCompare(b.roomId)),
+      ),
+    storeRoomPendingKeyBundle: (roomId, inviter) =>
+      respond(() =>
+        machine.storeRoomPendingKeyBundle(
+          room(roomId),
+          new wasm.UserId(inviter),
+        ),
+      ),
+    clearRoomPendingKeyBundle: (roomId) =>
+      respond(() => machine.clearRoomPendingKeyBundle(room(roomId))),
+    hasDownloadedAllRoomKeys: (roomId) =>
+      respond(() => machine.hasDownloadedAllRoomKeys(room(roomId))),
+    setHasDownloadedAllRoomKeys: (roomId) =>
+      respond(() => machine.setHasDownloadedAllRoomKeys(room(roomId))),
+    createDehydratedDevice: (name, key) =>
+      respond(async () => {
+        const created = await withDehydratedDevices((devices) =>
+          devices.create(),
+        );
+        try {
+          const request = await created.keysForUpload(
+            name,
+            dehydrationKey(key),
+          );
+          return { body: request.body };
+        } finally {
+          created.free();
+        }
+      }),
+    getDehydratedDeviceKey: () =>
+      respond(async () => {
+        const key = await withDehydratedDevices((devices) =>
+          devices.getDehydratedDeviceKey(),
+        );
+        return key ? key.toBase64() : null;
+      }),
+    saveDehydratedDeviceKey: (key) =>
+      respond(() =>
+        withDehydratedDevices((devices) =>
+          devices.saveDehydratedDeviceKey(dehydrationKey(key)),
+        ),
+      ),
+    rehydrateDevice: (key, id, deviceData) =>
+      respond(async () => {
+        rehydrated?.free();
+        rehydrated = undefined;
+        rehydrated = await withDehydratedDevices((devices) =>
+          devices.rehydrate(
+            dehydrationKey(key),
+            new wasm.DeviceId(id),
+            deviceData,
+          ),
+        );
+        return null;
+      }),
+    receiveRehydratedEvents: (_id, toDeviceEvents) =>
+      respond(
+        () => rehydrated.receiveEvents(toDeviceEvents),
+        (infos) => infos.map(fromWasm.roomKeyInfo),
+      ),
+    dropRehydratedDevice: () =>
+      respond(() => {
+        rehydrated.free();
+      }),
     decryptRoomEvent: (event, roomId) =>
       respond(
         () =>
@@ -1321,6 +1621,32 @@ export class Homeserver {
     return this.inbox.get(id);
   }
 
+  /** User → the dehydrated device of `PUT /dehydrated_device`. */
+  dehydrated = new Map();
+  /** mxc URL → uploaded bytes (base64). */
+  media = new Map();
+
+  /** `PUT /dehydrated_device`: publishes its keys as a device of the user. */
+  putDehydratedDevice(device, request) {
+    const body = JSON.parse(request.body);
+    this.dehydrated.set(device.userId, body);
+    this.deviceKeys.set(device.userId, {
+      ...this.deviceKeys.get(device.userId),
+      [body.device_id]: body.device_keys,
+    });
+    this.#otks(device.userId, body.device_id).push(
+      ...Object.entries(body.one_time_keys ?? {}),
+    );
+    return body.device_id;
+  }
+
+  /** `POST /media/upload`: the content URI. */
+  upload(base64) {
+    const url = `mxc://localhost/${randomBytes(9).toString('base64url')}`;
+    this.media.set(url, base64);
+    return url;
+  }
+
   /** `/keys/device_signing/upload`: replaces the user's cross-signing keys. */
   uploadSigningKeys(device, request) {
     const body = JSON.parse(request.body);
@@ -1387,12 +1713,20 @@ export class Homeserver {
     this.#queue(device.userId, device.deviceId).push(...events);
   }
 
-  async sync(device) {
+  /** Hands `device` its to-device events; `msc4186` passes them as simplified sliding sync. */
+  async sync(device, { msc4186 = false } = {}) {
     const events = this.#queue(device.userId, device.deviceId).splice(0);
     const counts = {
       signed_curve25519: this.#otks(device.userId, device.deviceId).length,
     };
-    return device.receiveSyncChanges(JSON.stringify(events), counts);
+    return msc4186
+      ? device.receiveSyncChangesMsc4186(JSON.stringify(events), counts)
+      : device.receiveSyncChanges(JSON.stringify(events), counts);
+  }
+
+  /** The to-device events queued for a device, taken (a dehydrated device's events). */
+  take(userId, deviceId) {
+    return this.#queue(userId, deviceId).splice(0);
   }
 }
 

@@ -12,7 +12,7 @@
         "status": "done",
         "area": "backup",
         "native": "getBackupKeys",
-        "note": "getBackupKeys returns decryptionKeyBase64; the shim wraps it with the WASM helper BackupDecryptionKey.fromBase64"
+        "note": "getBackupKeys returns decryptionKeyBase64; the shim must wrap it with the WASM helper BackupDecryptionKey.fromBase64"
       }
     },
     "DehydratedDevice": {
@@ -21,23 +21,41 @@
         "area": "dehydrated-devices",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
-      "keysForUpload": { "status": "planned", "area": "dehydrated-devices" }
+      "keysForUpload": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "createDehydratedDevice",
+        "note": "{ initialDeviceDisplayName, dehydratedDeviceKey (base64) } \u2192 PutDehydratedDeviceRequest { body }; fails without the self-signing key, as WASM"
+      }
     },
     "DehydratedDevices": {
-      "create": { "status": "planned", "area": "dehydrated-devices" },
+      "create": {
+        "status": "shim",
+        "area": "dehydrated-devices",
+        "note": "returns a JS object holding nothing: upstream create() makes an account in a fresh memory store and touches nothing else, so it is deferred to keysForUpload, whose native createDehydratedDevice creates the device and builds its request in one call. The shim must refuse a second keysForUpload on the same object (js-sdk calls it once)"
+      },
       "free": {
         "status": "shim",
         "area": "dehydrated-devices",
         "note": "releases a JS handle; native objects are addressed by key, nothing to free"
       },
       "getDehydratedDeviceKey": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "getDehydratedDeviceKey",
+        "note": "the cached key as toBase64(), or null; the shim builds the DehydratedDeviceKey helper from it"
       },
-      "rehydrate": { "status": "planned", "area": "dehydrated-devices" },
+      "rehydrate": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "rehydrateDevice",
+        "note": "{ dehydratedDeviceKey, deviceId, deviceData (JSON string) } \u2192 null; the crate holds the rehydrated device under its device ID, one at a time (a new rehydrate replaces it), until dropRehydratedDevice, close, init or a panic"
+      },
       "saveDehydratedDeviceKey": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "saveDehydratedDeviceKey",
+        "note": "{ dehydratedDeviceKey (base64) } \u2192 null; the key is wiped after use"
       }
     },
     "Device": {
@@ -63,7 +81,7 @@
         "status": "done",
         "area": "devices-identities",
         "native": "encryptToDeviceEvent",
-        "note": "call: takes userId, deviceId and ed25519Key (StaleObject when the device has another key now); content is JSON, not a string"
+        "note": "call: takes userId, deviceId and ed25519Key (StaleObject when the device has another key now); content is JSON, not a string; the shim must pass ed25519Key from the snapshot its object wraps"
       },
       "free": {
         "status": "shim",
@@ -115,14 +133,14 @@
       "requestVerification": {
         "status": "done",
         "area": "devices-identities",
-        "note": "call: takes userId, deviceId, methods and ed25519Key (StaleObject when the device has another key now); [request snapshot, to-device request]",
+        "note": "call: takes userId, deviceId, methods and ed25519Key (StaleObject when the device has another key now); [request snapshot, to-device request]; the shim must pass ed25519Key from the snapshot its object wraps",
         "native": "requestDeviceVerification"
       },
       "setLocalTrust": {
         "status": "done",
         "area": "devices-identities",
         "native": "setLocalTrust",
-        "note": "call: takes userId and deviceId, resolves the device again"
+        "note": "call: takes userId and deviceId, resolves the device again; the shim must pass ed25519Key from the snapshot its object wraps"
       },
       "signatures": {
         "status": "done",
@@ -134,24 +152,24 @@
         "status": "done",
         "area": "devices-identities",
         "native": "verifyDevice",
-        "note": "call: takes userId and deviceId; the SignatureUploadRequest has no id, as in WASM"
+        "note": "call: takes userId and deviceId; the SignatureUploadRequest has no id, as in WASM; the shim must pass ed25519Key from the snapshot its object wraps"
       }
     },
     "Migration": {
       "migrateBaseData": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim must throw \"legacy libolm migration is not supported on native\""
       },
       "migrateMegolmSessions": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim must throw \"legacy libolm migration is not supported on native\""
       },
       "migrateOlmSessions": {
-        "status": "planned",
+        "status": "shim",
         "area": "libolm-migration",
-        "note": "legacy libolm import; a fresh native store never needs it, so the shim may throw unsupported"
+        "note": "unreachable in Trinity: js-sdk migrates only when the legacy store createClient gets holds data, and the app passes none (the default MemoryCryptoStore is empty; scripts/native-crypto-surface.spec.mjs fails if the app starts passing one). The shim must throw \"legacy libolm migration is not supported on native\""
       }
     },
     "OlmMachine": {
@@ -165,10 +183,17 @@
         "area": "cross-signing",
         "native": "bootstrapCrossSigning"
       },
-      "buildRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
+      "buildRoomKeyBundle": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "buildRoomKeyBundle",
+        "note": "{ roomId } \u2192 { encryptedData (base64), mediaEncryptionInfo } or null; the shim builds the EncryptedAttachment from them"
+      },
       "clearRoomPendingKeyBundle": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "clearRoomPendingKeyBundle",
+        "note": "{ roomId } \u2192 null"
       },
       "close": { "status": "done", "area": "core", "native": "close" },
       "crossSigningStatus": {
@@ -182,10 +207,16 @@
         "native": "decryptRoomEvent"
       },
       "dehydratedDevices": {
-        "status": "planned",
-        "area": "dehydrated-devices"
+        "status": "shim",
+        "area": "dehydrated-devices",
+        "note": "returns a JS object whose methods are native calls on the machine; upstream dehydrated_devices() only wraps the machine"
       },
-      "deleteSecretsFromInbox": { "status": "planned", "area": "secrets" },
+      "deleteSecretsFromInbox": {
+        "status": "done",
+        "area": "secrets",
+        "native": "deleteSecretsFromInbox",
+        "note": "{ secretName } \u2192 null"
+      },
       "deviceCreationTimeMs": {
         "status": "done",
         "area": "core",
@@ -213,7 +244,12 @@
         "area": "core",
         "native": "encryptRoomEvent"
       },
-      "encryptStateEvent": { "status": "planned", "area": "core" },
+      "encryptStateEvent": {
+        "status": "done",
+        "area": "core",
+        "native": "encryptStateEvent",
+        "note": "{ roomId, eventType, stateKey, content } \u2192 the encrypted content as a JSON string. Without a shared room key upstream panics, as in WASM: the crate reports Panic and drops the machine, so the shim must share the key first (js-sdk does)"
+      },
       "exportCrossSigningKeys": {
         "status": "done",
         "area": "cross-signing",
@@ -226,10 +262,17 @@
         "native": "exportRoomKeys",
         "note": "no predicate crosses the surface: every key is exported; matrix-js-sdk passes () => true"
       },
-      "exportSecretsBundle": { "status": "planned", "area": "secrets" },
+      "exportSecretsBundle": {
+        "status": "done",
+        "area": "secrets",
+        "native": "exportSecretsBundle",
+        "note": "the JSON SecretsBundle.to_json() gives (private cross-signing seeds and the backup key: it returns secrets, as WASM); the shim must wrap it in an object whose to_json() returns it and whose free() drops it"
+      },
       "getAllRoomsPendingKeyBundles": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getAllRoomsPendingKeyBundles",
+        "note": "sorted by room ID (WASM: store order)"
       },
       "getBackupKeys": {
         "status": "done",
@@ -240,13 +283,13 @@
         "status": "done",
         "area": "devices-identities",
         "native": "getDevice",
-        "note": "a Device snapshot or null"
+        "note": "a Device snapshot or null; the shim must ask again for each trust question: a snapshot is current only when returned"
       },
       "getIdentity": {
         "status": "done",
         "area": "devices-identities",
         "native": "getIdentity",
-        "note": "an identity snapshot with kind own|other, or null; waits up to 1 s for a key query in flight, as WASM"
+        "note": "an identity snapshot with kind own|other, or null; waits up to 1 s for a key query in flight, as WASM; the shim must build OwnUserIdentity or OtherUserIdentity by kind (js-sdk uses instanceof) and ask again for each trust question"
       },
       "getMissingSessions": {
         "status": "done",
@@ -254,20 +297,34 @@
         "native": "getMissingSessions"
       },
       "getPendingKeyBundleDetailsForRoom": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getPendingKeyBundleDetailsForRoom",
+        "note": "{ roomId } \u2192 { roomId, inviterId, inviteAcceptedAtMillis } or null"
       },
       "getReceivedRoomKeyBundleData": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "getReceivedRoomKeyBundleData",
+        "note": "{ roomId, inviter } \u2192 { senderUser, roomId, url, encryptionInfo } (StoredRoomKeyBundleData getters) or null"
       },
       "getRoomEventEncryptionInfo": {
         "status": "done",
         "area": "core",
         "native": "getRoomEventEncryptionInfo"
       },
-      "getRoomSettings": { "status": "planned", "area": "core" },
-      "getSecretsFromInbox": { "status": "planned", "area": "secrets" },
+      "getRoomSettings": {
+        "status": "done",
+        "area": "core",
+        "native": "getRoomSettings",
+        "note": "{ roomId } \u2192 RoomSettings fields or null; unset optional fields are left out"
+      },
+      "getSecretsFromInbox": {
+        "status": "done",
+        "area": "secrets",
+        "native": "getSecretsFromInbox",
+        "note": "{ secretName } \u2192 the values as a sorted array (WASM: a Set). One of the two calls that return secret values, as WASM"
+      },
       "getUserDevices": {
         "status": "done",
         "area": "devices-identities",
@@ -287,8 +344,10 @@
         "note": "call: takes userId; request snapshots sorted by flowId"
       },
       "hasDownloadedAllRoomKeys": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "hasDownloadedAllRoomKeys",
+        "note": "{ roomId } \u2192 boolean"
       },
       "identityKeys": {
         "status": "done",
@@ -299,7 +358,7 @@
         "status": "done",
         "area": "room-keys",
         "native": "importBackedUpRoomKeys",
-        "note": "takes { roomId: { sessionId: data } }; no progress listener crosses the surface"
+        "note": "takes { roomId: { sessionId: data } }; no progress listener crosses the surface; the shim must replay the listener from lastProgress"
       },
       "importCrossSigningKeys": {
         "status": "done",
@@ -311,11 +370,21 @@
         "status": "done",
         "area": "room-keys",
         "native": "importExportedRoomKeys",
-        "note": "no progress listener crosses the surface; the shim reports progress from the result"
+        "note": "no progress listener crosses the surface; the shim must replay the listener from lastProgress"
       },
-      "importSecretsBundle": { "status": "planned", "area": "secrets" },
+      "importSecretsBundle": {
+        "status": "done",
+        "area": "secrets",
+        "native": "importSecretsBundle",
+        "note": "{ bundle: the to_json() form } \u2192 null; a bundle that does not parse, or has a seed that is not an Ed25519 key, is InvalidRequest \"invalid secrets bundle\" and imports nothing (unlike WASM, which keeps the keys it imported before failing on a later one); the shim must turn the SecretsBundle object js-sdk built with from_json back into JSON with to_json()"
+      },
       "initFromStore": { "status": "done", "area": "core", "native": "init" },
-      "invalidateGroupSession": { "status": "planned", "area": "core" },
+      "invalidateGroupSession": {
+        "status": "done",
+        "area": "core",
+        "native": "invalidateGroupSession",
+        "note": "{ roomId } \u2192 whether a session was discarded"
+      },
       "isBackupEnabled": {
         "status": "done",
         "area": "backup",
@@ -336,19 +405,35 @@
         "area": "core",
         "native": "outgoingRequests"
       },
-      "pushSecretToVerifiedDevices": { "status": "planned", "area": "secrets" },
+      "pushSecretToVerifiedDevices": {
+        "status": "done",
+        "area": "secrets",
+        "native": "pushSecretToVerifiedDevices",
+        "note": "{ secretName } \u2192 null; the pushes are queued in outgoingRequests, a missing secret fails as in WASM"
+      },
       "queryKeysForUsers": {
         "status": "done",
         "area": "devices-identities",
         "native": "queryKeysForUsers"
       },
-      "receiveRoomKeyBundle": { "status": "planned", "area": "key-bundles" },
+      "receiveRoomKeyBundle": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "receiveRoomKeyBundle",
+        "note": "{ roomId, inviter, url, encryptedBundle (base64) }: the stored bundle data is read again by room and inviter (WASM gets an object JS cannot forge); UnknownBundle when none, StaleObject when its url is no longer the one downloaded. Sender trust and wrong-room keys decided upstream, as WASM; the shim must pass roomId, senderUser (as inviter) and url from the bundle data object it was handed, and the downloaded bytes as base64"
+      },
       "receiveSyncChanges": {
         "status": "done",
         "area": "core",
-        "native": "receiveSyncChanges"
+        "native": "receiveSyncChanges",
+        "note": "unlike WASM, a decrypted m.secret.send or io.element.msc4385.secret.push comes without content.secret (js-sdk reads secrets from the inbox and would pass the event to the app); the shim must not put it back"
       },
-      "receiveSyncChangesMsc4186": { "status": "planned", "area": "core" },
+      "receiveSyncChangesMsc4186": {
+        "status": "done",
+        "area": "core",
+        "native": "receiveSyncChangesMsc4186",
+        "note": "receiveSyncChanges params; a missing one-time key count means unchanged; unlike WASM, a decrypted m.secret.send or io.element.msc4385.secret.push comes without content.secret (js-sdk reads secrets from the inbox and would pass the event to the app); the shim must not put it back"
+      },
       "receiveVerificationEvent": {
         "status": "done",
         "area": "verification",
@@ -362,10 +447,11 @@
         "native": "pollEvents"
       },
       "registerReceiveSecretCallback": {
-        "status": "planned",
+        "status": "done",
         "area": "events",
         "event": "secretReceived",
-        "note": "the event carries the secret name only; the value is read with getSecretsFromInbox"
+        "native": "pollEvents",
+        "note": "{ type: \"secretReceived\", name }: the name only. WASM also passes the value; js-sdk ignores it and reads the inbox, so the shim must call the callback with the name and an empty value (or reads getSecretsFromInbox if a caller needs it). No secret enters the event queue"
       },
       "registerRoomKeysWithheldCallback": {
         "status": "done",
@@ -377,7 +463,8 @@
         "status": "done",
         "area": "events",
         "event": "roomKeysReceived",
-        "native": "pollEvents"
+        "native": "pollEvents",
+        "note": "the shim must poll pollEvents after every call or batch, and treat a non-zero dropped as a stale view (retry undecryptable events)"
       },
       "registerUserIdentityUpdatedCallback": {
         "status": "done",
@@ -390,7 +477,12 @@
         "area": "room-keys",
         "native": "roomKeyCounts"
       },
-      "roomKeyRequestsEnabled": { "status": "planned", "area": "core" },
+      "roomKeyRequestsEnabled": {
+        "status": "done",
+        "area": "core",
+        "native": "roomKeyRequestsEnabled",
+        "note": "getter and setter: { enabled? } sets it when given and answers the current value. Memory only, as upstream: the shim must set it again after every init (js-sdk sets false once)"
+      },
       "saveBackupDecryptionKey": {
         "status": "done",
         "area": "backup",
@@ -398,16 +490,28 @@
         "note": "takes the key as decryptionKeyBase64"
       },
       "setHasDownloadedAllRoomKeys": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "setHasDownloadedAllRoomKeys",
+        "note": "{ roomId } \u2192 null"
       },
-      "setRoomSettings": { "status": "planned", "area": "core" },
+      "setRoomSettings": {
+        "status": "done",
+        "area": "core",
+        "native": "setRoomSettings",
+        "note": "{ roomId, roomSettings: RoomSettings fields } \u2192 null; a change to stored settings fails EncryptionDowngrade as in WASM. An unknown algorithm (2) is InvalidRequest, where WASM panics"
+      },
       "shareRoomKey": {
         "status": "done",
         "area": "core",
         "native": "shareRoomKey"
       },
-      "shareRoomKeyBundleData": { "status": "planned", "area": "key-bundles" },
+      "shareRoomKeyBundleData": {
+        "status": "done",
+        "area": "key-bundles",
+        "native": "shareRoomKeyBundleData",
+        "note": "{ userId, roomId, url, mediaEncryptionInfo, sharingStrategy (constructor name, js-sdk passes identityBasedStrategy) } \u2192 ToDeviceRequest[]; unreadable mediaEncryptionInfo fails with WASM's message without serde's part (it could quote the file key)"
+      },
       "sign": {
         "status": "done",
         "area": "backup",
@@ -415,8 +519,10 @@
         "note": "returns the object Signatures.asJSON() serialises"
       },
       "storeRoomPendingKeyBundle": {
-        "status": "planned",
-        "area": "key-bundles"
+        "status": "done",
+        "area": "key-bundles",
+        "native": "storeRoomPendingKeyBundle",
+        "note": "{ roomId, inviter } \u2192 null"
       },
       "trackedUsers": {
         "status": "done",
@@ -470,12 +576,12 @@
         "status": "done",
         "area": "devices-identities",
         "native": "pinCurrentMasterKey",
-        "note": "call: takes userId; refused for the own identity, which has no such method in WASM"
+        "note": "call: takes userId; refused for the own identity, which has no such method in WASM; the shim must pass masterKey from the snapshot its object wraps"
       },
       "requestVerification": {
         "status": "done",
         "area": "devices-identities",
-        "note": "call: takes userId, roomId, requestEventId, methods and masterKey (StaleObject when the identity has another master key now); the request snapshot",
+        "note": "call: takes userId, roomId, requestEventId, methods and masterKey (StaleObject when the identity has another master key now); the request snapshot; the shim must pass masterKey from the snapshot its object wraps",
         "native": "requestIdentityVerification"
       },
       "selfSigningKey": {
@@ -487,7 +593,7 @@
       "verificationRequestContent": {
         "status": "done",
         "area": "devices-identities",
-        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); the content as a JSON string",
+        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); the content as a JSON string; the shim must pass masterKey from the snapshot its object wraps",
         "native": "verificationRequestContent"
       },
       "wasPreviouslyVerified": {
@@ -500,7 +606,7 @@
         "status": "done",
         "area": "devices-identities",
         "native": "withdrawVerification",
-        "note": "call: takes userId; either identity kind"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
       }
     },
     "OwnUserIdentity": {
@@ -524,7 +630,7 @@
       "requestVerification": {
         "status": "done",
         "area": "devices-identities",
-        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); [request snapshot, to-device request]",
+        "note": "call: takes userId, methods and masterKey (StaleObject when the identity has another master key now); [request snapshot, to-device request]; the shim must pass masterKey from the snapshot its object wraps",
         "native": "requestIdentityVerification"
       },
       "selfSigningKey": {
@@ -543,7 +649,7 @@
         "status": "done",
         "area": "devices-identities",
         "native": "verifyIdentity",
-        "note": "call: takes userId; either identity kind"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
       },
       "wasPreviouslyVerified": {
         "status": "done",
@@ -555,7 +661,7 @@
         "status": "done",
         "area": "devices-identities",
         "native": "withdrawVerification",
-        "note": "call: takes userId; either identity kind"
+        "note": "call: takes userId; either identity kind; the shim must pass masterKey from the snapshot its object wraps"
       }
     },
     "Qr": {
@@ -563,7 +669,7 @@
         "status": "done",
         "area": "verification",
         "native": "cancelQr",
-        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and code (cancel() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancelInfo": {
         "status": "done",
@@ -629,11 +735,17 @@
     },
     "RehydratedDevice": {
       "free": {
-        "status": "shim",
+        "status": "done",
         "area": "dehydrated-devices",
-        "note": "releases a JS handle; native objects are addressed by key, nothing to free"
+        "native": "dropRehydratedDevice",
+        "note": "{ deviceId } \u2192 null: drops the held device (the shim must call it, as js-sdk does in finally)"
       },
-      "receiveEvents": { "status": "planned", "area": "dehydrated-devices" }
+      "receiveEvents": {
+        "status": "done",
+        "area": "dehydrated-devices",
+        "native": "receiveRehydratedEvents",
+        "note": "{ deviceId, toDeviceEvents, decryptionSettings? } \u2192 RoomKeyInfo[]; UnknownRehydration when that device is not held"
+      }
     },
     "Sas": {
       "accept": {
@@ -646,7 +758,7 @@
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancelInfo": {
         "status": "done",
@@ -658,13 +770,13 @@
         "status": "done",
         "area": "verification",
         "native": "cancelSas",
-        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and code; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
       },
       "confirm": {
         "status": "done",
         "area": "verification",
         "native": "confirmSas",
-        "note": "call: takes userId, flowId and decimals, required: the decimals the shim displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last"
+        "note": "call: takes userId, flowId and decimals, required: the shim must pass the decimals it displayed (StaleObject when the SAS on the flow shows others or none yet, as after a replacement; InvalidRequest when missing; [] once we confirmed, as WASM); outgoing requests, a signature upload without an ID last"
       },
       "decimals": {
         "status": "done",
@@ -739,13 +851,13 @@
         "status": "done",
         "area": "verification",
         "native": "acceptVerificationRequest",
-        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId, flowId and methods (accept() when absent); the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancel": {
         "status": "done",
         "area": "verification",
         "native": "cancelVerificationRequest",
-        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim maps it to \"no request\" for a flow it saw done or cancelled"
+        "note": "call: takes userId and flowId; the outgoing request or null; UnknownVerification once a sync collected the flow, where WASM's held object answers undefined: the shim must map it to \"no request\" for a flow it saw done or cancelled"
       },
       "cancelInfo": {
         "status": "done",
@@ -769,7 +881,7 @@
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field verification: the Sas or Qr snapshot while the phase is Transitioned; the shim builds a Sas or Qr by its kind (js-sdk uses instanceof)"
+        "note": "snapshot field verification: the Sas or Qr snapshot while the phase is Transitioned; the shim must build a Sas or Qr by its kind (js-sdk uses instanceof)"
       },
       "isCancelled": {
         "status": "done",
@@ -842,7 +954,7 @@
         "status": "done",
         "area": "verification",
         "native": "getVerificationRequest",
-        "note": "snapshot field expiresAtMs (ms since the epoch): the shim answers max(0, expiresAtMs - Date.now())"
+        "note": "snapshot field expiresAtMs (ms since the epoch): the shim must answer max(0, expiresAtMs - Date.now())"
       },
       "weStarted": {
         "status": "done",

@@ -6,8 +6,10 @@ use serde_json::{Value, json};
 use crate::{call, call_batch};
 
 mod backup;
+mod dehydrated;
 mod devices;
 mod events;
+mod secrets;
 mod verification;
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
@@ -60,8 +62,8 @@ impl Homeserver {
             KEYS_UPLOAD => {
                 let me = format!("{user}|{device}");
                 if let Some(keys) = body.get("device_keys") {
-                    self.device_keys
-                        .insert(user.to_owned(), json!({ device: keys }));
+                    let devices = self.device_keys.entry(user.to_owned()).or_insert(json!({}));
+                    devices[device] = keys.clone();
                 }
                 let otks = self.one_time_keys.entry(me).or_default();
                 for (id, key) in body["one_time_keys"].as_object().into_iter().flatten() {

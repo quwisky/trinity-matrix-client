@@ -734,7 +734,7 @@ struct Watch {
 }
 
 /// Done, cancelled, or stuck: upstream cancels a request past its deadline on the next sync,
-/// which ends its watch, but leaves a passive one as it is for good.
+/// which ends its watch, but never cancels a passive one.
 fn request_final(request: &VerificationRequest) -> bool {
     request.is_done() || request.is_cancelled() || stuck(request)
 }

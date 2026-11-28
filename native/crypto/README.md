@@ -59,7 +59,17 @@ SAS started at once (the lower device's survives and the flow completes), a late
 the lower device replacing a SAS whose emoji were shown (its decimals are refused), and a shown
 QR code replaced by a SAS (the flow completes by SAS); a scanned QR code cancelled; a request
 offering an unknown method; a SAS start offering only decimals (no emoji); a passive own
-device; a SAS read as timed out before the sync that cancels it. All four suites
+device; a SAS read as timed out before the sync that cancels it.
+`scripts/native-crypto-secrets.test.mjs` runs the rest in both mixed pairings (a WASM sender
+with a native receiver, and the reverse): a backup key pushed by a verified own device reaches
+the inbox and fires `secretReceived`, one from an unverified device is ignored; a secrets bundle
+exported on one side imports on the other into the same cross-signing and backup state; a
+dehydrated device created on one side is rehydrated on the other (the wrong key refused the
+same way) and the room key sent to it decrypts; a room key bundle shared by one side is
+ignored while its sender is unknown and when claimed for another room, refused when tampered
+with, and imported once the sender is known; a state event round-trips (another packed state
+key fails); room settings round-trip and a downgrade is refused; and sliding-sync input
+answers as the classic input except for missing key counts. All five suites
 share `scripts/native-crypto-harness.mjs`; a case declared with `covered([...entries], …)` fails
 unless the answer of each entry's native method reached a comparison with WASM (`expectSame`,
 or the homeserver's comparison of the requests it saw); a call made only for setup, or whose
@@ -197,12 +207,58 @@ cancelledbyUs }`, the code as a string), `expiresAtMs` and, while the phase is T
   `Sas` or `Qr` it now holds is watched afresh (matrix-js-sdk switches its verifier then), and
   when that one is over already, nothing is. A watch ends when its object is done or cancelled,
   or its request is (a replaced QR code that nobody scanned would never end); a passive request
-  ends when it is done, or once its deadline passes (upstream never cancels a passive request,
-  so no change would end it); an answer that hands out an object that is already over drops its
+  ends when it is done, or once its deadline passes (upstream never cancels a passive request, so
+  past its deadline only a late `done` from the other device could still end it); an answer that hands out an object that is already over drops its
   watch. A request past its deadline that is not passive keeps its watch until the next sync
   cancels it with `m.timeout`, so that event still reaches the host. A panic drops the watches at once (they hold the dead machine's
   objects, store and account), and `init` drops them too: verifications live in the machine's
   memory only, so a reloaded machine has none.
+
+### Secrets, room key bundles and dehydrated devices
+
+- Secrets: `getSecretsFromInbox` (`secretName`; the values as a sorted array for WASM's `Set`),
+  `deleteSecretsFromInbox`, `pushSecretToVerifiedDevices` (the pushes are queued in
+  `outgoingRequests`), `exportSecretsBundle` (the JSON of WASM's `SecretsBundle.to_json()`,
+  without `backup` when there is none) and `importSecretsBundle` (`bundle`: that JSON). A bundle
+  that does not parse fails with a fixed message, as serde's would quote the value it read.
+  Unlike WASM, every cross-signing seed is checked before anything is imported: upstream keeps
+  the keys it took before failing on a malformed later one, which would leave a master key that
+  matches no public identity, so a bundle with one bad seed imports nothing.
+- Room key bundles ([MSC4268](https://github.com/matrix-org/matrix-spec-proposals/pull/4268)):
+  `buildRoomKeyBundle` (`{ encryptedData, mediaEncryptionInfo }`, the data base64, or `null`),
+  `shareRoomKeyBundleData` (`userId`, `roomId`, `url`, `mediaEncryptionInfo`,
+  `sharingStrategy` by constructor name), `getReceivedRoomKeyBundleData` (`roomId`, `inviter`
+  → `{ senderUser, roomId, url, encryptionInfo }` or `null`) and `receiveRoomKeyBundle`
+  (`roomId`, `inviter`, `url`, `encryptedBundle` base64). WASM hands `receiveRoomKeyBundle` the
+  bundle data object JavaScript cannot forge; the crate reads it again from the store by room
+  and inviter (`UnknownBundle` when there is none) and fails with `StaleObject` when its `url`
+  is no longer the one downloaded. Whether the bundle is accepted (a sender that is not
+  cross-signed or not known, keys for another room) is matrix-sdk-crypto's decision, as in WASM.
+  The pending-bundle calls (`storeRoomPendingKeyBundle`, `getPendingKeyBundleDetailsForRoom`,
+  `getAllRoomsPendingKeyBundles` sorted by room, `clearRoomPendingKeyBundle`) and
+  `hasDownloadedAllRoomKeys` / `setHasDownloadedAllRoomKeys` take `roomId` (and `inviter`).
+- Dehydrated devices: `createDehydratedDevice` (`initialDeviceDisplayName`,
+  `dehydratedDeviceKey`) is WASM's `create()` then `keysForUpload()` in one call and returns
+  the `PutDehydratedDeviceRequest` `{ body }`; nothing is held. `rehydrateDevice`
+  (`dehydratedDeviceKey`, `deviceId`, `deviceData` as a JSON string) holds the rehydrated device
+  in the open machine under its device ID, one at a time; `receiveRehydratedEvents` (`deviceId`,
+  `toDeviceEvents`) returns the `RoomKeyInfo` of the keys it imported, and
+  `dropRehydratedDevice` is WASM's `free()`. `close`, `init` and a panic drop it too, and
+  another ID fails with `UnknownRehydration`. matrix-sdk-crypto keeps both devices out of the
+  machine's store: the new device lives in a memory store until its request is built, the
+  rehydrated one is a temporary machine on a memory store, and only the room keys it decrypts
+  reach the main store. `getDehydratedDeviceKey` and `saveDehydratedDeviceKey` read and cache
+  the key (base64, WASM's `toBase64()`).
+- Core: `encryptStateEvent` (`roomId`, `eventType`, `stateKey`, `content`; upstream panics
+  without a shared room key, as in WASM, so the machine is dropped), `invalidateGroupSession`,
+  `getRoomSettings` / `setRoomSettings` (`roomSettings` with WASM's `RoomSettings` fields; a
+  change to stored settings fails as an encryption downgrade, an unknown algorithm, where WASM
+  panics, is `InvalidRequest`), `roomKeyRequestsEnabled` (`enabled` sets it; it answers the
+  value, kept in memory only) and `receiveSyncChangesMsc4186` (`receiveSyncChanges`'s
+  parameters; a missing one-time key count means unchanged).
+- Not ported: the libolm migration (`Migration.*`). matrix-js-sdk runs it only from a legacy
+  store holding data, and Trinity passes none; `scripts/native-crypto-surface.spec.mjs` fails if
+  the app starts to.
 
 ### Events
 
@@ -213,9 +269,10 @@ device and read with `pollEvents` (no parameters), which answers
 `roomKeysWithheld` carry `keys`, the WASM `RoomKeyInfo` and `RoomKeyWithheldInfo` fields;
 `userIdentityUpdated` carries `userId` (one event per new or changed identity, as WASM calls its
 callback per user); `devicesUpdated` carries `userIds`, sorted, once per store change (an empty
-list when only identities changed, as in WASM). Verification events are described under
-"Verification" above. The secrets callback becomes an event type of its own when its calls
-land; `surface.json` names it.
+list when only identities changed, as in WASM). `secretReceived` carries `name`, once per
+secret received from a verified own device: WASM's callback also gets the value, but
+matrix-js-sdk ignores it and reads the inbox, so no secret enters the queue. Verification
+events are described under "Verification" above.
 
 - Every call moves the events it caused into the queue before it returns, so a poll right
   after a call sees them. Each event is delivered once; events of one type keep their order
@@ -247,7 +304,8 @@ the shim must do for one of them or a helper where that is not obvious (such as 
 `CollectStrategy.deviceBasedStrategy` onto the crate's strategy names). `node
 scripts/native-crypto-surface.mjs write` regenerates the lists and keeps the hand-written
 fields; `scripts/native-crypto-surface.spec.mjs`, part of `pnpm nx test scripts`, fails when the
-manifest and matrix-js-sdk disagree or a `done` member has no contract case.
+manifest and matrix-js-sdk disagree, a `done` member has no contract case, or a member is
+`planned` without an entry in `ALLOWED_PLANNED` (empty: milestone 2 left nothing planned).
 
 `init` opens the store and creates or loads the account. With `storePath` it opens a SQLite
 store with `storeKey`, a raw 32-byte key in base64 (never a passphrase); without either the
@@ -269,9 +327,26 @@ The backup decryption key is no better off: the crate wipes its own base64 copy 
 `getBackupKeys` returns stays in the response string, as it does in WASM's `BackupKeys`.
 
 Private cross-signing keys leave the crate only through `exportCrossSigningKeys` (WASM's
-`CrossSigningKeyExport` getters, `self_signing_key` in snake case as there), never in events or
-errors. The upstream export type wipes itself; the keys in the response string and those passed
-to `importCrossSigningKeys` in the request string are not wiped.
+`CrossSigningKeyExport` getters, `self_signing_key` in snake case as there) and
+`exportSecretsBundle`, never in events or errors. The upstream export and bundle types wipe
+themselves; the keys in the response string and those passed to `importCrossSigningKeys` or
+`importSecretsBundle` in the request string (and the JSON value it is parsed from) are not
+wiped.
+
+Secret values leave the crate only through `getSecretsFromInbox` and `exportSecretsBundle`, as
+in WASM; the upstream inbox items wipe themselves, the response string does not. The
+dehydration key is wiped once decoded (`createDehydratedDevice`, `rehydrateDevice`,
+`saveDehydratedDeviceKey`), but not in the request string; `getDehydratedDeviceKey` returns it
+in the response string, as WASM's getter does. A room key bundle is wiped once encrypted or
+decrypted, and its parse errors and those of `mediaEncryptionInfo` have fixed messages (serde's
+could quote a key); the encrypted file and the device data of a dehydrated device are
+ciphertext.
+
+Unlike WASM, `receiveSyncChanges` and `receiveSyncChangesMsc4186` return a decrypted
+`m.secret.send` or `io.element.msc4385.secret.push` without `content.secret` (its name, request
+ID and everything else stay): matrix-js-sdk reads only the event type there and takes secrets
+from the inbox, but it hands the event to the app as a `ReceivedToDeviceMessage`. The removed
+value is wiped; the decrypted event upstream returns is not.
 
 ## For the JNI wrapper
 
