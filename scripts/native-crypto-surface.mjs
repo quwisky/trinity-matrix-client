@@ -159,8 +159,17 @@ export const usedSymbols = (
   jsSdkPath = resolve(root, 'node_modules/matrix-js-sdk'),
 ) => {
   const jsSdk = realpathSync(jsSdkPath);
-  // pnpm links a package's dependencies next to it.
-  const wasmDir = realpathSync(join(dirname(jsSdk), WASM));
+  // pnpm links a package's dependencies next to it. There it is the crypto-backend facade,
+  // whose declarations re-export the real package from its own `npm:` alias.
+  const linked = realpathSync(join(dirname(jsSdk), WASM));
+  const [alias] =
+    Object.entries(
+      JSON.parse(readFileSync(join(linked, 'package.json'), 'utf8'))
+        .dependencies ?? {},
+    ).find(([, spec]) => spec.startsWith(`npm:${WASM}@`)) ?? [];
+  const wasmDir = alias
+    ? realpathSync(join(linked, 'node_modules', alias))
+    : linked;
   const src = join(jsSdk, 'src');
   const program = ts.createProgram(tsFiles(src), {
     target: ts.ScriptTarget.ES2022,

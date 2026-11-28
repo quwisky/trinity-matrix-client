@@ -2,7 +2,7 @@
 
 <!-- Generated internally by `pnpm architecture:map`; do not edit by hand. -->
 
-This snapshot contains **80 Nx projects** and **326 dependencies**. No project cycles detected.
+This snapshot contains **81 Nx projects** and **326 dependencies**. No project cycles detected.
 
 ## Target dependency direction
 
@@ -35,7 +35,7 @@ Capability-to-capability dependencies are valid only inside the same named capab
 | `role:application`   |        8 | `role:application`, `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`             |
 | `role:capability`    |       18 | `role:capability`, `role:kernel`, `role:adapter`, `role:design-system`                                 |
 | `role:kernel`        |        5 | `role:kernel`                                                                                          |
-| `role:adapter`       |       11 | `role:adapter`, `role:kernel`                                                                          |
+| `role:adapter`       |       12 | `role:adapter`, `role:kernel`                                                                          |
 | `role:design-system` |       19 | `role:design-system`, `role:kernel`, `role:adapter`                                                    |
 
 ## Frozen dependency exceptions
@@ -176,6 +176,7 @@ The contract is in the `contracted` phase. Classification exceptions, secondary 
 | `native-capacitor-push`             | `libs/native/capacitor-push`             | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push-android`     | `libs/native/capacitor-push/android`     | role:adapter; capability:host                   |                   0 |
 | `native-capacitor-push-ios`         | `libs/native/capacitor-push/ios`         | role:adapter; capability:host                   |                   0 |
+| `native-crypto-backend`             | `libs/native/crypto-backend`             | role:adapter; capability:host                   |                   0 |
 | `platform-native`                   | `libs/platform-native`                   | role:adapter; capability:host                   |                   8 |
 | `progress`                          | `libs/spartan/progress`                  | role:design-system; capability:design-system    |                   1 |
 | `projection-runtime`                | `libs/runtime/projection`                | role:kernel; capability:shared                  |                   0 |

@@ -19,9 +19,11 @@ import { openSettingsSection } from '../../../support/journeys/navigation.mts';
 // older stores relies on.
 const session = homeserverSession();
 
+// The real package, under the alias that the crypto-backend facade installs it as: the facade
+// itself only re-exports it by a bare specifier, which a page cannot load.
 const WASM_DIR = join(
   import.meta.dirname,
-  '../../../../node_modules/@matrix-org/matrix-sdk-crypto-wasm',
+  '../../../../libs/native/crypto-backend/node_modules/@matrix-org/matrix-sdk-crypto-wasm-real',
 );
 const WASM_PATH = '/__crypto-store-probe/';
 const WRAPPING_KEY_DB = 'trinity-crypto-store-keys';
