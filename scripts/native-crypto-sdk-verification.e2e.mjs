@@ -159,12 +159,17 @@ const crossSign = async (party) => {
  * Waits until `viewer` knows `subject`'s device: upstream ignores a request from a device it has
  * not downloaded yet, on either backend.
  */
-const knows = (viewer, subject) =>
-  eventually(
+const knows = async (viewer, subject) => {
+  const started = Date.now();
+  await eventually(
     viewer,
     async () => (await deviceStatus(viewer, subject)) !== null,
     `${viewer.account.deviceId} to know ${subject.account.deviceId}`,
   );
+  learning[viewer.kind].push(Date.now() - started);
+};
+/** How long each backend took to learn another device's keys in `knows`, in ms. */
+const learning = { native: [], wasm: [] };
 
 /** A request from `from` and the same request as `to` received it, both tracked. */
 const requestPair = async (from, to, start) => {
@@ -827,5 +832,14 @@ describe.skipIf(missing)(
         },
       );
     }
+
+    // The waits for each device to know the other must not hide slower key queries on native.
+    it('learns another device as fast on native as on WASM, within a generous bound', () => {
+      if (learning.native.length === 0 || learning.wasm.length === 0) return;
+      const slowest = (times) => Math.max(...times);
+      expect(slowest(learning.native)).toBeLessThan(
+        Math.max(5_000, 5 * slowest(learning.wasm)),
+      );
+    });
   },
 );
