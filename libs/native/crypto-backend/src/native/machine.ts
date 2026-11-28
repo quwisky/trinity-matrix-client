@@ -13,7 +13,7 @@ import {
   type OutgoingRequest,
   type OwnUserIdentity,
   type ProcessedToDeviceEvent,
-  type RequestType,
+  RequestType,
   type RoomKeyInfo,
   type RoomKeyWithheldInfo,
   type RoomId,
@@ -47,9 +47,12 @@ import {
 } from './convert';
 import { NotOnNativeError, standIn } from './guard';
 import {
+  describeError,
+  NativeBridgeError,
   NativeCryptoError,
   type NativeCryptoLogger,
   type NativeEvents,
+  NativeMachineLostError,
 } from './types';
 
 /** What `init` opens: a SQLite store with its raw key, or memory. */
@@ -60,7 +63,7 @@ export class NativeStoreHandle {
     this.#store = store;
   }
 
-  /** The `init` parameters; the key is handed out once. */
+  /** The `init` parameters; the key is handed out once, to the machine that keeps it for a re-init. */
   public take(): Record<string, string> {
     const store = this.#store;
     this.#store = undefined;
@@ -86,8 +89,87 @@ interface MachineDescription {
 interface MachineContext {
   readonly queue: CallQueue;
   readonly logger?: NativeCryptoLogger;
-  readonly onEventsDropped?: (dropped: number) => void;
+  readonly onEventsDropped?: (dropped: number | undefined) => void;
+  readonly onMachineLost?: (reason: string) => void;
 }
+
+/** The crate dropped the machine (a panic, or a call after one): `init` reloads it from the store. */
+const DROPPED = new Set(['Panic', 'UnknownMachine']);
+
+/**
+ * Calls replayed once on the reloaded machine after the crate dropped it. Their answer never
+ * reached JavaScript, so nothing they produced (a request, a ciphertext) was used; each one only
+ * reads, or sets state to the same value again. A replayed sync input is safe too: what the store
+ * kept is kept, an Olm message it already decrypted comes back as undecryptable without harm
+ * (scripts/native-crypto-replay.test.mjs), and one-time key counts and device lists are absolute.
+ * Not replayed: calls whose half-done effect a replay could apply twice or wrongly —
+ * `markRequestAsSent` (the sent request belonged to the dropped machine; the reloaded one builds
+ * it again), `shareRoomKey`, `encryptRoomEvent`, `encryptStateEvent` and `invalidateGroupSession`
+ * (session state; matrix-js-sdk retries the send) — and `close`.
+ */
+const REPLAYABLE = new Set([
+  'receiveSyncChanges',
+  'receiveSyncChangesMsc4186',
+  'outgoingRequests',
+  'updateTrackedUsers',
+  'trackedUsers',
+  'markAllTrackedUsersAsDirty',
+  'getMissingSessions',
+  'queryKeysForUsers',
+  'decryptRoomEvent',
+  'getRoomEventEncryptionInfo',
+  'getRoomSettings',
+  'setRoomSettings',
+  'getIdentity',
+  'isBackupEnabled',
+  'getSecretsFromInbox',
+  'deleteSecretsFromInbox',
+  'getAllRoomsPendingKeyBundles',
+  'getPendingKeyBundleDetailsForRoom',
+  'storeRoomPendingKeyBundle',
+  'clearRoomPendingKeyBundle',
+  'getReceivedRoomKeyBundleData',
+  'roomKeyRequestsEnabled',
+]);
+
+/** Fails closed: an answer the crate never gives must not read as a legitimate one. */
+function checked<T>(
+  method: string,
+  value: unknown,
+  valid: (value: unknown) => boolean,
+): T {
+  if (!valid(value)) {
+    throw new NativeCryptoError(
+      method,
+      'UnexpectedAnswer',
+      'unexpected answer from the crate',
+    );
+  }
+  return value as T;
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+const isShield = (value: unknown) =>
+  isObject(value) && typeof value['color'] === 'number';
+const isEncryptionInfo = (value: unknown) =>
+  isObject(value) &&
+  typeof value['sender'] === 'string' &&
+  typeof value['senderCurve25519Key'] === 'string' &&
+  isObject(value['shieldState']) &&
+  isShield(value['shieldState']['lax']) &&
+  isShield(value['shieldState']['strict']);
+const isDescription = (value: unknown) =>
+  isObject(value) &&
+  typeof value['userId'] === 'string' &&
+  typeof value['deviceId'] === 'string' &&
+  isObject(value['identityKeys']) &&
+  typeof value['identityKeys']['ed25519'] === 'string' &&
+  typeof value['identityKeys']['curve25519'] === 'string' &&
+  typeof value['deviceCreationTimeMs'] === 'number';
+
+/** A sync input on a lost machine: never settles, so matrix-js-sdk never moves past it. */
+const forever = <T>(): Promise<T> => new Promise<T>(() => undefined);
 
 type Callback = (...args: never[]) => unknown;
 
@@ -98,18 +180,32 @@ type Callback = (...args: never[]) => unknown;
 export class NativeOlmMachine {
   readonly #context: MachineContext;
   readonly #description: MachineDescription;
+  readonly #store: Record<string, string>;
   #roomKeyRequestsEnabled: boolean;
   readonly #callbacks = new Map<string, Callback>();
+  #recovery: Promise<void> | undefined;
+  #lost = false;
+  #closed = false;
 
   private constructor(
     context: MachineContext,
     description: MachineDescription,
+    store: Record<string, string>,
     roomKeyRequestsEnabled: boolean,
   ) {
     this.#context = context;
     this.#description = description;
+    this.#store = store;
     this.#roomKeyRequestsEnabled = roomKeyRequestsEnabled;
-    context.queue.listen(description, (events) => this.#deliver(events));
+    context.queue.listen(
+      description,
+      (events) => this.#deliver(events),
+      (reason, malformed) => {
+        this.#context.logger?.warn(reason);
+        this.#context.onEventsDropped?.(undefined);
+        if (malformed) this.#lose(reason);
+      },
+    );
   }
 
   public static async init(
@@ -119,18 +215,24 @@ export class NativeOlmMachine {
     store: NativeStoreHandle,
   ): Promise<NativeOlmMachine> {
     const ids = { userId: userId.toString(), deviceId: deviceId.toString() };
+    const params = store.take();
     const [description, enabled] = await Promise.all([
-      context.queue.call({ method: 'init', ...ids, params: store.take() }),
+      context.queue.call({ method: 'init', ...ids, params }),
       context.queue.call({ method: 'roomKeyRequestsEnabled', ...ids }),
     ]);
     return new NativeOlmMachine(
       context,
-      description as MachineDescription,
-      enabled as boolean,
+      checked('init', description, isDescription),
+      params,
+      checked(
+        'roomKeyRequestsEnabled',
+        enabled,
+        (value) => typeof value === 'boolean',
+      ),
     );
   }
 
-  #call(method: string, params?: Record<string, unknown>): Promise<unknown> {
+  #send(method: string, params?: Record<string, unknown>): Promise<unknown> {
     const { userId, deviceId } = this.#description;
     return this.#context.queue.call({
       method,
@@ -140,11 +242,101 @@ export class NativeOlmMachine {
     });
   }
 
-  /** Runs a call nobody awaits (WASM's member is synchronous) and reports its failure. */
-  #detach(method: string, params?: Record<string, unknown>): void {
-    this.#call(method, params).catch((error: unknown) =>
-      this.#context.logger?.warn(`native crypto ${method} failed`, error),
+  /**
+   * A call; when the crate dropped the machine it is reloaded with `init` and a replayable
+   * call runs once more. A bridge failure, a failed reload or a second drop loses the machine.
+   */
+  async #call(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<unknown> {
+    if (this.#lost) throw new NativeMachineLostError(method);
+    try {
+      return await this.#send(method, params);
+    } catch (error) {
+      if (!this.#isDropped(error)) throw this.#failure(method, error);
+      await this.#recover(method);
+      if (!REPLAYABLE.has(method)) throw error;
+      try {
+        return await this.#send(method, params);
+      } catch (again) {
+        if (this.#isDropped(again))
+          this.#lose(`${method} dropped the machine again after a re-init`);
+        throw this.#failure(method, again);
+      }
+    }
+  }
+
+  #isDropped(error: unknown): boolean {
+    return (
+      !this.#closed &&
+      error instanceof NativeCryptoError &&
+      DROPPED.has(error.code)
     );
+  }
+
+  /** What a failed call throws: a bridge failure loses the machine. */
+  #failure(method: string, error: unknown): unknown {
+    if (error instanceof NativeBridgeError) this.#lose(error.message);
+    return this.#lost ? new NativeMachineLostError(method) : error;
+  }
+
+  #recover(method: string): Promise<void> {
+    this.#recovery ??= (async () => {
+      this.#context.logger?.warn(
+        `native crypto ${method}: the crate dropped the machine; reloading it`,
+      );
+      try {
+        const [description] = await Promise.all([
+          this.#send('init', this.#store),
+          this.#send('roomKeyRequestsEnabled', {
+            enabled: this.#roomKeyRequestsEnabled,
+          }),
+        ]);
+        const keys = checked<MachineDescription>(
+          'init',
+          description,
+          isDescription,
+        ).identityKeys;
+        if (
+          keys.ed25519 !== this.#description.identityKeys.ed25519 ||
+          keys.curve25519 !== this.#description.identityKeys.curve25519
+        ) {
+          throw new Error('the store holds another account');
+        }
+      } catch (error) {
+        this.#lose(
+          `init could not reload the machine: ${describeError(error)}`,
+        );
+      } finally {
+        this.#recovery = undefined;
+      }
+    })();
+    return this.#recovery.then(() => {
+      if (this.#lost) throw new NativeMachineLostError(method);
+    });
+  }
+
+  #lose(reason: string): void {
+    if (this.#lost) return;
+    this.#lost = true;
+    this.#context.queue.unlisten(this.#description);
+    this.#context.logger?.warn(`native crypto lost the machine: ${reason}`);
+    this.#context.onMachineLost?.(reason);
+  }
+
+  /** Runs a call nobody awaits (WASM's member is synchronous) and reports its failure. */
+  #detach(
+    method: string,
+    params?: Record<string, unknown>,
+    failed?: () => void,
+  ): void {
+    this.#call(method, params).catch((error: unknown) => {
+      failed?.();
+      this.#context.logger?.warn(
+        `native crypto ${method} failed: ${describeError(error)}`,
+      );
+    });
   }
 
   #invoke(name: string, ...args: unknown[]): void {
@@ -154,14 +346,12 @@ export class NativeOlmMachine {
     try {
       Promise.resolve(callback(...args)).catch((error: unknown) =>
         this.#context.logger?.warn(
-          `native crypto ${name} callback failed`,
-          error,
+          `native crypto ${name} callback failed: ${describeError(error)}`,
         ),
       );
     } catch (error) {
       this.#context.logger?.warn(
-        `native crypto ${name} callback failed`,
-        error,
+        `native crypto ${name} callback failed: ${describeError(error)}`,
       );
     }
   }
@@ -233,8 +423,12 @@ export class NativeOlmMachine {
   }
 
   public set roomKeyRequestsEnabled(enabled: boolean) {
+    const previous = this.#roomKeyRequestsEnabled;
     this.#roomKeyRequestsEnabled = enabled;
-    this.#detach('roomKeyRequestsEnabled', { enabled });
+    this.#detach('roomKeyRequestsEnabled', { enabled }, () => {
+      if (this.#roomKeyRequestsEnabled === enabled)
+        this.#roomKeyRequestsEnabled = previous;
+    });
   }
 
   public registerRoomKeyUpdatedCallback(
@@ -309,21 +503,33 @@ export class NativeOlmMachine {
     unusedFallbackKeys?: Set<string>,
     decryptionSettings?: DecryptionSettings,
   ): Promise<ProcessedToDeviceEvent[]> {
-    const events = (await this.#call(method, {
-      toDeviceEvents,
-      changedDevices: {
-        changed: changedDevices.changed.map(String),
-        left: changedDevices.left.map(String),
-      },
-      oneTimeKeysCounts: Object.fromEntries(oneTimeKeysCounts),
-      ...(unusedFallbackKeys
-        ? { unusedFallbackKeys: [...unusedFallbackKeys] }
-        : {}),
-      ...(decryptionSettings
-        ? { decryptionSettings: decryptionSettingsJson(decryptionSettings) }
-        : {}),
-    })) as Parameters<typeof toProcessedToDeviceEvent>[0][];
-    return events.map(toProcessedToDeviceEvent);
+    let answer: unknown;
+    try {
+      answer = await this.#call(method, {
+        toDeviceEvents,
+        changedDevices: {
+          changed: changedDevices.changed.map(String),
+          left: changedDevices.left.map(String),
+        },
+        oneTimeKeysCounts: Object.fromEntries(oneTimeKeysCounts),
+        ...(unusedFallbackKeys
+          ? { unusedFallbackKeys: [...unusedFallbackKeys] }
+          : {}),
+        ...(decryptionSettings
+          ? { decryptionSettings: decryptionSettingsJson(decryptionSettings) }
+          : {}),
+      });
+    } catch (error) {
+      // matrix-js-sdk logs a rejected sync input and moves on, and the server then drops the
+      // to-device events it held: a lost machine leaves the sync waiting instead.
+      if (this.#lost) return forever();
+      throw error;
+    }
+    return checked<Parameters<typeof toProcessedToDeviceEvent>[0][]>(
+      method,
+      answer,
+      Array.isArray,
+    ).map(toProcessedToDeviceEvent);
   }
 
   public async outgoingRequests(): Promise<OutgoingRequest[]> {
@@ -372,9 +578,16 @@ export class NativeOlmMachine {
   public async getMissingSessions(
     users: UserId[],
   ): Promise<KeysClaimRequest | undefined> {
-    const request = (await this.#call('getMissingSessions', {
-      users: users.map(String),
-    })) as RequestJson | null;
+    const request = checked<RequestJson | null>(
+      'getMissingSessions',
+      await this.#call('getMissingSessions', { users: users.map(String) }),
+      (value) =>
+        value === null ||
+        (isObject(value) &&
+          value['type'] === RequestType.KeysClaim &&
+          typeof value['id'] === 'string' &&
+          typeof value['body'] === 'string'),
+    );
     return request ? (toRequest(request) as KeysClaimRequest) : undefined;
   }
 
@@ -429,7 +642,14 @@ export class NativeOlmMachine {
         decryptionSettings: decryptionSettingsJson(decryptionSettings),
       });
       return toDecryptedRoomEvent(
-        decrypted as Parameters<typeof toDecryptedRoomEvent>[0],
+        checked<Parameters<typeof toDecryptedRoomEvent>[0]>(
+          'decryptRoomEvent',
+          decrypted,
+          (value) =>
+            isEncryptionInfo(value) &&
+            isObject(value) &&
+            typeof value['event'] === 'string',
+        ),
       );
     } catch (error) {
       if (
@@ -450,15 +670,28 @@ export class NativeOlmMachine {
       event,
       roomId: roomId.toString(),
     });
-    return toEncryptionInfo(info as EncryptionInfoJson);
+    return toEncryptionInfo(
+      checked<EncryptionInfoJson>(
+        'getRoomEventEncryptionInfo',
+        info,
+        isEncryptionInfo,
+      ),
+    );
   }
 
   public async getRoomSettings(
     roomId: RoomId,
   ): Promise<RoomSettings | undefined> {
-    const settings = (await this.#call('getRoomSettings', {
-      roomId: roomId.toString(),
-    })) as RoomSettingsJson | null;
+    const settings = checked<RoomSettingsJson | null>(
+      'getRoomSettings',
+      await this.#call('getRoomSettings', { roomId: roomId.toString() }),
+      (value) =>
+        value === null ||
+        (isObject(value) &&
+          typeof value['algorithm'] === 'number' &&
+          typeof value['encryptStateEvents'] === 'boolean' &&
+          typeof value['onlyAllowTrustedDevices'] === 'boolean'),
+    );
     return settings ? toRoomSettings(settings) : undefined;
   }
 
@@ -482,15 +715,23 @@ export class NativeOlmMachine {
   public async getIdentity(
     userId: UserId,
   ): Promise<OwnUserIdentity | OtherUserIdentity | undefined> {
-    const identity = await this.#call('getIdentity', {
-      userId: userId.toString(),
-    });
+    const identity = checked(
+      'getIdentity',
+      await this.#call('getIdentity', { userId: userId.toString() }),
+      (value) =>
+        value === null ||
+        (isObject(value) && ['own', 'other'].includes(value['kind'] as string)),
+    );
     if (identity === null) return undefined;
     throw new NotOnNativeError('OlmMachine.getIdentity (a cross-signed user)');
   }
 
   public async isBackupEnabled(): Promise<boolean> {
-    return (await this.#call('isBackupEnabled')) as boolean;
+    return checked<boolean>(
+      'isBackupEnabled',
+      await this.#call('isBackupEnabled'),
+      (value) => typeof value === 'boolean',
+    );
   }
 
   public async getSecretsFromInbox(secretName: string): Promise<Set<string>> {
@@ -553,11 +794,16 @@ export class NativeOlmMachine {
 
   /** WASM's `close` is synchronous: the native close runs after every call queued before it. */
   public close(): void {
-    this.#call('close').then(
+    if (this.#closed) return;
+    this.#closed = true;
+    if (this.#lost) return;
+    this.#send('close').then(
       () => this.#context.queue.unlisten(this.#description),
       (error: unknown) => {
         this.#context.queue.unlisten(this.#description);
-        this.#context.logger?.warn('native crypto close failed', error);
+        this.#context.logger?.warn(
+          `native crypto close failed: ${describeError(error)}`,
+        );
       },
     );
   }

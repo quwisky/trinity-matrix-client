@@ -17,10 +17,24 @@ export interface NativeCryptoOptions {
   /** Where `StoreHandle.openWithKey` keeps its stores, one directory per store name. */
   readonly storeDirectory?: string;
   readonly logger?: NativeCryptoLogger;
-  /** Called when the crate dropped events because the shim fell behind. */
-  readonly onEventsDropped?: (dropped: number) => void;
+  /**
+   * Called when the shim may have missed events: the crate dropped `dropped` of them, or a
+   * poll failed (`undefined`: unknown how many).
+   */
+  readonly onEventsDropped?: (dropped: number | undefined) => void;
+  /**
+   * Called once when a machine is lost (the bridge failed or timed out, or the crate dropped
+   * the machine and `init` could not reload it). Its sync input calls never settle from then
+   * on, so matrix-js-sdk cannot move past to-device events it never processed: the host must
+   * stop the client.
+   */
+  readonly onMachineLost?: (reason: string) => void;
   /** The size cap of one batch, in characters of JSON. */
   readonly maxBatchLength?: number;
+  /** How long a batch may take before its machines are lost, in milliseconds. */
+  readonly timeoutMs?: number;
+  /** The same for a batch holding a call known to be slow, such as a room key import. */
+  readonly slowTimeoutMs?: number;
 }
 
 export interface NativeRequest {
@@ -62,3 +76,23 @@ export class NativeCryptoError extends Error {
     this.name = 'NativeCryptoError';
   }
 }
+
+/** The bridge failed, timed out or answered something that is not an answer. */
+export class NativeBridgeError extends Error {
+  public constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'NativeBridgeError';
+  }
+}
+
+/** A call on a machine that is lost (see `onMachineLost`). */
+export class NativeMachineLostError extends Error {
+  public constructor(method: string) {
+    super(`native crypto ${method}: the machine is lost; stop the client`);
+    this.name = 'NativeMachineLostError';
+  }
+}
+
+/** A message for a log line: never the error object, whose `cause` may hold a request. */
+export const describeError = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);

@@ -41,9 +41,26 @@ export function guardOf(real: WasmClass): object {
   return guard;
 }
 
-/** Puts a shim class's prototype on top of the guard of the WASM class it stands in for. */
-export function standIn(shim: WasmClass, real: WasmClass): void {
+// Absent before ES2026 runtimes; WASM's classes alias it only where it exists, and so does the shim.
+const dispose = (Symbol as { readonly dispose?: symbol }).dispose;
+
+/** `using` calls `[Symbol.dispose]`, which WASM aliases to `free`. */
+function disposeAsFree(target: object, free: () => void): void {
+  if (dispose) Object.defineProperty(target, dispose, { value: free });
+}
+
+/**
+ * Puts a shim class's prototype on top of the guard of the WASM class it stands in for; its
+ * `free` (which must release no wasm memory) also answers `[Symbol.dispose]`.
+ */
+export function standIn(
+  shim: WasmClass<{ free(): void }>,
+  real: WasmClass,
+): void {
   Object.setPrototypeOf(shim.prototype, guardOf(real));
+  disposeAsFree(shim.prototype, function (this: { free(): void }) {
+    this.free();
+  });
 }
 
 /**
@@ -63,5 +80,6 @@ export function wasmValue<T extends object>(
       enumerable: key !== 'free',
     });
   }
+  disposeAsFree(value, free);
   return Object.freeze(value);
 }

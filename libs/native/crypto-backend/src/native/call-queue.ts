@@ -1,4 +1,6 @@
 import {
+  describeError,
+  NativeBridgeError,
   type NativeCryptoBridge,
   NativeCryptoError,
   type NativeCryptoLogger,
@@ -8,10 +10,29 @@ import {
 } from './types';
 
 export const DEFAULT_MAX_BATCH_LENGTH = 1_000_000;
+/** A local bridge answers in milliseconds; a batch this late means the bridge is stuck. */
+export const DEFAULT_TIMEOUT_MS = 60_000;
+export const DEFAULT_SLOW_TIMEOUT_MS = 600_000;
+/** Calls whose work grows with the user's data. */
+const SLOW_METHODS = new Set([
+  'init',
+  'exportRoomKeys',
+  'importExportedRoomKeys',
+  'importBackedUpRoomKeys',
+]);
 /** Room kept in every batch for the `pollEvents` requests added to it. */
 const POLL_RESERVE = 4096;
 
 type EventListener = (events: NativeEvents) => void;
+/** `malformed`: the answer was no event list, so nothing it says can be trusted. */
+type PollFailure = (reason: string, malformed: boolean) => void;
+
+export interface CallQueueOptions {
+  readonly maxBatchLength?: number;
+  readonly timeoutMs?: number;
+  readonly slowTimeoutMs?: number;
+  readonly logger?: NativeCryptoLogger;
+}
 
 interface Pending {
   readonly request: NativeRequest;
@@ -30,6 +51,12 @@ const keyOf = ({
 }: Pick<NativeRequest, 'userId' | 'deviceId'>) =>
   JSON.stringify([userId, deviceId]);
 
+const isEvents = (value: unknown): value is NativeEvents =>
+  typeof value === 'object' &&
+  value !== null &&
+  Array.isArray((value as NativeEvents).events) &&
+  typeof (value as NativeEvents).dropped === 'number';
+
 const isResponse = (value: unknown): value is NativeResponse =>
   typeof value === 'object' &&
   value !== null &&
@@ -45,13 +72,18 @@ export class CallQueue {
   private queued: Pending[] = [];
   private flushScheduled = false;
   private tail: Promise<void> = Promise.resolve();
-  private readonly listeners = new Map<string, EventListener>();
+  private readonly listeners = new Map<
+    string,
+    { events: EventListener; failed?: PollFailure }
+  >();
+  private readonly logger?: NativeCryptoLogger;
 
   public constructor(
     private readonly bridge: NativeCryptoBridge,
-    private readonly maxBatchLength = DEFAULT_MAX_BATCH_LENGTH,
-    private readonly logger?: NativeCryptoLogger,
-  ) {}
+    private readonly options: CallQueueOptions = {},
+  ) {
+    this.logger = options.logger;
+  }
 
   public call(request: NativeRequest): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -72,8 +104,9 @@ export class CallQueue {
   public listen(
     machine: Pick<NativeRequest, 'userId' | 'deviceId'>,
     listener: EventListener,
+    failed?: PollFailure,
   ): void {
-    this.listeners.set(keyOf(machine), listener);
+    this.listeners.set(keyOf(machine), { events: listener, failed });
   }
 
   public unlisten(machine: Pick<NativeRequest, 'userId' | 'deviceId'>): void {
@@ -87,13 +120,14 @@ export class CallQueue {
     }
     // A failure inside `send` must not stop the batches queued behind it.
     this.tail = this.tail.catch((error: unknown) =>
-      this.logger?.warn('native crypto batch failed', error),
+      this.logger?.warn(`native crypto batch failed: ${describeError(error)}`),
     );
   }
 
   /** Splits at the size cap; a single call over the cap goes alone. */
   private chunks(calls: readonly Pending[]): Pending[][] {
-    const budget = this.maxBatchLength - POLL_RESERVE;
+    const budget =
+      (this.options.maxBatchLength ?? DEFAULT_MAX_BATCH_LENGTH) - POLL_RESERVE;
     const chunks: Pending[][] = [];
     let current: Pending[] = [];
     let length = 2;
@@ -140,29 +174,55 @@ export class CallQueue {
     return items;
   }
 
+  private timeout(chunk: readonly Pending[]): number {
+    return chunk.some(({ request }) => SLOW_METHODS.has(request.method))
+      ? (this.options.slowTimeoutMs ?? DEFAULT_SLOW_TIMEOUT_MS)
+      : (this.options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  }
+
+  /** The bridge's answer, or a rejection once the batch's time is up. */
+  private async exchange(
+    lines: readonly string[],
+    ms: number,
+  ): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new TimedOut()), ms);
+    });
+    try {
+      return await Promise.race([
+        lines.length === 1
+          ? this.bridge.call(lines[0])
+          : this.bridge.callBatch(`[${lines.join(',')}]`),
+        late,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async send(chunk: readonly Pending[]): Promise<void> {
     const items = this.wire(chunk);
+    const calls = items.flatMap((item) =>
+      item.kind === 'call' ? [item.pending] : [],
+    );
     const lines = items.map((item) =>
       item.kind === 'call' ? item.pending.line : item.line,
     );
+    // The bridge's own message may quote the batch, and `init` carries the store key.
+    const quiet = calls.some(({ request }) => request.method === 'init');
     let responses: unknown;
     try {
-      responses = JSON.parse(
-        lines.length === 1
-          ? await this.bridge.call(lines[0])
-          : await this.bridge.callBatch(`[${lines.join(',')}]`),
-      );
+      responses = JSON.parse(await this.exchange(lines, this.timeout(chunk)));
     } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : String(cause);
-      for (const item of items) {
-        if (item.kind === 'call') {
-          item.pending.reject(
-            new Error(
-              `native crypto ${item.pending.request.method}: the bridge failed: ${reason}`,
-              { cause },
-            ),
-          );
-        }
+      const what = cause instanceof TimedOut ? 'timed out' : 'failed';
+      for (const { request, reject } of calls) {
+        reject(
+          new NativeBridgeError(
+            `native crypto ${request.method}: the bridge ${what}${quiet || cause instanceof TimedOut ? '' : `: ${describeError(cause)}`}`,
+            { cause },
+          ),
+        );
       }
       return;
     }
@@ -173,28 +233,43 @@ export class CallQueue {
       !answers.every(isResponse)
     ) {
       const refusal = isResponse(responses) ? responses.error : undefined;
-      const error = refusal
-        ? new NativeCryptoError('callBatch', refusal.code, refusal.message)
-        : new Error(
-            'native crypto bridge failed: the batch answer does not match the batch',
-          );
-      for (const item of items)
-        if (item.kind === 'call') item.pending.reject(error);
+      for (const { request, reject } of calls) {
+        reject(
+          refusal
+            ? new NativeCryptoError(
+                request.method,
+                refusal.code,
+                refusal.message,
+              )
+            : new NativeBridgeError(
+                `native crypto ${request.method}: the bridge answered something other than the batch`,
+              ),
+        );
+      }
       return;
     }
     items.forEach((item, index) => {
       if (item.kind !== 'poll') return;
       const answer = answers[index];
+      const listener = this.listeners.get(item.key);
       try {
-        if (answer.error)
-          throw new NativeCryptoError(
-            'pollEvents',
-            answer.error.code,
-            answer.error.message,
+        if (answer.error) {
+          listener?.failed?.(
+            `native crypto pollEvents failed (${answer.error.code})`,
+            false,
           );
-        this.listeners.get(item.key)?.(answer.result as NativeEvents);
+        } else if (!isEvents(answer.result)) {
+          listener?.failed?.(
+            'native crypto pollEvents answered an unexpected shape',
+            true,
+          );
+        } else {
+          listener?.events(answer.result);
+        }
       } catch (error) {
-        this.logger?.warn('native crypto events were not delivered', error);
+        this.logger?.warn(
+          `native crypto events were not delivered: ${describeError(error)}`,
+        );
       }
     });
     items.forEach((item, index) => {
@@ -216,3 +291,5 @@ export class CallQueue {
     });
   }
 }
+
+class TimedOut extends Error {}

@@ -6,7 +6,7 @@ import {
   type UserId,
 } from '@matrix-org/matrix-sdk-crypto-wasm-real';
 
-import { CallQueue, DEFAULT_MAX_BATCH_LENGTH } from './call-queue';
+import { CallQueue } from './call-queue';
 import { NativeOlmMachine, NativeStoreHandle } from './machine';
 import type { NativeCryptoOptions } from './types';
 
@@ -19,13 +19,10 @@ const refuse = (message: string) => async (): Promise<never> => {
 /** The static factories matrix-js-sdk reaches, as the shim answers them. */
 function factories(options: NativeCryptoOptions) {
   const context = {
-    queue: new CallQueue(
-      options.bridge,
-      options.maxBatchLength ?? DEFAULT_MAX_BATCH_LENGTH,
-      options.logger,
-    ),
+    queue: new CallQueue(options.bridge, options),
     logger: options.logger,
     onEventsDropped: options.onEventsDropped,
+    onMachineLost: options.onMachineLost,
   };
   const memory = async (storeName: string | null | undefined) => {
     if (storeName) {
@@ -108,37 +105,54 @@ export const SHIM_STATICS: Readonly<
 
 let installed = false;
 
+/** What `install` returns. Uninstalling is for tests: see `uninstallForTests`. */
+export interface NativeCryptoInstallation {
+  /**
+   * Restores the WASM factories. Machines made before keep running on the crate, and the next
+   * `initRustCrypto` runs on WASM: two backends in one process, which only a test may want.
+   */
+  uninstallForTests(): void;
+}
+
 /**
  * Points the real WASM classes' static factories at the native crate. The objects they then
  * return stand in for the WASM classes (`instanceof` holds); every other export stays WASM.
- * Returns the uninstaller, which restores the original factories.
+ * Install before anything initialises crypto: a WASM machine made earlier stays on WASM.
  */
-export function install(options: NativeCryptoOptions): () => void {
+export function install(
+  options: NativeCryptoOptions,
+  targets: typeof TARGETS = TARGETS,
+): NativeCryptoInstallation {
   if (installed) throw new Error('native crypto is installed already');
-  installed = true;
   const replacements = factories(options);
-  const originals: [object, string, PropertyDescriptor][] = [];
-  for (const [name, target] of Object.entries(TARGETS)) {
-    for (const [member, replacement] of Object.entries(
-      replacements[name as keyof typeof TARGETS],
-    )) {
+  const changes = Object.entries(replacements).flatMap(([name, members]) =>
+    Object.entries(members).map(([member, replacement]) => {
+      const target: object = targets[name as keyof typeof TARGETS];
       const descriptor = Object.getOwnPropertyDescriptor(target, member);
-      if (!descriptor)
+      if (!descriptor) {
         throw new Error(
           `native crypto: ${name}.${member} is not in the WASM package`,
         );
-      originals.push([target, member, descriptor]);
-      Object.defineProperty(target, member, {
-        ...descriptor,
-        value: replacement,
-      });
-    }
+      }
+      return { target, member, descriptor, replacement };
+    }),
+  );
+  for (const { target, member, descriptor, replacement } of changes) {
+    Object.defineProperty(target, member, {
+      ...descriptor,
+      value: replacement,
+    });
   }
-  return () => {
-    if (originals.length === 0) return;
-    for (const [target, member, descriptor] of originals.splice(0)) {
-      Object.defineProperty(target, member, descriptor);
-    }
-    installed = false;
+  installed = true;
+  let restored = false;
+  return {
+    uninstallForTests: () => {
+      if (restored) return;
+      restored = true;
+      for (const { target, member, descriptor } of changes) {
+        Object.defineProperty(target, member, descriptor);
+      }
+      installed = false;
+    },
   };
 }
