@@ -223,6 +223,8 @@ export const startClient = async (
     const { uninstallForTests } = await installNativeCrypto({
       bridge,
       storeDirectory: storeRoot,
+      // The bed's own diagnosis (and its unhandled-error filter) wants the bridge's reason.
+      debugBridgeErrors: true,
       logger: quiet,
       onMachineLost: (reason) => lost.push(reason),
     });
