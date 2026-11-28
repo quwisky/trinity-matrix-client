@@ -456,6 +456,10 @@ export class NativeVerificationRequest extends Mirror<RequestSnapshot> {
     return new UserId(this.json.otherUserId);
   }
 
+  public isWith(otherUserId: string): boolean {
+    return this.json.otherUserId === otherUserId;
+  }
+
   public get otherDeviceId(): DeviceId | undefined {
     return this.json.otherDeviceId === undefined
       ? undefined
@@ -653,7 +657,7 @@ export class Verifications {
   /** The user's requests, by flow ID as the crate sorts them. */
   public forUser(otherUserId: string): VerificationRequest[] {
     return [...this.#requests.values()]
-      .filter((request) => request.otherUserId.toString() === otherUserId)
+      .filter((request) => request.isWith(otherUserId))
       .sort((a, b) =>
         a.flowId < b.flowId ? -1 : a.flowId > b.flowId ? 1 : 0,
       ) as unknown as VerificationRequest[];

@@ -1025,6 +1025,9 @@ export class NativeOlmMachine {
         error instanceof NativeCryptoError &&
         error.code === 'MegolmDecryptionError'
       ) {
+        // Only a Megolm failure waits for a key a lost event could have brought; matrix-js-sdk
+        // retries those events from the room key callback. Other failures (a bridge or a lost
+        // machine, a malformed event) have no key to wait for and are not retried by it.
         this.#failedToDecrypt(event, roomId.toString());
         throw toMegolmDecryptionError(error.details as MegolmErrorDetails);
       }
