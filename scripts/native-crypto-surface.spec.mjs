@@ -8,10 +8,12 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
+  appSources,
   buildSurface,
   contractSourceErrors,
   contractSources,
   coveredEntries,
+  legacyMigrationUses,
   readSurface,
   statusCounts,
   surfaceErrors,
@@ -50,6 +52,57 @@ describe('native/crypto/surface.json', () => {
   });
 });
 
+describe('legacy crypto migration', () => {
+  // The crate does not port matrix-js-sdk's libolm migration (`Migration.*` are shim entries
+  // that throw): it must stay unreachable from the app.
+  it('is never set up by the app', () => {
+    const sources = appSources();
+    expect(
+      Object.keys(sources).some((path) =>
+        path.endsWith('matrix-client.service.ts'),
+      ),
+    ).toBe(true);
+    expect(legacyMigrationUses(sources)).toEqual([]);
+  });
+
+  it("relies on matrix-js-sdk's default legacy store being an empty memory store", () => {
+    const sdk = resolve(
+      import.meta.dirname,
+      '../node_modules/matrix-js-sdk/src',
+    );
+    expect(readFileSync(join(sdk, 'matrix.ts'), 'utf8')).toContain(
+      'let cryptoStoreFactory = (): CryptoStore => new MemoryCryptoStore();',
+    );
+    const memory = readFileSync(
+      join(sdk, 'crypto/store/memory-crypto-store.ts'),
+      'utf8',
+    );
+    expect(memory).toContain('return this.account !== null;');
+    expect(memory).toMatch(/private account: string \| null = null;/);
+    expect(
+      readFileSync(join(sdk, 'rust-crypto/libolm_migration.ts'), 'utf8'),
+    ).toContain('if (!(await legacyStore.containsData())) {');
+  });
+
+  it('finds each way of passing a legacy store, outside comments', () => {
+    expect(
+      legacyMigrationUses({
+        'a.ts':
+          'createClient({ baseUrl, cryptoStore: new IndexedDBCryptoStore(idb, "x") });',
+        'b.ts':
+          'setCryptoStoreFactory(() => store);\nconst opts = { pickleKey: key };',
+        'c.ts':
+          '// cryptoStore: no\n/* pickleKey: no */\nconst hasCryptoStore = true;',
+      }),
+    ).toEqual([
+      'a.ts: cryptoStore:',
+      'a.ts: IndexedDBCryptoStore',
+      'b.ts: setCryptoStoreFactory',
+      'b.ts: pickleKey:',
+    ]);
+  });
+});
+
 describe('surfaceErrors', () => {
   const symbols = [
     'OlmMachine',
@@ -66,7 +119,11 @@ describe('surfaceErrors', () => {
       area: 'core',
       native: 'close',
     };
-    built.stateful.OlmMachine.sign = { status: 'planned', area: 'backup' };
+    built.stateful.OlmMachine.sign = {
+      status: 'shim',
+      area: 'backup',
+      note: 'kept in JS',
+    };
     return built;
   };
   const covered = new Set(['OlmMachine.close']);
@@ -123,6 +180,17 @@ describe('surfaceErrors', () => {
       'shimNotes: UserId.free is not a pureJs or wasmHelpers member',
       'shimNotes: UserId.toBase64 is not a pureJs or wasmHelpers member',
     ]);
+  });
+
+  it('fails on a planned entry unless it is allowed', () => {
+    const manifest = surface();
+    manifest.stateful.OlmMachine.sign = { status: 'planned', area: 'backup' };
+    expect(surfaceErrors(manifest, symbols, covered)).toEqual([
+      'OlmMachine.sign: planned, and not in ALLOWED_PLANNED',
+    ]);
+    expect(
+      surfaceErrors(manifest, symbols, covered, new Set(['OlmMachine.sign'])),
+    ).toEqual([]);
   });
 
   it('gives new entries planned with no area until one is assigned', () => {
