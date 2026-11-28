@@ -127,7 +127,10 @@ function fakeCrate(answers: Record<string, Answer>) {
 /** `answers` stays live: a test may add answers after the machine is open. */
 async function machine(
   answers: Record<string, Answer> = {},
-  options: { onMachineLost?: (reason: string) => void } = {},
+  options: {
+    onMachineLost?: (reason: string) => void;
+    onEventsDropped?: (dropped: number | undefined) => void;
+  } = {},
 ) {
   const defaults = {
     receiveVerificationEvent: null,
@@ -185,7 +188,10 @@ const withEvents =
 /** An incoming in-room request, in the registry as matrix-js-sdk reads it. */
 async function incoming(
   answers: Record<string, Answer> = {},
-  options: { onMachineLost?: (reason: string) => void } = {},
+  options: {
+    onMachineLost?: (reason: string) => void;
+    onEventsDropped?: (dropped: number | undefined) => void;
+  } = {},
 ) {
   const opened = await machine(answers, options);
   await opened.olm.receiveVerificationEvent(inRoomRequest, room());
@@ -810,6 +816,31 @@ describe('failing polls', () => {
       await olm.trackedUsers();
     }
     expect(lost).not.toHaveBeenCalled();
+  });
+});
+
+describe('an incoming request the machine could not read', () => {
+  it('reads it once more, then again on the next sync input, and reports it', async () => {
+    const dropped = vi.fn();
+    let failures = 4;
+    const { olm, crate } = await machine(
+      {
+        getVerificationRequest: () =>
+          failures-- > 0
+            ? { error: { code: 'Refused', message: 'busy' } }
+            : { result: request() },
+      },
+      { onEventsDropped: dropped },
+    );
+    await olm.receiveVerificationEvent(inRoomRequest, room());
+    expect(sent(crate, 'getVerificationRequest')).toHaveLength(2);
+    expect(olm.getVerificationRequest(bob(), FLOW)).toBeUndefined();
+    expect(dropped).toHaveBeenCalledTimes(1);
+    await sync(olm);
+    // Both reads of this sync input failed too: it stays marked for the next one.
+    expect(olm.getVerificationRequest(bob(), FLOW)).toBeUndefined();
+    await sync(olm);
+    expect(olm.getVerificationRequest(bob(), FLOW)).toBeDefined();
   });
 });
 

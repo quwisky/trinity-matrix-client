@@ -313,6 +313,11 @@ const isToDeviceEvent = (value: unknown) =>
       ? isObject(value['utdInfo'])
       : value['type'] === 2 || value['type'] === 3);
 
+interface Flow {
+  readonly userId: string;
+  readonly flowId: string;
+}
+
 /** Polls failing in a row before the machine counts as lost: its events can no longer arrive. */
 const POLL_FAILURE_LIMIT = 3;
 
@@ -341,6 +346,8 @@ export class NativeOlmMachine {
   readonly #objectCall: MachineCall = (method, params) =>
     this.#call(method, params);
   readonly #verifications: Verifications;
+  /** Incoming requests whose read failed, by flow: read again on the next sync input. */
+  readonly #unfetched = new Map<string, Flow>();
   /** Polls that failed since the last one that answered. */
   #pollFailures = 0;
   /** A refresh of the verifications in flight: its own batches' failed polls start no other. */
@@ -716,19 +723,28 @@ export class NativeOlmMachine {
     }
   }
 
-  /** Puts an incoming request in the registry: matrix-js-sdk asks for it synchronously next. */
-  async #fetchRequest(found: {
-    userId: string;
-    flowId: string;
-  }): Promise<void> {
-    try {
-      const answer = await this.#call('getVerificationRequest', found);
-      if (answer !== null) this.#verifications.request(answer);
-    } catch (error) {
-      this.#context.logger?.warn(
-        `native crypto getVerificationRequest failed: ${describeError(error)}`,
-      );
+  /**
+   * Puts an incoming request in the registry: matrix-js-sdk asks for it synchronously next. The
+   * crate watches a request only once an answer handed it out, so one never read would never
+   * show: a failed read is tried once more, then on each sync input until it answers.
+   */
+  async #fetchRequest(found: Flow): Promise<void> {
+    const key = JSON.stringify([found.userId, found.flowId]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const answer = await this.#call('getVerificationRequest', { ...found });
+        this.#unfetched.delete(key);
+        if (answer !== null) this.#verifications.request(answer);
+        return;
+      } catch (error) {
+        this.#context.logger?.warn(
+          `native crypto getVerificationRequest failed: ${describeError(error)}`,
+        );
+        if (this.#lost) return;
+      }
     }
+    if (!this.#unfetched.has(key)) this.#context.onEventsDropped?.(undefined);
+    this.#unfetched.set(key, found);
   }
 
   public get userId(): UserId {
@@ -870,6 +886,8 @@ export class NativeOlmMachine {
       return forever();
     }
     this.#verifications.drop(collectable);
+    for (const found of [...this.#unfetched.values()])
+      await this.#fetchRequest(found);
     for (const event of processed) {
       const found = incomingRequest(event.rawEvent);
       if (found) await this.#fetchRequest(found);
