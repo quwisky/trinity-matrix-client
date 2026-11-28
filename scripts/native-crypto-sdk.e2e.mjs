@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import * as wasm from '@matrix-org/matrix-sdk-crypto-wasm';
 import { ClientEvent, createClient } from 'matrix-js-sdk';
 import { DecryptionFailureCode } from 'matrix-js-sdk/lib/crypto-api/index.js';
+import { repairStaleMembership } from '../libs/data-access/matrix-client/src/lib/stale-membership-repair.ts';
 import { installNativeCrypto } from '../libs/native/crypto-backend/src/index.ts';
 import { openE2EInvocation } from '../e2e/support/invocation.mts';
 import {
@@ -108,11 +109,14 @@ const syncNetwork = () => {
   const held = [];
   const network = {
     holding: false,
+    /** /sync requests made: a client whose sync waits makes none. */
+    syncs: 0,
     fetchFn: async (input, init) => {
-      const response = await fetch(input, init);
       const url = String(input instanceof Request ? input.url : input);
-      if (!url.includes('/_matrix/client/v3/sync') || !response.ok)
-        return response;
+      const isSync = url.includes('/_matrix/client/v3/sync');
+      if (isSync) network.syncs++;
+      const response = await fetch(input, init);
+      if (!isSync || !response.ok) return response;
       if (!network.holding && held.length === 0) return response;
       const body = await response.json();
       const events = body.to_device?.events ?? [];
@@ -144,13 +148,18 @@ const startClient = async (kind, account, { storeKey } = {}) => {
     fetchFn: network.fetchFn,
     logger: quiet,
   });
+  // As the app does: Tuwunel can send a `state_after` that lags the same response's timeline
+  // (a join beside the invite it replaces), and the SDK applies only `state_after`.
+  repairStaleMembership(client);
   let bridge;
+  const lost = [];
   if (kind === 'native') {
     bridge = startCliBridge(cliPath);
-    const uninstall = await installNativeCrypto({
+    const { uninstallForTests } = await installNativeCrypto({
       bridge,
       storeDirectory: storeRoot,
       logger: quiet,
+      onMachineLost: (reason) => lost.push(reason),
     });
     // Installed only around this client's init: the other clients of the process stay on
     // WASM, and the shim's machine keeps working once its factories are restored.
@@ -163,7 +172,7 @@ const startClient = async (kind, account, { storeKey } = {}) => {
       await bridge.stop();
       throw error;
     } finally {
-      uninstall();
+      uninstallForTests();
     }
   } else {
     await client.initRustCrypto({ useIndexedDB: false });
@@ -173,7 +182,7 @@ const startClient = async (kind, account, { storeKey } = {}) => {
   );
   await client.startClient({ initialSyncLimit: 50, pollTimeout: 1000 });
   await prepared;
-  return { kind, account, client, network, bridge, storeKey };
+  return { kind, account, client, network, bridge, storeKey, lost };
 };
 
 const stopClient = async (party) => {
@@ -213,16 +222,28 @@ const decrypted = (party, roomId, eventId, what) =>
         event
       );
     },
-    `${party.kind} ${party.account.userId} to decrypt ${what} (${describeEvent(eventIn(party, roomId, eventId))}; room ${Boolean(party.client.getRoom(roomId))})`,
+    () =>
+      `${party.kind} ${party.account.userId} to decrypt ${what} (${describeEvent(eventIn(party, roomId, eventId))}; sync ${party.client.getSyncState()})`,
   );
 
-const joined = (party, roomId, userId) =>
-  until(
-    () =>
-      party.client.getRoom(roomId)?.getMember(userId)?.membership === 'join',
-    () =>
-      `${party.account.userId} to see ${userId} join (${party.client.getRoom(roomId)?.getMember(userId)?.membership}, sync ${party.client.getSyncState()})${party.bridge ? ` (waiting: ${JSON.stringify(party.bridge.pending())})` : ''}`,
-  );
+const joined = async (party, roomId, userId) => {
+  try {
+    await until(
+      () =>
+        party.client.getRoom(roomId)?.getMember(userId)?.membership === 'join',
+      () =>
+        `${party.account.userId} to see ${userId} join (${party.client.getRoom(roomId)?.getMember(userId)?.membership}, sync ${party.client.getSyncState()}, ${party.network.syncs} syncs)`,
+    );
+  } catch (error) {
+    const members = await api(
+      `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
+      { token: party.account.accessToken },
+    ).catch((failure) => failure.message);
+    throw new Error(
+      `${error.message}; the server's joined members: ${JSON.stringify(Object.keys(members.joined ?? members))}`,
+    );
+  }
+};
 
 const send = async (party, roomId, body) =>
   (await party.client.sendTextMessage(roomId, body)).event_id;
@@ -514,29 +535,79 @@ describe.skipIf(missing)('matrix-js-sdk on the native crypto shim', () => {
         );
 
         it.skipIf(!hasNative)(
-          'fails closed when the bridge dies: errors, no hang, no WASM fallback',
+          'reloads a machine the crate dropped and goes on',
           async () => {
             const native = parties[nativeName];
+            const other = parties[otherName];
+            const { userId, deviceId } = native.account;
+            const inits = () =>
+              native.bridge.sent().filter((method) => method === 'init').length;
+            const before = inits();
+            // As a panic does: the crate drops the machine behind the shim's back.
+            expect(
+              JSON.parse(
+                await native.bridge.call(
+                  JSON.stringify({ method: 'close', userId, deviceId }),
+                ),
+              ),
+            ).toEqual({ result: null });
+            const fromOther = await send(other, roomId, 'after the drop');
+            await decrypted(
+              native,
+              roomId,
+              fromOther,
+              'a message after the drop',
+            );
+            expect(inits()).toBe(before + 1);
+            const fromNative = await send(
+              native,
+              roomId,
+              'back after the drop',
+            );
+            await decrypted(other, roomId, fromNative, 'the reloaded side');
+            expect(native.lost).toEqual([]);
+          },
+        );
+
+        it.skipIf(!hasNative)(
+          'loses the machine when the bridge dies: errors, no hang, no WASM fallback, and the sync waits',
+          async () => {
+            const native = parties[nativeName];
+            const other = parties[otherName];
             native.bridge.kill();
+            await until(() => native.lost.length > 0, 'the machine to be lost');
+            // The sync in flight when the machine was lost may still go out once.
+            await new Promise((done) => setTimeout(done, 1500));
+            const syncs = native.network.syncs;
             await expect(
               native.client.getCrypto().forceDiscardSession(roomId),
-            ).rejects.toThrow(/trinity-crypto-cli exited/);
-            const sending = native.client.sendTextMessage(roomId, 'never sent');
-            await expect(sending).rejects.toThrow();
-            const eventId = await send(
-              parties[otherName],
-              roomId,
-              'not readable',
-            );
-            const event = await until(
-              () => eventIn(native, roomId, eventId),
-              'the event to reach the dead side',
-            );
-            await until(
-              () => !event.isBeingDecrypted() && event.isDecryptionFailure(),
-              'the decryption to fail',
-            );
+            ).rejects.toThrow(/the machine is lost/);
+            await expect(
+              native.client.sendTextMessage(roomId, 'never sent'),
+            ).rejects.toThrow();
             expect(machineOf(native).__wbg_ptr).toBeUndefined();
+
+            // A new room key reaches the lost device's to-device inbox on the server.
+            await other.client.getCrypto().forceDiscardSession(roomId);
+            const eventId = await send(other, roomId, 'sent while lost');
+            // A syncing client polls every second; this one waits on its sync input.
+            await new Promise((done) => setTimeout(done, 3000));
+            expect(native.network.syncs).toBe(syncs);
+            expect(native.lost).toHaveLength(1);
+
+            // The host stops the client; the next start on the same store gets the key.
+            await stopClient(native);
+            const again = await startClient('native', native.account, {
+              storeKey: native.storeKey,
+            });
+            parties[nativeName] = again;
+            const event = await decrypted(
+              again,
+              roomId,
+              eventId,
+              'the message sent while the machine was lost',
+            );
+            expect(event.getClearContent().body).toBe('sent while lost');
           },
           60_000,
         );

@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline';
 export const startCliBridge = (executable) => {
   const child = spawn(executable, [], { stdio: ['pipe', 'pipe', 'inherit'] });
   const waiting = [];
+  const sent = [];
   let failure;
   const fail = (error) => {
     failure ??= error;
@@ -25,11 +26,14 @@ export const startCliBridge = (executable) => {
     new Promise((resolve, reject) => {
       if (failure) return reject(failure);
       waiting.push({ resolve, reject, line });
+      sent.push(...[JSON.parse(line)].flat().map((request) => request.method));
       child.stdin.write(`${line}\n`);
     });
   return {
     call: send,
     callBatch: send,
+    /** The methods of every request sent, in order. */
+    sent: () => [...sent],
     /** The methods of the requests still waiting for an answer. */
     pending: () =>
       waiting.map(({ line }) =>
